@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loupe — Listing Console</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+  :root{
+    --bg:#EDEDED;
+    --surface:#FFFFFF;
+    --ink:#0A0A0A;
+    --ink-soft:#4A4A4E;
+    --muted:#8E8E93;
+    --line:#EAEAEA;
+    --chip:#F4F4F4;
+    --r-card:24px;
+    --r-pill:999px;
+    --amber:#B8862B;
+    --green:#2F7A4F;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;
+    background:var(--bg); color:var(--ink);
+    font-size:13px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding:18px; height:100vh; overflow:hidden;
+  }
+  .app{display:grid; grid-template-columns:216px 1fr; gap:18px; height:100%}
+
+  /* ---------- sidebar ---------- */
+  .side{display:flex; flex-direction:column; gap:26px; padding:8px 4px 0; min-height:0}
+  .brand{display:flex; align-items:center; gap:10px; padding:0 12px}
+  .mark{width:30px;height:30px;border-radius:9px;background:var(--ink);color:#fff;
+        display:grid;place-items:center;font-weight:600;font-size:14px}
+  .brand span{font-weight:500;letter-spacing:-.01em}
+
+  nav{display:flex;flex-direction:column;gap:4px}
+  .nav-lbl{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+           padding:0 14px;margin-bottom:8px}
+  .nav-item{display:flex;align-items:center;gap:12px;padding:10px 16px;border-radius:var(--r-pill);
+            color:var(--ink-soft);cursor:pointer;transition:.16s;font-weight:400}
+  .nav-item:hover{background:rgba(0,0,0,.045)}
+  .nav-item.on{background:var(--ink);color:#fff;font-weight:500}
+  .nav-item .ic{width:16px;height:16px;flex:none;opacity:.85}
+  .nav-item .badge{margin-left:auto;background:var(--amber);color:#fff;font-size:10px;
+                   min-width:18px;height:18px;border-radius:9px;display:grid;place-items:center;font-weight:600}
+  .nav-item.on .badge{background:#fff;color:var(--ink)}
+
+  .me{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 12px;
+      background:var(--surface);border-radius:var(--r-pill)}
+  .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#C9C9CF,#8E8E93);flex:none}
+  .me small{color:var(--muted);font-size:11px;display:block;line-height:1.2}
+
+  /* ---------- main ---------- */
+  .main{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0}
+
+  .top{display:flex;align-items:center;gap:12px}
+  h1{font-size:26px;font-weight:500;letter-spacing:-.025em}
+  .date{color:var(--muted);font-size:12px;margin-left:2px}
+
+  .stats{display:flex;gap:8px;margin-left:auto}
+  .stat{background:var(--surface);border-radius:var(--r-pill);padding:8px 16px;
+        display:flex;align-items:center;gap:9px}
+  .stat b{font-size:15px;font-weight:600;letter-spacing:-.02em}
+  .stat span{color:var(--muted);font-size:11px}
+  .stat.dark{background:var(--ink);color:#fff}
+  .stat.dark span{color:rgba(255,255,255,.6)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--amber)}
+
+  .cols{display:grid;grid-template-columns:1fr 372px;gap:14px;flex:1;min-height:0;overflow:hidden}
+
+  /* ---------- queue ---------- */
+  .card{background:var(--surface);border-radius:var(--r-card);padding:20px;min-height:0}
+  .card-h{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  .card-h h2{font-size:14px;font-weight:500}
+  .count{background:var(--chip);border-radius:var(--r-pill);padding:2px 9px;font-size:11px;color:var(--muted)}
+  .seg{margin-left:auto;display:flex;background:var(--chip);border-radius:var(--r-pill);padding:3px}
+  .seg button{border:0;background:none;font:inherit;font-size:11px;color:var(--muted);
+              padding:5px 13px;border-radius:var(--r-pill);cursor:pointer}
+  .seg button.on{background:var(--ink);color:#fff}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;
+        overflow-y:auto;max-height:calc(100% - 46px);padding-right:4px}
+  .grid::-webkit-scrollbar{width:5px}
+  .grid::-webkit-scrollbar-thumb{background:#DDD;border-radius:3px}
+
+  .tile{aspect-ratio:1;border-radius:16px;background:var(--chip);cursor:pointer;
+        position:relative;overflow:hidden;border:2px solid transparent;transition:.16s}
+  .tile:hover{transform:translateY(-2px)}
+  .tile.on{border-color:var(--ink)}
+  .tile svg{position:absolute;inset:0;width:100%;height:100%}
+  .tile .tag{position:absolute;left:8px;bottom:8px;background:rgba(255,255,255,.92);
+             border-radius:var(--r-pill);padding:2px 8px;font-size:10px;font-weight:500}
+  .tile .n{position:absolute;right:8px;top:8px;background:var(--ink);color:#fff;font-size:9px;
+           width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-weight:600}
+
+  /* ---------- detail ---------- */
+  .detail{display:flex;flex-direction:column;gap:0;overflow-y:auto;min-height:0}
+  .detail::-webkit-scrollbar{width:5px}
+  .detail::-webkit-scrollbar-thumb{background:#DDD;border-radius:3px}
+
+  .hero{border-radius:18px;background:var(--chip);aspect-ratio:4/3;position:relative;overflow:hidden}
+  .hero svg{position:absolute;inset:0;width:100%;height:100%}
+
+  .vers{display:flex;gap:7px;margin:12px 0 4px}
+  .v{width:44px;height:44px;border-radius:12px;background:var(--chip);cursor:pointer;
+     border:2px solid transparent;display:grid;place-items:center;font-size:9px;color:var(--muted);
+     font-weight:500;transition:.16s;flex:none}
+  .v.on{border-color:var(--ink);color:var(--ink)}
+  .v.add{background:var(--ink);color:#fff;font-size:16px;font-weight:300}
+
+  .field{margin-top:18px}
+  .field > label{font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+                 color:var(--muted);display:block;margin-bottom:9px}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{background:var(--chip);border:0;font:inherit;font-size:11.5px;color:var(--ink-soft);
+        padding:7px 13px;border-radius:var(--r-pill);cursor:pointer;transition:.14s}
+  .chip:hover{background:#EBEBEB}
+  .chip.on{background:var(--ink);color:#fff;font-weight:500}
+  .chip.ghost{background:none;border:1px dashed #D5D5D5;color:var(--muted)}
+
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .inp{background:var(--chip);border:0;border-radius:14px;padding:11px 14px;width:100%;
+       font:inherit;font-size:14px;font-weight:500;color:var(--ink);outline:none}
+  .inp:focus{box-shadow:0 0 0 2px var(--ink) inset}
+  .inp::placeholder{color:#BFBFC4;font-weight:400}
+
+  .preview{margin-top:18px;background:var(--ink);color:#fff;border-radius:18px;padding:15px 17px}
+  .preview .k{font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+              color:rgba(255,255,255,.45);margin-bottom:7px}
+  .preview .sku{font-size:17px;font-weight:600;letter-spacing:-.01em}
+  .preview .meta{font-size:11.5px;color:rgba(255,255,255,.62);margin-top:3px;
+                 font-family:ui-monospace,monospace}
+
+  .acts{display:flex;gap:8px;margin-top:14px;position:sticky;bottom:-20px;
+        background:var(--surface);padding:12px 0 20px;
+        box-shadow:0 -14px 16px -6px var(--surface)}
+  .btn{flex:1;border:0;font:inherit;font-size:13px;font-weight:500;padding:13px;
+       border-radius:var(--r-pill);cursor:pointer;transition:.14s}
+  .btn-p{background:var(--ink);color:#fff}
+  .btn-p:hover{background:#242428}
+  .btn-s{flex:none;width:46px;background:var(--chip);color:var(--ink-soft);font-size:16px}
+  kbd{background:rgba(255,255,255,.18);border-radius:4px;padding:1px 5px;font-size:10px;
+      font-family:inherit;margin-left:6px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="side">
+    <div class="brand"><div class="mark">L</div><span>Loupe</span></div>
+
+    <nav>
+      <div class="nav-lbl">Workspace</div>
+      <div class="nav-item on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/></svg>Console</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>Tracking<span class="badge">3</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h13"/></svg>Prompts</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17l5-5 4 3 5-7 4 5"/></svg>Reports</div>
+      <div class="nav-lbl" style="margin-top:20px">Setup</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>Settings</div>
+    </nav>
+
+    <div class="me">
+      <div class="av"></div>
+      <div><div style="font-weight:500;font-size:12px">Operator</div><small>qimati.in</small></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h1>Console</h1>
+        <div class="date">Monday, 28 July</div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>41</b><span>uploaded</span></div>
+        <div class="stat"><b>17</b><span>listed</span></div>
+        <div class="stat"><span class="dot"></span><b>3</b><span>need attention</span></div>
+        <div class="stat dark"><b>21</b><span>in queue</span></div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <section class="card">
+        <div class="card-h">
+          <h2>Pending</h2><span class="count">21</span>
+          <div class="seg">
+            <button class="on">All</button><button>Grouped</button><button>Ungrouped</button>
+          </div>
+        </div>
+        <div class="grid" id="grid"></div>
+      </section>
+
+      <section class="card detail">
+        <div class="hero" id="hero"></div>
+
+        <div class="vers">
+          <div class="v">orig</div>
+          <div class="v">v1</div>
+          <div class="v on">v2</div>
+          <div class="v add">+</div>
+        </div>
+
+        <div class="field">
+          <label>Category</label>
+          <div class="chips" id="cats">
+            <button class="chip on" data-p="NK" data-t="Necklace">Necklaces</button>
+            <button class="chip" data-p="ER" data-t="Earrings">Earrings</button>
+            <button class="chip" data-p="BK" data-t="Bracelet Kada">Kada</button>
+            <button class="chip" data-p="CB" data-t="Chain Bracelet">Chain Br.</button>
+            <button class="chip" data-p="RS" data-t="Rings">Rings</button>
+            <button class="chip" data-p="AK" data-t="Anklets">Anklets</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Material</label>
+          <div class="chips" id="mats">
+            <button class="chip">304</button>
+            <button class="chip on">316L</button>
+            <button class="chip">Brass</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Colours</label>
+          <div class="chips" id="cols">
+            <button class="chip on">Gold</button>
+            <button class="chip on">Silver</button>
+            <button class="chip">Rose Gold</button>
+            <button class="chip ghost">+ add</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Price &amp; stock</label>
+          <div class="row2">
+            <input class="inp" placeholder="₹ 0" inputmode="numeric" autofocus>
+            <input class="inp" value="50">
+          </div>
+        </div>
+
+        <div class="preview">
+          <div class="k">Will publish as</div>
+          <div class="sku" id="pv-sku">NK971 · Necklace 971</div>
+          <div class="meta" id="pv-h">/products/necklace-971</div>
+        </div>
+
+        <div class="acts">
+          <button class="btn btn-p">Publish<kbd>↵</kbd></button>
+          <button class="btn btn-s" title="Save as draft">◷</button>
+          <button class="btn btn-s" title="Skip">→</button>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+// placeholder jewellery-ish artwork so the layout reads like the real thing
+const art = (s, i) => `<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
+  <defs><radialGradient id="g${s}${i}" cx="42%" cy="34%">
+    <stop offset="0%" stop-color="#fff"/><stop offset="62%" stop-color="#F2F2F2"/>
+    <stop offset="100%" stop-color="#E2E2E4"/></radialGradient></defs>
+  <rect width="100" height="100" fill="url(#g${s}${i})"/>
+  ${i%3===0
+    ? `<ellipse cx="50" cy="52" rx="21" ry="21" fill="none" stroke="#C4C4CA" stroke-width="2.4"/>
+       <ellipse cx="50" cy="52" rx="15" ry="15" fill="none" stroke="#D8D8DC" stroke-width="1"/>`
+    : i%3===1
+    ? `<path d="M26 38 Q50 74 74 38" fill="none" stroke="#C4C4CA" stroke-width="2.4" stroke-linecap="round"/>
+       <circle cx="50" cy="66" r="5.5" fill="none" stroke="#C4C4CA" stroke-width="2.2"/>`
+    : `<path d="M32 34 h36 a7 7 0 0 1 0 14 h-36 a7 7 0 0 1 0-14z" fill="none" stroke="#C4C4CA" stroke-width="2.2"/>
+       <path d="M38 55 h24" stroke="#D6D6DA" stroke-width="2" stroke-linecap="round"/>`}
+</svg>`;
+
+const cats = ['Necklace','Earrings','Kada','Chain Br.','Rings','Anklets'];
+const grid = document.getElementById('grid');
+for (let i=0;i<21;i++){
+  const t = document.createElement('div');
+  t.className = 'tile' + (i===0?' on':'');
+  t.innerHTML = art('t',i) + `<span class="tag">${cats[i%6]}</span>` + (i%4===0?'<span class="n">2</span>':'');
+  t.onclick = () => {
+    document.querySelectorAll('.tile').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    document.getElementById('hero').innerHTML = art('h',i);
+  };
+  grid.appendChild(t);
+}
+document.getElementById('hero').innerHTML = art('h',0);
+
+// single-select chip groups + live SKU preview
+const single = (id, after) => {
+  document.querySelectorAll('#'+id+' .chip').forEach(c => c.onclick = () => {
+    document.querySelectorAll('#'+id+' .chip').forEach(x=>x.classList.remove('on'));
+    c.classList.add('on'); after && after(c);
+  });
+};
+const nums = {NK:971, ER:454, BK:318, CB:354, RS:225, AK:88};
+single('cats', c => {
+  const p = c.dataset.p, n = nums[p], t = c.dataset.t;
+  document.getElementById('pv-sku').textContent = `${p}${n} · ${t} ${n}`;
+  document.getElementById('pv-h').textContent =
+    '/products/' + t.toLowerCase().replace(/[^a-z]+/g,'-').replace(/^-|-$/g,'') + '-' + n;
+});
+single('mats');
+document.querySelectorAll('#cols .chip:not(.ghost)').forEach(c =>
+  c.onclick = () => c.classList.toggle('on'));
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+/**
+ * Every table in the public schema, in the order a human wants to read them.
+ * Kept here so /health cannot silently stop covering a table someone adds.
+ * tests/schema.test.ts asserts this list matches the database exactly.
+ */
+export const TABLES = [
+  'categories',
+  'sku_counters',
+  'materials',
+  'colours',
+  'colour_usage',
+  'product_drafts',
+  'intake_files',
+  'image_versions',
+  'product_draft_images',
+  'product_draft_variants',
+  'prompts',
+  'events',
+  'app_users',
+] as const
+
+export type TableName = (typeof TABLES)[number]

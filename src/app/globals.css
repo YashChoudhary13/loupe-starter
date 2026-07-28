@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens from docs/DESIGN.md. Only the tokens live here in Phase 1 —
+ * the component layer arrives with the first real screen. The visual reference
+ * is design/console-mockup.html and design/tracking-mockup.html.
+ *
+ * Monochrome on purpose: the content is gold and silver jewellery, so a neutral
+ * interface makes the photographs the only colour on screen. --amber is the ONE
+ * accent and means "needs attention", nothing else (docs/DECISIONS.md D9).
+ *
+ * No dark-mode block: DESIGN.md specifies one palette, and a second one would
+ * mean two sets of decisions about what "black means active" looks like.
+ */
+:root {
+  --bg: #ededed;
+  --surface: #ffffff;
+  --ink: #0a0a0a;
+  --ink-soft: #4a4a4e;
+  --muted: #8e8e93;
+  --chip: #f4f4f4;
+  --amber: #b8862b;
+  --green: #2f7a4f;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-chip: var(--chip);
+  --color-amber: var(--amber);
+  --color-green: var(--green);
+
+  --radius-card: 24px;
+  --radius-panel: 18px;
+  --radius-tile: 16px;
+  --radius-input: 14px;
+  --radius-pill: 999px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * DESIGN.md: "Visible focus rings on everything. The visual reference is a
+ * static image and shows none. Without them the keyboard path is unusable."
+ */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
