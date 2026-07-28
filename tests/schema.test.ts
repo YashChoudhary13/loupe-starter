@@ -122,7 +122,7 @@ describe('conventions', () => {
 })
 
 describe('seed data', () => {
-  it('has the six confirmed categories with the live store’s exact tags', async () => {
+  it('has the confirmed categories with the live store’s exact tags', async () => {
     const { data, error } = await serviceClient()
       .from('categories')
       .select('name, sku_prefix, title_pattern, shopify_tag')
@@ -131,6 +131,10 @@ describe('seed data', () => {
 
     // Tags are inconsistently cased in the live store. Collections are tag-driven,
     // so "tidying" one silently drops the product out of its collection.
+    //
+    // Nose Pins (Phase 2) is the odd one out: its prefix and title pattern are
+    // confirmed, its TAG IS NOT, so the tag is NULL and publish refuses the
+    // category rather than inventing one.
     expect(data).toEqual([
       { name: 'Necklaces', sku_prefix: 'NK', title_pattern: 'Necklace {n}', shopify_tag: 'Necklace' },
       { name: 'Earrings', sku_prefix: 'ER', title_pattern: 'Earrings {n}', shopify_tag: 'earrings' },
@@ -138,24 +142,43 @@ describe('seed data', () => {
       { name: 'Chain Bracelets', sku_prefix: 'CB', title_pattern: 'Chain Bracelet {n}', shopify_tag: 'cb' },
       { name: 'Rings', sku_prefix: 'RS', title_pattern: 'Rings {n}', shopify_tag: 'Rings' },
       { name: 'Anklets', sku_prefix: 'AK', title_pattern: 'Anklets {n} (Single Piece)', shopify_tag: 'anklets' },
+      { name: 'Nose Pins', sku_prefix: 'NP', title_pattern: 'Nose Pin {n}', shopify_tag: null },
     ])
   })
 
-  it('invents no prefix for the eight TBD categories', async () => {
+  it('invents no prefix for the seven still-TBD categories', async () => {
+    // Watches, Hand Chains, Jewellery Box, Bags, Hair Accessories, Indian
+    // Jewellery and Brass have no confirmed prefix. An invented one starts a
+    // sequence that has to be unpicked later.
     const { data } = await serviceClient().from('categories').select('sku_prefix')
     expect((data as { sku_prefix: string }[]).map((c) => c.sku_prefix).sort()).toEqual([
-      'AK', 'BK', 'CB', 'ER', 'NK', 'RS',
+      'AK', 'BK', 'CB', 'ER', 'NK', 'NP', 'RS',
     ])
   })
 
-  it('has a counter per category, all still at 0 pending Phase 2', async () => {
+  it('has a counter for every category, and none for anything else', async () => {
     const { data } = await serviceClient().from('sku_counters').select('sku_prefix, last_number')
+    const { data: cats } = await serviceClient().from('categories').select('sku_prefix')
     const rows = data as { sku_prefix: string; last_number: number }[]
-    expect(rows).toHaveLength(6)
-    expect(
-      rows.filter((r) => r.last_number !== 0),
-      'Phase 2 sets these from the TRUE MAX per prefix; until then they must stay 0 so nobody publishes on a fabricated number',
-    ).toEqual([])
+
+    expect(rows.map((r) => r.sku_prefix).sort()).toEqual(
+      (cats as { sku_prefix: string }[]).map((c) => c.sku_prefix).sort(),
+    )
+    // Values are NOT asserted. Phase 2's `npm run seed:counters` sets them from
+    // the true max per prefix, and `npm run verify:publish` legitimately burns
+    // numbers. Pinning them to 0 would only assert that nobody has used the tool.
+    expect(rows.every((r) => r.last_number >= 0)).toBe(true)
+  })
+
+  it('has the Phase 2 publish functions deployed', () => {
+    for (const fn of [
+      'raise_sku_counter',
+      'reserve_draft_identity',
+      'mark_draft_published',
+      'mark_draft_failed',
+    ]) {
+      expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
+    }
   })
 
   it('has exactly the three materials', async () => {

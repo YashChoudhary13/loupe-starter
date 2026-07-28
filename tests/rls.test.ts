@@ -57,18 +57,54 @@ describe('publishable key — write access', () => {
   })
 })
 
-describe('next_sku is not callable without the service role', () => {
+describe('the SKU and publish functions are not callable without the service role', () => {
   // Burning SKU numbers from the browser would open gaps in the sequence for
-  // free. EXECUTE is revoked from PUBLIC, anon and authenticated.
-  it('refuses an anonymous RPC call', async () => {
+  // free — and reserving an identity or marking a draft published from the
+  // browser would let anyone put a product on the live store. EXECUTE is revoked
+  // from PUBLIC, anon and authenticated on every one of these.
+  async function anonymousRpc(fn: string, body: Record<string, unknown>): Promise<Response> {
     const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/next_sku`, {
+    return fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: 'POST',
       headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_prefix: 'NK' }),
+      body: JSON.stringify(body),
     })
+  }
 
+  it('refuses an anonymous next_sku call', async () => {
+    const res = await anonymousRpc('next_sku', { p_prefix: 'NK' })
     expect(res.ok, `anonymous next_sku call returned HTTP ${res.status}`).toBe(false)
     expect([401, 403, 404]).toContain(res.status)
+  })
+
+  const phase2Functions: [string, Record<string, unknown>][] = [
+    ['raise_sku_counter', { p_prefix: 'NK', p_to: 999_999 }],
+    ['reserve_draft_identity', { p_draft_id: '00000000-0000-0000-0000-000000000000' }],
+    ['mark_draft_published', {
+      p_draft_id: '00000000-0000-0000-0000-000000000000',
+      p_shopify_product_id: 'gid://shopify/Product/1',
+    }],
+    ['mark_draft_failed', {
+      p_draft_id: '00000000-0000-0000-0000-000000000000',
+      p_error: 'anonymous',
+    }],
+  ]
+
+  for (const [fn, body] of phase2Functions) {
+    it(`refuses an anonymous ${fn} call`, async () => {
+      const res = await anonymousRpc(fn, body)
+      expect(res.ok, `anonymous ${fn} call returned HTTP ${res.status}`).toBe(false)
+      expect([401, 403, 404]).toContain(res.status)
+    })
+  }
+
+  it('leaves the NK counter untouched after all of that', async () => {
+    // raise_sku_counter(NK, 999999) would be catastrophic if it had gone through.
+    const { data } = await serviceClient()
+      .from('sku_counters')
+      .select('last_number')
+      .eq('sku_prefix', 'NK')
+      .single()
+    expect((data as { last_number: number }).last_number).toBeLessThan(999_999)
   })
 })

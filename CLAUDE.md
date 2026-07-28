@@ -43,7 +43,10 @@ Category drives the SKU prefix, the title, the tag and therefore the collection.
 | Chain Bracelets | `CB` | `Chain Bracelet {n}` | `cb` |
 | Rings | `RS` | `Rings {n}` | `Rings` |
 | Anklets | `AK` | `Anklets {n} (Single Piece)` | `anklets` |
-| Watches, Hand Chains, Nose Pins, Jewellery Box, Bags, Hair Accessories, Indian Jewellery, Brass | **TBD — ask before inventing** | | |
+| Nose Pins | `NP` | `Nose Pin {n}` | **unconfirmed — publish is blocked** |
+| Watches, Hand Chains, Jewellery Box, Bags, Hair Accessories, Indian Jewellery, Brass | **TBD — ask before inventing** | | |
+
+`NP` was added in Phase 2 with `shopify_tag` **NULL**: the prefix and title pattern are confirmed against the live store, the tag is not. Publish refuses any category whose tag is null rather than guessing one — an invented tag drops the product out of its collection silently, which is worse than a blocked publish. Fill the tag in and the category works with no code change.
 
 Existing tags are inconsistent (`cb` vs `Necklace` vs `anklets`). **Match the existing tag exactly.** Collections appear to be tag-driven, so a "tidier" tag would silently drop the product out of its collection.
 
@@ -96,11 +99,20 @@ Insert the DB row **before** any work is attempted. A file's presence in RAW nev
 A worker claiming a row sets `lease_expires_at`. A sweeper returns expired leases to the queue. Without this, one crash strands a file forever in a status that looks busy.
 
 **7. Secrets never reach the browser.**
-All Shopify, Drive, OpenAI and R2 calls are server-side. This tool publishes to a live store. Auth is Google sign-in restricted to the company domain — not a shared password.
+All Shopify, Drive, image-model and R2 calls are server-side. This tool publishes to a live store.
 
-*As built (Phase 1):* every table has RLS **enabled with zero policies**, which in Postgres is a default deny — the publishable key can read and write nothing, and that is enforced by the database rather than by remembering to be careful. `service_role` bypasses RLS and is reachable only through `src/lib/supabase/server.ts`, which starts with `import 'server-only'`; a client component importing it fails the build. Prove it with `npm run verify:isolation`, don't assume it.
+**Shopify auth is the OAuth `client_credentials` grant, not a static `shpat_` token.** The app is a Shopify-managed install; `SHOPIFY_CLIENT_ID` + `SHOPIFY_CLIENT_SECRET` are exchanged at `POST https://{shop}/admin/oauth/access_token` for an offline access token that **expires in 24 hours** (`expires_in: 86399`). Consequences that are easy to get wrong:
 
-⚠️ **Open question for Phase 4:** `.env` has no `ALLOWED_EMAIL_DOMAIN`, and `SEED_ADMIN_EMAIL` is a personal gmail.com address — a gmail.com address, not `qimati.in`. A strict company-domain check would lock out the only seeded admin. Decide whether the rule is domain membership, presence in `app_users`, or both.
+- There is no long-lived token to paste anywhere. Anything that fetches a token once at boot works today and silently stops publishing tomorrow.
+- The token must be cached with its expiry, refreshed **proactively** (Loupe refreshes 4 h before expiry, so ~20 h into a 24 h token), and a `401` must mean *invalidate, refresh, retry once* — not fail.
+- Concurrent publishes must share **one** in-flight token fetch, or twenty parallel publishes make twenty token calls.
+- The client id and secret are **not** the token. Never log or persist the minted token.
+
+*As built (Phase 2):* `src/lib/shopify/token.ts`. Clock and `fetch` are injectable so the refresh path is provable without waiting a day — `tests/shopify-token.test.ts`.
+
+*As built (Phase 1):* every table has RLS **enabled with zero policies**, which in Postgres is a default deny — the publishable key can read and write nothing, and that is enforced by the database rather than by remembering to be careful. `service_role` bypasses RLS and is reachable only through `src/lib/supabase/server.ts`, which starts with `import 'server-only'`; a client component importing it fails the build. `npm run verify:isolation` proves the Supabase service-role key *and* the Shopify client secret are both absent from the client bundle.
+
+**Console sign-in is Google sign-in against the `app_users` table.** `ALLOWED_EMAIL_DOMAIN` is deliberately unset and `SEED_ADMIN_EMAIL` is deliberately a gmail.com address — **this is by design, not a bug.** Membership of `app_users` is the authorisation rule. A strict `qimati.in` domain check would lock out the only admin. Do not "fix" this.
 
 **8. Never block publish silently.**
 Block on empty/zero price, and on zero stock unless explicitly ticked. Show the resolved `SKU · title · handle` as a read-only preview before publish, so a wrong category is visible.
@@ -109,7 +121,9 @@ Block on empty/zero price, and on zero stock unless explicitly ticked. Show the 
 
 ## Image enhancement
 
-**Model: OpenAI `gpt-image-2`, pinned to a dated snapshot** (e.g. `gpt-image-2-2026-04-21`), never `chatgpt-image-latest` — that pointer moves when ChatGPT's model moves and the catalogue's look would drift silently.
+**Route: OpenRouter.** `OPENROUTER_API_KEY` with `OPENROUTER_OPENAI_IMAGE_MODEL` (`openai/gpt-image-2`) and `OPENROUTER_GEMINI_MODEL`. One key, one billing account, and swapping model or provider is a config change rather than a new SDK.
+
+**Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
 - **Output 2048×2048.** Shopify's recommended size for square product images; hard max 5000×5000 / 20 MB.
 - Tested cost ≈ **$0.07/image**, range $0.07–$0.20 depending on quality tier.
@@ -124,14 +138,14 @@ enhance(input: Buffer, prompt: string, opts): Promise<{ image: Buffer; costUsd: 
 
 **The enhancement prompt is configuration, not code.** It lives in the `prompts` table, is editable in the UI, and is versioned. It must never be hardcoded — replacing five ChatGPT tabs with one hardcoded string just moves the problem.
 
-⚠️ **D5 is contradicted by `.env`.** The working `.env` carries `GEMINI_API_KEY`, `GEMINI_IMAGE_MODEL=gemini-3.1-flash-image`, `OPENROUTER_GEMINI_MODEL` **and** `OPENROUTER_OPENAI_IMAGE_MODEL=openai/gpt-image-2`, and no `OPENAI_API_KEY`. That is a live bake-off, not the settled choice this section describes. Resolve it before Phase 3 and update D5 — do not let the code pick silently.
+`GEMINI_API_KEY` / `GEMINI_IMAGE_MODEL` remain in `.env` as the direct-to-Google fallback if OpenRouter is unavailable. There is deliberately no `OPENAI_API_KEY` — OpenAI is reached through OpenRouter.
 
 ---
 
 ## Storage
 
-- **Cloudflare R2** bucket `loupe-images` — private. Access via presigned URLs only: one for the console to display, one for Shopify to fetch at publish.
-  ⚠️ `.env` says `R2_BUCKET=loupe-image` (**singular**). One of the two is wrong; the Cloudflare dashboard decides. Confirm before Phase 3 writes anything.
+- **Cloudflare R2** bucket **`loupe-image`** — singular, private. Access via presigned URLs only: one for the console to display, one for Shopify to fetch at publish.
+  *Confirmed 2026-07-28 against the Cloudflare dashboard: the live bucket is named `loupe-image`, location **APAC**, created 28 Jul.* `.env` was right; earlier drafts of this file and D4 said `loupe-images` and were wrong. The Phase 0 note about an `ENAM` bucket needing recreation is also resolved — the surviving bucket is APAC.
 - **Supabase is the database only.** Do not use Supabase Storage; a `loupe-images` bucket there was created and abandoned early on.
 - Paths: `originals/{intake_file_id}.jpg` and `versions/{intake_file_id}/v{n}.jpg`
 - Generate a ~50 KB thumbnail beside every version. The queue grid uses thumbnails, never full images.
@@ -157,6 +171,12 @@ template and must never contain real values; keep it in sync when you add a vari
 
 There is a second file at `../.env.local.example`, one level **above** this repo, which
 despite its name holds real values. It is outside the repo and is not the source of truth.
+
+**`SHOPIFY_STORE_DOMAIN=qimti.myshopify.com` is correct.** "qimti", not "qimati" — confirmed
+at `admin.shopify.com/store/qimti`. It is the **test store**, and it is password-protected.
+The live store is a later cutover; nothing in this repo points at it yet. Do not "fix" the
+spelling. At cutover, the only changes are `SHOPIFY_STORE_DOMAIN`, a set of app credentials
+for the live store, and re-running `npm run seed:counters`.
 
 `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_PASSWORD` are different credentials. The
 service-role key is a JWT for the PostgREST API; it cannot authenticate a Postgres wire

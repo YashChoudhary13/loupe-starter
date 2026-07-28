@@ -122,17 +122,38 @@ console.log(`    e.g. ${publishableHits[0]}`)
 console.log('  control passes — the scan does see values that reach the browser ✓')
 
 // ---------------------------------------------------------------------------
-console.log('\nSTEP 2 — the same build must NOT contain the service_role key')
+console.log('\nSTEP 2 — the same build must NOT contain any server-side secret')
 console.log('─'.repeat(74))
 
-const needles = [serviceKey, serviceKey.split('.')[2] ?? ''].filter((n) => n.length > 20)
-const leaks = needles.flatMap(findInClientAssets)
 const assetCount = [...walk(CLIENT_ASSET_ROOT)].length
-
 console.log(`  scanned ${assetCount} client asset(s) under .next/static`)
-console.log('  searched for the full key and for its signature segment alone')
-if (leaks.length > 0) fail(`service_role key found in client assets:\n    ${[...new Set(leaks)].join('\n    ')}`)
-console.log('  service_role key: NOT PRESENT ✓')
+
+// The service_role key, and its signature segment alone in case something
+// re-encodes the JWT.
+const serviceNeedles = [serviceKey, serviceKey.split('.')[2] ?? ''].filter((n) => n.length > 20)
+const serviceLeaks = serviceNeedles.flatMap(findInClientAssets)
+console.log('  searched for the full service_role key and its signature segment alone')
+if (serviceLeaks.length > 0) {
+  fail(`service_role key found in client assets:\n    ${[...new Set(serviceLeaks)].join('\n    ')}`)
+}
+console.log('  service_role key:      NOT PRESENT ✓')
+
+// Phase 2. src/lib/shopify/* deliberately does not carry `import 'server-only'`
+// (scripts and vitest both run in plain Node, where that shim throws), so the
+// guarantee has to be demonstrated rather than declared. This tool publishes to a
+// live store — the Shopify client secret reaching a browser is the worst leak here.
+const shopifySecret = process.env.SHOPIFY_CLIENT_SECRET?.trim()
+if (shopifySecret && shopifySecret.length > 12) {
+  const shopifyLeaks = findInClientAssets(shopifySecret)
+  if (shopifyLeaks.length > 0) {
+    fail(
+      `SHOPIFY_CLIENT_SECRET found in client assets:\n    ${[...new Set(shopifyLeaks)].join('\n    ')}`,
+    )
+  }
+  console.log('  SHOPIFY_CLIENT_SECRET: NOT PRESENT ✓')
+} else {
+  console.log('  SHOPIFY_CLIENT_SECRET: not set — nothing to check for')
+}
 
 // ---------------------------------------------------------------------------
 console.log('\nSTEP 3 — a client component importing the server-only module must fail the build')

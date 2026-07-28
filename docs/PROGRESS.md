@@ -31,6 +31,239 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-28 — Phase 2: the Shopify write path
+
+**Goal this session:** the token manager, `seed:counters`, and `publishProduct()`.
+
+**⚠️ PHASE 2 IS NOT COMPLETE.** Criteria 5 and 6 are met and demonstrated. Criteria 1–4
+are **built, typechecked and blocked** on one external fact: the Shopify app is not
+installed on `qimti.myshopify.com`, so no access token can be minted at all. See
+*Blocked* below — it is a two-minute fix in the Shopify admin, and nothing else is
+waiting on anything.
+
+**Corrections applied first** (all six from the session prompt):
+
+1. R2 bucket is **`loupe-image`** (singular), APAC. CLAUDE.md and D4 corrected; the
+   Phase 0 `ENAM` note is closed.
+2. `qimti.myshopify.com` is **correct**, and is the **test** store. Noted in CLAUDE.md
+   so nobody "fixes" the spelling.
+3. Hard rule 7 rewritten around the `client_credentials` grant.
+4. D5 rewritten: OpenRouter route, **no dated pin**; the mitigation is that
+   `image_versions` records `model` and `prompt_text` per row.
+5. Parent `Qimati/CLAUDE.md` — **already absent** at session start. `find` over
+   `/Users/yash/Desktop/Qimati` returns only the repo's own copy. Nothing to delete.
+6. gmail `SEED_ADMIN_EMAIL` with no `ALLOWED_EMAIL_DOMAIN` recorded as **by design** in
+   CLAUDE.md and in `.env.local.example`, not as an open question.
+
+**Built:**
+
+- `supabase/migrations/20260728140000_nose_pins_category.sql` → `shopify_tag` made
+  nullable; **Nose Pins / `NP` / `Nose Pin {n}` with tag NULL** and its counter.
+- `supabase/migrations/20260728140100_publish_functions.sql` → `raise_sku_counter()`,
+  `reserve_draft_identity()`, `mark_draft_published()`, `mark_draft_failed()`. All
+  four revoked from `anon`/`authenticated`, granted to `service_role`.
+- `src/lib/shopify/token.ts` → the `client_credentials` token manager. Caches with the
+  response's own expiry, refreshes 4 h early (≈20 h into a 24 h token), single-flights
+  concurrent callers, and explains `app_not_installed` in English.
+- `src/lib/shopify/client.ts` → GraphQL client. 401 → invalidate + retry **once**;
+  429 / 5xx / `THROTTLED` → bounded backoff (0/1/3/8 s) then stop.
+- `src/lib/shopify/product-set.ts` → `productSet` identified by handle, plus read-back,
+  count-by-handle and delete helpers used for the evidence.
+- `src/lib/shopify/config.ts`, `errors.ts` → config with API version pinned at
+  `2026-07`; errors classified retryable/permanent at the point they are created.
+- `src/lib/publish/{identity,validate,types,publish-product}.ts` → `publishProduct()`.
+- `scripts/seed-counters.ts` → `npm run seed:counters [-- --dry-run]`.
+- `scripts/verify-publish.ts` → `npm run verify:publish [-- --cleanup]`, criteria 1–4.
+- `scripts/shopify-introspect.ts` → `npm run shopify:introspect`, dumps the
+  `ProductSetInput` family so an API-version mismatch is a ten-second check.
+- `scripts/verify-secret-isolation.ts` extended to scan client bundles for
+  `SHOPIFY_CLIENT_SECRET` as well as the service-role key.
+- `docs/phases/PHASE-2-shopify-write-path.md` → the phase spec, recorded.
+- Tests: `shopify-token`, `shopify-client`, `publish-validation`, `publish-identity`;
+  `rls.test.ts` and `schema.test.ts` extended.
+
+**Verified:**
+
+*Criterion 5 — the token refresh path, proven by test.* The clock is injected, so the
+20-hour boundary is crossed in a millisecond. `stats().fetches` counts real calls to the
+token endpoint.
+
+```
+✓ sends the client_credentials grant, not a static token
+✓ caches: repeated calls inside the window hit the network once
+✓ REFRESHES PROACTIVELY at ~20 h into a 24 h token — the criterion-5 assertion
+✓ refreshes an already-expired token — inject one and watch it fetch
+✓ computes the refresh point from the response, not from an assumption
+✓ falls back to the documented 86399 s when Shopify omits expires_in
+✓ invalidate() forces the next call to mint — this is the 401 path
+✓ collapses concurrent callers onto ONE mint
+✓ a failed mint does not poison the manager
+✓ explains app_not_installed instead of reporting a bare 400
+✓ classifies a 5xx as retryable and a bad secret as permanent
+✓ on 401: invalidates, mints a NEW token and retries once
+✓ on a second 401 it gives up rather than looping
+✓ retries a 429 with bounded backoff, then succeeds
+✓ treats a 200 carrying a THROTTLED extension as a rate limit, not a success
+✓ stops after the retry budget instead of retrying forever
+✓ does not retry a permanent GraphQL error
+```
+
+The three that carry the weight: *"REFRESHES PROACTIVELY at ~20 h"* asserts the old
+token is still returned at 19 h and a **different** one at 20 h 01 m — a manager that
+refreshed only on expiry passes every other test in this file and fails that one.
+*"collapses concurrent callers onto ONE mint"* is what stops criterion 3's 20 parallel
+publishes minting 20 tokens. *"on a second 401 it gives up"* asserts exactly two
+attempts, not three and not forever.
+
+*Criterion 6 — publish is blocked, and blocked loudly.*
+
+```
+✓ blocks an EMPTY price          ✓ blocks a ZERO price        ✓ blocks a negative price
+✓ accepts the smallest real price — 1 paisa is not "empty"
+✓ blocks zero stock by default   ✓ allows zero stock when it is explicitly ticked
+✓ the override is opt-in — an absent option is not an override
+✓ blocks a missing material — the description bullets render from it
+✓ blocks a category whose Shopify tag is unconfirmed (this is Nose Pins)
+✓ blocks an unknown weight rather than publishing 0 g
+✓ reports EVERY reason at once, not just the first
+✓ each block names the field it is about, so the console can point at it
+```
+
+And the property that matters more than the message — a blocked publish **burns no SKU
+number**, asserted against the real database:
+
+```
+✓ BURNS NO NUMBER when the price is empty
+✓ refuses a category whose Shopify tag is unconfirmed, and burns no number
+```
+
+*The publish transaction, against the deployed database.*
+
+```
+✓ agrees with the TypeScript preview for every category            4648ms
+✓ moves the draft to publishing and writes an event                1373ms
+✓ REUSES the identity on a second call and burns no second number  1663ms
+✓ allocates DISTINCT consecutive numbers to concurrent reservations 1367ms
+✓ raise_sku_counter: raises, and is idempotent                      971ms
+✓ raise_sku_counter: NEVER lowers — the property seed:counters needs 1241ms
+✓ raise_sku_counter: raises on an unknown prefix rather than inventing a sequence
+```
+
+*"agrees with the TypeScript preview for every category"* runs every seeded category
+through both `reserve_draft_identity()` and `src/lib/publish/identity.ts` and compares
+SKU, title and handle. Hard rule 8 requires the operator to see a resolved
+`SKU · title · handle` before publishing; a preview that disagrees with what actually
+gets written is worse than no preview, and two implementations of one rule drift.
+
+*Nothing is reachable from a browser.* `rls.test.ts` now covers all four new functions:
+
+```
+✓ refuses an anonymous raise_sku_counter call
+✓ refuses an anonymous reserve_draft_identity call
+✓ refuses an anonymous mark_draft_published call
+✓ refuses an anonymous mark_draft_failed call
+✓ leaves the NK counter untouched after all of that
+```
+
+The last one is the point: the anonymous `raise_sku_counter('NK', 999999)` would have
+been catastrophic had it gone through, so the test asserts the counter afterwards
+rather than trusting the HTTP status.
+
+*Whole suite:* `npm test` → **99 passed (99)**, 7 files, 46.08 s. `npm run typecheck`
+clean. `npx eslint .` clean.
+
+*The error path on the blocked criteria is itself demonstrated* — `seed:counters`
+reaches Shopify and fails legibly rather than with a bare 400:
+
+```
+✗ Shopify refused to mint a token for qimti.myshopify.com: the app is not installed
+  on this store.
+  → The client_credentials grant only works once the app is installed. Open the app's
+    install link from the Shopify admin (Settings → Apps and sales channels), or run
+    `shopify app deploy` and install it on qimti.myshopify.com. SHOPIFY_CLIENT_ID must
+    belong to that installed app.
+```
+
+**Blocked — criteria 1, 2, 3, 4 and the `seed:counters` run:**
+
+The app whose `SHOPIFY_CLIENT_ID` is in `.env` (`36d3955a…`) is **not installed** on
+`qimti.myshopify.com`. Probed directly:
+
+```
+GET  https://qimti.myshopify.com/            → 302 /password   (store exists, password-protected)
+POST https://qimti.myshopify.com/admin/oauth/access_token
+     grant_type=client_credentials           → 400  Oauth error app_not_installed
+```
+
+Tried as JSON and as form-encoded; same result. This is not a credential-format problem
+— `client_credentials` only mints a token for an app that is **installed on that shop**.
+Installing it requires a Shopify admin sign-in, so it is the operator's action, not one
+this session can take.
+
+Once it is installed, nothing else stands in the way:
+
+```bash
+npm run shopify:introspect          # confirm the ProductSetInput field names for 2026-07
+npm run seed:counters -- --dry-run
+npm run verify:publish
+```
+
+`verify:publish` runs criteria 1–4 end to end, asserts everything by **reading back from
+Shopify** rather than trusting the mutation's reply, prints the product ID and the
+`productsCount(query:"handle:…")` count, and tags everything `loupe-test`.
+
+**Not finished / known broken:**
+
+- **`SUPABASE_DB_PASSWORD` is still stale.** `npm run db:push` → `password
+  authentication failed for user "postgres"`. Both Phase 2 migrations were applied
+  through the Supabase Management API instead, and are recorded in
+  `supabase_migrations.schema_migrations` as `20260728140000` / `20260728140100`, so
+  `db:push` will report them already applied once the password is fixed. **`db:push` has
+  still never been run successfully.**
+- **`ProductSetInput` / `ProductVariantSetInput` field names are unverified against the
+  live schema.** They were written from the API docs; `npm run shopify:introspect` exists
+  precisely to check them and could not run. If `productSet` returns `userErrors` about
+  an unknown field on the first real publish, that is why, and the introspect output says
+  what to change.
+- **`GOOGLE_SERVICE_ACCOUNT_JSON` in `.env` is unquoted multi-line JSON**, so dotenv
+  parses it as `{` and shell `source` fails outright. Phase 3's problem, not touched
+  here, but it will bite the moment Drive is wired up. Wrap it in single quotes or
+  base64-encode it (`.env.local.example` already says base64).
+- All `categories.default_weight_g` are still NULL, so **publish blocks on weight for
+  every category** until real per-category grams arrive from the business (D19). The
+  verify script sets weights on its own drafts to get around this.
+- `NP` has no tag, so Nose Pins cannot publish. Deliberate (D23).
+- The Supabase Storage bucket `images` still exists. Out of scope, destructive.
+
+**Surprises:**
+
+1. **The app is not installed** — the single blocker, above. Worth noting that the
+   naive failure here is a bare `400` with an HTML body; the token manager pattern-matches
+   `app_not_installed` and says what to do, which turned a confusing failure into an
+   obvious one.
+2. **`categories.shopify_tag` was `NOT NULL`,** so adding `NP` with an unconfirmed tag
+   needed a schema change, not just an INSERT. Recorded as D23. The existing
+   `CHECK (length(btrim(shopify_tag)) > 0)` still rejects `''` because a CHECK only
+   fails on FALSE and evaluates to NULL here — so NULL means "unknown" and empty is
+   still invalid, which is exactly the distinction wanted.
+3. **A test helper using `??` gave a false pass.** `materialName: rest.materialName ??
+   '316L'` meant the "blocks a missing material" case silently received `'316L'` and the
+   test asserted nothing. Same family as Phase 1's `_isolation_probe_` false pass.
+   Fixed with an `in` check. Two of these in two phases — when a negative test passes
+   first time, check that it can fail.
+4. **supabase-js types an embedded many-to-one as an array** but PostgREST returns an
+   object. `loadPublishInput` accepts both rather than casting through `unknown` and
+   being confidently wrong at runtime.
+5. **`btrim(both '-' from …)` is not valid Postgres** — that is `trim`'s syntax.
+   `btrim(str, '-')` is the two-argument form. Caught before deploy.
+
+**Next session should start with:** install the Shopify app on `qimti.myshopify.com`,
+then run `npm run shopify:introspect`, `npm run seed:counters -- --dry-run` and
+`npm run verify:publish`, and paste the output into this entry. Phase 2 is not complete
+until criteria 1–4 have real evidence.
+
+---
+
 ## 2026-07-28 — Phase 1: foundation
 
 **Goal this session:** repo scaffold, database schema, seed data and the atomic SKU counter.
