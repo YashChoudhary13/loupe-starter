@@ -622,11 +622,12 @@ Migrations install `pg_cron` in `pg_catalog` and `pg_net` in Supabase's `extensi
 schema. They do not contain the production URL or bearer secret.
 
 `npm run cron:configure` writes those two values to Supabase Vault through a
-certificate-and-hostname-verified Postgres connection, then upserts three named jobs:
+certificate-and-hostname-verified Postgres connection, then upserts four named jobs:
 
 - `loupe-drive-watch` — every minute
 - `loupe-drive-reconcile` — every 15 minutes
 - `loupe-intake-sweep` — every 5 minutes
+- `loupe-image-enhance` — every minute
 
 The cron command reads Vault at execution time and sends the secret as a bearer header.
 `CRON_SECRET` is exactly 32 random bytes encoded as 64 hex characters; runtime and
@@ -701,7 +702,7 @@ historical image rows retain the exact text that produced them.
 
 Before any worker code, one real Qimati necklace photograph and the live default prompt were
 sent to `openai/gpt-image-2` through `POST /api/v1/images`, with the photograph supplied as
-one `input_references` data URL. The call succeeded and the returned scene retained the
+one `input_references` image URL. The call succeeded and the returned scene retained the
 specific necklace, proving this route supports image-to-image editing rather than only
 text-to-image generation.
 
@@ -747,4 +748,114 @@ $0.44116 result is not the production baseline.
 
 For the worker, a generation above the configured ceiling is still stored with its actual
 cost, then the intake fails permanently with that cost in the readable reason and receives
-no retry. Step 0 did not build that worker path.
+no retry. The completed worker path is recorded in D36–D39.
+
+---
+
+### D36 — Product descriptions are cached on intake rows and prompt resolution is auditable
+
+Enhancement has two model stages with separate live default prompt rows:
+`prompts.kind = 'describe'` and `prompts.kind = 'image'`. The describer sees only the
+1024 px-long-edge source copy and the describe prompt. Its factual result, resolved model,
+timestamp and actual cost are stored once on `intake_files`; retries and redos reuse it.
+Descriptions belong to the source jewellery, not to any particular generated render.
+
+The image prompt uses one literal `{{PRODUCT_DESCRIPTION}}` token. With injection enabled,
+plain string replacement inserts the cached text. With injection disabled, an empty cache,
+or an exhausted describe path, the PRODUCT heading, placeholder line and following blank
+line are removed as one block. `image_versions.prompt_text` stores the exact resolved bytes,
+never the template, and the row records `description_injected` and
+`description_missing`.
+
+**Rejected:** storing descriptions per generated version. That repeats a paid call for a
+fact that does not change and makes the alt-text source depend on which render happens to
+be selected.
+
+---
+
+### D37 — Deterministic R2 keys make every enhancement crash point replay-safe
+
+The worker uses the Phase 3A UUID lease token; there is no second claim system. Before every
+external write it confirms the same token is still current and unexpired. Database
+completion is fenced again inside `complete_intake_enhancement()`, so a worker that finishes
+after expiry cannot overwrite its replacement.
+
+Objects use deterministic keys:
+
+```text
+originals/{intake_file_id}.{source_ext}
+versions/{intake_file_id}/v1.png
+versions/{intake_file_id}/v1_thumb.webp
+```
+
+Immutable puts compare the expected content/metadata. A retry after an upload recovers the
+stored generation only when the source hash, resolved prompt hash, model, size, quality,
+cost and description flags match. A conflicting overwrite fails loudly. This closes the
+crash window between R2 upload and the database transaction without orphaning a second
+version.
+
+Phase 3B never moves a Drive file to Processed. Queue state remains in Postgres; Drive
+housekeeping waits for the phase that first produces `published`.
+
+---
+
+### D38 — OpenRouter image references use typed objects, not bare strings
+
+The live OpenRouter `/images` endpoint rejected a bare data URL in
+`input_references` even though the earlier probe shape had worked. The current accepted
+contract is:
+
+```json
+{
+  "input_references": [
+    {
+      "type": "image_url",
+      "image_url": { "url": "data:image/png;base64,..." }
+    }
+  ]
+}
+```
+
+The client and contract test now use that shape. This is a provider wire-format correction,
+not a change to Loupe's editing architecture.
+
+---
+
+### D39 — Description failures degrade; image and description spend fail independently
+
+Describe errors are always retryable under the existing 1m, 5m, 20m and 1h backoff. On
+completed attempt five the row records `description_missing_at` and the current worker
+continues to image generation without a PRODUCT block. The image model still sees the
+source photograph, so a describer outage cannot stop catalogue throughput.
+
+`MAX_COST_USD_PER_DESCRIPTION=0.02` guards the first call. The separate
+`MAX_COST_USD_PER_IMAGE=0.20` ceiling applies only to the image call. When an image exceeds
+that ceiling, its complete version row and actual provider cost remain queryable, the
+version is unselected, and the intake fails permanently at that attempt.
+
+A describe response above its ceiling is not retried: the provider already completed the
+call, so the same configuration would repeat the overage. It records
+`description_missing_at` on attempt 1 and continues to the image call without a PRODUCT
+block. Transient describe failures still receive the full bounded retry schedule.
+
+---
+
+### D40 — Keep description injection enabled after the five-product A/B
+
+The production A/B used the same five real Qimati source photographs at 1280×1280 medium.
+Image costs were nearly identical:
+
+```text
+injected       5 images · $0.390280 total · $0.078056 mean
+not injected   5 images · $0.385960 total · $0.077192 mean
+describe once  5 calls  · $0.075500 total
+```
+
+Single-piece necklace/anklet results were visually similar. The two ring-tray sources were
+decisive: without the description the image model collapsed each tray to one invented ring;
+with the description it retained the photographed collection as a collection. The cached
+description also supplies product alt text regardless of this decision.
+
+`INJECT_DESCRIPTION=true` therefore remains the production default. The one-time describe
+cost is accepted for the materially better multi-item fidelity, and a redo still makes zero
+describe calls.

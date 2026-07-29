@@ -6,6 +6,8 @@
  * things that drift most quietly — a dropped index, an RLS flag turned off to
  * debug something at 1am — are exactly the ones nothing else notices.
  */
+import { createHash } from 'node:crypto'
+
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { TABLES } from '../src/lib/tables'
@@ -101,6 +103,10 @@ describe('closed vocabularies', () => {
   it('draft_status includes the crash-visible publishing state', () => {
     expect(report.enums.draft_status).toEqual(['assembling', 'publishing', 'published', 'failed'])
   })
+
+  it('prompt_kind separates the two model stages', () => {
+    expect(report.enums.prompt_kind).toEqual(['describe', 'image'])
+  })
 })
 
 describe('conventions', () => {
@@ -128,6 +134,17 @@ describe('conventions', () => {
       'claim_sync_state',
       'complete_sync_state',
       'release_sync_state',
+    ]) {
+      expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
+    }
+  })
+
+  it('has the fenced Phase 3B description and completion functions deployed', () => {
+    for (const fn of [
+      'assert_intake_lease',
+      'store_intake_description',
+      'record_description_failure',
+      'complete_intake_enhancement',
     ]) {
       expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
     }
@@ -173,6 +190,25 @@ describe('Phase 3A database capabilities', () => {
     ]
 
     for (const fn of phase3Functions) {
+      const matches = Object.entries(report.function_execute).filter(([signature]) =>
+        signature.startsWith(`${fn}(`) || signature.startsWith(`public.${fn}(`),
+      )
+      expect(matches, `${fn} must have exactly one deployed signature`).toHaveLength(1)
+      expect(matches[0]?.[1]).toEqual({
+        anon: false,
+        authenticated: false,
+        service_role: true,
+      })
+    }
+  })
+
+  it('keeps every Phase 3B RPC service-role-only', () => {
+    for (const fn of [
+      'assert_intake_lease',
+      'store_intake_description',
+      'record_description_failure',
+      'complete_intake_enhancement',
+    ]) {
       const matches = Object.entries(report.function_execute).filter(([signature]) =>
         signature.startsWith(`${fn}(`) || signature.startsWith(`public.${fn}(`),
       )
@@ -294,37 +330,46 @@ describe('seed data', () => {
     expect(error, 'the CHECK was relaxed from > 0 to >= 0, not dropped').not.toBeNull()
   })
 
-  it('has the one catalogue-matching satin prompt, with dimensions kept in parameters', async () => {
+  it('has exactly one verbatim default of each prompt kind', async () => {
     const { data, error } = await serviceClient()
       .from('prompts')
-      .select('name, body, is_default, archived_at')
+      .select('kind, body, is_default, archived_at')
       .eq('is_default', true)
       .is('archived_at', null)
+      .order('kind')
 
     expect(error).toBeNull()
     const prompts = data as {
-      name: string
+      kind: 'describe' | 'image'
       body: string
       is_default: boolean
       archived_at: string | null
     }[]
-    const expectedBody = `A single hero product photograph for an e-commerce jewellery catalogue.
 
-Background — soft ivory-champagne satin with gentle natural folds, warm in tone. The fabric is softly out of focus so its folds read as texture, never as pattern. No props, no flowers, no vases, no risers, no boxes.
-
-Lighting — warm and directional, like soft window light. Gentle shadow falloff across the fabric. Controlled specular highlights so the gold plating reads as polished metal rather than flat yellow. No hard shadows, no coloured light, no lens flare.
-
-Composition — centre the product; it should occupy roughly 75-80% of the frame with even margins. Keep this framing identical for every product. Preserve the angle and orientation of the source photograph — do not reposition, rotate or restage the piece.
-
-Focus — the product sharp front to back. The background softly defocused: a suggestion of depth, not a blur effect.
-
-Fidelity — this outranks everything above. Reproduce the product exactly as photographed. Chain links, stone count, stone shape and facets, engraving, clasps, settings and plating colour must match the source precisely. Do not add sparkle, gemstones, or detail that is not present. Do not remove, straighten, lengthen or embellish any part of the product. Where a detail is unclear in the source, reproduce it as-is rather than inventing it.`
-
-    expect(prompts).toHaveLength(1)
-    expect(prompts[0]?.name).toBe('Qimati ivory-champagne satin — catalogue fidelity')
-    expect(prompts[0]?.body).toBe(expectedBody)
-    expect(prompts[0]?.body).not.toMatch(/2048|1536|1280|1024|aspect ratio/i)
-    expect(prompts[0]?.body).not.toMatch(/marble|diamond sparkle/i)
+    expect(prompts.map((prompt) => prompt.kind)).toEqual(['describe', 'image'])
+    expect(
+      prompts.map((prompt) => ({
+        kind: prompt.kind,
+        chars: prompt.body.length,
+        sha256: createHash('sha256').update(prompt.body).digest('hex'),
+      })),
+    ).toEqual([
+      {
+        kind: 'describe',
+        chars: 1169,
+        sha256: '7dff027bb8bb3b3a822f8e37233f285be1d5b1cd36ffbb383d002d87331d2551',
+      },
+      {
+        kind: 'image',
+        chars: 3517,
+        sha256: '05f4a650ff43bd5bf929b3717861057261543391185323970e07cf02a31f8832',
+      },
+    ])
+    expect(prompts[0]?.body).toContain('Describe ONLY the jewellery in this photograph.')
+    expect(prompts[0]?.body).not.toContain('{{PRODUCT_DESCRIPTION}}')
+    expect(prompts[1]?.body).toContain('PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nSUBJECT')
+    expect(prompts[1]?.body).not.toMatch(/silver metal, rose gold/i)
+    expect(prompts[1]?.body).not.toMatch(/2048|1536|1280|1024|aspect ratio/i)
   })
 
   it('can still store NULL — "nobody has said" has to remain expressible', async () => {

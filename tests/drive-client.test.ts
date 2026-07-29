@@ -16,6 +16,7 @@ describe('GoogleDriveClient', () => {
     const api: DriveApiExecutor = {
       getStartPageToken: async () => ({ startPageToken: 'unused' }),
       listChanges: async () => ({ changes: [] }),
+      downloadFile: async () => new ArrayBuffer(0),
       listFiles: async (params) => {
         requests.push(params)
         return {
@@ -70,6 +71,7 @@ describe('GoogleDriveClient', () => {
     const api: DriveApiExecutor = {
       getStartPageToken: async () => ({ startPageToken: 'unused' }),
       listFiles: async () => ({ files: [] }),
+      downloadFile: async () => new ArrayBuffer(0),
       listChanges: async (params) => {
         requests.push(params)
         return {
@@ -111,6 +113,31 @@ describe('GoogleDriveClient', () => {
 
   it('uses Drive v3 with the one exact OAuth scope required by the worker', () => {
     expect(DRIVE_SCOPE).toBe('https://www.googleapis.com/auth/drive')
+  })
+
+  it('downloads the original as binary media with Shared Drive support', async () => {
+    const requests: drive_v3.Params$Resource$Files$Get[] = []
+    const bytes = Uint8Array.from([1, 2, 3, 4])
+    const api: DriveApiExecutor = {
+      getStartPageToken: async () => ({ startPageToken: 'unused' }),
+      listFiles: async () => ({ files: [] }),
+      listChanges: async () => ({ changes: [] }),
+      downloadFile: async (params) => {
+        requests.push(params)
+        return bytes.buffer
+      },
+    }
+
+    await expect(new GoogleDriveClient(api).downloadFile('drive-file-1')).resolves.toEqual(
+      Buffer.from(bytes),
+    )
+    expect(requests).toEqual([
+      {
+        fileId: 'drive-file-1',
+        alt: 'media',
+        supportsAllDrives: true,
+      },
+    ])
   })
 })
 

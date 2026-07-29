@@ -1,0 +1,75 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  enhancementConfig,
+  resolveOpenRouterModel,
+} from '@/lib/enhance/config'
+import {
+  PRODUCT_DESCRIPTION_TOKEN,
+  resolveImagePrompt,
+} from '@/lib/enhance/prompt'
+
+import { TEST_DESCRIPTION, TEST_PROMPTS } from './helpers/enhancement'
+
+describe('Phase 3B two-call configuration', () => {
+  it('uses the amendment defaults and resolves friendly model names for OpenRouter', () => {
+    const config = enhancementConfig({})
+    expect(config).toEqual({
+      describeModel: 'openai/gpt-5.6-sol',
+      describeReasoningEffort: 'minimal',
+      injectDescription: true,
+      imageModel: 'openai/gpt-image-2',
+      imageSize: '1280x1280',
+      imageQuality: 'medium',
+      maxCostUsdPerImage: 0.2,
+      maxCostUsdPerDescription: 0.02,
+    })
+    expect(resolveOpenRouterModel('anthropic/example')).toBe('anthropic/example')
+  })
+
+  it('refuses extended description reasoning', () => {
+    expect(() =>
+      enhancementConfig({ DESCRIBE_REASONING_EFFORT: 'low' }),
+    ).toThrow(/must be minimal/)
+  })
+
+  it('injects by one literal replacement and stores the resolved text', () => {
+    const resolved = resolveImagePrompt(
+      TEST_PROMPTS.image.body,
+      TEST_DESCRIPTION,
+      true,
+      false,
+    )
+    expect(resolved.descriptionInjected).toBe(true)
+    expect(resolved.descriptionMissing).toBe(false)
+    expect(resolved.text).toContain(`PRODUCT\n${TEST_DESCRIPTION}\n\nSUBJECT`)
+    expect(resolved.text).not.toContain(PRODUCT_DESCRIPTION_TOKEN)
+  })
+
+  it('removes the entire PRODUCT block when injection is disabled', () => {
+    const resolved = resolveImagePrompt(
+      TEST_PROMPTS.image.body,
+      TEST_DESCRIPTION,
+      false,
+      false,
+    )
+    expect(resolved.descriptionInjected).toBe(false)
+    expect(resolved.descriptionMissing).toBe(false)
+    expect(resolved.text).toBe(`A hero image.
+
+SUBJECT — jewellery only.`)
+    expect(resolved.text).not.toMatch(/^PRODUCT\s*$/m)
+    expect(resolved.text).not.toContain(PRODUCT_DESCRIPTION_TOKEN)
+  })
+
+  it('records missing description separately from a deliberate A/B exclusion', () => {
+    const resolved = resolveImagePrompt(TEST_PROMPTS.image.body, null, true, true)
+    expect(resolved).toEqual({
+      text: `A hero image.
+
+SUBJECT — jewellery only.`,
+      descriptionInjected: false,
+      descriptionMissing: true,
+    })
+  })
+})

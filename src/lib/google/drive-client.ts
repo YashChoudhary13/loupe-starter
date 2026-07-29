@@ -25,6 +25,7 @@ export interface DriveApiExecutor {
   listChanges(
     params: drive_v3.Params$Resource$Changes$List,
   ): Promise<drive_v3.Schema$ChangeList>
+  downloadFile(params: drive_v3.Params$Resource$Files$Get): Promise<ArrayBuffer>
 }
 
 function nonEmpty(value: string | null | undefined): string | null {
@@ -141,5 +142,35 @@ export class GoogleDriveClient implements DriveReader {
       nextPageToken: nonEmpty(data.nextPageToken),
       newStartPageToken: nonEmpty(data.newStartPageToken),
     }
+  }
+
+  async downloadFile(fileId: string): Promise<Buffer> {
+    if (!fileId.trim()) {
+      throw new DriveError('Google Drive file ID is missing.', {
+        kind: 'request',
+        retryable: false,
+      })
+    }
+
+    let data: ArrayBuffer
+    try {
+      data = await this.api.downloadFile({
+        fileId,
+        alt: 'media',
+        supportsAllDrives: true,
+      })
+    } catch (error) {
+      throw classifyDriveError(error, `downloading Drive file ${fileId}`)
+    }
+
+    const buffer = Buffer.from(data)
+    if (buffer.byteLength === 0) {
+      throw new DriveError('Google Drive returned an empty image file.', {
+        kind: 'malformed_response',
+        retryable: false,
+        detail: { fileId },
+      })
+    }
+    return buffer
   }
 }

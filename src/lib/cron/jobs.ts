@@ -25,3 +25,10 @@ export async function runSweepCron() {
   const repository = new SupabaseIntakeRepository()
   return sweepExpiredLeases(repository)
 }
+
+export async function runEnhanceCron() {
+  // Importing the production worker validates Drive, OpenRouter and R2 only for
+  // this route; the lightweight watcher/reconcile endpoints do not need them.
+  const { runProductionEnhancementBatch } = await import('@/lib/enhance/server')
+  return runProductionEnhancementBatch()
+}

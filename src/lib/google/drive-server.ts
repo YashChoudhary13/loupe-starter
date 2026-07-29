@@ -30,6 +30,12 @@ export function googleDriveClient(): GoogleDriveClient {
     getStartPageToken: async (params) => (await client.changes.getStartPageToken(params)).data,
     listFiles: async (params) => (await client.files.list(params)).data,
     listChanges: async (params) => (await client.changes.list(params)).data,
+    downloadFile: async (params) =>
+      (
+        await client.files.get(params, {
+          responseType: 'arraybuffer',
+        })
+      ).data as ArrayBuffer,
   })
   return cached
 }

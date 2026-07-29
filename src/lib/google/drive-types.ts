@@ -46,3 +46,7 @@ export interface DriveReader {
   listRawFolderPage(rawFolderId: string, pageToken?: string): Promise<DriveFilePage>
   listChangesPage(pageToken: string): Promise<DriveChangePage>
 }
+
+export interface DriveDownloader {
+  downloadFile(fileId: string): Promise<Buffer>
+}

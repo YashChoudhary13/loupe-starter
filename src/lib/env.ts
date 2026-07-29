@@ -53,4 +53,23 @@ export const serverEnv = {
   get cronBaseUrl(): string {
     return required('CRON_BASE_URL')
   },
+
+  /** One billing route for both the describer and image generator. */
+  get openRouterApiKey(): string {
+    return required('OPENROUTER_API_KEY')
+  },
+
+  /** Private Cloudflare R2 S3-compatible endpoint and credentials. */
+  get r2Endpoint(): string {
+    return required('R2_ENDPOINT')
+  },
+  get r2AccessKeyId(): string {
+    return required('R2_ACCESS_KEY_ID')
+  },
+  get r2SecretAccessKey(): string {
+    return required('R2_SECRET_ACCESS_KEY')
+  },
+  get r2Bucket(): string {
+    return required('R2_BUCKET')
+  },
 } as const

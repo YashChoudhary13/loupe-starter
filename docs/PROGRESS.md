@@ -31,6 +31,336 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-29 — Phase 3B complete: durable two-call enhancement and live A/B
+
+**Goal this session:** build the crash-safe two-call enhancement worker, prove every Phase
+3B success criterion against production, and decide from a five-product A/B whether the
+cached description stays in the image prompt.
+
+**✅ PHASE 3B IS COMPLETE.** The production worker is deployed at
+`https://qimati-loupe.vercel.app/api/cron/enhance`; all four cron jobs are active. It
+generates 1280×1280 medium images and never moves a Drive file to Processed.
+
+**Prerequisites proved before implementation:**
+
+```text
+supabase db push:
+  connected with the reset database password; migrations applied normally
+
+/health:
+  HTTP 200
+  database reachable: true
+  all tables readable: true
+  GOOGLE_SERVICE_ACCOUNT_JSON valid: true
+
+pg_cron / pg_net:
+  both extensions installed; migrations and runtime scheduling succeeded
+```
+
+**Built:**
+
+- `20260729132000_phase_3b_two_call_enhancement.sql` → prompt kinds, cached description
+  state, description audit flags, fenced description writes/failures, and idempotent
+  original/generated completion.
+- `20260729132719_fix_enhancement_completion_ambiguity.sql`,
+  `20260729132857_fix_enhancement_error_class_enum.sql`,
+  `20260729132943_fix_description_failure_status_enum.sql`, and
+  `20260729145000_fix_completion_status_enum_lint.sql` → forward-only fixes found by live
+  completion tests and `plpgsql_check`.
+- `20260729145500_stop_description_cost_retries.sql` → an over-ceiling describe response
+  degrades immediately on attempt 1 instead of repeating the same paid misconfiguration;
+  final linked database lint has zero findings.
+- `src/lib/enhance/` → strict env configuration, exact prompt resolution, 1024 px input
+  preparation, 1280×1280 output verification, OpenRouter describe/image clients,
+  deterministic immutable R2 storage, fenced repository and bounded worker.
+- `POST /api/cron/enhance` and the fourth `loupe-image-enhance` pg_cron job → at most two
+  claims per invocation, a 240-second budget, and the existing Vault bearer-secret pattern.
+- Google Drive server client → original-byte downloads; no Processed-folder move exists in
+  this phase.
+- `.env.local.example` → `DESCRIBE_MODEL=gpt-5.6-sol`,
+  `DESCRIBE_REASONING_EFFORT=minimal`, `INJECT_DESCRIPTION=true`,
+  `IMAGE_MODEL=gpt-image-2`, `IMAGE_SIZE=1280x1280`, `IMAGE_QUALITY=medium`,
+  `$0.02` description and `$0.20` image ceilings.
+- Contract, worker, schema, RLS and direct-Postgres tests → prompt bytes, provider request
+  shape, retry/degradation, immutable recovery, cost failure, stale fencing and concurrent
+  exactly-once processing.
+
+**Verified — original Phase 3B criteria 1–9:**
+
+1. Five real Qimati photographs produced these complete generated rows. All images were
+   actual 1280×1280 PNGs; every thumbnail was below 50 KB.
+
+| file | intake id | image version id | attempts | model | cost USD | selected | description |
+|---|---|---|---:|---|---:|---|---|
+| `phase3b-01.png` | `5174df7c-d7fd-4c4f-8e6f-31c0ffccde4e` | `4ecfb7f7-6fe4-4844-807a-c0fb25c39b8e` | 2 | `openai/gpt-image-2` | 0.078008 | true | injected |
+| `phase3b-02.jpg` | `a3ec4e71-a068-4083-922d-8c5212756fe7` | `8d7a991b-3feb-4944-8e5e-62e7e757936a` | 1 | `openai/gpt-image-2` | 0.077920 | true | injected |
+| `phase3b-03.jpg` | `fd98a715-b278-40b9-8b1f-c0d3c637eab8` | `cd560ed1-0647-4aec-a3b8-dd1aba6656cb` | 2 | `openai/gpt-image-2` | 0.077992 | true | injected |
+| `phase3b-04.png` | `81cb814f-7494-4277-aa58-daf0b65913c8` | `9de573f0-d6bb-4e4c-8b5c-a8fdc0fc1f3a` | 1 | `openai/gpt-image-2` | 0.078184 | true | injected |
+| `phase3b-05.png` | `3a16b141-29d3-4d20-b869-ff003563bb17` | `840fa3cc-25aa-4fba-9651-27d0fb09483e` | 1 | `openai/gpt-image-2` | 0.078176 | true | injected |
+
+   Generated keys were `versions/{intake_id}/v1.png`; thumbnail keys were
+   `versions/{intake_id}/v1_thumb.webp`. Thumbnail sizes were 16,390; 17,398; 18,366;
+   39,114; and 41,560 bytes. Image total was **$0.390280** and mean
+   **$0.078056**, below the $0.15 criterion.
+
+2. **Fencing:** worker A claimed with token
+   `452dc787-8852-4a31-8bc0-265f2c4badd7`, expired, was swept, and worker B reclaimed with
+   `aa2d11ba-b4ef-4b5b-9512-6e2ed6436e7c`. B completed first. A's later completion was
+   rejected with SQLSTATE `55000`:
+
+   ```text
+   complete_intake_enhancement: lease for intake_file ... is no longer current
+   Hint: Discard this stale worker result; another worker may now own the row.
+   ```
+
+   The surviving row still had one generated version, model `control/winning-worker`,
+   prompt `winning worker exact prompt`, selected `true`, cost `0.010000`.
+
+3. For all five files, Drive MD5 equalled the R2 original MD5 byte-for-byte. Repeating the
+   immutable put returned `created=false`. A deliberate different-byte overwrite raised
+   `r2_immutable_conflict`; SHA-256 stayed
+   `585a5b5f1171a5183309f469bd69f9b34802d1bba9f5dabef91a2fe12dabc081`
+   before and after.
+4. A forced provider 429 on `phase3b-03.jpg` scheduled attempt 1 exactly one minute later.
+   The due retry succeeded at attempt 2 for $0.077992 and made zero additional describe
+   calls.
+5. A forced content-policy failure landed in `failed`, `attempts=1`,
+   `error_class=permanent`, with: “The image was rejected by the provider content policy.”
+6. With the ceiling deliberately lowered to $0.01, a real $0.077192 generation was retained
+   unselected, failed permanently at attempt 1, and recorded:
+
+   ```text
+   Image generation cost $0.077192 exceeded the $0.01 per-image ceiling.
+   The version was retained for review and will not be retried.
+   ```
+
+7. A one-second presigned R2 URL returned HTTP 200 immediately and HTTP 403 after expiry.
+8. Five concurrent production endpoint calls each claimed and enhanced a different real
+   A/B row. The exact worker test also runs five workers over ten queued rows. At the
+   evidence checkpoint the database had ten harness intake rows, ten enhanced, ten
+   generated v1 rows, and a maximum of one generated version per intake.
+9. Spend was queryable only from stored actual values:
+
+   ```text
+   injected image total       $0.390280
+   injected image mean        $0.078056
+   five description calls     $0.075500
+   non-injected image total   $0.385960
+   non-injected image mean    $0.077192
+   ```
+
+**Verified — two-call amendment criteria 10–14:**
+
+10. All five injected rows stored `product_description`, the exact resolved
+    `prompt_text`, `description_injected=true`, and the actual description cost. One
+    complete stored example follows.
+
+    Product description:
+
+    ```text
+    A single necklace in polished gold-tone metal, forming a delicate, elongated U-shaped silhouette. Round-cut stones in turquoise blue, vivid pink, green, black and pale pink are individually bezel-set in small circular drops and spaced along the lower and side sections, with a deeper pink stone forming the central pendant. The fine cable chain is decorated with polished gold-tone bead drops in alternating sizes between the stone settings. The arrangement is broadly symmetrical, with the coloured bezels and beads suspended from short connecting loops.
+    ```
+
+    Exact stored resolved prompt:
+
+    ```text
+    A single hero product photograph for an e-commerce jewellery catalogue.
+
+    PRODUCT
+    A single necklace in polished gold-tone metal, forming a delicate, elongated U-shaped silhouette. Round-cut stones in turquoise blue, vivid pink, green, black and pale pink are individually bezel-set in small circular drops and spaced along the lower and side sections, with a deeper pink stone forming the central pendant. The fine cable chain is decorated with polished gold-tone bead drops in alternating sizes between the stone settings. The arrangement is broadly symmetrical, with the coloured bezels and beads suspended from short connecting loops.
+
+    SUBJECT — the jewellery item only. The source photograph may show the piece attached to a
+    display card, held in a hand, inside packaging, or on a cluttered surface. Remove all of
+    it: cards, backing, tags, price stickers, plastic, hands and fingers, and any text, logo or
+    branding that is not physically part of the jewellery. Present the piece as though
+    photographed on its own. Where the item is a pair, show both, evenly spaced and
+    symmetrically arranged side by side at the same scale and height — balanced, not
+    mechanically duplicated.
+
+    BACKGROUND — soft ivory-champagne satin with gentle natural folds, warm in tone, strongly
+    out of focus so the folds read as texture rather than pattern. Monochromatic ivory, cream
+    and warm beige palette. Smooth creamy bokeh, no hard lines. No props, no flowers, no vases,
+    no risers, no boxes, nothing touching the jewellery.
+
+    LIGHTING — warm luxury studio lighting: a large diffused key from the upper left and front,
+    gentle warm fill from the front right, restrained rim light to separate polished edges from
+    the background. Natural warm-gold reflections rather than flat yellow metal. Crisp,
+    controlled specular points on faceted stones — no starbursts, no glitter, no blown
+    highlights, no lens flare.
+
+    SHADOWS — one soft, realistic contact shadow directly beneath and slightly behind the
+    piece, anchoring it to the surface. Diffused and light. No harsh black shadows, no floating
+    objects, no dramatic contrast.
+
+    COMPOSITION — square framing, product centred, occupying roughly 70–75% of the frame with
+    even margins and clean negative space. Eye-level or very slightly elevated camera angle,
+    straight-on frontal presentation. Preserve the angle and orientation of the piece as
+    photographed — do not reposition, rotate or restage it. Keep this framing identical for
+    every product.
+
+    CAMERA — premium macro product photography with the visual character of an 85–100mm macro
+    lens. The piece completely sharp front to back with crisp micro-detail; the background
+    transitioning rapidly into shallow depth of field. Clean high-end commercial retouching,
+    realistic optical depth, accurate textures. The result must look like a real photograph —
+    not a 3D render, illustration, painting or AI image.
+
+    FIDELITY — this outranks everything above, and applies to the jewellery itself. Reproduce
+    the piece exactly as photographed: form, proportion, stone shape and placement, setting
+    style, chain or band construction, clasps, bezels, prongs, engraving, texture and plating
+    colour must all match the source. Do not add sparkle, stones, links, engraving or
+    decoration that is not present. Do not remove, straighten, lengthen, resize or restyle any
+    part of it. Where a detail is unclear in the source, reproduce it as-is rather than
+    inventing it. Only the surroundings may change.
+
+    DO NOT INCLUDE — hands, fingers, skin, ears, people, models, mannequins, display cards,
+    packaging, price tags, labels, text, logos, watermarks, borders, frames, stands, clips,
+    wires, props touching the jewellery, extra or missing pieces, mismatched pairs, altered
+    design, distorted proportions, bent or melted metal, duplicated components, floating
+    jewellery, harsh shadows, dark backgrounds, cool blue lighting, oversaturated yellow,
+    excessive bloom, excessive sparkle, star filters, motion blur, soft product focus, noise,
+    grain, chromatic artifacts, plastic-looking materials, CGI or cartoon styling.
+    ```
+
+11. With `INJECT_DESCRIPTION=false`, all five stored prompts had
+    `description_injected=false`, no placeholder, `strpos(prompt_text, 'PRODUCT') = 0`, and
+    began with exactly one blank line before SUBJECT. Exact stored prompt:
+
+    ```text
+    A single hero product photograph for an e-commerce jewellery catalogue.
+
+    SUBJECT — the jewellery item only. The source photograph may show the piece attached to a
+    display card, held in a hand, inside packaging, or on a cluttered surface. Remove all of
+    it: cards, backing, tags, price stickers, plastic, hands and fingers, and any text, logo or
+    branding that is not physically part of the jewellery. Present the piece as though
+    photographed on its own. Where the item is a pair, show both, evenly spaced and
+    symmetrically arranged side by side at the same scale and height — balanced, not
+    mechanically duplicated.
+
+    BACKGROUND — soft ivory-champagne satin with gentle natural folds, warm in tone, strongly
+    out of focus so the folds read as texture rather than pattern. Monochromatic ivory, cream
+    and warm beige palette. Smooth creamy bokeh, no hard lines. No props, no flowers, no vases,
+    no risers, no boxes, nothing touching the jewellery.
+
+    LIGHTING — warm luxury studio lighting: a large diffused key from the upper left and front,
+    gentle warm fill from the front right, restrained rim light to separate polished edges from
+    the background. Natural warm-gold reflections rather than flat yellow metal. Crisp,
+    controlled specular points on faceted stones — no starbursts, no glitter, no blown
+    highlights, no lens flare.
+
+    SHADOWS — one soft, realistic contact shadow directly beneath and slightly behind the
+    piece, anchoring it to the surface. Diffused and light. No harsh black shadows, no floating
+    objects, no dramatic contrast.
+
+    COMPOSITION — square framing, product centred, occupying roughly 70–75% of the frame with
+    even margins and clean negative space. Eye-level or very slightly elevated camera angle,
+    straight-on frontal presentation. Preserve the angle and orientation of the piece as
+    photographed — do not reposition, rotate or restage it. Keep this framing identical for
+    every product.
+
+    CAMERA — premium macro product photography with the visual character of an 85–100mm macro
+    lens. The piece completely sharp front to back with crisp micro-detail; the background
+    transitioning rapidly into shallow depth of field. Clean high-end commercial retouching,
+    realistic optical depth, accurate textures. The result must look like a real photograph —
+    not a 3D render, illustration, painting or AI image.
+
+    FIDELITY — this outranks everything above, and applies to the jewellery itself. Reproduce
+    the piece exactly as photographed: form, proportion, stone shape and placement, setting
+    style, chain or band construction, clasps, bezels, prongs, engraving, texture and plating
+    colour must all match the source. Do not add sparkle, stones, links, engraving or
+    decoration that is not present. Do not remove, straighten, lengthen, resize or restyle any
+    part of it. Where a detail is unclear in the source, reproduce it as-is rather than
+    inventing it. Only the surroundings may change.
+
+    DO NOT INCLUDE — hands, fingers, skin, ears, people, models, mannequins, display cards,
+    packaging, price tags, labels, text, logos, watermarks, borders, frames, stands, clips,
+    wires, props touching the jewellery, extra or missing pieces, mismatched pairs, altered
+    design, distorted proportions, bent or melted metal, duplicated components, floating
+    jewellery, harsh shadows, dark backgrounds, cool blue lighting, oversaturated yellow,
+    excessive bloom, excessive sparkle, star filters, motion blur, soft product focus, noise,
+    grain, chromatic artifacts, plastic-looking materials, CGI or cartoon styling.
+    ```
+
+12. Re-running already-described `phase3b-01.png` incremented intake attempts from 1 to 2
+    but left one generated row, the same image version/cost and the same $0.015460
+    description ledger entry. OpenRouter key usage was **1.28418 before and after**:
+    zero describe calls and zero provider spend on the recovered generation.
+13. Four forced describe failures scheduled the normal backoff. The fifth returned
+    `proceed_without_description=true` and still produced a real 1280×1280 image for
+    $0.077192. The final rows recorded `attempts=5`, `description_missing_at` present,
+    `description_injected=false`, `description_missing=true`, and no PRODUCT heading.
+14. The same five sources were generated both ways: ten images total. Costs are in criterion
+    9. The full contact sheet and five individual pairs are retained locally:
+
+    ```text
+    .artifacts/phase3b-acceptance/ab-contact-sheet.png
+    .artifacts/phase3b-acceptance/pairs/phase3b-01-comparison.png
+    .artifacts/phase3b-acceptance/pairs/phase3b-02-comparison.png
+    .artifacts/phase3b-acceptance/pairs/phase3b-03-comparison.png
+    .artifacts/phase3b-acceptance/pairs/phase3b-04-comparison.png
+    .artifacts/phase3b-acceptance/pairs/phase3b-05-comparison.png
+    ```
+
+    Individual necklace/anklet arms were close. On the two ring-tray sources, disabling
+    injection collapsed the photographed collection to one invented ring; injection
+    retained a collection. D40 therefore keeps `INJECT_DESCRIPTION=true`.
+
+**Cleanup and restored production state:**
+
+```text
+Drive Raw fixtures       10 moved to Trash; 0 left in Raw; none moved to Processed
+R2 harness objects       30 deleted; 30 HEAD checks returned absent
+database harness state   0 intake rows; 0 image versions/events
+production env           INJECT_DESCRIPTION=true · image ceiling $0.20
+cron                     watch/reconcile/sweep/enhance all active
+production empty tick    claimed=0 · enhanced=0 · descriptionCalls=0
+```
+
+Local visual/evidence artifacts were deliberately retained; they are Git-ignored and are
+the review record after live cleanup.
+
+**Quality evidence:**
+
+```text
+Test Files  17 passed (17)
+Tests       203 passed (203)
+typecheck:  passed
+lint:       passed
+build:      passed
+db lint:    No schema errors found
+secret isolation: service role, Shopify, Drive and cron secrets absent from client assets
+security advisors: informational RLS-with-no-policy only — intentional server-only deny
+performance advisors: unused-index INFO only on a new/low-traffic database
+```
+
+**Not finished / known broken:**
+
+- Nothing remains in Phase 3B.
+- The operator UI, authentication and grouping/version-selection workflows remain later
+  phases.
+
+**Surprises:**
+
+- OpenRouter's current Images API rejects bare data-URL strings in `input_references`; it
+  now requires a typed `image_url` object. The client and contract test use the accepted
+  wire shape.
+- Direct live SQL exposed three PL/pgSQL ambiguities/enum-resolution issues that mocks
+  could not. Forward migrations fixed them; the final linked lint is clean.
+- Final cost-path review found that a successful but over-ceiling describe response still
+  held a non-null result after entering the failure branch, which could have cached and
+  injected rejected text. The worker now clears that result, the database degrades
+  immediately without a second describe call, and both unit and deployed-SQL tests lock it.
+- The same final review preserved retryability for database completion outages, persisted
+  the provider-resolved model rather than merely the requested alias, and added a
+  deterministic-R2 recovery test proving that a post-upload replay makes no second image
+  call.
+- `gpt-5.6-sol` description calls cost $0.014620–$0.015970 here, not the rough $0.004
+  estimate, but all remained below the independent $0.02 ceiling.
+
+**Next session should start with:** open the Phase 4 specification and build the authenticated
+operator surface on top of the now-live intake and enhancement pipeline.
+
+---
+
 ## 2026-07-29 — Phase 3B Step 0: 1280 medium path meets the cost gate
 
 **Goal this session:** replace the foreign-looking marble prompt with the catalogue-matching

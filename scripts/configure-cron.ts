@@ -1,6 +1,6 @@
 /**
  * Stores the public Loupe URL and the shared cron secret in Supabase Vault,
- * then creates/updates the three pg_cron jobs from the Phase 3A specification.
+ * then creates/updates the Drive intake and enhancement pg_cron jobs.
  *
  * Secrets are parameters to Vault functions. They are never interpolated into
  * migration SQL, cron.job.command, logs, or this file.
@@ -17,12 +17,34 @@ interface CronJob {
   readonly name: string
   readonly schedule: string
   readonly path: `/api/cron/${string}`
+  readonly timeoutMilliseconds: number
 }
 
 const JOBS: readonly CronJob[] = [
-  { name: 'loupe-drive-watch', schedule: '* * * * *', path: '/api/cron/watch' },
-  { name: 'loupe-drive-reconcile', schedule: '*/15 * * * *', path: '/api/cron/reconcile' },
-  { name: 'loupe-intake-sweep', schedule: '*/5 * * * *', path: '/api/cron/sweep' },
+  {
+    name: 'loupe-drive-watch',
+    schedule: '* * * * *',
+    path: '/api/cron/watch',
+    timeoutMilliseconds: 30_000,
+  },
+  {
+    name: 'loupe-drive-reconcile',
+    schedule: '*/15 * * * *',
+    path: '/api/cron/reconcile',
+    timeoutMilliseconds: 30_000,
+  },
+  {
+    name: 'loupe-intake-sweep',
+    schedule: '*/5 * * * *',
+    path: '/api/cron/sweep',
+    timeoutMilliseconds: 30_000,
+  },
+  {
+    name: 'loupe-image-enhance',
+    schedule: '* * * * *',
+    path: '/api/cron/enhance',
+    timeoutMilliseconds: 285_000,
+  },
 ]
 
 function required(key: string): string {
@@ -67,8 +89,8 @@ async function upsertVaultSecret(
   await client.query('select vault.create_secret($1, $2, $3)', [value, name, description])
 }
 
-function commandFor(path: CronJob['path']): string {
-  // `path` is selected from the constant JOBS table above, never user input.
+function commandFor(job: CronJob): string {
+  // Every value is selected from the constant JOBS table above, never user input.
   return `
     select net.http_post(
       url := (
@@ -76,7 +98,7 @@ function commandFor(path: CronJob['path']): string {
         from vault.decrypted_secrets
         where name = '${VAULT_BASE_URL}'
         limit 1
-      ) || '${path}',
+      ) || '${job.path}',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
         'Authorization', 'Bearer ' || (
@@ -90,7 +112,7 @@ function commandFor(path: CronJob['path']): string {
         'source', 'supabase-pg-cron',
         'requested_at', now()
       ),
-      timeout_milliseconds := 30000
+      timeout_milliseconds := ${job.timeoutMilliseconds}
     ) as request_id;
   `
 }
@@ -134,7 +156,7 @@ async function main(): Promise<void> {
         await client.query('select cron.schedule($1, $2, $3)', [
           job.name,
           job.schedule,
-          commandFor(job.path),
+          commandFor(job),
         ])
       }
       await client.query('commit')

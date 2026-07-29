@@ -1,4 +1,5 @@
 import { DriveError } from '@/lib/google/drive-errors'
+import { EnhancementError } from '@/lib/enhance/errors'
 import { IntakeRepositoryError } from '@/lib/intake/repository'
 
 export interface CronPostOptions<T> {
@@ -30,6 +31,25 @@ function failure(error: unknown): Response {
         retryable: error.retryable,
       },
       { status: error.retryable ? 503 : 500 },
+    )
+  }
+
+  if (error instanceof EnhancementError) {
+    return Response.json(
+      {
+        ok: false,
+        error: error.message,
+        code: error.code,
+        retryable: error.retryable,
+      },
+      {
+        status:
+          error.stage === 'fencing'
+            ? 409
+            : error.retryable
+              ? 503
+              : 500,
+      },
     )
   }
 

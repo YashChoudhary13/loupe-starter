@@ -145,7 +145,32 @@ so 0 g is the correct settled value and not a cutover item. See D19.
 
 ## Image enhancement
 
-**Route: OpenRouter.** `OPENROUTER_API_KEY` with `OPENROUTER_OPENAI_IMAGE_MODEL` (`openai/gpt-image-2`) and `OPENROUTER_GEMINI_MODEL`. One key, one billing account, and swapping model or provider is a config change rather than a new SDK.
+**Route: OpenRouter.** `OPENROUTER_API_KEY` serves both model calls:
+`DESCRIBE_MODEL=gpt-5.6-sol` and `IMAGE_MODEL=gpt-image-2`. Friendly model names are
+qualified as `openai/...` at the wire boundary and that resolved slug is persisted. One
+key and billing account keep provider/model swaps in configuration rather than SDK-specific
+worker code.
+
+**Enhancement is a durable two-call pipeline.**
+
+1. A describer sees only the 1024 px-long-edge source copy and the live default
+   `prompts.kind = 'describe'` body. It uses `DESCRIBE_REASONING_EFFORT=minimal`, and its
+   60–100 word factual result, model and actual cost are cached on `intake_files`. A retry
+   or redo with `product_description` populated makes zero describe calls.
+2. The worker resolves the live default `prompts.kind = 'image'` body. With
+   `INJECT_DESCRIPTION=true`, the cached text replaces the literal
+   `{{PRODUCT_DESCRIPTION}}`; otherwise the entire PRODUCT block is removed. The exact
+   post-resolution bytes sent to the image model are stored in
+   `image_versions.prompt_text`, together with `description_injected` and
+   `description_missing`.
+
+Describe attempts use the same bounded retry schedule as intake. On the fifth describe
+failure the row deliberately stays claimed, records `description_missing_at`, removes the
+PRODUCT block and continues to image generation. A describer outage degrades the image; it
+does not stop the pipeline. `MAX_COST_USD_PER_DESCRIPTION=0.02` guards accidental reasoning
+spend independently of the image ceiling. A successful describe response above that limit
+does **not** retry the same expensive configuration: it records the missing description and
+continues to the image call immediately.
 
 **Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
@@ -156,6 +181,9 @@ so 0 g is the correct settled value and not a cutover item. See D19.
 - `MAX_COST_USD_PER_IMAGE=0.20` is a hard guard. Persist the returned version and actual
   `usage.cost`, then fail the intake permanently with the actual cost in the readable
   reason when it exceeds the ceiling. Never estimate cost from a price table.
+- OpenRouter's current `/images` contract requires each `input_references` entry to be an
+  object shaped as `type: "image_url"` plus `image_url.url`; a bare data-URL string is
+  rejected. `tests/openrouter-enhancement.test.ts` locks this wire shape.
 - The first real Step 0 edit explicitly used `size: "2048x2048"` and `quality: "high"`
   (not `auto`), cost **$0.44116**, and took **222.242 s**. It is historical capability
   evidence, not the production configuration.
@@ -167,7 +195,15 @@ so 0 g is the correct settled value and not a cutover item. See D19.
   `gpt-image-2` metadata advertises up to 16 `input_references`; Step 0 exercised one.
   It does not advertise a mask parameter on this route, so do not assume masks are
   available through OpenRouter without a fresh capability check.
-- The **original is immutable and kept forever** — every version derives from it. Originals live permanently in Google Drive; R2 caches one only while the item is in the queue.
+- The original R2 object is byte-for-byte the Drive download and immutable at its
+  deterministic key. Every version derives from it. Phase 3B never moves the Drive file to
+  Processed; Drive housekeeping belongs to the later phase that produces `published`.
+
+**Production worker:** `POST /api/cron/enhance`, every minute through the existing Vault +
+`CRON_SECRET` pattern. A tick claims at most two items with the Phase 3A UUID token and
+stops before the Vercel limit. Before every R2 or database write it rechecks the unexpired
+token. Generated/original keys are deterministic, so an R2 upload followed by a process
+crash is recovered without a duplicate version.
 
 Put the model behind one interface so it stays swappable:
 
@@ -186,7 +222,9 @@ enhance(input: Buffer, prompt: string, opts): Promise<{ image: Buffer; costUsd: 
 - **Cloudflare R2** bucket **`loupe-image`** — singular, private. Access via presigned URLs only: one for the console to display, one for Shopify to fetch at publish.
   *Confirmed 2026-07-28 against the Cloudflare dashboard: the live bucket is named `loupe-image`, location **APAC**, created 28 Jul.* `.env` was right; earlier drafts of this file and D4 said `loupe-images` and were wrong. The Phase 0 note about an `ENAM` bucket needing recreation is also resolved — the surviving bucket is APAC.
 - **Supabase is the database only.** Do not use Supabase Storage; a `loupe-images` bucket there was created and abandoned early on.
-- Paths: `originals/{intake_file_id}.jpg` and `versions/{intake_file_id}/v{n}.jpg`
+- Paths: `originals/{intake_file_id}.{jpg|png|webp}`,
+  `versions/{intake_file_id}/v{n}.png`, and
+  `versions/{intake_file_id}/v{n}_thumb.webp`.
 - Generate a ~50 KB thumbnail beside every version. The queue grid uses thumbnails, never full images.
 - **Retention:** delete versions ~7 days after publish. Shopify serves the published image from its own CDN thereafter.
 
