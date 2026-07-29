@@ -31,6 +31,101 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-29 — Phase 3B Step 0: real OpenRouter image edit proved, worker deliberately not started
+
+**Goal this session:** settle the fixed-shipping weight decision, seed the business-approved
+default prompt, and de-risk the exact `gpt-image-2` input path before any worker code.
+
+**Built:**
+
+- `20260729125000_fixed_rate_shipping_weight.sql` → records that Qimati uses fixed shipping,
+  so 0 g is the correct settled catalogue value while NULL stays unknown and blocks publish.
+- `20260729130000_seed_default_enhancement_prompt.sql` → installs the exact approved prompt
+  as the sole live default and records the three deliberate adaptations in an event.
+- D19, D33, D34 and `CLAUDE.md` → remove weight from cutover blockers, define prompt
+  provenance/versioning, and record the measured OpenRouter capability/cost/latency.
+- A throwaway Step 0 probe read the live default prompt, sent one real Qimati necklace as
+  one `input_references` data URL, saved the response evidence, and was then removed. It is
+  not worker code.
+
+**Verified:**
+
+```text
+supabase db push --linked --dry-run:
+  connected; would apply exactly 20260729125000 and 20260729130000
+supabase db push --linked --yes:
+  both migrations applied successfully
+final dry-run:
+  Remote database is up to date
+
+live database:
+  live default prompts = 1
+  prompt name = Qimati ivory marble — product fidelity
+  prompt body = exact business-approved text; no resolution/aspect-ratio text
+  category defaults = AK/BK/CB/ER/NK/NP/RS all 0 g
+  prompt.default_seeded and catalog.shipping_weight_confirmed events present
+```
+
+Step 0 used `POST https://openrouter.ai/api/v1/images`, model
+`openai/gpt-image-2`, `quality: "high"`, `size: "2048x2048"`, one real 2000×2000
+JPEG input and the sole live default prompt:
+
+```text
+HTTP status                 200
+provider                    OpenAI
+editing with input          YES — the returned marble scene retained the specific necklace
+requested dimensions        2048 × 2048
+actual dimensions           2048 × 2048 PNG
+round-trip latency          222.242 s
+response cost               $0.44116
+cost source                 response usage.cost (exposed directly; not derived)
+input references supported  0–16 according to live model/endpoint metadata
+input references exercised  1 (multi-reference composition was not separately tested)
+```
+
+Saved proof (Git-ignored, retained locally):
+
+```text
+.artifacts/phase3b-step0/source-neck-227526.jpg   2000×2000, 54,596 bytes
+.artifacts/phase3b-step0/gpt-image-2-result.png  2048×2048, 4,531,577 bytes
+.artifacts/phase3b-step0/evidence.json            request/response metadata and usage
+```
+
+Quality and migration evidence:
+
+```text
+Test Files  13 passed (13)
+Tests       172 passed (172)
+typecheck:  passed
+lint:       passed
+build:      passed
+db lint:    No schema errors found
+git diff --check: passed
+```
+
+**Not finished / known broken:**
+
+- The Phase 3B enhancement worker is intentionally **not started**. The session stopped at
+  the requested architecture gate.
+- A second input reference was not sent because Step 0 was constrained to one real photo
+  and one image-generation call. OpenRouter advertises up to 16 for this endpoint.
+- OpenRouter does not advertise a mask parameter for this route; no mask workaround was
+  designed.
+
+**Surprises:**
+
+- The previous `$0.07–$0.20` estimate in `CLAUDE.md` was wrong for this real high-quality
+  call: it cost $0.44116, exposed directly in the response.
+- One edit took 222.242 seconds. That is a real worker time-budget constraint, not a
+  sub-second API call.
+- Although the endpoint metadata advertises aspect ratio rather than a native pixel-size
+  control, OpenRouter accepted the `2048x2048` size shorthand and returned exactly that.
+
+**Next session should start with:** review this Step 0 cost/latency/result and, only after
+business approval, design the Phase 3B worker around the existing UUID ownership token.
+
+---
+
 ## 2026-07-29 — Phase 3A complete: Drive intake survives watcher downtime
 
 **Goal this session:** build and prove a durable Google Drive intake loop whose database
@@ -214,9 +309,9 @@ finish the Phase 2 verification now that the Shopify app is installed.
 
 1. **D19 — weight.** `default_weight_g = 0` for every category; publish passes on 0.
    NULL still means *unknown* and still blocks; the guard is kept, narrowed. CHECKs
-   relaxed `> 0` → `>= 0` so both states stay expressible. ⚠️ **Real per-category
-   weights are now on the blocking list below** — 0 g reproduces the live store's
-   broken weight-based shipping.
+   relaxed `> 0` → `>= 0` so both states stay expressible. **Business confirmation:
+   Qimati uses fixed shipping rates, so 0 g is the correct settled value and is not a
+   cutover blocker.**
 2. **D20 — title numbers padded**, `%03d`, minimum three digits, no truncation:
    `4 → "Nose Pin 004"`, `87 → "Anklets 087 (Single Piece)"`, `221 → "Rings 221"`,
    `970 → "Necklace 970"`.
@@ -500,9 +595,6 @@ still reporting `peak concurrent calls 100`.
 
 **⚠️ BLOCKING BEFORE LIVE CUTOVER — must be collected from the business:**
 
-- [ ] **Real per-category weights in grams.** Every `default_weight_g` is currently **0**,
-      which publishes 0 g and reproduces exactly the live-store bug that makes weight-based
-      shipping impossible. Acceptable on `qimti`; not acceptable live. (D19)
 - [ ] The exact Shopify tag for **Nose Pins**, read off a live product. (D23)
 - [ ] SKU prefix, title pattern and tag for the remaining seven: Watches, Hand Chains,
       Jewellery Box, Bags, Hair Accessories, Indian Jewellery, Brass.

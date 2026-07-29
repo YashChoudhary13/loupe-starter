@@ -260,8 +260,8 @@ describe('seed data', () => {
   })
 
   it('keeps NULL and 0 distinguishable on default_weight_g', async () => {
-    // The Phase 2 revision (D19) set every default to 0 so the test store can
-    // publish. The semantics that must survive that:
+    // Qimati uses fixed shipping rates, so D19 settles every category default at
+    // 0 g. The semantics that must survive that:
     //
     //   NULL → "nobody has said."   Publish is BLOCKED.
     //   0    → "someone said zero." Publish proceeds and writes 0 g.
@@ -277,6 +277,10 @@ describe('seed data', () => {
       rows.filter((c) => (c.default_weight_g ?? 0) < 0),
       'a negative weight is nonsense and the CHECK should still reject it',
     ).toEqual([])
+    expect(
+      rows.filter((c) => c.default_weight_g !== 0),
+      'fixed-rate shipping makes 0 g the settled default for every Qimati category',
+    ).toEqual([])
 
     const column = report.columns['categories.default_weight_g']
     expect(column, 'categories.default_weight_g must still exist').toBeDefined()
@@ -288,6 +292,26 @@ describe('seed data', () => {
       .update({ default_weight_g: -1 })
       .eq('sku_prefix', 'NK')
     expect(error, 'the CHECK was relaxed from > 0 to >= 0, not dropped').not.toBeNull()
+  })
+
+  it('has one live default enhancement prompt, with fidelity in text and dimensions in parameters', async () => {
+    const { data, error } = await serviceClient()
+      .from('prompts')
+      .select('name, body, is_default, archived_at')
+      .eq('is_default', true)
+      .is('archived_at', null)
+
+    expect(error).toBeNull()
+    const prompts = data as {
+      name: string
+      body: string
+      is_default: boolean
+      archived_at: string | null
+    }[]
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]?.body).toContain('Preserve the product exactly as photographed.')
+    expect(prompts[0]?.body).toContain('Chain links, stone count and facets')
+    expect(prompts[0]?.body).not.toMatch(/2048|aspect ratio/i)
   })
 
   it('can still store NULL — "nobody has said" has to remain expressible', async () => {

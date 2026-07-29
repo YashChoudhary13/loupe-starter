@@ -285,11 +285,12 @@ another way. That is deliberate, not duplication to be tidied away.
 
 ---
 
-### D19 — Publish blocks on an unknown weight and a missing material; **NULL and 0 are different**
+### D19 — Fixed-rate shipping makes 0 g correct; **NULL and 0 remain different**
 
-*Revised 2026-07-29. The original blocked on any weight that was not a positive number,
-which — since every `default_weight_g` was NULL — blocked everything. The block is kept;
-what counts as "unknown" is narrowed.*
+*Revised 2026-07-29. The original blocked on any weight that was not a positive number.
+The first revision allowed a deliberate 0 but treated it as a temporary test-store value.
+The business has now confirmed Qimati uses fixed shipping rates: weight does not participate
+in shipping, so 0 g is the correct final value. The unknown-value guard remains.*
 
 Hard rule 8 names price and stock. Two more are blocked, both for the same reason: the
 alternative is not "publish anyway", it is "publish something silently wrong".
@@ -305,13 +306,9 @@ the operator is already making.
 | `NULL` | nobody has said | **BLOCKED** |
 | `0` | someone said zero | proceeds, writes 0 g |
 
-Every `categories.default_weight_g` is now **0**. That is a decision, not a gap, and it
-is what lets the test store publish at all.
-
-⚠️ **0 g recreates a known live-store bug if it ships.** Every variant in the live
-catalogue weighs 0, which is exactly why weight-based shipping does not work there.
-Acceptable on `qimti`; **not** acceptable at cutover. Real per-category grams are on the
-blocking list in `docs/PROGRESS.md`.
+Every `categories.default_weight_g` is **0**. That is the correct Qimati catalogue value,
+not a placeholder: fixed shipping rates are selected independently of variant weight.
+There is no per-category weight collection task and no weight-related cutover blocker.
 
 The mechanics that keep the distinction real, all of which are load-bearing:
 
@@ -325,9 +322,9 @@ The mechanics that keep the distinction real, all of which are load-bearing:
   `validate.ts` silently stops being reachable — which is worse than deleting it,
   because the code would still look like it was protecting something.
 
-**Rejected:** deleting the weight block entirely. Then a category that genuinely has no
-answer publishes as `undefined`/0 with nothing recording that nobody chose it, and the
-cutover checklist loses its only enforcement.
+**Rejected:** deleting the weight block entirely. NULL still means the configuration has
+no answer, which is different from the confirmed answer 0. Silently coercing unknown to
+zero would erase that distinction even though Qimati's current settled default is zero.
 
 ---
 
@@ -670,3 +667,45 @@ are gone, then the harness deletes their queue rows and restores the schedules. 
 cleanup times out, the rows are deliberately retained before scheduling resumes. Test
 files are trashed, never moved to Processed, and the fixture path does not change the
 application's authentication model.
+
+---
+
+### D33 — The default enhancement prompt is the business-approved fidelity prompt
+
+The default `prompts` row is the team's ChatGPT prompt adapted for an unattended pipeline:
+
+- resolution and aspect ratio were removed from the body and remain API parameters
+  (`2048×2048`);
+- “you may enhance it further if you think you can” was removed because it invites
+  per-image variation;
+- an explicit fidelity constraint was added so chain links, stone count/facets, engraving,
+  clasps and settings must match the source exactly.
+
+The worker reads the live default row at run time and copies its exact `body` to
+`image_versions.prompt_text`. It never embeds this text in application code. Changing the
+prompt means inserting a new version, retiring the old default and promoting the new one;
+historical image rows retain the exact text that produced them.
+
+---
+
+### D34 — Phase 3B uses OpenRouter's dedicated Images API; Step 0 proved the input path
+
+Before any worker code, one real Qimati necklace photograph and the live default prompt were
+sent to `openai/gpt-image-2` through `POST /api/v1/images`, with the photograph supplied as
+one `input_references` data URL. The call succeeded and the returned scene retained the
+specific necklace, proving this route supports image-to-image editing rather than only
+text-to-image generation.
+
+The request sent `size: "2048x2048"` and `quality: "high"`. OpenRouter returned a
+2048×2048 PNG. Round-trip latency was 222.242 seconds. The response exposed
+`usage.cost = 0.44116` USD directly, including prompt/completion cost detail, so the worker
+must persist the returned cost rather than estimating it from a price table.
+
+OpenRouter's live model/endpoint metadata advertises `input_references` from 0 through 16.
+Only one reference was used in this probe; multi-reference composition was not separately
+tested. The same metadata does not advertise mask input, so mask support must not be assumed
+for this route.
+
+The saved proof is under `.artifacts/phase3b-step0/` (ignored by Git): the 2000×2000 source,
+the 2048×2048 result and `evidence.json`. The throwaway probe was removed after the one call.
+No enhancement worker was started in this session.

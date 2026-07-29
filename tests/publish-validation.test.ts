@@ -120,9 +120,8 @@ describe('publish validation', () => {
   })
 
   it('does NOT block a weight of 0 — that is a deliberate value, not a gap', () => {
-    // Every category's default is currently 0 so the test store can publish. It
-    // reproduces the live store's broken weight-based shipping and must be replaced
-    // before cutover, but it is a decision someone made, not a missing answer.
+    // Qimati uses fixed shipping rates, so every category's settled default is 0.
+    // It is a decision someone made, not a missing answer.
     expect(codes(input({ weight_g: null }, { default_weight_g: 0 }))).not.toContain('weight_unknown')
     expect(codes(input({ weight_g: 0 }))).not.toContain('weight_unknown')
     expect(validateDraftForPublish(input({ weight_g: null }, { default_weight_g: 0 }))).toEqual([])

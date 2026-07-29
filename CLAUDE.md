@@ -81,7 +81,8 @@ Normalise on save (trim, collapse spaces, Title Case) and fuzzy-match on entry, 
 
 - `Rings 221` and `Rings 222 (Adjustable)` **both carry SKU `RS221`** — the hand-maintained counter collided. `RS218`, `RS220` and `RS222` are missing from the sequence.
 - Handles like `rings-224set-of-10-different-rings-for-750-copy` — products are created by duplicating old ones, and Shopify's `-copy` suffix survives in the public URL.
-- Variant weight is `0` on every product, so weight-based shipping cannot work.
+- Variant weight is `0` on every product. Qimati uses fixed shipping rates, so this is the
+  correct value and does not affect fulfilment.
 
 ---
 
@@ -134,7 +135,11 @@ Block on empty/zero price, and on zero stock unless explicitly ticked. Show the 
 
 *As built (Phase 2):* `src/lib/publish/validate.ts` returns **every** reason at once, each naming the field it is about, and a blocked publish reserves nothing — it burns no SKU number. Five blocks: empty/zero price, zero stock (unless ticked), missing material, unknown weight, unconfirmed category tag. The same invariants are raised again inside `reserve_draft_identity()`, so nothing that reaches the database another way can route around them.
 
-**NULL and 0 are different values and always will be.** `default_weight_g` NULL means *nobody has said* and blocks; 0 means *someone said zero* and publishes as 0 g. Use `??`, never `||` — `||` discards a deliberate 0 for being falsy. Every category's default is currently 0 so the test store can publish; ⚠️ **0 g reproduces the live store's broken weight-based shipping and must be replaced with real grams before cutover.** See D19.
+**NULL and 0 are different values and always will be.** `default_weight_g` NULL means
+*nobody has said* and blocks; 0 means *someone said zero* and publishes as 0 g. Use `??`,
+never `||` — `||` discards a deliberate 0 for being falsy. Every category's default is 0
+because Qimati uses fixed shipping rates; weight is not part of its shipping calculation,
+so 0 g is the correct settled value and not a cutover item. See D19.
 
 ---
 
@@ -144,9 +149,15 @@ Block on empty/zero price, and on zero stock unless explicitly ticked. Show the 
 
 **Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
-- **Output 2048×2048.** Shopify's recommended size for square product images; hard max 5000×5000 / 20 MB.
-- Tested cost ≈ **$0.07/image**, range $0.07–$0.20 depending on quality tier.
-- Input limit 50 MB per image; up to 16 reference images; masks supported with an alpha channel.
+- **Output 2048×2048.** Phase 3B Step 0 sent `size: "2048x2048"` through
+  OpenRouter's dedicated Images API and received an actual 2048×2048 PNG.
+- The one real `quality: "high"` Step 0 edit cost **$0.44116** and took **222.242 s**.
+  OpenRouter returned the exact charge in `usage.cost`; this is one measured call, not a
+  stable price or latency promise.
+- Loupe rejects source files over exactly 50,000,000 bytes. OpenRouter's live
+  `gpt-image-2` metadata advertises up to 16 `input_references`; Step 0 exercised one.
+  It does not advertise a mask parameter on this route, so do not assume masks are
+  available through OpenRouter without a fresh capability check.
 - The **original is immutable and kept forever** — every version derives from it. Originals live permanently in Google Drive; R2 caches one only while the item is in the queue.
 
 Put the model behind one interface so it stays swappable:
