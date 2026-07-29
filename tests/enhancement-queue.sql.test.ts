@@ -434,7 +434,11 @@ describe('Phase 3B enhancement SQL state machine', () => {
         presentation_fallback_reason: testCase.code,
         description_error_detail: detail,
       })
-      expect(state.rows[0]?.description_error_detail).toContain(testCase.raw)
+      expect(
+        JSON.parse(state.rows[0]!.description_error_detail) as {
+          raw_result: string
+        },
+      ).toMatchObject({ raw_result: testCase.raw })
       expect(state.rows[0]?.presentation_class).not.toBe('ring')
     }
   })

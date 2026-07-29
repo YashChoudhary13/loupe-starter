@@ -182,7 +182,7 @@ describe('Phase 3A database capabilities', () => {
     expect(report.columns['intake_files.last_error_detail']).toBe('text')
     expect(report.columns['intake_files.lease_token']).toBe('uuid')
     expect(report.columns['intake_files.presentation_class']).toBe(
-      'presentation_class',
+      'public.presentation_class',
     )
     expect(report.columns['intake_files.presentation_fallback']).toBe('boolean')
     expect(report.columns['intake_files.presentation_fallback_reason']).toBe('text')
