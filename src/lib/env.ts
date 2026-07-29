@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { validatedCronSecret } from '@/lib/cron/secret'
+
 /**
  * Server-side environment access.
  *
@@ -35,5 +37,20 @@ export const serverEnv = {
    */
   get supabaseServiceRoleKey(): string {
     return required('SUPABASE_SERVICE_ROLE_KEY')
+  },
+
+  /** The one flat Google Drive folder watched as Loupe's photo inbox. */
+  get driveRawFolderId(): string {
+    return required('DRIVE_RAW_FOLDER_ID')
+  },
+
+  /** Shared secret accepted by server-side cron routes. */
+  get cronSecret(): string {
+    return validatedCronSecret(process.env.CRON_SECRET)
+  },
+
+  /** Stable deployed origin used when provisioning external cron callers. */
+  get cronBaseUrl(): string {
+    return required('CRON_BASE_URL')
   },
 } as const

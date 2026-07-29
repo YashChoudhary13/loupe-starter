@@ -1,8 +1,15 @@
+import { readFileSync } from 'node:fs'
+
 import { config } from 'dotenv'
 import { Client, Pool, type PoolConfig } from 'pg'
 
 config({ path: '.env', quiet: true })
 config({ path: '.env.local', override: true, quiet: true })
+
+const SUPABASE_CA = readFileSync(
+  new URL('../../supabase/prod-ca-2021.crt', import.meta.url),
+  'utf8',
+)
 
 /**
  * A direct Postgres connection, for things PostgREST cannot do: DDL, and holding
@@ -27,7 +34,10 @@ export function pgConfig(): PoolConfig {
     user: `postgres.${ref}`,
     password,
     database: 'postgres',
-    ssl: { rejectUnauthorized: false },
+    ssl: {
+      rejectUnauthorized: true,
+      ca: SUPABASE_CA,
+    },
     connectionTimeoutMillis: 15_000,
   }
 }

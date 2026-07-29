@@ -574,3 +574,99 @@ console that *will* let an operator change a category is Phase 4/5 — by which 
 file is not the one anybody is reading. `tests/publish-identity.test.ts` covers both
 directions: the category change is refused, and a corrected `title_suffix` still gets
 through on the same frozen handle.
+
+---
+
+### D28 — Drive change cursors use a leased compare-and-swap bootstrap
+
+The watcher stores one opaque Drive `newStartPageToken` in `sync_state`. It never persists
+an intermediate `nextPageToken`, and it never uses `files.list` plus modified time.
+
+The first run is deliberately ordered:
+
+1. obtain start token **T0**;
+2. reconcile the complete Raw folder;
+3. replay the change log from T0;
+4. persist only the replay's final `newStartPageToken`.
+
+Taking T0 before the full list closes the only bootstrap gap: a file arriving during that
+list is present either in the list or in the replay. The row is leased with a UUID and the
+cursor advances only when the same, unexpired lease completes, so overlapping or stale
+watchers cannot rewind it. Reconcile remains the independent 15-minute safety net.
+
+**Rejected:** storing each `nextPageToken`. It is a navigation cursor inside one replay,
+not the durable checkpoint after that replay.
+
+---
+
+### D29 — Intake attempts count completed work; UUID tokens own claims
+
+`attempts = 0` means no attempt has completed. A newly discovered row is due immediately,
+which is the zero-delay first attempt. Claiming it changes the status and leases it but does
+not increment the counter. A retryable failure increments the counter and schedules the
+next attempt after 1m, 5m, 20m or 1h; completed attempt 5 is terminal.
+
+Every claim returns a fresh UUID `lease_token`. Failure completion requires that token and
+an unexpired deadline. Sweep clears both. This is stricter than a deadline alone: after A
+expires and B reclaims, late worker A cannot clear B's lease or record B's failure.
+
+**Rejected:** incrementing at claim time. A process crash is not a completed model attempt
+and must not consume the photographer's bounded retry budget.
+
+---
+
+### D30 — pg_cron configuration is runtime provisioning, not migration data
+
+Migrations install `pg_cron` in `pg_catalog` and `pg_net` in Supabase's `extensions`
+schema. They do not contain the production URL or bearer secret.
+
+`npm run cron:configure` writes those two values to Supabase Vault through a
+certificate-and-hostname-verified Postgres connection, then upserts three named jobs:
+
+- `loupe-drive-watch` — every minute
+- `loupe-drive-reconcile` — every 15 minutes
+- `loupe-intake-sweep` — every 5 minutes
+
+The cron command reads Vault at execution time and sends the secret as a bearer header.
+`CRON_SECRET` is exactly 32 random bytes encoded as 64 hex characters; runtime and
+provisioning enforce the same format. Named `cron.schedule` calls are repeatable, while
+direct writes to `cron.job` are not used.
+
+`cron.job_run_details = succeeded` proves pg_cron queued the request; a 2xx row in
+`net._http_response` proves the deployed endpoint answered it. Both are checked.
+
+---
+
+### D31 — Phase 3A accepts JPEG, PNG and WebP, with a 50 MB ceiling
+
+Drive metadata is recorded first for every direct, non-folder Raw child. JPEG, PNG and
+WebP enter the queue. A missing or different MIME type, or size above 50,000,000 bytes
+(the phase's literal 50 MB ceiling), is then
+classified as a permanent validation failure with `attempts = 1`, a readable reason and
+separate raw detail.
+
+This list is intentionally narrow because HEIC/TIFF decoding and format conversion belong
+to the enhancement implementation, not intake guessing. Widening it later is a deliberate
+capability change.
+
+---
+
+### D32 — The live acceptance harness supports user-owned Drive uploads
+
+The production service account reads the shared Raw folder, which is all Phase 3A needs.
+Google does not grant service accounts personal Drive storage quota, so it cannot create
+the 12 acceptance files inside a My Drive folder even when the folder is shared with it.
+
+`npm run verify:intake` therefore has two equivalent fixture paths:
+
+- default: API upload, suitable for a Shared Drive;
+- `PHASE3A_EXTERNAL_PREFIX=…`: pause schedules and wait for staged files uploaded through
+  an authorised user Drive session.
+
+Discovery, metadata checks and watcher/reconcile/sweep calls still run through the real
+service account and production endpoints. In external mode the uploader also owns fixture
+cleanup: schedules stay paused until the service account verifies those exact Drive IDs
+are gone, then the harness deletes their queue rows and restores the schedules. If owner
+cleanup times out, the rows are deliberately retained before scheduling resumes. Test
+files are trashed, never moved to Processed, and the fixture path does not change the
+application's authentication model.

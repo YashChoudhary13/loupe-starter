@@ -107,7 +107,11 @@ Insert the DB row **before** any work is attempted. A file's presence in RAW nev
 300 images is not 300 products. A file that is `enhanced` but ungrouped is normal — it's waiting for an operator. The same file ungrouped after 24 hours is a problem. Status-based alerting cries wolf and people stop reading it.
 
 **6. Crashed workers self-heal via leases.**
-A worker claiming a row sets `lease_expires_at`. A sweeper returns expired leases to the queue. Without this, one crash strands a file forever in a status that looks busy.
+A worker claiming a row sets `lease_expires_at` **and receives a UUID `lease_token`**.
+Every completion compares that token before changing state, so a worker that wakes after
+expiry cannot overwrite the replacement worker's claim. A sweeper clears both ownership
+fields and returns expired leases to the queue. Without the deadline, one crash strands a
+file forever; without the token, a stale worker can corrupt the worker that recovered it.
 
 **7. Secrets never reach the browser.**
 All Shopify, Drive, image-model and R2 calls are server-side. This tool publishes to a live store.

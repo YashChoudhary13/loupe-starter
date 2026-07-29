@@ -31,6 +31,177 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-29 — Phase 3A complete: Drive intake survives watcher downtime
+
+**Goal this session:** build and prove a durable Google Drive intake loop whose database
+truth survives duplicate delivery, concurrent workers and watcher downtime.
+
+**✅ PHASE 3A IS COMPLETE.** All eight success criteria were demonstrated against the
+deployed application, real Drive folder and linked Supabase database. No file was moved to
+Processed.
+
+**Prerequisites proved before implementation:**
+
+```text
+$ supabase db push --linked --dry-run
+Connecting to remote database...
+Remote database is up to date.
+
+GET https://qimati-loupe.vercel.app/health
+health_status: 200
+database_reachable: true
+google_service_account_valid: true
+```
+
+**Built:**
+
+- `supabase/migrations/20260729120000_phase_3a_intake_queue.sql` → `sync_state`,
+  `next_attempt_at`, Drive metadata, queue indexes, idempotent discovery, `SKIP LOCKED`
+  claims, bounded retries, expired-lease sweep, events, `pg_cron` and `pg_net`.
+- `20260729121000_phase_3a_pg_net_schema.sql`,
+  `20260729122000_harden_updated_at_search_path.sql`,
+  `20260729123000_intake_lease_ownership.sql` → Supabase extension layout,
+  trigger-function hardening and UUID compare-and-swap ownership for intake workers.
+- `20260729124000_intake_size_limit_decimal_mb.sql` → corrects the literal phase limit
+  forward to exactly 50,000,000 bytes; no applied migration was rewritten.
+- `src/lib/google/drive-*` → server-only Drive v3 reader with service-account auth,
+  exact Drive scope, pagination and readable error classification.
+- `src/lib/intake/*` → insert-first discovery, full reconcile, race-safe change-token
+  bootstrap/replay, repository boundary and lease sweep.
+- `src/app/api/cron/{watch,reconcile,sweep}/route.ts` + `src/lib/cron/*` → POST-only,
+  timing-safe bearer authentication and consistent job responses.
+- `scripts/configure-cron.ts` → stores the production origin and 64-hex-character secret
+  in Supabase Vault, then repeatably provisions the three named schedules.
+- `scripts/verify-drive-intake-live.ts` → destructive, uniquely prefixed acceptance proof.
+  Owner-uploaded fixtures stay under paused schedules until the service account verifies
+  their exact Drive IDs are gone; database cleanup is transactional and happens before
+  schedules resume.
+- 49 Phase 3A assertions across route, Drive client, watch/reconcile and deployed SQL tests;
+  schema/RLS coverage and client-bundle secret isolation now include the new table/secrets.
+
+**Verified — the eight live success criteria:**
+
+1. **Exactly 12 real Drive files became 12 `discovered` rows with matching metadata.**
+
+```text
+Criterion 1 PASS — exactly 12 discovered rows; Drive metadata matches:
+loupe-phase3a-live-20260729-01.png  b182d83f290a78c665e85f1610985c8f  42  discovered
+loupe-phase3a-live-20260729-02.png  efcfee8de21507e66c2bdbbba4eab6cc  42  discovered
+loupe-phase3a-live-20260729-03.png  3473b7d4226f4d415785b2c45ef82f61  42  discovered
+loupe-phase3a-live-20260729-04.png  13b7d97a93506ff67c672003190bf38f  42  discovered
+loupe-phase3a-live-20260729-05.png  77d84dd44857b775f7b3a2a8a080e9ed  42  discovered
+loupe-phase3a-live-20260729-06.png  ee0cd076ad5f1eba7f14b9cf71a7e62d  42  discovered
+loupe-phase3a-live-20260729-07.png  2a18e22372b596a17763d6c617ced8f1  42  discovered
+loupe-phase3a-live-20260729-08.png  bdb20702eab52f5cb3231900f42c3727  42  discovered
+loupe-phase3a-live-20260729-09.png  66f37141c304dd6cc0e6974167b169b5  42  discovered
+loupe-phase3a-live-20260729-10.png  20654f30c48bdbc5bb189c2905da3d4c  42  discovered
+loupe-phase3a-live-20260729-11.png  647360d50b1cb6a44deee0cede5f9ac1  42  discovered
+loupe-phase3a-live-20260729-12.png  b1afa10083b7721a8ae31906d5d49378  42  discovered
+```
+
+2–6. **Replay, reconcile, outage recovery, sweep and permanent failure all passed.**
+
+```text
+Criterion 2 PASS — immediate watch replay inserted 0 and mutated 0 rows
+Criterion 3 PASS — exactly 3 deleted rows returned; the other 9 were byte-for-byte unchanged
+Criterion 4 PASS — schedules stopped; file stayed absent for 70s; reconcile recovered
+                   exactly 1 discovered row
+Criterion 5 PASS — loupe-phase3a-live-20260729-01.png returned to discovered;
+                   exactly 1 intake.lease_expired event added
+Criterion 6 PASS — status=failed, class=permanent, attempts=1
+  readable reason: The file format is text/plain. Loupe can enhance JPEG, PNG or
+                   WebP images. Export it in one of those formats and try again.
+  raw detail retained separately:
+                   {"allowed": ["image/jpeg", "image/png", "image/webp"],
+                    "mime_type": "text/plain"}
+```
+
+Criterion 4 deliberately paused **all three schedules**, uploaded the outage file, waited
+70 seconds (longer than the one-minute watcher interval), proved no row existed, then ran
+full reconcile. That is the actual evidence that a server outage cannot silently lose a
+photographer's shoot.
+
+7. **All schedules are active, all latest runs succeeded, and pg_net received 200s.**
+
+```text
+job 7  loupe-drive-reconcile  */15 * * * *  active=true  latest=succeeded  return="1 row"
+job 8  loupe-drive-watch      * * * * *     active=true  latest=succeeded  return="1 row"
+job 9  loupe-intake-sweep     */5 * * * *   active=true  latest=succeeded  return="1 row"
+
+net._http_response, last 10 minutes:
+responses=13  successful=13  min_status=200  max_status=200
+```
+
+8. **Every endpoint failed closed without the shared secret.**
+
+```text
+POST /api/cron/watch      → 401
+POST /api/cron/reconcile  → 401
+POST /api/cron/sweep      → 401
+```
+
+**Final cleanup and quality evidence:**
+
+```text
+Raw folder active children: 0
+Prefixed live-test intake rows: 0
+
+Test Files  13 passed (13)
+Tests       171 passed (171)
+
+Post-50-MB forward-migration check:
+Test Files  2 passed (2)
+Tests       35 passed (35)
+
+typecheck: passed
+lint: passed
+next build: passed — /api/cron/watch, /reconcile and /sweep are dynamic routes
+verify:isolation: service_role, Shopify secret, Google credential and CRON_SECRET absent
+                  from all 15 client assets; server-only negative-control build failed
+                  as required
+
+supabase db push --linked --dry-run:
+{"upToDate":true,"dryRun":true,"migrations":[]}
+
+supabase db lint --linked --level warning:
+No schema errors found
+```
+
+Production: `https://qimati-loupe.vercel.app` is READY and `/health` reports the database
+reachable plus the validated service-account identity.
+
+**Not finished / known broken:**
+
+- Phase 3B/4 work remains intentionally out of scope: image enhancement, OpenRouter/OpenAI,
+  R2, thumbnails, duplicate detection, Drive housekeeping and UI.
+- The live harness needs an authorised user to upload/trash fixtures in a My Drive folder;
+  the production service account can read them but Google gives service accounts no personal
+  Drive storage quota.
+- `npm audit --omit=dev` still reports three high findings in the existing
+  Next/PostCSS/Sharp chain. Its proposed forced fix is a breaking downgrade to Next 9.
+  The new Google dependency's vulnerable transitive `rimraf` chain was removed with a
+  narrow override.
+
+**Surprises:**
+
+- `pg_cron` and `pg_net` installed successfully without a dashboard intervention.
+  Supabase placed `pg_net` outside its expected `extensions` schema initially, so a forward
+  migration moved it before job provisioning.
+- A lease deadline alone did not prevent a stale worker overwriting its replacement.
+  UUID ownership tokens were added in a forward migration and hard rule 6 in `CLAUDE.md`
+  was corrected.
+- Google service accounts cannot create acceptance fixtures in shared My Drive folders
+  because they have no storage quota. The equivalent owner-upload path is D32.
+- The Vercel project had a stale `public` output-directory setting; correcting it to the
+  Next.js default made the server routes deploy.
+- Independent review caught the initial binary interpretation of “50 MB” and an
+  owner-cleanup race. Both were corrected before completion: the live limit is exactly
+  50,000,000 bytes, and source deletion is now verified before test rows or schedules move.
+
+**Next session should start with:** define Phase 3B's worker completion path around the
+existing UUID claim token, keeping the original Drive file immutable and the database as
+the only processing truth.
+
 ## 2026-07-29 — Phase 2 complete: all six criteria demonstrated against the test store
 
 **Goal this session:** apply three decisions, add the Drive-credential validator, and

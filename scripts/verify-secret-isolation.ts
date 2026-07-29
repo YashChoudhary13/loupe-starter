@@ -161,6 +161,24 @@ if (shopifySecret && shopifySecret.length > 12) {
   console.log('  SHOPIFY_CLIENT_SECRET: not set — nothing to check for')
 }
 
+// Phase 3A. The base64 service-account document contains the private signing key,
+// and CRON_SECRET authorises every automated intake endpoint. Both are runtime
+// server values even though neither resembles a JWT.
+for (const [name, secret] of [
+  ['GOOGLE_SERVICE_ACCOUNT_JSON', process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()],
+  ['CRON_SECRET', process.env.CRON_SECRET?.trim()],
+] as const) {
+  if (secret && secret.length > 12) {
+    const leaks = findInClientAssets(secret)
+    if (leaks.length > 0) {
+      fail(`${name} found in client assets:\n    ${[...new Set(leaks)].join('\n    ')}`)
+    }
+    console.log(`  ${name}: NOT PRESENT ✓`)
+  } else {
+    console.log(`  ${name}: not set — nothing to check for`)
+  }
+}
+
 // ---------------------------------------------------------------------------
 console.log('\nSTEP 3 — a client component importing the server-only module must fail the build')
 console.log('─'.repeat(74))

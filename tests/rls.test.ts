@@ -55,9 +55,18 @@ describe('publishable key — write access', () => {
       (before.data as { last_number: number }).last_number,
     )
   })
+
+  it('cannot create sync cursor state', async () => {
+    const key = `rls-probe-${Date.now()}`
+    const { error } = await publishableClient().from('sync_state').insert({ key, value: 'rewind' })
+    expect(error, 'an anonymous client must not create or overwrite a Drive cursor').not.toBeNull()
+
+    const { data } = await serviceClient().from('sync_state').select('key').eq('key', key)
+    expect(data, 'nothing may have been written').toEqual([])
+  })
 })
 
-describe('the SKU and publish functions are not callable without the service role', () => {
+describe('server-only functions are not callable without the service role', () => {
   // Burning SKU numbers from the browser would open gaps in the sequence for
   // free — and reserving an identity or marking a draft published from the
   // browser would let anyone put a product on the live store. EXECUTE is revoked
@@ -94,6 +103,46 @@ describe('the SKU and publish functions are not callable without the service rol
     it(`refuses an anonymous ${fn} call`, async () => {
       const res = await anonymousRpc(fn, body)
       expect(res.ok, `anonymous ${fn} call returned HTTP ${res.status}`).toBe(false)
+      expect([401, 403, 404]).toContain(res.status)
+    })
+  }
+
+  const phase3Functions: [string, Record<string, unknown>][] = [
+    ['discover_intake_file', {
+      p_drive_file_id: '',
+      p_filename: 'anonymous.jpg',
+      p_drive_md5: null,
+      p_bytes: 1,
+      p_mime_type: 'image/jpeg',
+      p_source: 'rls-probe',
+    }],
+    ['claim_intake_file', { p_lease_seconds: 0 }],
+    ['record_intake_failure', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+      p_error: 'anonymous',
+      p_error_code: 'anonymous',
+      p_error_class: 'permanent',
+    }],
+    ['sweep_expired_intake_leases', { p_source: 'rls-probe' }],
+    ['claim_sync_state', { p_key: 'rls-probe', p_lease_seconds: 0 }],
+    ['complete_sync_state', {
+      p_key: 'rls-probe',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+      p_value: 'rewind',
+    }],
+    ['release_sync_state', {
+      p_key: 'rls-probe',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+    }],
+  ]
+
+  for (const [fn, body] of phase3Functions) {
+    it(`refuses an anonymous ${fn} call`, async () => {
+      const res = await anonymousRpc(fn, body)
+      expect(res.ok, `anonymous ${fn} call returned HTTP ${res.status}`).toBe(false)
+      // 400 would mean the function executed and merely rejected our deliberately
+      // invalid probe. Only authentication/permission/not-exposed outcomes pass.
       expect([401, 403, 404]).toContain(res.status)
     })
   }

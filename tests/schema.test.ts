@@ -17,6 +17,11 @@ interface SchemaReport {
   enums: Record<string, string[]>
   functions: string[]
   columns: Record<string, string>
+  extensions: Record<string, string>
+  function_execute: Record<
+    string,
+    { anon: boolean; authenticated: boolean; service_role: boolean }
+  >
 }
 
 let report: SchemaReport
@@ -55,6 +60,7 @@ describe('indexes the system actually queries on', () => {
   const required = [
     'intake_files_status_discovered_at_idx',
     'intake_files_expired_lease_idx',
+    'intake_files_ready_queue_idx',
     'intake_files_phash_idx',
     'product_drafts_status_idx',
     'events_entity_idx',
@@ -113,11 +119,70 @@ describe('conventions', () => {
     expect(report.functions).toContain('next_sku')
   })
 
+  it('has the Phase 3A queue and cursor functions deployed', () => {
+    for (const fn of [
+      'discover_intake_file',
+      'claim_intake_file',
+      'record_intake_failure',
+      'sweep_expired_intake_leases',
+      'claim_sync_state',
+      'complete_sync_state',
+      'release_sync_state',
+    ]) {
+      expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
+    }
+  })
+
   it('the broken control fixture is not left loaded in the database', () => {
     expect(
       report.functions,
       '_loupe_naive_next_sku is a deliberately broken counter — it must never be present outside a control run',
     ).not.toContain('_loupe_naive_next_sku')
+  })
+})
+
+describe('Phase 3A database capabilities', () => {
+  it('installs the worker extensions, with pg_cron in pg_catalog', () => {
+    expect(report.extensions.pg_cron).toBe('pg_catalog')
+    expect(report.extensions.pg_net).toBeDefined()
+  })
+
+  it('stores MIME, retry and raw error metadata on intake files', () => {
+    expect(report.columns['intake_files.mime_type']).toBe('text')
+    expect(report.columns['intake_files.next_attempt_at']).toBe('timestamp with time zone')
+    expect(report.columns['intake_files.last_error_detail']).toBe('text')
+    expect(report.columns['intake_files.lease_token']).toBe('uuid')
+  })
+
+  it('stores an opaque cursor and UUID lease on sync_state', () => {
+    expect(report.columns['sync_state.key']).toBe('text')
+    expect(report.columns['sync_state.value']).toBe('text')
+    expect(report.columns['sync_state.lease_token']).toBe('uuid')
+    expect(report.columns['sync_state.lease_expires_at']).toBe('timestamp with time zone')
+  })
+
+  it('keeps every Phase 3A RPC service-role-only', () => {
+    const phase3Functions = [
+      'discover_intake_file',
+      'claim_intake_file',
+      'record_intake_failure',
+      'sweep_expired_intake_leases',
+      'claim_sync_state',
+      'complete_sync_state',
+      'release_sync_state',
+    ]
+
+    for (const fn of phase3Functions) {
+      const matches = Object.entries(report.function_execute).filter(([signature]) =>
+        signature.startsWith(`${fn}(`) || signature.startsWith(`public.${fn}(`),
+      )
+      expect(matches, `${fn} must have exactly one deployed signature`).toHaveLength(1)
+      expect(matches[0]?.[1]).toEqual({
+        anon: false,
+        authenticated: false,
+        service_role: true,
+      })
+    }
   })
 })
 

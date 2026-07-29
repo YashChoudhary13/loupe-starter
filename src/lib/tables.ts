@@ -17,6 +17,7 @@ export const TABLES = [
   'prompts',
   'events',
   'app_users',
+  'sync_state',
 ] as const
 
 export type TableName = (typeof TABLES)[number]
