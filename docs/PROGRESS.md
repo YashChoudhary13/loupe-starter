@@ -107,6 +107,32 @@ Worth recording: both bugs were invisible to typecheck, lint and 122 passing tes
 first needed a counter above 999, the second needed a product without colours. Neither
 existed until the verification script created them.
 
+**3. A frozen identity did not pin its category** — found by an adversarial review pass
+over the diff, not by a test.
+
+The identity is frozen on first reservation (hard rule 2) but the title and tag are
+re-read from the draft's *current* category on every call, so that a corrected
+`title_suffix` reaches the retry. If the category itself changed in between:
+
+```
+1. reserved as Necklaces  →  NK005 · "Necklace 005" · necklace-005
+2. publish fails
+3. operator realises it is a ring, switches the category
+4. retry →  SKU NK005 · title "Rings 005" · tag Rings · handle necklace-005
+```
+
+A ring in the Rings collection carrying a number from the **necklace** sequence, at
+`/products/necklace-005`, while `RS005` stays free for a real ring later. Nothing errors.
+Phase 2 cannot reach this — nothing here edits `category_id` — but the console that will
+is Phase 4/5. Guard added now, in the function that must enforce it (D27), with tests
+both ways: the category change is refused by name, and a corrected suffix still publishes
+on the same frozen handle.
+
+```
+✓ REFUSES a retry whose category changed under a frozen identity
+✓ still allows a retry that only corrects the title suffix
+```
+
 ---
 
 ### Evidence

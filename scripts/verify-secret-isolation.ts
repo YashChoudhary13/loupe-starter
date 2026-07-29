@@ -76,6 +76,12 @@ function writeProbe(source: string): void {
 
 function cleanUp(): void {
   rmSync(PROBE_DIR, { recursive: true, force: true })
+  // Also drop Next's generated route types. STEP 3 builds with the probe route
+  // present, which makes `.next/types/validator.ts` import
+  // `src/app/isolation-probe/page.js`; deleting only the probe leaves that import
+  // dangling and `npm run typecheck` then fails with TS2307 on a file nobody wrote.
+  // Next regenerates the directory on the next build or dev run.
+  rmSync(join(ROOT, '.next/types'), { recursive: true, force: true })
 }
 
 function fail(msg: string): never {

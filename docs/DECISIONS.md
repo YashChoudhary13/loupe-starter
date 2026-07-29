@@ -527,3 +527,50 @@ reports instead of throwing, and `/health` renders it — a broken credential mu
 *visible* rather than take the diagnostics page down with it. Only the service-account
 address is ever rendered; the private key is never put in a message that might be logged,
 which `tests/google-service-account.test.ts` asserts.
+
+---
+
+### D27 — A reserved identity pins its category
+
+`reserve_draft_identity()` freezes `reserved_sku` and `reserved_handle` on the first
+attempt and reuses them verbatim on every retry — that is hard rule 2, and it is what
+makes `productSet` update the half-made product instead of creating a second one.
+
+But the **title and tag are re-read from the draft's current category on every call**,
+deliberately, so that correcting a `title_suffix` between a failed attempt and its retry
+publishes the correction. Those two facts combine badly if the *category itself* changes
+in between:
+
+```
+1. reserved as Necklaces  →  NK005 · "Necklace 005" · necklace-005
+2. publish fails
+3. operator realises it is a ring, switches the category
+4. retry →  SKU NK005 · title "Rings 005" · tag Rings · handle necklace-005
+```
+
+A product that reads as a ring, sits in the Rings collection, lives at
+`/products/necklace-005`, and carries a number from the **necklace** sequence — while
+`RS005` stays unissued and goes to a genuine ring later. Nothing errors. This is exactly
+the damage hard rule 1 exists to prevent, and D1 already names misclassification as
+high-cost because a wrong category corrupts a *sequence*, not just a row.
+
+**So the identity stays frozen and the category becomes the thing that cannot move.** The
+retry path compares the reserved SKU's prefix against the category's and raises if they
+disagree, naming both.
+
+**Rejected — re-deriving the SKU:** allocates a second number for one product and orphans
+the first.
+**Rejected — re-deriving the handle:** breaks hard rule 2 outright; `productSet` would
+create a second Shopify product on the next attempt.
+
+The operator's route is a **new draft**, which gets a clean identity from the right
+sequence. The abandoned number becomes a gap, and gaps are explicitly harmless here —
+`RS218`, `RS220` and `RS222` are already missing from the live store and nothing depends
+on them. A product whose SKU prefix disagrees with its category is not harmless.
+
+Phase 2 cannot itself reach this state; nothing in it edits `category_id`. The guard is
+here now because the function that must enforce it is being written now, and because the
+console that *will* let an operator change a category is Phase 4/5 — by which time this
+file is not the one anybody is reading. `tests/publish-identity.test.ts` covers both
+directions: the category change is refused, and a corrected `title_suffix` still gets
+through on the same frozen handle.

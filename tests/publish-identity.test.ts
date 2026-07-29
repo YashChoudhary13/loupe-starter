@@ -296,6 +296,63 @@ describe('reserve_draft_identity (deployed function)', () => {
     expect(data!.handle).toBe('necklace-1000')
   })
 
+  it('REFUSES a retry whose category changed under a frozen identity', async () => {
+    // The identity is frozen (hard rule 2) but the title and tag are re-read from the
+    // draft's current category on every call, so that a corrected title_suffix reaches
+    // the retry. Without this guard those two combine into:
+    //   SKU NK00x · title "Rings 00x" · tag Rings · handle necklace-00x
+    // — a ring in the Rings collection carrying a number from the NECKLACE sequence,
+    // while RS00x stays free for a real ring later. Nothing errors.
+    const nk = categories.find((c) => c.sku_prefix === 'NK')!
+    const rs = categories.find((c) => c.sku_prefix === 'RS')!
+
+    const draftId = await createDraft({ categoryId: nk.id, price_paise: 50_000 })
+    const first = await reserve(draftId)
+    expect(first.data!.sku).toMatch(/^NK\d{3,}$/)
+
+    const nkCounterAfterFirst = await readCounter('NK')
+    const rsCounterBefore = await readCounter('RS')
+
+    // The operator realises it is a ring and switches the category.
+    await db.from('product_drafts').update({ category_id: rs.id }).eq('id', draftId)
+
+    const retry = await reserve(draftId)
+    expect(retry.error?.message).toMatch(/holds NK\d+ from the NK sequence/i)
+    expect(retry.error?.hint ?? '').toMatch(/Create a NEW draft/i)
+
+    // Neither sequence moved, and the frozen identity was not rewritten.
+    expect(await readCounter('NK')).toBe(nkCounterAfterFirst)
+    expect(await readCounter('RS')).toBe(rsCounterBefore)
+
+    const { data: draft } = await db
+      .from('product_drafts')
+      .select('reserved_sku, reserved_handle')
+      .eq('id', draftId)
+      .single<{ reserved_sku: string; reserved_handle: string }>()
+    expect(draft!.reserved_sku).toBe(first.data!.sku)
+    expect(draft!.reserved_handle).toBe(first.data!.handle)
+
+    // Put it back so afterAll's cleanup and the counter restore behave.
+    await db.from('product_drafts').update({ category_id: nk.id }).eq('id', draftId)
+  })
+
+  it('still allows a retry that only corrects the title suffix', async () => {
+    // The guard must pin the CATEGORY, not freeze the title — otherwise fixing a typo
+    // in a suffix would require abandoning the product.
+    const nk = categories.find((c) => c.sku_prefix === 'NK')!
+    const draftId = await createDraft({ categoryId: nk.id, price_paise: 50_000 })
+
+    const first = await reserve(draftId)
+    await db.from('product_drafts').update({ title_suffix: '(Adjustable)' }).eq('id', draftId)
+    const retry = await reserve(draftId)
+
+    expect(retry.error).toBeNull()
+    expect(retry.data!.reused).toBe(true)
+    expect(retry.data!.sku).toBe(first.data!.sku)
+    expect(retry.data!.handle).toBe(first.data!.handle) // frozen
+    expect(retry.data!.title).toBe(`${first.data!.title} (Adjustable)`) // corrected
+  })
+
   it('refuses a category whose Shopify tag is unconfirmed, and burns no number', async () => {
     const np = categories.find((c) => c.sku_prefix === 'NP')
     expect(np, 'the NP / Nose Pins category should exist after Phase 2').toBeTruthy()
