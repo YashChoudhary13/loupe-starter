@@ -102,7 +102,7 @@ Reserve SKU + handle → record `publishing` → call `productSet` identified by
 Insert the DB row **before** any work is attempted. A file's presence in RAW never means "unprocessed" — the DB says what's true. `drive_file_id` is UNIQUE, so re-scanning the whole folder is always safe. Moving files to `/Processed/` is housekeeping; if it fails, nothing breaks.
 
 **4. Retries are bounded, then a human looks.**
-5 attempts with backoff (0, 1m, 5m, 20m, 1h), then `failed`. Never infinite — one corrupt HEIC would retry forever and burn credit. Classify errors as *retryable* (429, 5xx, timeout, network) or *permanent* (corrupt file, unsupported format, too large, model refusal). Permanent errors skip retries entirely.
+5 attempts with backoff (0, 1m, 5m, 20m, 1h), then `failed`. Never infinite — one corrupt HEIC would retry forever and burn credit. Classify errors as *retryable* (429, 5xx, timeout, network) or *permanent* (corrupt file, unsupported format, too large, model refusal, malformed response, cost ceiling exceeded). Permanent errors skip retries entirely.
 
 **5. Alert on age, not status.**
 300 images is not 300 products. A file that is `enhanced` but ungrouped is normal — it's waiting for an operator. The same file ungrouped after 24 hours is a problem. Status-based alerting cries wolf and people stop reading it.
@@ -149,11 +149,20 @@ so 0 g is the correct settled value and not a cutover item. See D19.
 
 **Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
-- **Output 2048×2048.** Phase 3B Step 0 sent `size: "2048x2048"` through
-  OpenRouter's dedicated Images API and received an actual 2048×2048 PNG.
-- The one real `quality: "high"` Step 0 edit cost **$0.44116** and took **222.242 s**.
-  OpenRouter returned the exact charge in `usage.cost`; this is one measured call, not a
-  stable price or latency promise.
+- **Never rely on image API defaults.** Every request must send the env-backed `size` and
+  `quality` explicitly. Agreed production defaults are `IMAGE_SIZE=1280x1280` and
+  `IMAGE_QUALITY=medium`; the source copy sent to the model is downscaled to a 1024 px
+  long edge first.
+- `MAX_COST_USD_PER_IMAGE=0.20` is a hard guard. Persist the returned version and actual
+  `usage.cost`, then fail the intake permanently with the actual cost in the readable
+  reason when it exceeds the ceiling. Never estimate cost from a price table.
+- The first real Step 0 edit explicitly used `size: "2048x2048"` and `quality: "high"`
+  (not `auto`), cost **$0.44116**, and took **222.242 s**. It is historical capability
+  evidence, not the production configuration.
+- The production-config Step 0 used a 1024×1024 input copy with
+  `size: "1280x1280"` and `quality: "medium"`. OpenRouter returned an actual
+  1280×1280 PNG in **65.358 s** for **$0.073376** (3,408 total tokens), below the
+  $0.20 ceiling. Size and the lower-cost quality tier both reached the provider.
 - Loupe rejects source files over exactly 50,000,000 bytes. OpenRouter's live
   `gpt-image-2` metadata advertises up to 16 `input_references`; Step 0 exercised one.
   It does not advertise a mask parameter on this route, so do not assume masks are

@@ -78,7 +78,7 @@ the surviving bucket is APAC, which is what Jaipur operators and a Mumbai Vercel
 
 ---
 
-### D5 — `gpt-image-2` **via OpenRouter**, no dated pin, at 2048×2048
+### D5 — `gpt-image-2` **via OpenRouter**, no dated pin, with explicit image controls
 
 *Revised 2026-07-28 (Phase 2). The original text specified a direct OpenAI call pinned to a
 dated snapshot. Both halves of that changed; the reasoning for each is below.*
@@ -114,7 +114,11 @@ So the enhancement worker **must** write `model` and `prompt_text` on every `ima
 row, with the resolved model string exactly as sent, never a friendly alias. That is now a
 correctness requirement of D5 and not an audit nicety.
 
-2048×2048 is Shopify's own recommendation for square product images.
+Every call sends size and quality explicitly. The production defaults are configuration,
+not worker constants: `IMAGE_SIZE=1280x1280`, `IMAGE_QUALITY=medium`, and
+`MAX_COST_USD_PER_IMAGE=0.20`. The input copy is downscaled to a 1024 px long edge before
+upload because input pixels are billed while output rendering is controlled separately.
+Actual response cost is persisted; it is never reconstructed from a price table.
 
 **Known trade-off (unchanged):** a generative model redraws the whole frame, so fine chain
 links and stone facets are reinterpreted rather than photographed. Mask-and-composite (keeping
@@ -670,16 +674,21 @@ application's authentication model.
 
 ---
 
-### D33 — The default enhancement prompt is the business-approved fidelity prompt
+### D33 — The default enhancement prompt matches the existing ivory-satin catalogue
 
-The default `prompts` row is the team's ChatGPT prompt adapted for an unattended pipeline:
+The live default was derived by inspecting approximately 100 existing Qimati product
+images. The catalogue is overwhelmingly ivory satin, so the team's original marble
+background would make new products look foreign beside the existing 1,600.
 
-- resolution and aspect ratio were removed from the body and remain API parameters
-  (`2048×2048`);
-- “you may enhance it further if you think you can” was removed because it invites
-  per-image variation;
-- an explicit fidelity constraint was added so chain links, stone count/facets, engraving,
-  clasps and settings must match the source exactly.
+Further deliberate edits:
+
+- resolution and aspect ratio were removed from the body and remain API parameters;
+- “diamond sparkle highlights” was removed because it instructs the model to add sparkle,
+  while roughly a third of the catalogue is plain gold with no stones;
+- explicit, repeatable framing was added: centred, 75-80% frame occupancy, even margins,
+  and no rotation or restaging;
+- fidelity was strengthened so unclear details are reproduced as-is rather than invented,
+  and chain links, stones, engraving, clasps, settings and plating colour must match.
 
 The worker reads the live default row at run time and copies its exact `body` to
 `image_versions.prompt_text`. It never embeds this text in application code. Changing the
@@ -709,3 +718,33 @@ for this route.
 The saved proof is under `.artifacts/phase3b-step0/` (ignored by Git): the 2000×2000 source,
 the 2048×2048 result and `evidence.json`. The throwaway probe was removed after the one call.
 No enhancement worker was started in this session.
+
+---
+
+### D35 — Production image calls use 1280×1280 medium with a $0.20 hard ceiling
+
+The business replaced the initial 1024×1024 proposal and the 1536×1536 gate with
+`IMAGE_SIZE=1280x1280`. `IMAGE_QUALITY=medium` and
+`MAX_COST_USD_PER_IMAGE=0.20` remain the production settings. These values are environment
+configuration and must be sent explicitly on every request; provider defaults are never
+relied upon. A copy of the source is reduced to a 1024 px long edge before upload.
+
+The one-call gate used the live ivory-champagne satin prompt and a 1024×1024 copy of the
+real Qimati necklace. OpenRouter accepted both explicit parameters and returned an actual
+1280×1280 PNG:
+
+```text
+prompt tokens      1,312
+completion tokens  2,096
+total tokens       3,408
+cost               $0.073376 (response usage.cost, not derived)
+round trip          65.358 s
+```
+
+This is below the $0.20 ceiling. The first historical call did **not** use an `auto`
+default: it explicitly used high quality at 2048×2048, which explains why its
+$0.44116 result is not the production baseline.
+
+For the worker, a generation above the configured ceiling is still stored with its actual
+cost, then the intake fails permanently with that cost in the readable reason and receives
+no retry. Step 0 did not build that worker path.

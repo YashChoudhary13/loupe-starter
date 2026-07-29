@@ -31,6 +31,126 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-29 — Phase 3B Step 0: 1280 medium path meets the cost gate
+
+**Goal this session:** replace the foreign-looking marble prompt with the catalogue-matching
+ivory-satin prompt, make image cost controls explicit, and prove one production-shaped
+OpenRouter edit before any worker code.
+
+**Built:**
+
+- `20260729131000_replace_default_enhancement_prompt.sql` → archives the marble default and
+  installs the exact ivory-champagne satin prompt as the sole live default, with its
+  approximately-100-image catalogue provenance recorded in `events`.
+- `.env.local.example` and live `.env` → explicit `IMAGE_SIZE=1280x1280`,
+  `IMAGE_QUALITY=medium`, and `MAX_COST_USD_PER_IMAGE=0.20`. The business changed the
+  output from the phase prompt's 1536×1536 and the first 1024×1024 proposal to 1280×1280.
+- D5, D33 and D35 plus `CLAUDE.md` → catalogue-background reasoning, explicit
+  configuration/cost guard, 1024 px input downscale, and measured Step 0 evidence.
+- The throwaway probe read the live prompt and configuration, validated the input long
+  edge, made one network call, saved the evidence, and was removed. It is not worker code.
+- D19 needed no further change: fixed-rate shipping and the NULL/0 distinction were already
+  settled correctly, and no weight cutover blocker remains.
+
+**Verified:**
+
+```text
+supabase db push --linked --dry-run:
+  connected; would apply only 20260729131000
+supabase db push --linked --yes:
+  20260729131000 applied successfully
+final dry-run:
+  Remote database is up to date
+
+live database:
+  live default prompts = 1
+  name = Qimati ivory-champagne satin — catalogue fidelity
+  body = exact approved satin prompt; no size/aspect-ratio text
+  previous marble prompt archived
+  prompt.default_replaced event records:
+    source = inspection of approximately 100 live catalogue images
+    marble rejected · sparkle removed · framing/fidelity added
+
+live environment:
+  IMAGE_SIZE=1280x1280
+  IMAGE_QUALITY=medium
+  MAX_COST_USD_PER_IMAGE=0.20
+```
+
+The one real OpenRouter request used `POST /api/v1/images`,
+`openai/gpt-image-2`, the live satin prompt, and a 1024×1024 / 32,039-byte copy of
+the real Qimati necklace:
+
+```text
+editing with input          YES — the returned satin scene retained the specific necklace
+requested size              1280 × 1280
+actual size                 1280 × 1280 PNG
+requested quality           medium
+prompt tokens               1,312
+completion tokens           2,096
+total tokens                3,408
+actual cost                 $0.073376
+cost source                 response usage.cost (exposed directly; not derived)
+configured ceiling          $0.20
+ceiling exceeded            no
+round-trip latency          65.358 s
+size honoured               yes, exactly
+quality honoured            yes — accepted explicitly and produced the medium-tier
+                             token/cost profile, far below the explicit-high probe
+```
+
+The earlier `$0.44116` result was **not** an `auto` default: its throwaway script explicitly
+sent `quality: "high"` and `size: "2048x2048"`. Documentation was corrected rather than
+preserving the new phase prompt's mistaken attribution.
+
+Saved proof (Git-ignored, retained locally):
+
+```text
+.artifacts/phase3b-step0-1280-medium/input-necklace-1024.jpg
+  1024×1024 · 32,039 bytes
+.artifacts/phase3b-step0-1280-medium/gpt-image-2-1280-medium.png
+  1280×1280 · 2,755,188 bytes
+.artifacts/phase3b-step0-1280-medium/evidence.json
+  request, live prompt, response headers, dimensions, tokens and exact cost
+```
+
+Quality evidence:
+
+```text
+Test Files  13 passed (13)
+Tests       172 passed (172)
+typecheck:  passed standalone
+lint:       passed
+build:      passed
+db lint:    No schema errors found
+git diff --check: passed
+```
+
+**Not finished / known broken:**
+
+- The Phase 3B enhancement worker is intentionally **not started**. The requested
+  architecture gate is complete and this session stops here.
+- The attachment's later success criterion still says 1536×1536, but the business's newest
+  instruction supersedes it with 1280×1280; D35 is the current decision.
+- The $0.20 failure transition is specified and configured but not implemented here because
+  it belongs to the worker that this gate explicitly forbids starting.
+
+**Surprises:**
+
+- The first local probe attempt never reached the network: an optional `X-Title` header
+  contained an em dash, and Node rejected the non-ByteString header before opening a
+  request. It was changed to ASCII; exactly one paid/network image call was made.
+- Running standalone typecheck concurrently with `next build` briefly raced while Next
+  regenerated `.next/types`. The build's TypeScript pass succeeded, and the standalone
+  rerun after the build also passed.
+- Medium at 1280×1280 cost $0.073376 and returned in 65.358 seconds, versus high at
+  2048×2048 costing $0.44116 and taking 222.242 seconds.
+
+**Next session should start with:** review the saved 1280×1280 satin result and, only after
+business approval, authorise the Phase 3B worker at the D35 production settings.
+
+---
+
 ## 2026-07-29 — Phase 3B Step 0: real OpenRouter image edit proved, worker deliberately not started
 
 **Goal this session:** settle the fixed-shipping weight decision, seed the business-approved

@@ -294,7 +294,7 @@ describe('seed data', () => {
     expect(error, 'the CHECK was relaxed from > 0 to >= 0, not dropped').not.toBeNull()
   })
 
-  it('has one live default enhancement prompt, with fidelity in text and dimensions in parameters', async () => {
+  it('has the one catalogue-matching satin prompt, with dimensions kept in parameters', async () => {
     const { data, error } = await serviceClient()
       .from('prompts')
       .select('name, body, is_default, archived_at')
@@ -308,10 +308,23 @@ describe('seed data', () => {
       is_default: boolean
       archived_at: string | null
     }[]
+    const expectedBody = `A single hero product photograph for an e-commerce jewellery catalogue.
+
+Background — soft ivory-champagne satin with gentle natural folds, warm in tone. The fabric is softly out of focus so its folds read as texture, never as pattern. No props, no flowers, no vases, no risers, no boxes.
+
+Lighting — warm and directional, like soft window light. Gentle shadow falloff across the fabric. Controlled specular highlights so the gold plating reads as polished metal rather than flat yellow. No hard shadows, no coloured light, no lens flare.
+
+Composition — centre the product; it should occupy roughly 75-80% of the frame with even margins. Keep this framing identical for every product. Preserve the angle and orientation of the source photograph — do not reposition, rotate or restage the piece.
+
+Focus — the product sharp front to back. The background softly defocused: a suggestion of depth, not a blur effect.
+
+Fidelity — this outranks everything above. Reproduce the product exactly as photographed. Chain links, stone count, stone shape and facets, engraving, clasps, settings and plating colour must match the source precisely. Do not add sparkle, gemstones, or detail that is not present. Do not remove, straighten, lengthen or embellish any part of the product. Where a detail is unclear in the source, reproduce it as-is rather than inventing it.`
+
     expect(prompts).toHaveLength(1)
-    expect(prompts[0]?.body).toContain('Preserve the product exactly as photographed.')
-    expect(prompts[0]?.body).toContain('Chain links, stone count and facets')
-    expect(prompts[0]?.body).not.toMatch(/2048|aspect ratio/i)
+    expect(prompts[0]?.name).toBe('Qimati ivory-champagne satin — catalogue fidelity')
+    expect(prompts[0]?.body).toBe(expectedBody)
+    expect(prompts[0]?.body).not.toMatch(/2048|1536|1280|1024|aspect ratio/i)
+    expect(prompts[0]?.body).not.toMatch(/marble|diamond sparkle/i)
   })
 
   it('can still store NULL — "nobody has said" has to remain expressible', async () => {
