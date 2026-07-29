@@ -39,11 +39,14 @@ describe('Phase 3B two-call configuration', () => {
       TEST_DESCRIPTION,
       true,
       false,
+      'pair-upright',
     )
     expect(resolved.descriptionInjected).toBe(true)
     expect(resolved.descriptionMissing).toBe(false)
-    expect(resolved.text).toContain(`PRODUCT\n${TEST_DESCRIPTION}\n\nSUBJECT`)
+    expect(resolved.text).toContain(`PRODUCT\n${TEST_DESCRIPTION}\n\nCOMPOSITION`)
+    expect(resolved.text).toContain('Show both pieces upright and front-facing')
     expect(resolved.text).not.toContain(PRODUCT_DESCRIPTION_TOKEN)
+    expect(resolved.text).not.toContain('{{COMPOSITION_DETAIL}}')
   })
 
   it('removes the entire PRODUCT block when injection is disabled', () => {
@@ -52,24 +55,25 @@ describe('Phase 3B two-call configuration', () => {
       TEST_DESCRIPTION,
       false,
       false,
+      'flat-curve',
     )
     expect(resolved.descriptionInjected).toBe(false)
     expect(resolved.descriptionMissing).toBe(false)
-    expect(resolved.text).toBe(`A hero image.
-
-SUBJECT — jewellery only.`)
+    expect(resolved.text).toContain('Lay the piece flat in a soft open curve')
     expect(resolved.text).not.toMatch(/^PRODUCT\s*$/m)
     expect(resolved.text).not.toContain(PRODUCT_DESCRIPTION_TOKEN)
   })
 
   it('records missing description separately from a deliberate A/B exclusion', () => {
-    const resolved = resolveImagePrompt(TEST_PROMPTS.image.body, null, true, true)
-    expect(resolved).toEqual({
-      text: `A hero image.
-
-SUBJECT — jewellery only.`,
-      descriptionInjected: false,
-      descriptionMissing: true,
-    })
+    const resolved = resolveImagePrompt(
+      TEST_PROMPTS.image.body,
+      null,
+      true,
+      true,
+      'flat-curve',
+    )
+    expect(resolved.descriptionInjected).toBe(false)
+    expect(resolved.descriptionMissing).toBe(true)
+    expect(resolved.text).toContain('Lay the piece flat in a soft open curve')
   })
 })

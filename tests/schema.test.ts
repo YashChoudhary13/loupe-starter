@@ -107,6 +107,17 @@ describe('closed vocabularies', () => {
   it('prompt_kind separates the two model stages', () => {
     expect(report.enums.prompt_kind).toEqual(['describe', 'image'])
   })
+
+  it('presentation_class is the exact closed staging vocabulary', () => {
+    expect(report.enums.presentation_class).toEqual([
+      'pair-upright',
+      'flat-curve',
+      'standing-three-quarter',
+      'angled-band',
+      'flat-arc',
+      'tray-grid',
+    ])
+  })
 })
 
 describe('conventions', () => {
@@ -143,6 +154,7 @@ describe('conventions', () => {
     for (const fn of [
       'assert_intake_lease',
       'store_intake_description',
+      'ensure_intake_presentation_fallback',
       'record_description_failure',
       'complete_intake_enhancement',
     ]) {
@@ -169,6 +181,11 @@ describe('Phase 3A database capabilities', () => {
     expect(report.columns['intake_files.next_attempt_at']).toBe('timestamp with time zone')
     expect(report.columns['intake_files.last_error_detail']).toBe('text')
     expect(report.columns['intake_files.lease_token']).toBe('uuid')
+    expect(report.columns['intake_files.presentation_class']).toBe(
+      'presentation_class',
+    )
+    expect(report.columns['intake_files.presentation_fallback']).toBe('boolean')
+    expect(report.columns['intake_files.presentation_fallback_reason']).toBe('text')
   })
 
   it('stores an opaque cursor and UUID lease on sync_state', () => {
@@ -206,6 +223,7 @@ describe('Phase 3A database capabilities', () => {
     for (const fn of [
       'assert_intake_lease',
       'store_intake_description',
+      'ensure_intake_presentation_fallback',
       'record_description_failure',
       'complete_intake_enhancement',
     ]) {
@@ -356,18 +374,28 @@ describe('seed data', () => {
     ).toEqual([
       {
         kind: 'describe',
-        chars: 1169,
-        sha256: '7dff027bb8bb3b3a822f8e37233f285be1d5b1cd36ffbb383d002d87331d2551',
+        chars: 1730,
+        sha256: 'a23dfcff1a81b087dc613b7ad1edc358086bcd413e91abccd71245b26d2d31a7',
       },
       {
         kind: 'image',
-        chars: 3517,
-        sha256: '05f4a650ff43bd5bf929b3717861057261543391185323970e07cf02a31f8832',
+        chars: 3399,
+        sha256: '01db8d7404d9fffb630859dcc014687759ed6178838b43f524df7e233b951cf0',
       },
     ])
     expect(prompts[0]?.body).toContain('Describe ONLY the jewellery in this photograph.')
+    expect(prompts[0]?.body).toContain(
+      'Return ONLY a JSON object, nothing else:',
+    )
+    expect(prompts[0]?.body).toContain(
+      '"presentation": "<one class from the list>"',
+    )
     expect(prompts[0]?.body).not.toContain('{{PRODUCT_DESCRIPTION}}')
     expect(prompts[1]?.body).toContain('PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nSUBJECT')
+    expect(prompts[1]?.body).toContain('{{COMPOSITION_DETAIL}}')
+    expect(prompts[1]?.body).not.toContain(
+      'Preserve the angle and orientation of the piece as photographed',
+    )
     expect(prompts[1]?.body).not.toMatch(/silver metal, rose gold/i)
     expect(prompts[1]?.body).not.toMatch(/2048|1536|1280|1024|aspect ratio/i)
   })

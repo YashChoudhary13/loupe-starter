@@ -16,7 +16,9 @@ import {
   type IntakeFailureResult,
   type LivePrompt,
   type LivePrompts,
+  type PresentationCache,
 } from './repository'
+import type { PresentationClass } from './presentation'
 
 interface ClaimRow {
   id: string
@@ -29,6 +31,9 @@ interface ClaimRow {
   lease_token: string | null
   lease_expires_at: string | null
   product_description: string | null
+  presentation_class: PresentationClass | null
+  presentation_fallback: boolean
+  presentation_fallback_reason: string | null
   description_model: string | null
   described_at: string | null
   description_cost_usd: number | string | null
@@ -37,6 +42,9 @@ interface ClaimRow {
 
 interface DescriptionRow {
   product_description: string
+  presentation_class: PresentationClass
+  presentation_fallback: false
+  presentation_fallback_reason: null
   description_model: string
   described_at: string
   description_cost_usd: number | string
@@ -47,6 +55,15 @@ interface DescriptionFailureRow {
   attempts: number
   next_attempt_at: string
   proceed_without_description: boolean
+  presentation_class: PresentationClass | null
+  presentation_fallback: boolean
+  presentation_fallback_reason: string | null
+}
+
+interface PresentationRow {
+  presentation_class: PresentationClass
+  presentation_fallback: boolean
+  presentation_fallback_reason: string | null
 }
 
 interface CompletionRow {
@@ -106,6 +123,9 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
       leaseToken: data.lease_token,
       leaseExpiresAt: data.lease_expires_at,
       productDescription: data.product_description,
+      presentationClass: data.presentation_class,
+      presentationFallback: data.presentation_fallback,
+      presentationFallbackReason: data.presentation_fallback_reason,
       descriptionModel: data.description_model,
       describedAt: data.described_at,
       descriptionCostUsd: finiteNumber(data.description_cost_usd, 'description_cost_usd'),
@@ -153,6 +173,7 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
     readonly intakeFileId: string
     readonly leaseToken: string
     readonly description: string
+    readonly presentationClass: PresentationClass
     readonly model: string
     readonly costUsd: number
     readonly source: string
@@ -162,6 +183,7 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
         p_intake_file_id: input.intakeFileId,
         p_lease_token: input.leaseToken,
         p_description: input.description,
+        p_presentation_class: input.presentationClass,
         p_model: input.model,
         p_cost_usd: input.costUsd,
         p_source: input.source,
@@ -173,9 +195,40 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
     }
     return {
       text: data.product_description,
+      presentationClass: data.presentation_class,
+      presentationFallback: data.presentation_fallback,
+      presentationFallbackReason: data.presentation_fallback_reason,
       model: data.description_model,
       describedAt: data.described_at,
       costUsd: finiteNumber(data.description_cost_usd, 'description_cost_usd')!,
+    }
+  }
+
+  async ensurePresentationFallback(input: {
+    readonly intakeFileId: string
+    readonly leaseToken: string
+    readonly reason: string
+    readonly source: string
+  }): Promise<PresentationCache> {
+    const { data, error } = await this.db
+      .rpc('ensure_intake_presentation_fallback', {
+        p_intake_file_id: input.intakeFileId,
+        p_lease_token: input.leaseToken,
+        p_reason: input.reason,
+        p_source: input.source,
+      })
+      .select()
+      .single<PresentationRow>()
+    if (error || !data) {
+      throw dbError(
+        `Could not store the presentation fallback for ${input.intakeFileId}.`,
+        error ?? data,
+      )
+    }
+    return {
+      presentationClass: data.presentation_class,
+      presentationFallback: data.presentation_fallback,
+      presentationFallbackReason: data.presentation_fallback_reason,
     }
   }
 
@@ -209,6 +262,9 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
       attempts: data.attempts,
       nextAttemptAt: data.next_attempt_at,
       proceedWithoutDescription: data.proceed_without_description,
+      presentationClass: data.presentation_class,
+      presentationFallback: data.presentation_fallback,
+      presentationFallbackReason: data.presentation_fallback_reason,
     }
   }
 

@@ -13,6 +13,7 @@ import type {
   ImmutablePutResult,
   StoredObject,
 } from '@/lib/enhance/storage'
+import type { PresentationClass } from '@/lib/enhance/presentation'
 
 export const TEST_DESCRIPTION =
   'A matching pair of drop earrings in polished yellow-gold metal. Each earring has a compact oval upper form with densely arranged clear round stones, joined to a smooth oval cabochon-style lower element in a slim bezel. The pair has a balanced vertical silhouette with matching proportions. Small hinged fittings connect the upper and lower sections, and the visible surfaces are smooth without engraving or added texture.'
@@ -33,6 +34,9 @@ export const TEST_PROMPTS: LivePrompts = {
 PRODUCT
 {{PRODUCT_DESCRIPTION}}
 
+COMPOSITION
+{{COMPOSITION_DETAIL}}
+
 SUBJECT — jewellery only.`,
   },
 }
@@ -52,6 +56,9 @@ export function claim(
     leaseToken: `lease-${id}`,
     leaseExpiresAt: '2026-07-29T23:00:00.000Z',
     productDescription: null,
+    presentationClass: null,
+    presentationFallback: false,
+    presentationFallbackReason: null,
     descriptionModel: null,
     describedAt: null,
     descriptionCostUsd: null,
@@ -66,12 +73,17 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
   readonly storedDescriptions: Array<{
     intakeFileId: string
     description: string
+    presentationClass: PresentationClass
     model: string
     costUsd: number
   }> = []
   readonly completions: Parameters<EnhancementRepository['complete']>[0][] = []
   readonly failures: IntakeFailureInput[] = []
   readonly descriptionFailures: string[] = []
+  readonly presentationFallbacks: Array<{
+    intakeFileId: string
+    reason: string
+  }> = []
   readonly attemptsById = new Map<string, number>()
 
   prompts = TEST_PROMPTS
@@ -99,6 +111,7 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
     readonly intakeFileId: string
     readonly leaseToken: string
     readonly description: string
+    readonly presentationClass: PresentationClass
     readonly model: string
     readonly costUsd: number
   }) {
@@ -106,9 +119,26 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
     this.storedDescriptions.push(input)
     return {
       text: input.description,
+      presentationClass: input.presentationClass,
+      presentationFallback: false as const,
+      presentationFallbackReason: null,
       model: input.model,
       describedAt: '2026-07-29T12:00:00.000Z',
       costUsd: input.costUsd,
+    }
+  }
+
+  async ensurePresentationFallback(input: {
+    readonly intakeFileId: string
+    readonly leaseToken: string
+    readonly reason: string
+  }) {
+    if (!this.validLeases.has(input.leaseToken)) throw new Error('stale')
+    this.presentationFallbacks.push(input)
+    return {
+      presentationClass: 'flat-curve' as const,
+      presentationFallback: true,
+      presentationFallbackReason: input.reason,
     }
   }
 
@@ -126,11 +156,20 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
       input.code === 'description_cost_ceiling_exceeded' || attempts >= 4
     this.attemptsById.set(input.intakeFileId, Math.min(5, attempts + 1))
     if (!proceed) this.validLeases.delete(input.leaseToken)
+    if (proceed) {
+      this.presentationFallbacks.push({
+        intakeFileId: input.intakeFileId,
+        reason: input.code,
+      })
+    }
     return {
       status: proceed ? ('enhancing' as const) : ('discovered' as const),
       attempts: Math.min(5, attempts + 1),
       nextAttemptAt: '2026-07-29T12:01:00.000Z',
       proceedWithoutDescription: proceed,
+      presentationClass: proceed ? ('flat-curve' as const) : null,
+      presentationFallback: proceed,
+      presentationFallbackReason: proceed ? input.code : null,
     }
   }
 

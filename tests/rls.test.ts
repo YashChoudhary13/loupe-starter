@@ -143,8 +143,15 @@ describe('server-only functions are not callable without the service role', () =
       p_intake_file_id: '00000000-0000-0000-0000-000000000000',
       p_lease_token: '00000000-0000-0000-0000-000000000000',
       p_description: 'anonymous',
+      p_presentation_class: 'flat-curve',
       p_model: 'anonymous',
       p_cost_usd: 0,
+      p_source: 'rls-probe',
+    }],
+    ['ensure_intake_presentation_fallback', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+      p_reason: 'anonymous',
       p_source: 'rls-probe',
     }],
     ['record_description_failure', {

@@ -62,6 +62,7 @@ function describer(): JewelleryDescriber & { describe: ReturnType<typeof vi.fn> 
   return {
     describe: vi.fn(async () => ({
       text: TEST_DESCRIPTION,
+      presentation: 'pair-upright' as const,
       costUsd: 0.004,
       model: 'openai/gpt-5.6-sol',
       requestId: 'description-1',
@@ -111,17 +112,21 @@ describe('Phase 3B enhancement worker', () => {
       expect.objectContaining({
         intakeFileId: item.id,
         description: TEST_DESCRIPTION,
+        presentationClass: 'pair-upright',
         costUsd: 0.004,
       }),
     ])
     expect(repository.completions[0]).toMatchObject({
-      promptText: expect.stringContaining(`PRODUCT\n${TEST_DESCRIPTION}\n\nSUBJECT`),
+      promptText: expect.stringContaining(`PRODUCT\n${TEST_DESCRIPTION}\n\nCOMPOSITION`),
       descriptionInjected: true,
       descriptionMissing: false,
       generatedWidth: 1280,
       generatedHeight: 1280,
       costUsd: 0.083,
     })
+    expect(imageClient.enhance.mock.calls[0]?.[2]).toBe(
+      repository.completions[0]?.promptText,
+    )
     expect(store.objects.get(`originals/${item.id}.jpg`)?.body.equals(source)).toBe(true)
     expect(store.objects.has(`versions/${item.id}/v1.png`)).toBe(true)
     const thumbnail = store.objects.get(`versions/${item.id}/v1_thumb.webp`)?.body
@@ -134,6 +139,7 @@ describe('Phase 3B enhancement worker', () => {
     repository.enqueue(
       claim('cached', {
         productDescription: TEST_DESCRIPTION,
+        presentationClass: 'pair-upright',
         descriptionModel: 'openai/gpt-5.6-sol',
         describedAt: '2026-07-29T12:00:00.000Z',
         descriptionCostUsd: 0.004,
@@ -156,9 +162,9 @@ describe('Phase 3B enhancement worker', () => {
     expect(result.descriptionCalls).toBe(0)
     expect(descriptionClient.describe).not.toHaveBeenCalled()
     expect(repository.storedDescriptions).toHaveLength(0)
-    expect(repository.completions[0]?.promptText).toBe(`A hero image.
-
-SUBJECT — jewellery only.`)
+    expect(repository.completions[0]?.promptText).toContain(
+      'Show both pieces upright and front-facing',
+    )
     expect(repository.completions[0]).toMatchObject({
       descriptionInjected: false,
       descriptionMissing: false,
@@ -192,13 +198,99 @@ SUBJECT — jewellery only.`)
 
     expect(result).toMatchObject({ enhanced: 1, descriptionCalls: 1 })
     expect(repository.descriptionFailures).toEqual(['description_provider_failed'])
+    expect(repository.presentationFallbacks).toEqual([
+      {
+        intakeFileId: 'describe-fallback',
+        reason: 'description_provider_failed',
+      },
+    ])
     expect(repository.completions[0]).toMatchObject({
-      promptText: `A hero image.
-
-SUBJECT — jewellery only.`,
+      promptText: expect.stringContaining(
+        'Lay the piece flat in a soft open curve',
+      ),
       descriptionInjected: false,
       descriptionMissing: true,
     })
+  })
+
+  it('uses a queryable flat-curve fallback for a legacy cached description without another describe call', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.enqueue(
+      claim('legacy-description', {
+        productDescription: TEST_DESCRIPTION,
+        presentationClass: null,
+        descriptionModel: 'openai/gpt-5.6-sol',
+        describedAt: '2026-07-29T12:00:00.000Z',
+        descriptionCostUsd: 0.004,
+      }),
+    )
+    const descriptionClient = describer()
+
+    const result = await runEnhancementBatch(
+      {
+        drive: drive(),
+        repository,
+        store: new MemoryObjectStore(),
+        describer: descriptionClient,
+        enhancer: enhancer(),
+        config: CONFIG,
+      },
+      { maxItems: 1 },
+    )
+
+    expect(result).toMatchObject({ enhanced: 1, descriptionCalls: 0 })
+    expect(descriptionClient.describe).not.toHaveBeenCalled()
+    expect(repository.presentationFallbacks).toEqual([
+      expect.objectContaining({
+        intakeFileId: 'legacy-description',
+        reason: 'legacy_missing_presentation_class',
+      }),
+    ])
+    expect(repository.completions[0]?.promptText).toContain(
+      'Lay the piece flat in a soft open curve',
+    )
+  })
+
+  it('routes an invalid structured result through the existing bounded retry policy', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.enqueue(claim('invalid-structured'))
+    const invalidDescriber: JewelleryDescriber = {
+      describe: vi.fn(async () => {
+        throw new EnhancementError('malformed structured output', {
+          stage: 'describe',
+          code: 'description_presentation_invalid',
+          retryable: true,
+          detail: {
+            raw_result:
+              '{"description":"valid paragraph","presentation":"ring"}',
+          },
+        })
+      }),
+    }
+    const imageClient = enhancer()
+
+    const result = await runEnhancementBatch(
+      {
+        drive: drive(),
+        repository,
+        store: new MemoryObjectStore(),
+        describer: invalidDescriber,
+        enhancer: imageClient,
+        config: CONFIG,
+      },
+      { maxItems: 1 },
+    )
+
+    expect(result).toMatchObject({
+      retryScheduled: 1,
+      enhanced: 0,
+      descriptionCalls: 1,
+    })
+    expect(repository.descriptionFailures).toEqual([
+      'description_presentation_invalid',
+    ])
+    expect(repository.presentationFallbacks).toHaveLength(0)
+    expect(imageClient.enhance).not.toHaveBeenCalled()
   })
 
   it('does not repeat an over-ceiling description call', async () => {
@@ -207,6 +299,7 @@ SUBJECT — jewellery only.`,
     const expensiveDescriber: JewelleryDescriber = {
       describe: vi.fn(async () => ({
         text: TEST_DESCRIPTION,
+        presentation: 'pair-upright' as const,
         costUsd: 0.021,
         model: 'openai/gpt-5.6-sol',
         requestId: 'over-description-ceiling',
@@ -301,6 +394,7 @@ SUBJECT — jewellery only.`,
     repository.enqueue(
       claim('database-outage', {
         productDescription: TEST_DESCRIPTION,
+        presentationClass: 'pair-upright',
         descriptionModel: 'openai/gpt-5.6-sol',
         describedAt: '2026-07-29T12:00:00.000Z',
         descriptionCostUsd: 0.004,
@@ -339,6 +433,7 @@ SUBJECT — jewellery only.`,
     const repository = new MemoryEnhancementRepository()
     const cachedDescription = {
       productDescription: TEST_DESCRIPTION,
+      presentationClass: 'pair-upright' as const,
       descriptionModel: 'openai/gpt-5.6-sol',
       describedAt: '2026-07-29T12:00:00.000Z',
       descriptionCostUsd: 0.004,
@@ -382,12 +477,69 @@ SUBJECT — jewellery only.`,
     expect(repository.completions).toHaveLength(2)
   })
 
+  it('does not reuse an R2 generation when the resolved composition prompt changed', async () => {
+    const repository = new MemoryEnhancementRepository()
+    const store = new MemoryObjectStore()
+    repository.enqueue(
+      claim('composition-conflict', {
+        productDescription: TEST_DESCRIPTION,
+        presentationClass: 'pair-upright',
+        descriptionModel: 'openai/gpt-5.6-sol',
+        describedAt: '2026-07-29T12:00:00.000Z',
+        descriptionCostUsd: 0.004,
+      }),
+    )
+
+    await runEnhancementBatch(
+      {
+        drive: drive(),
+        repository,
+        store,
+        describer: describer(),
+        enhancer: enhancer(),
+        config: CONFIG,
+      },
+      { maxItems: 1 },
+    )
+
+    repository.enqueue(
+      claim('composition-conflict', {
+        leaseToken: 'lease-composition-conflict-retry',
+        productDescription: TEST_DESCRIPTION,
+        presentationClass: 'flat-curve',
+        descriptionModel: 'openai/gpt-5.6-sol',
+        describedAt: '2026-07-29T12:00:00.000Z',
+        descriptionCostUsd: 0.004,
+      }),
+    )
+    const replayEnhancer = enhancer()
+    const replay = await runEnhancementBatch(
+      {
+        drive: drive(),
+        repository,
+        store,
+        describer: describer(),
+        enhancer: replayEnhancer,
+        config: CONFIG,
+      },
+      { maxItems: 1 },
+    )
+
+    expect(replay).toMatchObject({ failed: 1, enhanced: 0 })
+    expect(replayEnhancer.enhance).not.toHaveBeenCalled()
+    expect(repository.failures.at(-1)).toMatchObject({
+      code: 'r2_orphan_generation_conflict',
+      retryable: false,
+    })
+  })
+
   it('five concurrent workers claim ten rows exactly once', async () => {
     const repository = new MemoryEnhancementRepository()
     for (let index = 1; index <= 10; index += 1) {
       repository.enqueue(
         claim(`concurrent-${index}`, {
           productDescription: TEST_DESCRIPTION,
+          presentationClass: 'pair-upright',
           descriptionModel: 'openai/gpt-5.6-sol',
           describedAt: '2026-07-29T12:00:00.000Z',
           descriptionCostUsd: 0.004,
@@ -418,6 +570,7 @@ SUBJECT — jewellery only.`,
     const repository = new MemoryEnhancementRepository()
     const item = claim('stale', {
       productDescription: TEST_DESCRIPTION,
+      presentationClass: 'pair-upright',
       descriptionModel: 'openai/gpt-5.6-sol',
       describedAt: '2026-07-29T12:00:00.000Z',
       descriptionCostUsd: 0.004,

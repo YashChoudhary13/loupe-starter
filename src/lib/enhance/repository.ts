@@ -1,3 +1,5 @@
+import type { PresentationClass } from './presentation'
+
 export interface EnhancementClaim {
   readonly id: string
   readonly driveFileId: string
@@ -9,6 +11,9 @@ export interface EnhancementClaim {
   readonly leaseToken: string
   readonly leaseExpiresAt: string
   readonly productDescription: string | null
+  readonly presentationClass: PresentationClass | null
+  readonly presentationFallback: boolean
+  readonly presentationFallbackReason: string | null
   readonly descriptionModel: string | null
   readonly describedAt: string | null
   readonly descriptionCostUsd: number | null
@@ -31,6 +36,9 @@ export interface LivePrompts {
 
 export interface DescriptionCache {
   readonly text: string
+  readonly presentationClass: PresentationClass
+  readonly presentationFallback: false
+  readonly presentationFallbackReason: null
   readonly model: string
   readonly describedAt: string
   readonly costUsd: number
@@ -41,6 +49,15 @@ export interface DescriptionFailureResult {
   readonly attempts: number
   readonly nextAttemptAt: string
   readonly proceedWithoutDescription: boolean
+  readonly presentationClass: PresentationClass | null
+  readonly presentationFallback: boolean
+  readonly presentationFallbackReason: string | null
+}
+
+export interface PresentationCache {
+  readonly presentationClass: PresentationClass
+  readonly presentationFallback: boolean
+  readonly presentationFallbackReason: string | null
 }
 
 export interface CompletionInput {
@@ -94,10 +111,17 @@ export interface EnhancementRepository {
     readonly intakeFileId: string
     readonly leaseToken: string
     readonly description: string
+    readonly presentationClass: PresentationClass
     readonly model: string
     readonly costUsd: number
     readonly source: string
   }): Promise<DescriptionCache>
+  ensurePresentationFallback(input: {
+    readonly intakeFileId: string
+    readonly leaseToken: string
+    readonly reason: string
+    readonly source: string
+  }): Promise<PresentationCache>
   recordDescriptionFailure(input: {
     readonly intakeFileId: string
     readonly leaseToken: string

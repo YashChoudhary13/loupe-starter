@@ -3,6 +3,11 @@ import type {
   ImageQuality,
 } from './config'
 import { EnhancementError } from './errors'
+import {
+  parseStructuredDescription,
+  type PresentationClass,
+  StructuredDescriptionError,
+} from './presentation'
 
 export interface DescribeOptions {
   readonly model: string
@@ -11,6 +16,7 @@ export interface DescribeOptions {
 
 export interface DescriptionResult {
   readonly text: string
+  readonly presentation: PresentationClass
   readonly costUsd: number
   readonly model: string
   readonly requestId: string | null
@@ -103,18 +109,13 @@ function costOf(usage: OpenRouterUsage | undefined, stage: 'describe' | 'image')
 
 function responseText(response: ChatResponse): string | null {
   const content = response.choices?.[0]?.message?.content
-  if (typeof content === 'string') return content.trim() || null
+  if (typeof content === 'string') return content.trim() ? content : null
   if (!Array.isArray(content)) return null
   const text = content
     .filter((part) => part.type === 'text' && typeof part.text === 'string')
     .map((part) => part.text)
     .join('')
-    .trim()
-  return text || null
-}
-
-function wordCount(text: string): number {
-  return text.split(/\s+/u).filter(Boolean).length
+  return text.trim() ? text : null
 }
 
 async function bodyOf(response: Response): Promise<unknown> {
@@ -221,7 +222,7 @@ export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
             effort: options.reasoningEffort,
             exclude: true,
           },
-          max_completion_tokens: 400,
+          max_completion_tokens: 256,
           stream: false,
         }),
       })
@@ -238,25 +239,46 @@ export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
     if (!response.ok) throw openRouterFailure('describe', response, body)
 
     const parsed = body as ChatResponse
-    const text = responseText(parsed)
-    if (!text || /[\r\n]/u.test(text) || wordCount(text) < 60 || wordCount(text) > 100) {
+    const rawResult = responseText(parsed)
+    if (!rawResult) {
       throw new EnhancementError(
-        'The jewellery describer returned malformed text instead of one 60–100 word paragraph.',
+        'The jewellery describer returned no structured result.',
         {
           stage: 'describe',
-          code: 'description_malformed',
+          code: 'description_empty_result',
           retryable: true,
           detail: {
             request_id: parsed.id,
-            word_count: text ? wordCount(text) : 0,
-            text,
+            parse_reason: 'empty_result',
+            raw_result: rawResult,
+          },
+        },
+      )
+    }
+
+    let structured
+    try {
+      structured = parseStructuredDescription(rawResult)
+    } catch (error) {
+      if (!(error instanceof StructuredDescriptionError)) throw error
+      throw new EnhancementError(
+        'The jewellery describer returned malformed structured output.',
+        {
+          stage: 'describe',
+          code: `description_${error.reason}`,
+          retryable: true,
+          detail: {
+            request_id: parsed.id,
+            parse_reason: error.reason,
+            raw_result: error.rawResult.slice(0, 16_000),
           },
         },
       )
     }
 
     return {
-      text,
+      text: structured.description,
+      presentation: structured.presentation,
       costUsd: costOf(parsed.usage, 'describe'),
       model: parsed.model?.trim() || options.model,
       requestId: parsed.id?.trim() || null,

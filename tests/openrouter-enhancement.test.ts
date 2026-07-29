@@ -16,7 +16,14 @@ describe('OpenRouter two-call client', () => {
       return Response.json({
         id: 'describe-request-1',
         model: 'openai/gpt-5.6-sol',
-        choices: [{ message: { content: TEST_DESCRIPTION } }],
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              description: TEST_DESCRIPTION,
+              presentation: 'pair-upright',
+            }),
+          },
+        }],
         usage: { cost: 0.004321 },
       })
     })
@@ -29,6 +36,7 @@ describe('OpenRouter two-call client', () => {
       }),
     ).resolves.toEqual({
       text: TEST_DESCRIPTION,
+      presentation: 'pair-upright',
       costUsd: 0.004321,
       model: 'openai/gpt-5.6-sol',
       requestId: 'describe-request-1',
@@ -38,7 +46,7 @@ describe('OpenRouter two-call client', () => {
     expect(requests[0]?.body).toMatchObject({
       model: 'openai/gpt-5.6-sol',
       reasoning: { effort: 'minimal', exclude: true },
-      max_completion_tokens: 400,
+      max_completion_tokens: 256,
       messages: [
         {
           role: 'user',
@@ -97,6 +105,58 @@ describe('OpenRouter two-call client', () => {
       ],
     })
   })
+
+  it.each([
+    {
+      label: 'malformed JSON',
+      raw: '{"description":',
+      code: 'description_invalid_json',
+      reason: 'invalid_json',
+    },
+    {
+      label: 'an invented presentation class',
+      raw: JSON.stringify({
+        description: TEST_DESCRIPTION,
+        presentation: 'ring',
+      }),
+      code: 'description_presentation_invalid',
+      reason: 'presentation_invalid',
+    },
+  ])(
+    'retains the invalid raw result and precise reason for $label',
+    async ({ raw, code, reason }) => {
+      const client = new OpenRouterClient(
+        'test-key',
+        vi.fn(async () =>
+          Response.json({
+            id: 'invalid-structured-request',
+            choices: [{ message: { content: raw } }],
+            usage: { cost: 0.004 },
+          }),
+        ) as typeof fetch,
+      )
+
+      await expect(
+        client.describe(
+          Buffer.from('source'),
+          'image/jpeg',
+          'structured prompt',
+          {
+            model: 'openai/gpt-5.6-sol',
+            reasoningEffort: 'minimal',
+          },
+        ),
+      ).rejects.toMatchObject({
+        stage: 'describe',
+        code,
+        retryable: true,
+        detail: {
+          parse_reason: reason,
+          raw_result: raw,
+        },
+      } satisfies Partial<EnhancementError>)
+    },
+  )
 
   it('keeps a describe provider failure retryable but a policy image failure permanent', async () => {
     const describeClient = new OpenRouterClient(

@@ -19,6 +19,7 @@ import type {
   JewelleryDescriber,
 } from './openrouter'
 import { resolveImagePrompt } from './prompt'
+import type { PresentationClass } from './presentation'
 import {
   type EnhancementClaim,
   type EnhancementRepository,
@@ -227,6 +228,8 @@ async function processClaim(
   let descriptionCalled = false
   let descriptionInjected = false
   let descriptionMissing = claim.descriptionMissingAt !== null
+  let presentationClass: PresentationClass | null = claim.presentationClass
+  let presentationFallbackReason = claim.presentationFallbackReason
 
   try {
     const original = await drive.downloadFile(claim.driveFileId)
@@ -266,6 +269,16 @@ async function processClaim(
 
     const prompts = await repository.loadLivePrompts()
     let productDescription = claim.productDescription
+
+    if (productDescription && !presentationClass) {
+      const compatibility = await repository.ensurePresentationFallback({
+        intakeFileId: claim.id,
+        leaseToken: claim.leaseToken,
+        reason: 'legacy_missing_presentation_class',
+        source: SOURCE,
+      })
+      presentationClass = compatibility.presentationClass
+    }
 
     if (!productDescription && !descriptionMissing) {
       descriptionCalled = true
@@ -319,6 +332,8 @@ async function processClaim(
           }
         }
         descriptionMissing = true
+        presentationClass = recorded.presentationClass
+        presentationFallbackReason = recorded.presentationFallbackReason
       }
 
       if (result !== null) {
@@ -326,12 +341,26 @@ async function processClaim(
           intakeFileId: claim.id,
           leaseToken: claim.leaseToken,
           description: result.text,
+          presentationClass: result.presentation,
           model: result.model,
           costUsd: result.costUsd,
           source: SOURCE,
         })
         productDescription = cached.text
+        presentationClass = cached.presentationClass
       }
+    }
+
+    if (!presentationClass) {
+      const fallback = await repository.ensurePresentationFallback({
+        intakeFileId: claim.id,
+        leaseToken: claim.leaseToken,
+        reason:
+          presentationFallbackReason ??
+          'legacy_missing_presentation_class',
+        source: SOURCE,
+      })
+      presentationClass = fallback.presentationClass
     }
 
     const resolvedPrompt = resolveImagePrompt(
@@ -339,6 +368,7 @@ async function processClaim(
       productDescription,
       config.injectDescription,
       descriptionMissing,
+      presentationClass,
     )
     descriptionInjected = resolvedPrompt.descriptionInjected
     descriptionMissing = resolvedPrompt.descriptionMissing
