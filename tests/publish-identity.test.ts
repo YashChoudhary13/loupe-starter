@@ -21,6 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
   formatSku,
+  padSkuNumber,
   paiseToShopifyPrice,
   parseSku,
   renderTitle,
@@ -123,29 +124,37 @@ describe('identity formatting (pure)', () => {
     expect(formatSku('NK', 1)).toBe('NK001')
   })
 
-  it('lets numbers past 999 get wider rather than truncating', () => {
+  it('pads to a MINIMUM of three digits — it must never truncate', () => {
+    // Postgres lpad(n, 3, '0') truncates: lpad('1000', 3, '0') is '100'. That would
+    // have issued the 1000th necklace SKU NK100, colliding with an existing NK100.
+    // padSkuNumber and public.pad_sku_number() both use a minimum, not a fixed width.
+    expect(padSkuNumber(1000)).toBe('1000')
+    expect(padSkuNumber(12_345)).toBe('12345')
     expect(formatSku('NK', 1000)).toBe('NK1000')
     // Still satisfies the reserved_sku CHECK, ^[A-Z]{2,4}[0-9]{3,}$
     expect(/^[A-Z]{2,4}[0-9]{3,}$/.test(formatSku('NK', 1000))).toBe(true)
   })
 
-  it('does NOT pad the number in the title — the store reads "Rings 221"', () => {
+  it('pads the number in the TITLE too — confirmed against live data', () => {
+    expect(renderTitle('Anklets {n} (Single Piece)', 87)).toBe('Anklets 087 (Single Piece)')
+    expect(renderTitle('Nose Pin {n}', 4)).toBe('Nose Pin 004')
     expect(renderTitle('Rings {n}', 221)).toBe('Rings 221')
-    expect(renderTitle('Necklace {n}', 5)).toBe('Necklace 5')
+    expect(renderTitle('Necklace {n}', 970)).toBe('Necklace 970')
+    expect(renderTitle('Necklace {n}', 1000)).toBe('Necklace 1000')
   })
 
   it('appends a suffix after a pattern that already has a parenthetical', () => {
     expect(renderTitle('Anklets {n} (Single Piece)', 87, '(Adjustable)')).toBe(
-      'Anklets 87 (Single Piece) (Adjustable)',
+      'Anklets 087 (Single Piece) (Adjustable)',
     )
-    expect(renderTitle('Earrings {n}', 12, '  (Huggies)  ')).toBe('Earrings 12 (Huggies)')
-    expect(renderTitle('Earrings {n}', 12, '   ')).toBe('Earrings 12')
+    expect(renderTitle('Earrings {n}', 12, '  (Huggies)  ')).toBe('Earrings 012 (Huggies)')
+    expect(renderTitle('Earrings {n}', 12, '   ')).toBe('Earrings 012')
   })
 
   it('slugifies a handle the way Shopify would', () => {
-    expect(slugifyHandle('Anklets 87 (Single Piece)')).toBe('anklets-87-single-piece')
+    expect(slugifyHandle('Anklets 087 (Single Piece)')).toBe('anklets-087-single-piece')
     expect(slugifyHandle('Rings 221')).toBe('rings-221')
-    expect(slugifyHandle('Necklace 5 (Light Rose gold)')).toBe('necklace-5-light-rose-gold')
+    expect(slugifyHandle('Necklace 005 (Light Rose gold)')).toBe('necklace-005-light-rose-gold')
   })
 
   it('round-trips a SKU', () => {
@@ -257,6 +266,34 @@ describe('reserve_draft_identity (deployed function)', () => {
       .single<{ status: string; reserved_sku: string | null }>()
     expect(draft!.status).toBe('assembling')
     expect(draft!.reserved_sku).toBeNull()
+  })
+
+  it('pad_sku_number() and padSkuNumber() agree, including above 999', async () => {
+    // The direct comparison. Postgres lpad(n, 3, '0') TRUNCATES above three digits
+    // while String.padStart never does, so these two diverged silently until the
+    // SQL side was given greatest(3, length(n)).
+    for (const n of [1, 4, 87, 99, 100, 221, 970, 999, 1000, 1234, 12_345]) {
+      const { data, error } = await db.rpc('pad_sku_number', { p_number: n })
+      expect(error, `pad_sku_number(${n}): ${error?.message}`).toBeNull()
+      expect(data, `pad_sku_number(${n})`).toBe(padSkuNumber(n))
+    }
+  })
+
+  it('crosses 999 without losing a digit — the regression that bug would have caused', async () => {
+    // With bare lpad(n, 3, '0') this reserved NK100, colliding with the necklace
+    // that already holds NK100. Silently. In the one project that exists because
+    // two products ended up on RS221.
+    const nk = categories.find((c) => c.sku_prefix === 'NK')!
+    await setCounter('NK', 999)
+
+    const draftId = await createDraft({ categoryId: nk.id, price_paise: 30_000 })
+    const { data, error } = await reserve(draftId)
+
+    expect(error).toBeNull()
+    expect(data!.sku_number).toBe(1000)
+    expect(data!.sku).toBe('NK1000')
+    expect(data!.title).toBe('Necklace 1000')
+    expect(data!.handle).toBe('necklace-1000')
   })
 
   it('refuses a category whose Shopify tag is unconfirmed, and burns no number', async () => {

@@ -1,8 +1,12 @@
 /**
  * Phase 2 · success criteria 1–4, demonstrated against the real Shopify store.
  *
- *   npm run verify:publish              # publishes, keeps the products (tagged loupe-test)
- *   npm run verify:publish -- --cleanup # …and deletes every loupe-test product afterwards
+ *   npm run verify:publish                  # publishes, keeps everything (tagged loupe-test)
+ *   npm run verify:publish -- --cleanup     # sweeps the noise, KEEPS criterion 1's product
+ *   npm run verify:publish -- --cleanup-all # sweeps that too, leaving the store as found
+ *
+ * `--cleanup` deliberately spares the one product criterion 1 asserted against: its
+ * ID is the evidence, and an ID that no longer resolves is not evidence of anything.
  *
  * These four cannot be proved with a mock. Idempotency is a property of Shopify's
  * `productSet`, not of our code; twenty distinct SKUs under load is a property of a
@@ -42,7 +46,8 @@ import { PublishBlockedError } from '../src/lib/publish/validate'
 config({ path: '.env', quiet: true })
 config({ path: '.env.local', override: true, quiet: true })
 
-const CLEANUP = process.argv.includes('--cleanup')
+const CLEANUP_ALL = process.argv.includes('--cleanup-all')
+const CLEANUP = CLEANUP_ALL || process.argv.includes('--cleanup')
 const TEST_TAG = 'loupe-test'
 const ACTOR = 'script:verify-publish'
 
@@ -70,8 +75,27 @@ function check(label: string, actual: unknown, expected: unknown): void {
   const shown = typeof actual === 'string' ? actual : JSON.stringify(actual)
   const want = typeof expected === 'string' ? expected : JSON.stringify(expected)
   console.log(
-    `  ${ok ? '✓' : '✗'} ${label.padEnd(34)}${shown}${ok ? '' : `   ← expected ${want}`}`,
+    `  ${ok ? '✓' : '✗'} ${label.padEnd(42)}${shown}${ok ? '' : `   ← expected ${want}`}`,
   )
+}
+
+/** Every product carrying the test tag, whichever run created it. */
+async function findTestProducts(shopify: ShopifyClient): Promise<string[]> {
+  const data = await shopify.graphql<{
+    products: { nodes: readonly { id: string }[] }
+  }>(
+    /* GraphQL */ `
+      query LoupeTestProducts($query: String!) {
+        products(first: 250, query: $query) {
+          nodes {
+            id
+          }
+        }
+      }
+    `,
+    { query: `tag:${TEST_TAG}` },
+  )
+  return data.products.nodes.map((n) => n.id)
 }
 
 function assert(label: string, condition: boolean, detail = ''): void {
@@ -486,13 +510,30 @@ async function main(): Promise<void> {
 
   const counterBeforeBlocked = await readCounter('NK')
 
+  // A ZERO price cannot even be stored: product_drafts_price_paise_check is
+  // `price_paise is null or price_paise > 0`. So the strongest available assertion
+  // is not "publish blocks it" but "the database will not hold it". validate.ts
+  // blocks it too, for the case where a draft somehow arrives with one —
+  // tests/publish-validation.test.ts covers that path.
+  const zeroPriceInsert = await db.from('product_drafts').insert({
+    category_id: fixtures.necklaceId,
+    material_id: fixtures.materialId,
+    price_paise: 0,
+    stock: 12,
+    weight_g: 28,
+    created_by: ACTOR,
+  })
+  assert(
+    'a zero price is not even STORABLE'.padEnd(28),
+    (zeroPriceInsert.error?.message ?? '').includes('price_paise'),
+    `[${zeroPriceInsert.error?.code ?? 'no error'}]`,
+  )
+
   const noPrice = await createDraft(fixtures, { price_paise: null })
-  const zeroPrice = await createDraft(fixtures, { price_paise: 0 })
   const zeroStock = await createDraft(fixtures, { stock: 0 })
 
   for (const [label, id, options] of [
     ['empty price', noPrice, {}],
-    ['zero price', zeroPrice, {}],
     ['zero stock', zeroStock, {}],
   ] as const) {
     let blocked: unknown
@@ -515,23 +556,48 @@ async function main(): Promise<void> {
   })
   createdProductIds.add(overridden.shopifyProductId)
   assert('zero stock publishes when explicitly overridden', true, overridden.sku)
-  check('no number burnt by the three blocked attempts', await readCounter('NK'), counterBeforeBlocked + 1)
+  check(
+    'only the override burnt a number',
+    await readCounter('NK'),
+    counterBeforeBlocked + 1,
+  )
 
   // ── cleanup ───────────────────────────────────────────────────────────────
   heading('CLEANUP')
-  console.log(`  ${createdProductIds.size} product(s) created, all tagged "${TEST_TAG}"`)
+  console.log(`  ${createdProductIds.size} product(s) created this run, all tagged "${TEST_TAG}"`)
   if (CLEANUP) {
+    // Sweeps EVERY loupe-test product and EVERY draft this script has ever made,
+    // not just this run's. A failed run leaves debris behind, and debris that only
+    // the run which created it can remove is debris forever.
+    const stale = await findTestProducts(shopify)
+    const doomed = new Set([...createdProductIds, ...stale])
+    // Criterion 1's product is the evidence. Keep it unless asked otherwise.
+    if (!CLEANUP_ALL) doomed.delete(result1.shopifyProductId)
+
     let deleted = 0
-    for (const id of createdProductIds) {
+    for (const id of doomed) {
       await deleteProduct(shopify, id)
       deleted += 1
     }
-    console.log(`  deleted ${deleted} Shopify product(s)`)
+    console.log(`  deleted ${deleted} Shopify product(s) tagged "${TEST_TAG}"`)
+    if (!CLEANUP_ALL) {
+      console.log(`  KEPT criterion 1's product   ${result1.shopifyProductId}`)
+      console.log(`       ${result1.sku} · ${result1.title} · /products/${result1.handle}`)
+    }
 
-    await db.from('events').delete().in('entity_id', createdDraftIds)
-    await db.from('product_draft_variants').delete().in('product_draft_id', createdDraftIds)
-    await db.from('product_drafts').delete().in('id', createdDraftIds)
-    console.log(`  deleted ${createdDraftIds.length} draft(s) and their events`)
+    const { data: allDrafts } = await db
+      .from('product_drafts')
+      .select('id')
+      .eq('created_by', ACTOR)
+    const draftIds = (allDrafts ?? [])
+      .map((d) => d.id as string)
+      .filter((id) => CLEANUP_ALL || id !== draft1)
+    if (draftIds.length > 0) {
+      await db.from('events').delete().in('entity_id', draftIds)
+      await db.from('product_draft_variants').delete().in('product_draft_id', draftIds)
+      await db.from('product_drafts').delete().in('id', draftIds)
+    }
+    console.log(`  deleted ${draftIds.length} draft(s) and their events`)
     console.log('')
     console.log('  SKU counters were deliberately NOT reset. Gaps in a sequence are')
     console.log('  expected and harmless; lowering a counter is the thing that produces')

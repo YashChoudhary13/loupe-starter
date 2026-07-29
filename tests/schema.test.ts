@@ -194,11 +194,60 @@ describe('seed data', () => {
     expect((data as unknown[]).length).toBeGreaterThan(0)
   })
 
-  it('leaves default_weight_g NULL rather than 0, so publish cannot inherit the live bug', async () => {
+  it('keeps NULL and 0 distinguishable on default_weight_g', async () => {
+    // The Phase 2 revision (D19) set every default to 0 so the test store can
+    // publish. The semantics that must survive that:
+    //
+    //   NULL → "nobody has said."   Publish is BLOCKED.
+    //   0    → "someone said zero." Publish proceeds and writes 0 g.
+    //
+    // So the assertion is not "no zeros" any more — it is that the column can still
+    // hold NULL, and that a NEGATIVE weight is still impossible. If a future
+    // migration adds NOT NULL DEFAULT 0, the unknown state disappears and the guard
+    // in src/lib/publish/validate.ts silently stops being reachable.
     const { data } = await serviceClient().from('categories').select('sku_prefix, default_weight_g')
-    const zeroed = (data as { sku_prefix: string; default_weight_g: number | null }[]).filter(
-      (c) => c.default_weight_g === 0,
-    )
-    expect(zeroed, 'every live variant has weight 0 and weight-based shipping is broken because of it').toEqual([])
+    const rows = data as { sku_prefix: string; default_weight_g: number | null }[]
+
+    expect(
+      rows.filter((c) => (c.default_weight_g ?? 0) < 0),
+      'a negative weight is nonsense and the CHECK should still reject it',
+    ).toEqual([])
+
+    const column = report.columns['categories.default_weight_g']
+    expect(column, 'categories.default_weight_g must still exist').toBeDefined()
+  })
+
+  it('still rejects a negative default_weight_g', async () => {
+    const { error } = await serviceClient()
+      .from('categories')
+      .update({ default_weight_g: -1 })
+      .eq('sku_prefix', 'NK')
+    expect(error, 'the CHECK was relaxed from > 0 to >= 0, not dropped').not.toBeNull()
+  })
+
+  it('can still store NULL — "nobody has said" has to remain expressible', async () => {
+    // Round-trip on the tag-less NP category, which cannot publish anyway.
+    const before = await serviceClient()
+      .from('categories')
+      .select('default_weight_g')
+      .eq('sku_prefix', 'NP')
+      .single()
+
+    const { error } = await serviceClient()
+      .from('categories')
+      .update({ default_weight_g: null })
+      .eq('sku_prefix', 'NP')
+    expect(error, 'NOT NULL would erase the difference between unknown and zero').toBeNull()
+
+    await serviceClient()
+      .from('categories')
+      .update({ default_weight_g: (before.data as { default_weight_g: number | null }).default_weight_g })
+      .eq('sku_prefix', 'NP')
+  })
+
+  it('has pad_sku_number deployed, and it does not truncate above 999', async () => {
+    expect(report.functions).toContain('pad_sku_number')
+    const { data } = await serviceClient().rpc('pad_sku_number', { p_number: 1000 })
+    expect(data, 'bare lpad(n, 3, ‘0’) returns "100" here, which is a SKU collision').toBe('1000')
   })
 })

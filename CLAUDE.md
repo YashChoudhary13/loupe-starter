@@ -48,6 +48,15 @@ Category drives the SKU prefix, the title, the tag and therefore the collection.
 
 `NP` was added in Phase 2 with `shopify_tag` **NULL**: the prefix and title pattern are confirmed against the live store, the tag is not. Publish refuses any category whose tag is null rather than guessing one — an invented tag drops the product out of its collection silently, which is worse than a blocked publish. Fill the tag in and the category works with no code change.
 
+**`{n}` is zero-padded to a MINIMUM of three digits, in the SKU *and* in the title.** Confirmed against live data:
+
+```
+   4 → NP004 · "Nose Pin 004"        87 → AK087 · "Anklets 087 (Single Piece)"
+ 221 → RS221 · "Rings 221"          970 → NK970 · "Necklace 970"
+```
+
+A minimum, never a fixed width — `1000` stays `1000`. ⚠️ Postgres `lpad(n, 3, '0')` **truncates**, so `lpad('1000', 3, '0')` is `'100'`; use `public.pad_sku_number()`, which wraps the length in `greatest(3, length(n))`. Bare `lpad` here issues the 1000th necklace `NK100` and collides with an existing product, silently. See D20.
+
 Existing tags are inconsistent (`cb` vs `Necklace` vs `anklets`). **Match the existing tag exactly.** Collections appear to be tag-driven, so a "tidier" tag would silently drop the product out of its collection.
 
 Titles take an **optional free-text suffix**: `(Adjustable)`, `(Huggies)`, `(Single Piece)`, `(Light Rose gold)`. Title is *not* purely category + number.
@@ -58,7 +67,9 @@ Titles take an **optional free-text suffix**: `(Adjustable)`, `(Huggies)`, `(Sin
 
 Exactly three, fixed: **`304`**, **`316L`**, **`Brass`**. Not free text.
 
-Write the material to a **metafield**. The six description bullets render from the theme template. Do **not** write description HTML into the product body — the existing catalogue contains WhatsApp CSS classes (`class="_aupe copyable-text xkrh14z"`) and `<h5>` tags on body copy, pasted in by hand. Don't reproduce that.
+Write the material to the metafield **`custom.material`** (`single_line_text_field`) — a defined interface, not a guess: the live store has no material metafield at all today, so Loupe is establishing it. The theme template must later read the same `namespace.key`. See D21.
+
+The six description bullets render from the theme template. Do **not** write description HTML into the product body — the existing catalogue contains WhatsApp CSS classes (`class="_aupe copyable-text xkrh14z"`) and `<h5>` tags on body copy, pasted in by hand. Don't reproduce that.
 
 ### Colours
 
@@ -117,6 +128,10 @@ All Shopify, Drive, image-model and R2 calls are server-side. This tool publishe
 **8. Never block publish silently.**
 Block on empty/zero price, and on zero stock unless explicitly ticked. Show the resolved `SKU · title · handle` as a read-only preview before publish, so a wrong category is visible.
 
+*As built (Phase 2):* `src/lib/publish/validate.ts` returns **every** reason at once, each naming the field it is about, and a blocked publish reserves nothing — it burns no SKU number. Five blocks: empty/zero price, zero stock (unless ticked), missing material, unknown weight, unconfirmed category tag. The same invariants are raised again inside `reserve_draft_identity()`, so nothing that reaches the database another way can route around them.
+
+**NULL and 0 are different values and always will be.** `default_weight_g` NULL means *nobody has said* and blocks; 0 means *someone said zero* and publishes as 0 g. Use `??`, never `||` — `||` discards a deliberate 0 for being falsy. Every category's default is currently 0 so the test store can publish; ⚠️ **0 g reproduces the live store's broken weight-based shipping and must be replaced with real grams before cutover.** See D19.
+
 ---
 
 ## Image enhancement
@@ -171,6 +186,13 @@ template and must never contain real values; keep it in sync when you add a vari
 
 There is a second file at `../.env.local.example`, one level **above** this repo, which
 despite its name holds real values. It is outside the repo and is not the source of truth.
+
+**Multi-line values must be base64 or quoted.** dotenv terminates an unquoted value at
+the first newline, so raw multi-line JSON silently becomes `{` — every presence check
+passes and the failure surfaces much later, somewhere unhelpful.
+`GOOGLE_SERVICE_ACCOUNT_JSON` is validated properly by
+`src/lib/google/service-account.ts`; call `googleServiceAccount()` once at start-up, and
+`/health` shows the result. See D26.
 
 **`SHOPIFY_STORE_DOMAIN=qimti.myshopify.com` is correct.** "qimti", not "qimati" — confirmed
 at `admin.shopify.com/store/qimti`. It is the **test store**, and it is password-protected.

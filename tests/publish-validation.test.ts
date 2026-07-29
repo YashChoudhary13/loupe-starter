@@ -114,16 +114,35 @@ describe('publish validation', () => {
     ).toContain('tag_unconfirmed')
   })
 
-  it('blocks an unknown weight rather than publishing 0 g', () => {
-    // Publishing 0 g is exactly what the live store already does, which is why
-    // weight-based shipping does not work there.
+  // ── weight: NULL and 0 mean different things (D19) ───────────────────────
+  it('blocks a weight nobody has set — NULL means unknown', () => {
     expect(codes(input({ weight_g: null }, { default_weight_g: null }))).toContain('weight_unknown')
+  })
+
+  it('does NOT block a weight of 0 — that is a deliberate value, not a gap', () => {
+    // Every category's default is currently 0 so the test store can publish. It
+    // reproduces the live store's broken weight-based shipping and must be replaced
+    // before cutover, but it is a decision someone made, not a missing answer.
+    expect(codes(input({ weight_g: null }, { default_weight_g: 0 }))).not.toContain('weight_unknown')
+    expect(codes(input({ weight_g: 0 }))).not.toContain('weight_unknown')
+    expect(validateDraftForPublish(input({ weight_g: null }, { default_weight_g: 0 }))).toEqual([])
   })
 
   it('takes the draft weight over the category default, and the default when absent', () => {
     expect(resolveWeightG(input({ weight_g: 40 }))).toBe(40)
     expect(resolveWeightG(input({ weight_g: null }))).toBe(25)
     expect(resolveWeightG(input({ weight_g: null }, { default_weight_g: null }))).toBeNull()
+  })
+
+  it('a deliberate 0 g on the draft is NOT overridden by the category default', () => {
+    // `??` and not `||`. With `||`, a draft explicitly set to 0 g would silently
+    // publish at the category's 25 g instead — the operator's decision discarded
+    // because it happened to be falsy.
+    expect(resolveWeightG(input({ weight_g: 0 }, { default_weight_g: 25 }))).toBe(0)
+  })
+
+  it('0 on the category is not treated as "no default" either', () => {
+    expect(resolveWeightG(input({ weight_g: null }, { default_weight_g: 0 }))).toBe(0)
   })
 
   // ── the "never silently" part ────────────────────────────────────────────

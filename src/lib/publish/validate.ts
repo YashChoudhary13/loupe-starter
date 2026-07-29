@@ -44,7 +44,15 @@ export class PublishBlockedError extends Error {
 
 /**
  * The weight a variant will be published with: the draft's own, else the
- * category default. `null` means neither is known, which is a block — see below.
+ * category default.
+ *
+ * `??` and not `||`, deliberately. NULL and 0 mean different things here:
+ *
+ *   NULL → "nobody has said."   Blocks publish.
+ *   0    → "someone said zero." Publishes as 0 g.
+ *
+ * `||` would collapse the two and silently promote a deliberate 0 g on the draft
+ * to whatever the category happened to carry. See docs/DECISIONS.md D19.
  */
 export function resolveWeightG(input: PublishInput): number | null {
   return input.draft.weight_g ?? input.category.default_weight_g ?? null
@@ -89,14 +97,16 @@ export function validateDraftForPublish(
     })
   }
 
+  // NULL only. A category whose default is 0 publishes as 0 g, because somebody
+  // chose that; a category whose default is NULL has simply never been asked.
   if (resolveWeightG(input) === null) {
     blocks.push({
       code: 'weight_unknown',
       field: 'weight',
       message:
-        `Weight is unknown — neither this draft nor the ${category.name} category has one. ` +
-        'Publishing 0 g is what the live store already does, which is why weight-based ' +
-        'shipping does not work there. Set categories.default_weight_g or the draft weight.',
+        `Weight is unknown — neither this draft nor the ${category.name} category has one, ` +
+        'and NULL means nobody has said rather than zero. Set categories.default_weight_g ' +
+        '(0 is allowed and means a deliberate zero) or set the weight on this draft.',
     })
   }
 

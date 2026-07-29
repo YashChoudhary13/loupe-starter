@@ -1,3 +1,4 @@
+import { checkGoogleServiceAccount } from '@/lib/google/service-account'
 import { supabaseServer } from '@/lib/supabase/server'
 import { TABLES, type TableName } from '@/lib/tables'
 
@@ -70,6 +71,9 @@ export default async function HealthPage() {
   const { counts, fatal, elapsedMs, checkedAt } = await collectHealth()
   const failures = counts.filter((c) => c.error !== null)
   const ok = fatal === null && failures.length === 0
+  // Non-throwing on purpose: a broken Drive credential must be VISIBLE here, not
+  // take the diagnostics page down with it.
+  const google = checkGoogleServiceAccount()
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-12">
@@ -125,11 +129,47 @@ export default async function HealthPage() {
         </table>
       </div>
 
+      <p className="mb-3 mt-8 text-[10px] font-medium uppercase tracking-[0.11em] text-[var(--muted)]">
+        Credentials
+      </p>
+      <div className="overflow-hidden rounded-[18px] border border-black/10 bg-[var(--surface)]">
+        <table className="w-full text-[13px]">
+          <tbody>
+            <tr>
+              <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--ink-soft)]">
+                GOOGLE_SERVICE_ACCOUNT_JSON
+              </td>
+              <td className="px-5 py-2.5 text-right">
+                {google.ok ? (
+                  <span className="font-mono text-[12px] text-[var(--ink)]">
+                    {google.clientEmail}
+                  </span>
+                ) : (
+                  <span className="text-[var(--amber)]">{google.reason}</span>
+                )}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {!google.ok && (
+        <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--amber)]">
+          {google.message}
+        </p>
+      )}
+
       <p className="mt-6 text-[12px] leading-relaxed text-[var(--muted)]">
         Counts are read with the server-only service-role client, which bypasses Row Level
         Security. Every table has RLS enabled and no policies, so the browser client reads
         nothing at all. Authentication lands in Phase 4; this page is deliberately open until
         then.
+      </p>
+      <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted)]">
+        The credential is validated, not merely checked for presence — an unquoted multi-line
+        value in <code className="font-mono">.env</code> reaches the process as the single
+        character <code className="font-mono">{'{'}</code>, which passes every truthiness test
+        and then fails inside a worker. Only the service-account address is shown; the private
+        key is never rendered or logged.
       </p>
     </main>
   )

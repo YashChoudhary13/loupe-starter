@@ -25,6 +25,10 @@ const TYPES = [
   'ProductSetIdentifiers',
   'ProductSetInventoryInput',
   'InventoryItemInput',
+  'InventoryItemMeasurementInput',
+  'WeightInput',
+  'OptionSetInput',
+  'OptionValueSetInput',
   'VariantOptionValueInput',
   'MetafieldInput',
 ]

@@ -285,53 +285,120 @@ another way. That is deliberate, not duplication to be tidied away.
 
 ---
 
-### D19 — Publish also blocks on an unknown weight and a missing material
+### D19 — Publish blocks on an unknown weight and a missing material; **NULL and 0 are different**
 
-Hard rule 8 names price and stock. Two more were added, and both for the same reason:
-the alternative is not "publish anyway", it is "publish something silently wrong".
+*Revised 2026-07-29. The original blocked on any weight that was not a positive number,
+which — since every `default_weight_g` was NULL — blocked everything. The block is kept;
+what counts as "unknown" is narrowed.*
 
-**Weight.** Every variant in the live store weighs 0, which is exactly why weight-based
-shipping does not work there. Defaulting to 0 would reproduce that bug in the tool built
-to replace the process that caused it. `categories.default_weight_g` is NULL for every
-category — deliberately, since Phase 1 — so this blocks *everything* until real
-per-category grams are collected from the business. That is the point: the block is
-visible, a 0 g product is not.
+Hard rule 8 names price and stock. Two more are blocked, both for the same reason: the
+alternative is not "publish anyway", it is "publish something silently wrong".
 
 **Material.** The six description bullets render from the material metafield (D6), so a
 product without one publishes with no description at all. Material is a three-way choice
 the operator is already making.
 
-Both surface as ordinary `PublishBlock`s alongside price and stock, so hard rule 8's
-"never block silently" still holds.
+**Weight — and the distinction that carries it:**
+
+| value | meaning | publish |
+|---|---|---|
+| `NULL` | nobody has said | **BLOCKED** |
+| `0` | someone said zero | proceeds, writes 0 g |
+
+Every `categories.default_weight_g` is now **0**. That is a decision, not a gap, and it
+is what lets the test store publish at all.
+
+⚠️ **0 g recreates a known live-store bug if it ships.** Every variant in the live
+catalogue weighs 0, which is exactly why weight-based shipping does not work there.
+Acceptable on `qimti`; **not** acceptable at cutover. Real per-category grams are on the
+blocking list in `docs/PROGRESS.md`.
+
+The mechanics that keep the distinction real, all of which are load-bearing:
+
+- The CHECKs were relaxed from `> 0` to `>= 0`, **not dropped**. A negative weight is
+  still nonsense, and NULL must stay expressible or the unknown state disappears.
+- `resolveWeightG` uses `??`, never `||`. With `||` a draft deliberately set to 0 g
+  would silently publish at the category's weight instead — the operator's decision
+  discarded for being falsy.
+- `tests/schema.test.ts` asserts the column can still hold NULL. If a future migration
+  adds `NOT NULL DEFAULT 0`, the unknown state vanishes and the guard in
+  `validate.ts` silently stops being reachable — which is worse than deleting it,
+  because the code would still look like it was protecting something.
+
+**Rejected:** deleting the weight block entirely. Then a category that genuinely has no
+answer publishes as `undefined`/0 with nothing recording that nobody chose it, and the
+cutover checklist loses its only enforcement.
 
 ---
 
-### D20 — The SKU number is zero-padded to three digits; the title number is not
+### D20 — SKU **and** title numbers are zero-padded to a minimum of three digits
 
-`AK011`, `RS221`, `NK970` in the SKU. `Rings 221`, `Anklets 87 (Single Piece)` in the
-title. Numbers past 999 simply get wider, which the
-`reserved_sku` CHECK (`^[A-Z]{2,4}[0-9]{3,}$`) allows.
+*Revised 2026-07-29. The original padded the SKU and left the title unpadded. Confirmed
+against live data — the title is padded too.*
 
-The SKU side is confirmed against the live store. **The title side below 100 is not** —
-no live product with a number under 100 was inspected, so whether the live store writes
-"Anklets 87" or "Anklets 087" is an assumption. Unpadded was chosen because the live
-handle `rings-224set-of-10-different-rings-for-750-copy` shows an unpadded number in a
-title. **Confirm at cutover**, before `seed:counters` runs against the live store — for
-the six existing prefixes every next number is ≥ 88, so the two renderings only diverge
-for a brand-new prefix such as `NP`.
+```
+   4 → NP004 · "Nose Pin 004"        87 → AK087 · "Anklets 087 (Single Piece)"
+ 221 → RS221 · "Rings 221"          970 → NK970 · "Necklace 970"
+```
+
+`%03d` — a **minimum** of three digits, never a fixed width. Numbers past 999 get wider;
+`reserved_sku` is checked against `^[A-Z]{2,4}[0-9]{3,}$`, which allows that.
+
+This changes the derived **handle** for numbers under 100: `anklets-87-single-piece`
+becomes `anklets-087-single-piece`. Only for NEW reservations — handles already in
+`product_drafts.reserved_handle` are reused verbatim, never re-derived, because the
+handle is the idempotency key for `productSet` (hard rule 2). Re-deriving one would
+create a second product.
+
+#### The bug this uncovered — read before touching either implementation
+
+**Postgres `lpad(text, 3, '0')` pads *or truncates* to exactly three characters.**
+
+```
+lpad('87',   3, '0')  →  '087'    ✓
+lpad('1000', 3, '0')  →  '100'    ✗ silently loses a digit
+```
+
+The first cut of `reserve_draft_identity()` used it directly, so the 1000th necklace
+would have been issued SKU **NK100** — colliding with a necklace that already exists,
+silently, in the one project that exists because two products ended up on `RS221`. The
+UNIQUE index on `reserved_sku` would have caught it eventually, which is not the same as
+not doing it.
+
+JavaScript's `String.padStart` has never truncated, so the two implementations also
+disagreed above 999 and nothing noticed: the test comparing them only ever ran
+two-digit counters through the database.
+
+Both sides are now one named concept — `public.pad_sku_number()` wrapping the length in
+`greatest(3, length(n))`, and `padSkuNumber()` in `src/lib/publish/identity.ts` — and
+`tests/publish-identity.test.ts` compares them directly across `1, 4, 87, 99, 100, 221,
+970, 999, 1000, 1234, 12345`, plus an end-to-end reservation that crosses 999.
+
+**Never write bare `lpad(n, 3, '0')` for a SKU number.**
 
 ---
 
-### D21 — The material metafield is `custom.material`
+### D21 — The material metafield is `custom.material` — a **defined interface**, not an assumption
 
-`namespace: "custom"`, `key: "material"`, `type: "single_line_text_field"`, so a theme
-reads it as `product.metafields.custom.material`. `custom` is Shopify's own namespace
-for admin-defined custom data and is what a hand-edited theme would most naturally use.
+*Reclassified 2026-07-29. Previously recorded as "unverified, confirm against the live
+theme". It is not something to discover; it is something being defined.*
 
-**Unverified against the live theme.** The Phase 2 test store has no theme reading it.
-If the live theme uses a different namespace the bullets render empty, which is visible
-immediately on one product — so this is cheap to check and cheap to change. Do it before
-cutover, on one product, and look at the storefront.
+`namespace: "custom"`, `key: "material"`, `type: "single_line_text_field"` — read by a
+theme as `product.metafields.custom.material`.
+
+**The live store has no material metafield today.** Descriptions are body HTML, pasted in
+by hand, WhatsApp CSS classes and all. So there is no existing convention to match and
+nothing to verify against: Loupe is defining this field, and `custom` is Shopify's own
+namespace for admin-defined custom data.
+
+That makes the contract one-directional and simple: **the theme template must later read
+the same `namespace.key`.** Nothing else depends on the choice. Verified end to end on
+the test store — `gid://shopify/Product/8032332283987` carries
+`custom.material = "316L"`, read back from Shopify rather than assumed.
+
+**Consequence for D6:** when the six description bullets are moved into the theme, they
+read `product.metafields.custom.material`. If a future session finds the theme reading a
+different namespace, the theme is wrong, not this.
 
 ---
 
@@ -385,3 +452,78 @@ Shopify supports each version for twelve months and changes input types between 
 and falling back to "latest" would mean the shape of our writes could change without a
 commit. Bumping it is a deliberate act, and `npm run shopify:introspect` prints the input
 types Loupe depends on so the bump can be checked in a few seconds.
+
+---
+
+### D25 — `productSet` always sends `productOptions`, even for a colourless product
+
+Shopify rejects a `productSet` that supplies `variants` without `productOptions`:
+
+```
+input.productOptions: Product options input is required when updating variants
+```
+
+The first cut omitted the field when a draft had no colours and passed
+`optionValues: []`. Every colourless publish failed — which is most of them, since
+colours are optional. Caught by `npm run verify:publish` at criterion 3, where all 20
+concurrent publishes failed identically; it did not appear at criterion 1 because that
+draft has Gold and Silver.
+
+A colourless product now declares the same pair Shopify creates internally for a
+single-variant product:
+
+```
+productOptions: [{ name: 'Title', values: [{ name: 'Default Title' }] }]
+variants:       [{ optionValues: [{ optionName: 'Title', name: 'Default Title' }], … }]
+```
+
+**Rejected:** inventing a one-value option of our own (`Style: Standard`, or a
+single-value `Colour`). Both render as a visible dropdown on the storefront for a
+product that has no choice to make. `Title`/`Default Title` is what Shopify's own admin
+produces and what themes already special-case into invisibility.
+
+**Note for whoever adds colours to an already-published colourless product:** that is a
+genuine product-options change, not a metadata edit, and `productSet` may or may not
+accept it in place. Nothing depends on it today; check before relying on it.
+
+---
+
+### D26 — `GOOGLE_SERVICE_ACCOUNT_JSON` is validated, not merely read
+
+Truthiness is not validity, and this variable proved it. It was pasted into `.env` as
+raw, unquoted, multi-line JSON:
+
+```
+GOOGLE_SERVICE_ACCOUNT_JSON={
+  "type": "service_account",
+  …
+```
+
+dotenv terminates an unquoted value at the newline, so the variable's value was the
+single character `{`. A `required()`-style presence check passed. `source .env` in a
+shell fails outright on the same input, which is how it was found at all.
+
+Left alone, Phase 3 would have discovered it as a JSON parse error inside a Drive
+worker — or, worse, as a worker that started, claimed a lease and then died on every
+single file, which reads as a Drive outage for an hour before anyone opens `.env`.
+
+`src/lib/google/service-account.ts` therefore refuses to return a credential it has not
+looked inside. It accepts **base64 on one line** (recommended — cannot be broken by a
+newline, a quote or a `#`) or intact JSON, and each rejection names *which* mistake was
+made rather than reporting a generic failure:
+
+| reason | what it caught |
+|---|---|
+| `truncated` | the actual bug — dotenv cut it at the first newline |
+| `missing` | unset, empty, whitespace |
+| `not_json` | a file path, a base64 blob that decodes to junk, truncated JSON |
+| `not_an_object` | valid JSON that is an array or a string |
+| `missing_fields` | valid JSON, wrong file — an OAuth client secret is the likely one |
+| `malformed_private_key` | PEM newlines flattened; parses fine, then fails to sign |
+
+Two surfaces, on purpose: `googleServiceAccount()` **throws**, and Phase 3 must call it
+once at worker start-up rather than lazily on the first file. `checkGoogleServiceAccount()`
+reports instead of throwing, and `/health` renders it — a broken credential must be
+*visible* rather than take the diagnostics page down with it. Only the service-account
+address is ever rendered; the private key is never put in a message that might be logged,
+which `tests/google-service-account.test.ts` asserts.

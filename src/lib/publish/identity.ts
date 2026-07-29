@@ -17,28 +17,47 @@
  */
 
 /**
- * Zero-padded to three digits, matching the live store: `AK011`, `RS221`, `NK970`.
- * Numbers past 999 simply get wider — `product_drafts.reserved_sku` is checked
- * against `^[A-Z]{2,4}[0-9]{3,}$`, which allows that.
+ * Zero-pads a number to a MINIMUM of three digits — `%03d`, not "exactly three":
+ *
+ *     4 → 004      87 → 087      221 → 221      970 → 970      1000 → 1000
+ *
+ * The minimum is the whole point. Postgres `lpad(n, 3, '0')` pads OR **truncates**
+ * to exactly three, so `lpad('1000', 3, '0')` is `'100'` — which would have issued
+ * the 1000th necklace SKU `NK100`, colliding with a necklace that already exists,
+ * in a project whose premise is that `RS221` must never happen again. The SQL side
+ * uses `public.pad_sku_number()`, which wraps the length in `greatest(3, …)`.
+ *
+ * `String.padStart` has never truncated, which is exactly why the two
+ * implementations disagreed above 999 and nothing noticed. They are now one named
+ * concept on each side, compared directly in tests/publish-identity.test.ts.
+ */
+export function padSkuNumber(number: number): string {
+  return String(number).padStart(3, '0')
+}
+
+/**
+ * The SKU: prefix plus the padded number. `AK011`, `RS221`, `NK970`.
+ * `product_drafts.reserved_sku` is checked against `^[A-Z]{2,4}[0-9]{3,}$`, so
+ * numbers past 999 simply get wider.
  */
 export function formatSku(prefix: string, number: number): string {
-  return `${prefix}${String(number).padStart(3, '0')}`
+  return `${prefix}${padSkuNumber(number)}`
 }
 
 /**
  * The category's pattern with `{n}` substituted, plus the optional free-text suffix.
  *
- * The number in the TITLE is deliberately NOT padded — the live store reads
- * "Rings 221", not "Rings 0221". Only the SKU is padded. Note that some patterns
- * already carry a parenthetical of their own (`Anklets {n} (Single Piece)`), so a
- * suffix is appended after it rather than replacing it.
+ * The title number is padded the same way the SKU's is — confirmed against the live
+ * store: `Anklets 087 (Single Piece)`, `Nose Pin 004`, `Rings 221`, `Necklace 970`.
+ * Note that some patterns already carry a parenthetical of their own, so a suffix is
+ * appended after it rather than replacing it.
  */
 export function renderTitle(
   titlePattern: string,
   number: number,
   titleSuffix?: string | null,
 ): string {
-  const base = titlePattern.replaceAll('{n}', String(number))
+  const base = titlePattern.replaceAll('{n}', padSkuNumber(number))
   const suffix = titleSuffix?.trim()
   return suffix ? `${base} ${suffix}` : base
 }

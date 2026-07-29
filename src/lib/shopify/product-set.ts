@@ -28,6 +28,18 @@ export const MATERIAL_METAFIELD = {
 /** Colour is a product OPTION; the variants under it share the parent SKU. */
 export const COLOUR_OPTION_NAME = 'Colour'
 
+/**
+ * What Shopify calls the single option of a product that has no real options.
+ *
+ * `productSet` REQUIRES `productOptions` whenever `variants` are supplied —
+ * *"Product options input is required when updating variants"* — so a product with
+ * no colours cannot simply omit them and pass an empty `optionValues`. It has to
+ * declare the same `Title` / `Default Title` pair Shopify creates internally for a
+ * single-variant product. Anything else invents a visible option nobody asked for.
+ */
+export const DEFAULT_OPTION_NAME = 'Title'
+export const DEFAULT_OPTION_VALUE = 'Default Title'
+
 export interface ProductSetVariant {
   readonly sku: string
   readonly price: string
@@ -147,7 +159,7 @@ function buildInput(args: ProductSetArgs): Record<string, unknown> {
     taxable: true,
     optionValues: variant.colour
       ? [{ optionName: COLOUR_OPTION_NAME, name: variant.colour }]
-      : [],
+      : [{ optionName: DEFAULT_OPTION_NAME, name: DEFAULT_OPTION_VALUE }],
     inventoryItem: {
       sku: variant.sku,
       tracked: true,
@@ -174,13 +186,12 @@ function buildInput(args: ProductSetArgs): Record<string, unknown> {
     ...(args.material
       ? { metafields: [{ ...MATERIAL_METAFIELD, value: args.material }] }
       : {}),
-    ...(hasColours
-      ? {
-          productOptions: [
-            { name: COLOUR_OPTION_NAME, values: args.colours.map((name) => ({ name })) },
-          ],
-        }
-      : {}),
+    // ALWAYS present. productSet rejects `variants` without `productOptions`, so a
+    // colourless product declares Shopify's own Title/Default Title pair rather
+    // than omitting the field.
+    productOptions: hasColours
+      ? [{ name: COLOUR_OPTION_NAME, values: args.colours.map((name) => ({ name })) }]
+      : [{ name: DEFAULT_OPTION_NAME, values: [{ name: DEFAULT_OPTION_VALUE }] }],
     variants,
   }
 }
