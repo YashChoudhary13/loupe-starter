@@ -49,6 +49,37 @@ import { assertPublishable, resolveWeightG } from './validate'
 /** Written on every product. The live store has `jewelery` / `Jewelery` / blank. */
 export const PRODUCT_TYPE = 'Jewellery'
 
+/**
+ * Written on every product alongside its category tag.
+ *
+ * The live catalogue uses this exact all-caps spelling. Collections are
+ * tag-driven, so "Newest", "newest" or "New" would all publish successfully
+ * while silently missing the intended collection.
+ */
+export const NEWEST_TAG = 'NEWEST'
+
+export function buildProductTags(
+  categoryTag: string,
+  extraTags: readonly string[] = [],
+): readonly string[] {
+  return [categoryTag, NEWEST_TAG, ...extraTags]
+}
+
+/**
+ * Shopify validates a file's declared filename extension against the bytes it
+ * fetches from `originalSource`. Generated versions are PNGs even when their
+ * source photograph was a JPEG, so the intake filename cannot be reused
+ * verbatim for every selected version.
+ */
+export function filenameForStorage(sourceFilename: string, storageKey: string): string {
+  const storageName = storageKey.split('/').at(-1) ?? ''
+  const extension = storageName.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase()
+  if (!extension) return sourceFilename
+
+  const base = sourceFilename.replace(/\.[^.]+$/, '')
+  return `${base || sourceFilename}.${extension}`
+}
+
 const DRAFT_COLUMNS =
   'id, category_id, material_id, title_suffix, price_paise, weight_g, stock, status, reserved_sku, reserved_handle, shopify_product_id'
 const CATEGORY_COLUMNS =
@@ -160,7 +191,10 @@ export async function loadPublishImages(
         storageKey: version.storage_key,
         description: file?.product_description ?? null,
         shopifyMediaId: record.shopify_media_id,
-        filename: file?.filename ?? `${version.intake_file_id}.png`,
+        filename: filenameForStorage(
+          file?.filename ?? version.intake_file_id,
+          version.storage_key,
+        ),
       }
     })
     .filter((image): image is PublishImage => image !== null)
@@ -328,7 +362,7 @@ export async function publishProduct(
       handle: identity.handle,
       title: identity.title,
       productType: PRODUCT_TYPE,
-      tags: [identity.shopifyTag, ...(options.extraTags ?? [])],
+      tags: buildProductTags(identity.shopifyTag, options.extraTags),
       material: input.materialName,
       colours: input.colours,
       variants,

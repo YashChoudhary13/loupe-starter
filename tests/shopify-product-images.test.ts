@@ -11,7 +11,12 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildProductFiles } from '@/lib/publish/publish-product'
+import {
+  buildProductFiles,
+  buildProductTags,
+  filenameForStorage,
+  NEWEST_TAG,
+} from '@/lib/publish/publish-product'
 import type { PublishImage } from '@/lib/publish/types'
 import { ALT_TEXT_MAX_LENGTH, buildAltText } from '@/lib/shopify/product-set'
 
@@ -29,6 +34,35 @@ function image(overrides: Partial<PublishImage> = {}): PublishImage {
 }
 
 const sign = async (key: string) => `https://r2.example.com/${key}?X-Amz-Signature=deadbeef`
+
+describe('product tags', () => {
+  it('always writes the live catalogue’s exact NEWEST tag beside the category tag', () => {
+    expect(NEWEST_TAG).toBe('NEWEST')
+    expect(buildProductTags('Necklace')).toEqual(['Necklace', 'NEWEST'])
+    expect(buildProductTags('earrings', ['loupe-test'])).toEqual([
+      'earrings',
+      'NEWEST',
+      'loupe-test',
+    ])
+  })
+})
+
+describe('Shopify filenames', () => {
+  it('uses the selected object extension, not the source photograph extension', () => {
+    expect(
+      filenameForStorage(
+        'phase4-chain-bracelet.jpg',
+        'versions/intake-id/v1.png',
+      ),
+    ).toBe('phase4-chain-bracelet.png')
+    expect(
+      filenameForStorage(
+        'phase4-chain-bracelet.jpg',
+        'originals/intake-id.jpg',
+      ),
+    ).toBe('phase4-chain-bracelet.jpg')
+  })
+})
 
 describe('alt text', () => {
   it('is the cached description of THAT photograph, verbatim', async () => {

@@ -40,7 +40,11 @@ import {
   type ProductReadback,
 } from '../src/lib/shopify/product-set'
 import { paiseToShopifyPrice } from '../src/lib/publish/identity'
-import { publishProduct, PRODUCT_TYPE } from '../src/lib/publish/publish-product'
+import {
+  NEWEST_TAG,
+  publishProduct,
+  PRODUCT_TYPE,
+} from '../src/lib/publish/publish-product'
 import { PublishBlockedError } from '../src/lib/publish/validate'
 
 config({ path: '.env', quiet: true })
@@ -340,7 +344,7 @@ async function main(): Promise<void> {
     check('handle', readback.handle, result1.handle)
     check('product_type', readback.productType, PRODUCT_TYPE)
     check('status', readback.status, 'ACTIVE')
-    check('tags', [...readback.tags].sort(), ['Necklace', TEST_TAG].sort())
+    check('tags', [...readback.tags].sort(), ['Necklace', NEWEST_TAG, TEST_TAG].sort())
     check('material metafield', readback.metafield?.value ?? null, '316L')
 
     const variants = variantSummary(readback)
