@@ -105,6 +105,7 @@ export function QueueGrid({
             key={`${tile.kind}:${tile.id}`}
             data-tile
             data-tile-kind={tile.kind}
+            data-tile-id={tile.id}
             ref={(node) => registerTile(index, node)}
             type="button"
             role="option"

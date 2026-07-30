@@ -105,6 +105,7 @@ export function DraftEditor(props: DraftEditorProps) {
           Pick more than one if they are the same piece. Arrow keys move around the grid;
           Space selects.
         </p>
+        {children ? <div className="mt-4 w-full text-left">{children}</div> : null}
       </div>
     )
   }
@@ -443,10 +444,16 @@ export function DraftEditor(props: DraftEditorProps) {
           type="button"
           onClick={onSaveDraft}
           disabled={busy !== null}
-          title="Save as draft — reserves no SKU and publishes nothing"
-          className="grid w-[46px] shrink-0 place-items-center rounded-pill bg-chip text-[15px] text-ink-soft transition-colors hover:bg-[#ebebeb] disabled:opacity-60"
+          title={
+            dirty
+              ? 'Save as draft — reserves no SKU and publishes nothing'
+              : 'This draft is saved'
+          }
+          aria-live="polite"
+          className="flex min-w-[108px] shrink-0 items-center justify-center gap-1.5 rounded-pill bg-chip px-4 text-[12px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb] disabled:opacity-60"
         >
-          {busy === 'save' ? '·' : dirty ? '◔' : '◷'}
+          <span aria-hidden="true">{busy === 'save' ? '·' : dirty ? '◔' : '✓'}</span>
+          {busy === 'save' ? 'Saving…' : dirty ? 'Save draft' : 'Saved'}
         </button>
       </div>
     </form>

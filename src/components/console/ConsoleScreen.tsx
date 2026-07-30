@@ -402,8 +402,17 @@ export function ConsoleScreen({
   const focusNextUngrouped = useCallback((snapshot: QueueSnapshot) => {
     const index = snapshot.tiles.findIndex((tile) => tile.kind === 'photo')
     if (index < 0) return
+    const nextPhoto = snapshot.tiles[index]
     setFocusIndex(index)
-    window.setTimeout(() => tileRefs.current.get(index)?.focus(), 0)
+    window.setTimeout(() => {
+      // The just-published tile still occupies its old numeric position until
+      // React commits the updated queue. Resolve by stable photo id so focus
+      // cannot fall onto whichever draft happens to inherit that index.
+      const node = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('[data-tile-kind="photo"]'),
+      ).find((tile) => tile.dataset.tileId === nextPhoto.id)
+      node?.focus()
+    }, 0)
   }, [])
 
   const handlePublish = useCallback(async () => {
