@@ -31,6 +31,151 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-30 — Phase 4 built and deployed; NOT complete, three business gaps found in operator testing
+
+**Goal this session:** record the description-model deferral, then build the authenticated
+listing console and prove every Phase 4 success criterion.
+
+**PHASE 4 IS NOT COMPLETE.** The console is built, deployed and demonstrably publishes a
+correct product to the test store, but the acceptance harness has not been run, most
+criteria are unverified, and operator testing surfaced three requirements the build does
+not meet.
+
+### Decisions recorded first, in their own commit
+
+D43 defers description-model selection and cost optimisation past Phase 4. Phase 3C stays
+**not complete** (criterion 17 still failed), `DESCRIBE_MODEL` and every other model,
+prompt and provider value is unchanged, and the Gemini shortlist remains evidence only.
+
+D44–D48 record the choices this phase had to make: a direct Google OAuth client rather than
+Supabase Auth, the image requirement enforced in TypeScript only, the publish lease, the
+recorded Shopify media id, and the alt-text rules.
+
+### Built
+
+- `20260730140000_phase_4_listing_console.sql` → `create_product_draft`,
+  `attach_intake_file`, `detach_intake_file`, `save_product_draft`, `begin_draft_publish` /
+  `end_draft_publish`, `record_shopify_media`, `record_drive_housekeeping`, and an extended
+  `mark_draft_published` that also publishes the intake rows and counts colour usage.
+- `20260730141000_fix_save_draft_colour_ambiguity.sql` → forward fix; `plpgsql_check` found
+  `name` ambiguous between `unnest(p_colours) as name` and `colours.name` (42702).
+- `src/lib/auth/*` → Google OAuth with PKCE, an HMAC-signed session cookie, and an
+  `app_users` lookup re-run on every protected surface.
+- `src/lib/console/*` → queue read model, presigned R2 access, mutations, money parser,
+  identity preview, injectable publish and Drive housekeeping.
+- `src/components/console/*`, `/login`, `/console`, `/console/drafts/[draftId]` → the
+  operator surface, shadcn/ui themed to the DESIGN.md tokens.
+- `scripts/verify-phase4-live.ts` → seed / accept / cleanup harness. **Written and
+  typechecked, never run past `seed`.**
+
+### Verified
+
+```text
+tests                    332 passed (332), 26 files
+typecheck / lint / build passed
+verify:isolation         service role, Shopify, Drive, cron, OAuth secret and session
+                         secret all absent from client assets; the server-only import
+                         still fails the build from a client component
+supabase db lint         No schema errors found
+production deployment    https://qimati-loupe.vercel.app · READY
+```
+
+Proved against the deployed database, in `tests/console-drafts.sql.test.ts`:
+
+- **the grouping race** — two concurrent `create_product_draft` calls for one photograph:
+  one wins, the loser raises 55000 and its draft rolls back entirely;
+- **the save race** — a stale `updated_at` is refused and the newer value survives;
+- **the publish lease** — a second publish is refused while one is in flight, an expired
+  lease is reclaimable, and a stale token cannot release its replacement's lease;
+- category pinned once reserved (D27), Nose Pins refused for an unconfirmed tag (D23),
+  intake rows published in the same transaction as the draft, a published draft refusing to
+  be dismantled, and Drive housekeeping never touching `status`.
+
+`tests/console-preview.test.ts` proves the preview agrees with the deployed
+`reserve_draft_identity()` for **every** configured category, that a hundred previews move
+no counter, and that saving moves no counter.
+
+### The one real end-to-end publish — done by the operator, not by the harness
+
+```text
+Shopify product   gid://shopify/Product/8033052557395
+title             Necklace 113          handle   necklace-113
+SKU               NK113                 tag      Necklace
+product_type      Jewellery             status   ACTIVE
+custom.material   316L                  weight   0 g
+price             125.00                stock    12
+media             1 · alt = the 454-character cached description, verbatim
+Drive             phase4-necklace.png moved to /Processed at 08:35:17Z
+```
+
+The event trail is complete and correctly attributed to `lakhira.studio@gmail.com`:
+`intake.grouped` → `draft.created` → `draft.saved` → `publish.started` →
+`publish.reserved` → `publish.media_recorded` → `intake.published` → `publish.published` →
+`drive.processed`.
+
+### Three gaps found by operator testing — none of them fixed
+
+1. **No description on the product.** Correct per D6 as built — Loupe writes
+   `custom.material` and the six bullets are supposed to render from the theme — but the
+   theme has never been changed to read `product.metafields.custom.material` (CONTEXT.md
+   open question 5). The product therefore ships with no description at all. Either the
+   theme changes or D6 does; this needs a business decision, not a code change.
+2. **Price shows in USD.** `shop.currencyCode` on `qimti.myshopify.com` is **USD**, so
+   `125.00` renders as $125.00. Loupe writes a currency-less decimal string and Shopify
+   applies the store currency, so this is store configuration, not a Loupe bug — but it is
+   CONTEXT.md open question 3 and must be settled before cutover.
+3. **The `Newest` tag is missing.** New requirement, stated 2026-07-30: every product needs
+   `Newest` alongside its category tag. Not implemented. `CLAUDE.md` now records it, with
+   the warning to confirm the exact casing against a live product first.
+
+### One reported bug that is not a bug
+
+"Save Draft does not add the product to draft" — the database disagrees. `draft.created`
+and `draft.saved` were both written at 08:33, four seconds apart, before any publish, and
+the draft persisted. What is actually wrong is the interface: Save Draft is an icon-only
+button (`◷`) with a tooltip and **no confirmation of any kind**, so a successful save looks
+identical to a dead button. That is a real defect in the operator surface; it is not a
+persistence defect.
+
+### Not finished / known broken
+
+- `npm run verify:phase4 -- accept` has never been run. Criteria 4, 9, 10, 11, 12, 13 and
+  14 are therefore unproven by the harness, even though criterion 10's substance was
+  demonstrated by hand above.
+- Criteria 1 and 2 are unproven: sign-in reached Google's consent screen and stopped there.
+  The unauthorised-account refusal has never been exercised against the running app.
+- Criteria 16 (keyboard) and 17 (visual acceptance screenshots) are unproven.
+- The three gaps above.
+- 20 seeded intake rows, 4 Drive files still in RAW, ~60 R2 objects and one real Shopify
+  product (`8033052557395`, NK113) are all still present. **Nothing has been cleaned up.**
+  `.artifacts/phase4-acceptance/fixtures.json` lists everything except that product.
+- The NK counter is at 113. Phase 2's `NK090` draft row also predates this session.
+
+### Surprises
+
+- **A wrong Google client secret is invisible until the last step.** The authorization
+  redirect only uses the client id, so Google's own sign-in page appears, the operator signs
+  in successfully, and the failure arrives at the token exchange as an opaque 401 that reads
+  like a Google outage. `/health` now probes the client with a deliberately invalid code:
+  `invalid_grant` means the pair is accepted, `invalid_client` means it is not.
+- **The Shopify credentials were never set on Vercel.** Production had no
+  `SHOPIFY_CLIENT_ID` or `SHOPIFY_CLIENT_SECRET`, so the deployed app could not have
+  published at all. Added this session along with the Phase 4 variables.
+- **Position-repairing Shopify media is only safe when NOTHING is recorded.** The first cut
+  repaired a mixed set by position; but the usual way an image loses its media id is the
+  operator swapping which version to publish, so that would have silently republished the
+  version they had just rejected. Caught by a test, narrowed to all-or-nothing.
+- **`image_versions` cannot be cleaned up in either obvious order** — RESTRICT from
+  `product_draft_images`, CASCADE from `intake_files`, and a CHECK that requires a draft
+  while grouped. The join table has to be cut first. The first cleanup did not check the
+  error, so fixtures survived, the counter was reset beneath them, and the next run collided
+  on `reserved_sku`.
+
+**Next session should start with:** `docs/phases/PHASE-4-HANDOFF.md`, which lists the exact
+state, the three gaps and the remaining criteria in order.
+
+---
+
 ## 2026-07-30 — Phase 3C implemented and visually verified; criterion 17 blocks completion
 
 **Goal this session:** add bounded category-aware composition to the durable two-call

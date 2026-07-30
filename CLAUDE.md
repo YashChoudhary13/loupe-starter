@@ -59,6 +59,13 @@ A minimum, never a fixed width — `1000` stays `1000`. ⚠️ Postgres `lpad(n,
 
 Existing tags are inconsistent (`cb` vs `Necklace` vs `anklets`). **Match the existing tag exactly.** Collections appear to be tag-driven, so a "tidier" tag would silently drop the product out of its collection.
 
+⚠️ **Every product also needs a second tag, `Newest`** — stated by the business on
+2026-07-30 after reviewing the first console-published product, and **not yet implemented**.
+The category tag is the only one Loupe writes today. Before implementing it, read the tag
+off a live product and confirm the exact casing: the whole reason `shopify_tag` is per
+category and matched verbatim is that a near-miss (`newest`, `NEWEST`, `New`) publishes
+successfully and drops the product out of its collection silently.
+
 Titles take an **optional free-text suffix**: `(Adjustable)`, `(Huggies)`, `(Single Piece)`, `(Light Rose gold)`. Title is *not* purely category + number.
 
 `product_type` is currently `jewelery` / `Jewelery` / blank. Write `Jewellery` consistently on new products.
