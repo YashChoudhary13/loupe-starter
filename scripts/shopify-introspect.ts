@@ -31,6 +31,11 @@ const TYPES = [
   'OptionValueSetInput',
   'VariantOptionValueInput',
   'MetafieldInput',
+  // Phase 4 — product images are published through productSet's `files`, so the
+  // media API's shape is now something a publish depends on being right about.
+  'FileSetInput',
+  'FileContentType',
+  'FileDuplicateResolutionMode',
 ]
 
 const QUERY = /* GraphQL */ `
@@ -53,6 +58,9 @@ const QUERY = /* GraphQL */ `
           }
         }
       }
+      enumValues {
+        name
+      }
     }
   }
 `
@@ -68,6 +76,7 @@ interface IntrospectResponse {
     name: string
     kind: string
     inputFields: readonly { name: string; type: TypeRef }[] | null
+    enumValues: readonly { name: string }[] | null
   } | null
 }
 
@@ -120,6 +129,9 @@ async function main(): Promise<void> {
     }
     for (const field of type.inputFields ?? []) {
       console.log(`  ${field.name.padEnd(28)}${renderType(field.type)}`)
+    }
+    for (const value of type.enumValues ?? []) {
+      console.log(`  ${value.name}`)
     }
     console.log('')
   }

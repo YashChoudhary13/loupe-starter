@@ -1,18 +1,23 @@
 @import "tailwindcss";
 
 /*
- * Design tokens from docs/DESIGN.md. Only the tokens live here in Phase 1 —
- * the component layer arrives with the first real screen. The visual reference
- * is design/console-mockup.html and design/tracking-mockup.html.
+ * Design tokens from docs/DESIGN.md, and shadcn/ui mapped onto them.
+ *
+ * The tokens are the source of truth. shadcn's semantic variables
+ * (--primary, --muted, --border …) are DERIVED from them below rather than
+ * carrying shadcn's own neutral palette, which is what "themed to those tokens
+ * — do not accept shadcn's default look" means in practice.
  *
  * Monochrome on purpose: the content is gold and silver jewellery, so a neutral
  * interface makes the photographs the only colour on screen. --amber is the ONE
  * accent and means "needs attention", nothing else (docs/DECISIONS.md D9).
  *
- * No dark-mode block: DESIGN.md specifies one palette, and a second one would
- * mean two sets of decisions about what "black means active" looks like.
+ * There is deliberately NO dark mode. DESIGN.md specifies one palette, and a
+ * second one would mean a second set of decisions about what "black means
+ * active" looks like. `shadcn init` wrote a `.dark` block; it was removed.
  */
 :root {
+  /* ── docs/DESIGN.md ────────────────────────────────────────────────────── */
   --bg: #ededed;
   --surface: #ffffff;
   --ink: #0a0a0a;
@@ -21,6 +26,43 @@
   --chip: #f4f4f4;
   --amber: #b8862b;
   --green: #2f7a4f;
+  /* Hairline used by the tracking mockup's rows. Not a palette colour. */
+  --line: #eaeaea;
+
+  /* ── shadcn/ui semantics, derived ─────────────────────────────────────── */
+  --background: var(--surface);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  /* "Black means active." The primary button, the selected chip, the feature card. */
+  --primary: var(--ink);
+  --primary-foreground: #ffffff;
+  --secondary: var(--chip);
+  --secondary-foreground: var(--ink-soft);
+  --accent: var(--chip);
+  --accent-foreground: var(--ink);
+  /*
+   * NOTE the split. DESIGN.md's `--muted` is a FOREGROUND (labels, placeholders);
+   * shadcn's `--muted` is a background. So shadcn's background gets --chip and
+   * its foreground gets the design token. In components, `text-muted-foreground`
+   * is the DESIGN.md muted grey — `text-muted` would be a background colour and
+   * is never what you want.
+   */
+  --muted-surface: var(--chip);
+  --muted-foreground: var(--muted);
+  /*
+   * Amber, once. It is the "needs attention" accent and nothing else, so it is
+   * also the only thing a destructive/blocked state may use — a second accent
+   * would erode the first.
+   */
+  --destructive: var(--amber);
+  --border: var(--line);
+  --input: var(--chip);
+  --ring: var(--ink);
+  /* Everything interactive is fully rounded. Pill geometry is the signature. */
+  --radius: 999px;
 }
 
 @theme inline {
@@ -28,31 +70,93 @@
   --color-surface: var(--surface);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
-  --color-muted: var(--muted);
   --color-chip: var(--chip);
   --color-amber: var(--amber);
   --color-green: var(--green);
+  --color-line: var(--line);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted-surface);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
   --radius-card: 24px;
   --radius-panel: 18px;
   --radius-tile: 16px;
-  --radius-input: 14px;
+  --radius-field: 14px;
   --radius-pill: 999px;
+
+  /* shadcn sizes everything off --radius; all of them collapse to the pill. */
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: var(--font-sans);
 }
 
-body {
-  background: var(--bg);
-  color: var(--ink);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 13px;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * DESIGN.md: "Visible focus rings on everything. The visual reference is a
+   * static image and shows none. Without them the keyboard path is unusable."
+   * Inset so a ring on a tile or a chip never overlaps its neighbour.
+   */
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: -2px;
+  }
 }
 
-/*
- * DESIGN.md: "Visible focus rings on everything. The visual reference is a
- * static image and shows none. Without them the keyboard path is unusable."
- */
-:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: -2px;
+@layer components {
+  /* Density over airiness: thin scrollbars, because the grid is the screen. */
+  .loupe-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #dddddd transparent;
+  }
+  .loupe-scroll::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  .loupe-scroll::-webkit-scrollbar-thumb {
+    background: #dddddd;
+    border-radius: 3px;
+  }
+
+  /* Section label: 10px, uppercase, 0.11em. Used above every field group. */
+  .loupe-label {
+    font-size: 10px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
 }

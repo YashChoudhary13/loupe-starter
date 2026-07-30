@@ -40,6 +40,13 @@ export const COLOUR_OPTION_NAME = 'Colour'
 export const DEFAULT_OPTION_NAME = 'Title'
 export const DEFAULT_OPTION_VALUE = 'Default Title'
 
+/**
+ * Shopify's own cap on alt text. Longer than this and `productSet` rejects the
+ * whole product, so a 100-word description has to be trimmed before it is sent —
+ * see `buildAltText`, which does it deterministically and says when it did.
+ */
+export const ALT_TEXT_MAX_LENGTH = 512
+
 export interface ProductSetVariant {
   readonly sku: string
   readonly price: string
@@ -47,6 +54,24 @@ export interface ProductSetVariant {
   readonly stock: number
   readonly locationId: string
   readonly colour?: string
+}
+
+/**
+ * One image on the product, in the operator's order.
+ *
+ * `mediaId` is the whole idempotency story. When it is set, `productSet` is told
+ * to keep THAT file at this position and simply correct its alt text; when it is
+ * null the image is uploaded from `originalSource`. Sending `originalSource`
+ * again for a file Shopify already holds uploads a second copy — the presigned
+ * URL is different every time, so nothing on Shopify's side can tell they are
+ * the same picture. That is how a retried publish grows duplicate media.
+ */
+export interface ProductSetFile {
+  readonly mediaId: string | null
+  /** Presigned, short-lived, and only used when `mediaId` is null. */
+  readonly originalSource: string | null
+  readonly filename: string
+  readonly alt: string
 }
 
 export interface ProductSetArgs {
@@ -57,6 +82,59 @@ export interface ProductSetArgs {
   readonly material: string | null
   readonly colours: readonly string[]
   readonly variants: readonly ProductSetVariant[]
+  /**
+   * Omitted entirely when the caller has no opinion about images — `productSet`
+   * is declarative, so sending `files: []` would DELETE every image on the
+   * product rather than leaving it alone.
+   */
+  readonly files?: readonly ProductSetFile[]
+}
+
+export interface AltText {
+  readonly value: string
+  /** True when the cached description was too long for Shopify and was trimmed. */
+  readonly truncated: boolean
+  /** True when there was no cached description and the product title was used. */
+  readonly fallback: boolean
+}
+
+/**
+ * The alt text for one image.
+ *
+ * The cached `intake_files.product_description` is used verbatim wherever it
+ * fits — it is a factual description of that exact photograph, written once and
+ * paid for once (D36), and it is why the console makes no model call.
+ *
+ * Two deterministic departures, both recorded rather than silent:
+ *
+ *   too long   trimmed at the last sentence that fits, else the last word. No
+ *              ellipsis: alt text is read aloud, and "…" is noise in a screen
+ *              reader. Nothing is added, only dropped from the end.
+ *   missing    the product's own title. It invents no jewellery detail, which is
+ *              the entire risk here — a fabricated "gold-plated" in alt text is a
+ *              claim Qimati's retailers would be entitled to rely on.
+ */
+export function buildAltText(description: string | null, productTitle: string): AltText {
+  const text = description?.trim() ?? ''
+  if (!text) {
+    return { value: `${productTitle} — product photograph`, truncated: false, fallback: true }
+  }
+  if (text.length <= ALT_TEXT_MAX_LENGTH) {
+    return { value: text, truncated: false, fallback: false }
+  }
+
+  const window = text.slice(0, ALT_TEXT_MAX_LENGTH)
+  const lastSentence = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '))
+  if (lastSentence > ALT_TEXT_MAX_LENGTH / 2) {
+    return { value: window.slice(0, lastSentence + 1), truncated: true, fallback: false }
+  }
+
+  const lastWord = window.lastIndexOf(' ')
+  return {
+    value: (lastWord > 0 ? window.slice(0, lastWord) : window).trimEnd(),
+    truncated: true,
+    fallback: false,
+  }
 }
 
 export interface ShopifyProductSummary {
@@ -186,6 +264,24 @@ function buildInput(args: ProductSetArgs): Record<string, unknown> {
     ...(args.material
       ? { metafields: [{ ...MATERIAL_METAFIELD, value: args.material }] }
       : {}),
+    // Present only when the caller supplied images. `files` is declarative like
+    // everything else in productSet, so listing them in draft order IS the
+    // ordering instruction, and an omitted field is "leave the media alone"
+    // while an empty array is "remove all of it".
+    ...(args.files
+      ? {
+          files: args.files.map((file) =>
+            file.mediaId
+              ? { id: file.mediaId, alt: file.alt }
+              : {
+                  originalSource: file.originalSource,
+                  filename: file.filename,
+                  contentType: 'IMAGE',
+                  alt: file.alt,
+                },
+          ),
+        }
+      : {}),
     // ALWAYS present. productSet rejects `variants` without `productOptions`, so a
     // colourless product declares Shopify's own Title/Default Title pair rather
     // than omitting the field.
@@ -311,6 +407,56 @@ export async function readProductByHandle(
     { handle },
   )
   return data.productByIdentifier
+}
+
+const PRODUCT_MEDIA_QUERY = /* GraphQL */ `
+  query LoupeProductMedia($handle: String!) {
+    productByIdentifier(identifier: { handle: $handle }) {
+      id
+      media(first: 50) {
+        nodes {
+          id
+          alt
+          mediaContentType
+          status
+          ... on MediaImage {
+            image {
+              url
+              width
+              height
+            }
+          }
+        }
+      }
+    }
+  }
+`
+
+export interface ShopifyMedia {
+  readonly id: string
+  readonly alt: string | null
+  readonly mediaContentType: string
+  readonly status: string
+  readonly image: { url: string; width: number | null; height: number | null } | null
+}
+
+/**
+ * The product's media, in Shopify's order.
+ *
+ * Read before publishing as well as after: before, so an interrupted publish can
+ * reuse what it already uploaded instead of uploading it again; after, so the
+ * ids can be recorded and so the order can actually be verified rather than
+ * assumed from the fact that the mutation returned no errors.
+ */
+export async function readProductMedia(
+  client: ShopifyClient,
+  handle: string,
+): Promise<readonly ShopifyMedia[] | null> {
+  const data = await client.graphql<{
+    productByIdentifier: { id: string; media: { nodes: readonly ShopifyMedia[] } } | null
+  }>(PRODUCT_MEDIA_QUERY, { handle })
+  if (!data.productByIdentifier) return null
+  return data.productByIdentifier.media.nodes
 }
 
 const COUNT_BY_HANDLE_QUERY = /* GraphQL */ `

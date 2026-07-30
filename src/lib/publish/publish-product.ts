@@ -25,12 +25,20 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { ShopifyClient } from '@/lib/shopify/client'
 import { ShopifyError } from '@/lib/shopify/errors'
-import { primaryLocationId, productSet } from '@/lib/shopify/product-set'
+import {
+  buildAltText,
+  primaryLocationId,
+  productSet,
+  readProductMedia,
+  type ProductSetFile,
+} from '@/lib/shopify/product-set'
 
 import { paiseToShopifyPrice } from './identity'
 import type {
   CategoryRow,
   DraftRow,
+  PublishedImage,
+  PublishImage,
   PublishInput,
   PublishOptions,
   PublishResult,
@@ -102,7 +110,119 @@ export async function loadPublishInput(
     })
     .filter((name): name is string => typeof name === 'string' && name.length > 0)
 
-  return { draft, category, materialName, colours }
+  return { draft, category, materialName, colours, images: await loadPublishImages(db, draftId) }
+}
+
+/**
+ * The draft's images, in the operator's order, each carrying the cached
+ * description of the photograph it came from.
+ *
+ * Two joins deep on purpose: the image is a version, the description belongs to
+ * the source file, and the alt text has to be the description of *that* source
+ * photograph rather than of whichever one happened to be first.
+ */
+export async function loadPublishImages(
+  db: SupabaseClient,
+  draftId: string,
+): Promise<readonly PublishImage[]> {
+  const { data, error } = await db
+    .from('product_draft_images')
+    .select(
+      'image_version_id, position, shopify_media_id, image_versions ( id, storage_key, intake_file_id, intake_files ( id, filename, product_description ) )',
+    )
+    .eq('product_draft_id', draftId)
+    .order('position', { ascending: true })
+  if (error) throw new Error(`Could not read images for draft ${draftId}: ${error.message}`)
+
+  const one = <T,>(value: unknown): T | null =>
+    (Array.isArray(value) ? (value[0] as T | undefined) : (value as T | undefined)) ?? null
+
+  return (data ?? [])
+    .map((row) => {
+      const record = row as {
+        image_version_id: string
+        position: number
+        shopify_media_id: string | null
+        image_versions?: unknown
+      }
+      const version = one<{ id: string; storage_key: string; intake_file_id: string; intake_files?: unknown }>(
+        record.image_versions,
+      )
+      if (!version) return null
+      const file = one<{ id: string; filename: string; product_description: string | null }>(
+        version.intake_files,
+      )
+
+      return {
+        imageVersionId: record.image_version_id,
+        intakeFileId: version.intake_file_id,
+        position: record.position,
+        storageKey: version.storage_key,
+        description: file?.product_description ?? null,
+        shopifyMediaId: record.shopify_media_id,
+        filename: file?.filename ?? `${version.intake_file_id}.png`,
+      }
+    })
+    .filter((image): image is PublishImage => image !== null)
+}
+
+/**
+ * Turns the draft's images into `productSet` file inputs, reusing what Shopify
+ * already holds wherever it can.
+ *
+ * Three cases, in priority order:
+ *
+ *   1. we recorded a media id for this image and Shopify still has it → reuse,
+ *      which is what makes a REORDER move the picture rather than upload it
+ *      again beside itself;
+ *   2. we recorded nothing, but the product already carries exactly as many
+ *      media as we are about to send → assume they are ours in order and repair
+ *      them. This is the crash window: media created, ids never written down;
+ *   3. otherwise upload from a freshly presigned URL.
+ */
+export async function buildProductFiles(
+  images: readonly PublishImage[],
+  existingMedia: readonly { id: string }[] | null,
+  productTitle: string,
+  signImageUrl: (storageKey: string) => Promise<string>,
+): Promise<{ files: readonly ProductSetFile[]; published: readonly PublishedImage[] }> {
+  const known = new Set((existingMedia ?? []).map((m) => m.id))
+  const unclaimed = (existingMedia ?? []).filter(
+    (m) => !images.some((i) => i.shopifyMediaId === m.id),
+  )
+  const repairable = existingMedia !== null && existingMedia.length === images.length
+
+  const files: ProductSetFile[] = []
+  const published: PublishedImage[] = []
+
+  for (const [index, image] of images.entries()) {
+    const alt = buildAltText(image.description, productTitle)
+
+    let mediaId: string | null = null
+    if (image.shopifyMediaId && known.has(image.shopifyMediaId)) {
+      mediaId = image.shopifyMediaId
+    } else if (repairable && !image.shopifyMediaId) {
+      mediaId = (existingMedia ?? [])[index]?.id ?? null
+      if (mediaId && !unclaimed.some((m) => m.id === mediaId)) mediaId = null
+    }
+
+    files.push({
+      mediaId,
+      originalSource: mediaId ? null : await signImageUrl(image.storageKey),
+      filename: image.filename,
+      alt: alt.value,
+    })
+    published.push({
+      imageVersionId: image.imageVersionId,
+      shopifyMediaId: mediaId,
+      alt: alt.value,
+      altTruncated: alt.truncated,
+      altFallback: alt.fallback,
+      reused: mediaId !== null,
+    })
+  }
+
+  return { files, published }
 }
 
 /**
@@ -179,6 +299,25 @@ export async function publishProduct(
           }))
         : [{ sku: identity.sku, price, weightG, stock: input.draft.stock, locationId }]
 
+    // Read the store's media BEFORE writing. A publish that was interrupted
+    // after Shopify accepted the files but before Loupe recorded their ids is
+    // indistinguishable from a first attempt unless we look.
+    let published: readonly PublishedImage[] = []
+    let files: readonly ProductSetFile[] | undefined
+    if (input.images.length > 0) {
+      const signImageUrl = options.signImageUrl
+      if (!signImageUrl) {
+        throw new Error(
+          `Draft ${draftId} has ${input.images.length} image(s) but no signImageUrl was supplied. ` +
+            'Shopify fetches images over HTTP and the R2 bucket is private.',
+        )
+      }
+      const existingMedia = await readProductMedia(shopify, identity.handle)
+      const built = await buildProductFiles(input.images, existingMedia, identity.title, signImageUrl)
+      files = built.files
+      published = built.published
+    }
+
     const product = await productSet(shopify, {
       handle: identity.handle,
       title: identity.title,
@@ -187,7 +326,34 @@ export async function publishProduct(
       material: input.materialName,
       colours: input.colours,
       variants,
+      ...(files ? { files } : {}),
     })
+
+    // Read the media back so the recorded ids are Shopify's, not ours. Assuming
+    // the mutation did what it was told is exactly how duplicate media survives
+    // a green test run.
+    if (input.images.length > 0) {
+      const finalMedia = (await readProductMedia(shopify, identity.handle)) ?? []
+      published = published.map((image, index) => ({
+        ...image,
+        shopifyMediaId: finalMedia[index]?.id ?? image.shopifyMediaId,
+      }))
+
+      const { error: mediaError } = await db.rpc('record_shopify_media', {
+        p_draft_id: draftId,
+        p_media: published.map((image) => ({
+          image_version_id: image.imageVersionId,
+          media_id: image.shopifyMediaId,
+        })),
+        p_actor: options.actor ?? null,
+      })
+      if (mediaError) {
+        throw new Error(
+          `Product ${product.id} was published but its image ids could not be recorded: ` +
+            `${mediaError.message}. A retry would re-upload the images — reconcile by handle "${identity.handle}".`,
+        )
+      }
+    }
 
     const { error } = await db.rpc('mark_draft_published', {
       p_draft_id: draftId,
@@ -217,6 +383,7 @@ export async function publishProduct(
       material: input.materialName,
       colours: input.colours,
       reusedIdentity: identity.reused,
+      images: published,
     }
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause)

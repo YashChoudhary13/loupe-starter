@@ -22,6 +22,7 @@ export type PublishBlockCode =
   | 'material_missing'
   | 'weight_unknown'
   | 'tag_unconfirmed'
+  | 'images_missing'
 
 export interface PublishBlock {
   readonly code: PublishBlockCode
@@ -118,6 +119,20 @@ export function validateDraftForPublish(
         `The ${category.name} category (${category.sku_prefix}) has no confirmed Shopify tag. ` +
         'Collections are tag-driven, so guessing one publishes the product straight out of ' +
         'its collection without any error. Read the tag off a live product and set it.',
+    })
+  }
+
+  // Opt-OUT rather than opt-in. Every product Qimati sells exists because
+  // somebody photographed it, so "no image" is a mistake unless a caller says
+  // otherwise — and the only caller that does is the Phase 2 publish harness,
+  // which has no photographs and is testing SKU behaviour.
+  if (options.requireImages !== false && input.images.length === 0) {
+    blocks.push({
+      code: 'images_missing',
+      field: 'images',
+      message:
+        'No image selected. Pick at least one version to publish — a listing with no ' +
+        'photograph is the one thing a wholesale buyer cannot work around.',
     })
   }
 

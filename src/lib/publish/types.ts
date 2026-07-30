@@ -25,13 +25,44 @@ export interface CategoryRow {
   readonly default_stock: number
 }
 
-/** A draft, its category, its material and its colour variants, ready to validate. */
+/** One image on the product, in the operator's chosen order. */
+export interface PublishImage {
+  readonly imageVersionId: string
+  readonly intakeFileId: string
+  readonly position: number
+  /** R2 object key. Presigned at publish time; never stored anywhere public. */
+  readonly storageKey: string
+  /**
+   * The cached factual description of the SOURCE photograph, which becomes this
+   * image's Shopify alt text. Cached on `intake_files` by the enhancement
+   * pipeline (D36) — the console never generates one, and never makes a model
+   * call to fill a null.
+   */
+  readonly description: string | null
+  /** Set once this image has been published; makes a retry reuse the file. */
+  readonly shopifyMediaId: string | null
+  readonly filename: string
+}
+
+/** A draft, its category, its material, its colour variants and its images. */
 export interface PublishInput {
   readonly draft: DraftRow
   readonly category: CategoryRow
   readonly materialName: string | null
   /** Colour names in display order. Empty means a single default variant. */
   readonly colours: readonly string[]
+  /** Ordered. Empty means the draft has no images selected. */
+  readonly images: readonly PublishImage[]
+}
+
+export interface PublishedImage {
+  readonly imageVersionId: string
+  readonly shopifyMediaId: string | null
+  readonly alt: string
+  readonly altTruncated: boolean
+  /** True when there was no cached description and the title was used instead. */
+  readonly altFallback: boolean
+  readonly reused: boolean
 }
 
 /** The identity `public.reserve_draft_identity()` allocated (or reused). */
@@ -61,6 +92,8 @@ export interface PublishResult {
   readonly colours: readonly string[]
   /** True when this call updated an existing product rather than creating one. */
   readonly reusedIdentity: boolean
+  /** In published order. Empty when the caller published no images. */
+  readonly images: readonly PublishedImage[]
 }
 
 export interface PublishOptions {
@@ -73,4 +106,20 @@ export interface PublishOptions {
   readonly actor?: string
   /** Extra Shopify tags alongside the category's. Used to mark test products. */
   readonly extraTags?: readonly string[]
+  /**
+   * Defaults to TRUE — a Qimati product exists because somebody photographed it,
+   * so publishing one with no image is a mistake by default.
+   *
+   * `npm run verify:publish` sets it false on purpose: that harness proves the
+   * SKU/handle/idempotency properties with bare drafts and has no photographs to
+   * attach. It is opt-OUT rather than opt-in so a future caller that forgets to
+   * think about images fails closed.
+   */
+  readonly requireImages?: boolean
+  /**
+   * Turns an R2 object key into a URL Shopify can fetch once. Required whenever
+   * images are being uploaded; kept as a callback so the publisher never learns
+   * about buckets, credentials or expiry policy.
+   */
+  readonly signImageUrl?: (storageKey: string) => Promise<string>
 }

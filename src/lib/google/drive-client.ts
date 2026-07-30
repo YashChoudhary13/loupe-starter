@@ -6,6 +6,8 @@ import {
   type DriveChangePage,
   type DriveFileMetadata,
   type DriveFilePage,
+  type DriveHousekeeper,
+  type DriveMoveOutcome,
   type DriveReader,
 } from './drive-types'
 
@@ -26,6 +28,8 @@ export interface DriveApiExecutor {
     params: drive_v3.Params$Resource$Changes$List,
   ): Promise<drive_v3.Schema$ChangeList>
   downloadFile(params: drive_v3.Params$Resource$Files$Get): Promise<ArrayBuffer>
+  getFile(params: drive_v3.Params$Resource$Files$Get): Promise<drive_v3.Schema$File>
+  updateFile(params: drive_v3.Params$Resource$Files$Update): Promise<drive_v3.Schema$File>
 }
 
 function nonEmpty(value: string | null | undefined): string | null {
@@ -70,7 +74,7 @@ function escapeDriveQueryValue(value: string): string {
  * The executor keeps generated-client overloads out of the intake domain and
  * makes pagination requests directly observable in unit tests.
  */
-export class GoogleDriveClient implements DriveReader {
+export class GoogleDriveClient implements DriveReader, DriveHousekeeper {
   constructor(private readonly api: DriveApiExecutor) {}
 
   async getStartPageToken(): Promise<string> {
@@ -172,5 +176,68 @@ export class GoogleDriveClient implements DriveReader {
       })
     }
     return buffer
+  }
+
+  /**
+   * Moves a file into a folder, and does nothing if it is already there.
+   *
+   * Drive has no `move`: a file's location is its `parents` list, so the move is
+   * "add the target, remove whatever it is in now" in one update. Reading the
+   * current parents first is what makes a retry safe — Drive rejects
+   * `removeParents` naming a folder the file is not in, so a second attempt on an
+   * already-moved file would fail for no reason at all.
+   *
+   * Post-publish housekeeping is deliberately allowed to fail; see hard rule 3
+   * and `record_drive_housekeeping`.
+   */
+  async moveToFolder(fileId: string, targetFolderId: string): Promise<DriveMoveOutcome> {
+    if (!fileId.trim() || !targetFolderId.trim()) {
+      throw new DriveError('Google Drive needs both a file and a destination folder.', {
+        kind: 'request',
+        retryable: false,
+      })
+    }
+
+    let current: drive_v3.Schema$File
+    try {
+      current = await this.api.getFile({
+        fileId,
+        fields: 'id,name,parents,trashed',
+        supportsAllDrives: true,
+      })
+    } catch (error) {
+      throw classifyDriveError(error, `reading Drive file ${fileId}`)
+    }
+
+    const parents = (current.parents ?? []).filter(
+      (parent): parent is string => typeof parent === 'string' && parent.length > 0,
+    )
+
+    if (parents.length === 1 && parents[0] === targetFolderId) {
+      return { fileId, moved: false, parents }
+    }
+
+    const removeParents = parents.filter((parent) => parent !== targetFolderId)
+
+    let updated: drive_v3.Schema$File
+    try {
+      updated = await this.api.updateFile({
+        fileId,
+        addParents: parents.includes(targetFolderId) ? undefined : targetFolderId,
+        removeParents: removeParents.length > 0 ? removeParents.join(',') : undefined,
+        fields: 'id,parents',
+        supportsAllDrives: true,
+      })
+    } catch (error) {
+      throw classifyDriveError(error, `moving Drive file ${fileId} into /Processed`)
+    }
+
+    return {
+      fileId,
+      moved: true,
+      parents: (updated.parents ?? []).filter(
+        (parent): parent is string => typeof parent === 'string' && parent.length > 0,
+      ),
+    }
   }
 }

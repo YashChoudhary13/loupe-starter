@@ -49,6 +49,17 @@ config({ path: '.env.local', override: true, quiet: true })
 const CLEANUP_ALL = process.argv.includes('--cleanup-all')
 const CLEANUP = CLEANUP_ALL || process.argv.includes('--cleanup')
 const TEST_TAG = 'loupe-test'
+
+/**
+ * Phase 4 made "at least one image" the DEFAULT publish requirement, because a
+ * Qimati product exists precisely because somebody photographed it.
+ *
+ * This harness is the one legitimate exception: it proves SKU allocation, handle
+ * idempotency and blocking behaviour using bare drafts that have no Drive file,
+ * no R2 object and no photograph behind them. It opts out explicitly so that the
+ * requirement stays fail-closed for every other caller.
+ */
+const NO_IMAGES = { requireImages: false } as const
 const ACTOR = 'script:verify-publish'
 
 let failures = 0
@@ -312,6 +323,7 @@ async function main(): Promise<void> {
   const result1 = await publishProduct(db, shopify, draft1, {
     actor: ACTOR,
     extraTags: [TEST_TAG],
+    ...NO_IMAGES,
   })
   createdProductIds.add(result1.shopifyProductId)
 
@@ -374,6 +386,7 @@ async function main(): Promise<void> {
   const result2 = await publishProduct(db, shopify, draft1, {
     actor: ACTOR,
     extraTags: [TEST_TAG],
+    ...NO_IMAGES,
   })
 
   console.log(`  second call  handle "${result2.handle}"`)
@@ -405,7 +418,7 @@ async function main(): Promise<void> {
   const startedAt = Date.now()
   const settled = await Promise.allSettled(
     concurrentDrafts.map((id) =>
-      publishProduct(db, shopify, id, { actor: ACTOR, extraTags: [TEST_TAG] }),
+      publishProduct(db, shopify, id, { actor: ACTOR, extraTags: [TEST_TAG], ...NO_IMAGES }),
     ),
   )
   const elapsed = Date.now() - startedAt
@@ -455,7 +468,7 @@ async function main(): Promise<void> {
 
   let sabotagedError: unknown
   try {
-    await publishProduct(db, saboteur, draft4, { actor: ACTOR, extraTags: [TEST_TAG] })
+    await publishProduct(db, saboteur, draft4, { actor: ACTOR, extraTags: [TEST_TAG], ...NO_IMAGES })
   } catch (e) {
     sabotagedError = e
   }
@@ -478,7 +491,11 @@ async function main(): Promise<void> {
   console.log('')
   console.log('  4a — the retry')
   const counterBeforeRetry = await readCounter('NK')
-  const retry = await publishProduct(db, shopify, draft4, { actor: ACTOR, extraTags: [TEST_TAG] })
+  const retry = await publishProduct(db, shopify, draft4, {
+    actor: ACTOR,
+    extraTags: [TEST_TAG],
+    ...NO_IMAGES,
+  })
   createdProductIds.add(retry.shopifyProductId)
 
   check('retry reused the SAME handle', retry.handle, failedRow.reserved_handle)
@@ -500,7 +517,11 @@ async function main(): Promise<void> {
   })
   if (markError) throw new Error(markError.message)
 
-  const recovery = await publishProduct(db, shopify, draft4, { actor: ACTOR, extraTags: [TEST_TAG] })
+  const recovery = await publishProduct(db, shopify, draft4, {
+    actor: ACTOR,
+    extraTags: [TEST_TAG],
+    ...NO_IMAGES,
+  })
   check('recovery hit the same handle', recovery.handle, retry.handle)
   check('recovery hit the same product id', recovery.shopifyProductId, retry.shopifyProductId)
   check('STILL exactly one product', await countProductsByHandle(shopify, retry.handle), 1)
@@ -538,7 +559,7 @@ async function main(): Promise<void> {
   ] as const) {
     let blocked: unknown
     try {
-      await publishProduct(db, shopify, id, { actor: ACTOR, ...options })
+      await publishProduct(db, shopify, id, { actor: ACTOR, ...NO_IMAGES, ...options })
     } catch (e) {
       blocked = e
     }
@@ -553,6 +574,7 @@ async function main(): Promise<void> {
     actor: ACTOR,
     allowZeroStock: true,
     extraTags: [TEST_TAG],
+    ...NO_IMAGES,
   })
   createdProductIds.add(overridden.shopifyProductId)
   assert('zero stock publishes when explicitly overridden', true, overridden.sku)

@@ -960,3 +960,146 @@ Phase 4 work may re-run the paid Phase 3C acceptance set.
 **Rejected:** marking Phase 3C complete because the business is content to live with the
 cost. Deciding to defer a criterion is not the same as meeting it, and a phase marked
 complete on a failed criterion makes every other "complete" in PROGRESS.md worth less.
+
+---
+
+### D44 — Google sign-in is a direct OAuth client, not Supabase Auth
+
+Phase 4 needed Google sign-in. Two routes were available and the choice is not
+obvious, so here is why it went the way it did.
+
+**Supabase Auth's Google provider** would have handled the redirect dance. What it
+would also have done is hand the browser an `authenticated` JWT — and every table
+in this schema has RLS enabled with **zero policies** (D11), so that token can
+read exactly nothing. It would be a credential whose only purpose is to be
+ignored. Meanwhile the Google client secret would have to live in the Supabase
+dashboard, which is a second place to keep a secret and a second place to look
+when sign-in breaks.
+
+**A direct OAuth client** keeps the whole flow inside this repository:
+`/api/auth/google/start` mints `state` + a PKCE verifier into a short-lived
+httpOnly cookie, `/api/auth/google/callback` exchanges the code server-to-server,
+and the result is a session cookie signed with `AUTH_SESSION_SECRET`. The client
+secret is read through `serverEnv`, which starts with `import 'server-only'`, and
+`npm run verify:isolation` now scans the built client assets for it and for the
+session secret.
+
+`.env.local.example` has reserved `GOOGLE_OAUTH_CLIENT_ID` /
+`GOOGLE_OAUTH_CLIENT_SECRET` "Phase 4" since Phase 1 — the same conclusion,
+reached earlier. This decision records the reasoning rather than inventing it.
+
+Consequences worth knowing:
+
+- **The cookie is a claim, not a grant.** It carries an `app_users.id`, and every
+  protected surface re-reads that row and requires `active = true`. Deactivating
+  an operator takes effect on their next request, not when their token happens to
+  expire. The `role` in the cookie is for display and for the audit actor; nothing
+  authorises on it.
+- **`AUTH_BASE_URL` is configured, never derived from the `Host` header.** The
+  redirect URI must match the OAuth client's registration exactly, so deriving it
+  breaks behind a proxy *and* lets a forged Host move where Google sends people.
+- **`prompt=select_account` is always sent.** Without it a signed-out operator is
+  bounced straight back in on whichever Google account the browser last used —
+  which also makes "prove an unauthorised account is refused" impossible to
+  demonstrate.
+- **The ID token's signature is not re-verified locally.** It is read from the
+  response of a TLS request Loupe itself made to Google's token endpoint, with no
+  untrusted party in between; that is Google's own documented guidance. Issuer,
+  audience, expiry and `email_verified` are all still checked. A token arriving by
+  any other route would need JWKS verification — and no such route exists.
+
+**Rejected:** adding an RLS policy so the browser could read the queue directly.
+D11 makes browser-side harmlessness structural rather than remembered, and
+"it would simplify the UI" is precisely the reason that decision anticipated.
+
+---
+
+### D45 — The image requirement is enforced in TypeScript, not in the SQL
+
+Every other publish invariant is checked twice — readably in
+`src/lib/publish/validate.ts` for the operator, and again as a `raise` inside
+`reserve_draft_identity()` so nothing that reaches the database another way can
+route around it (D18). "At least one image" is deliberately **not** in the SQL
+half, and the asymmetry is worth explaining rather than discovering.
+
+`npm run verify:publish` — the Phase 2 harness that proves SKU allocation, handle
+idempotency and blocking behaviour — publishes bare drafts. There is no Drive
+file, no R2 object and no photograph behind them, and there should not be: it is
+testing the counter, not the catalogue. A SQL-side image requirement would have
+made that harness impossible to run without inventing fixtures for it.
+
+The two are also not equally dangerous. A missing tag drops a product out of its
+collection silently and a wrong SKU corrupts a *sequence*; a missing image is
+visible on the product page the moment anyone looks. So the guard lives where the
+operator is, and `requireImages` defaults to **true** — opt-out, not opt-in, so a
+future caller that never thinks about images fails closed. `verify:publish` opts
+out in one place, with a comment saying why.
+
+---
+
+### D46 — Publishing takes a lease on the draft
+
+Two rapid Publish clicks were already safe in the ways that matter most:
+`reserve_draft_identity()` takes `FOR UPDATE`, so one identity; `productSet` is
+addressed by handle, so one product. What was **not** safe was media. Two
+publishes racing past each other could both read "this product has no images yet"
+and both upload the same files, and Shopify would accept it — the presigned URLs
+differ every time, so nothing on its side can tell the two uploads apart.
+
+So `begin_draft_publish()` / `end_draft_publish()` wrap the console's publish with
+the same UUID compare-and-swap the intake worker uses (hard rule 6). A second
+Publish while one is in flight is refused with a sentence the operator can read;
+an **expired** lease is reclaimable, so a publish that crashed mid-flight is
+retryable and self-heals rather than stranding the draft forever.
+
+The release is fenced by the token: a publish that overran its lease cannot
+unlock the attempt that replaced it. Client-side double-submit prevention exists
+too, but only for usability — correctness is the database's.
+
+---
+
+### D47 — A draft image remembers which Shopify media it became
+
+`product_draft_images.shopify_media_id` is recorded after every successful
+publish, read back from Shopify rather than assumed from the mutation's reply.
+
+It exists because `productSet`'s `files` is declarative: passing `id` keeps a file
+Shopify already holds, and passing `originalSource` uploads a new one. Without a
+recorded id there is no way to tell those apart, because the presigned URL is
+different on every publish — so a retry, or a re-publish after a reorder, would
+upload the same photographs again and the product would grow duplicate media.
+
+With the id, a **reorder** simply lists the same media in a new order, and the
+picture moves instead of being uploaded beside itself.
+
+One case has no recorded id and still must not duplicate: a publish interrupted
+after Shopify accepted the files but before Loupe wrote them down. There, the
+media list is read back before publishing and, when the product already carries
+exactly as many media as we are about to send, they are treated as ours in order
+and repaired. That is a narrow, deliberate assumption — it only fires when the
+counts match exactly and no draft image already claims an id.
+
+---
+
+### D48 — Alt text is the cached description, trimmed but never invented
+
+Each selected image's Shopify alt text is `intake_files.product_description` for
+**that** source photograph — the factual paragraph the describer already produced
+and Loupe already paid for (D36). The console makes no model call of any kind.
+
+Two deterministic departures, both recorded rather than silent:
+
+| case | what happens |
+|---|---|
+| longer than Shopify's 512-character limit | trimmed at the last sentence that fits, else the last word. No ellipsis — alt text is read aloud and "…" is noise in a screen reader. Nothing is added, only dropped from the end. |
+| no cached description (the describer degraded, D39) | the product's own title: `"Necklace 005 — product photograph"`. |
+
+A 60–100 word description lands close to 512 characters, so the trim is a real
+path and not a theoretical one; `buildAltText()` is pure and tested at the
+boundary.
+
+The fallback deliberately invents no jewellery detail. Qimati's buyers are
+retailers who zoom in to judge build quality before staking their own reputation
+(docs/CONTEXT.md) — a fabricated "gold-plated" in alt text is a claim they would
+be entitled to rely on. The presentation class is not used either: it is a
+staging vocabulary, not a description of the piece (D41).

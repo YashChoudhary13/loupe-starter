@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { validatedSessionSecret } from '@/lib/auth/session'
 import { validatedCronSecret } from '@/lib/cron/secret'
 
 /**
@@ -44,6 +45,16 @@ export const serverEnv = {
     return required('DRIVE_RAW_FOLDER_ID')
   },
 
+  /**
+   * Where published source photographs are tidied away to. HOUSEKEEPING ONLY —
+   * nothing reads Drive folder membership to decide what has been processed
+   * (hard rule 3), so a wrong value here leaves an untidy Raw folder, not a
+   * broken pipeline.
+   */
+  get driveProcessedFolderId(): string {
+    return required('DRIVE_PROCESSED_FOLDER_ID')
+  },
+
   /** Shared secret accepted by server-side cron routes. */
   get cronSecret(): string {
     return validatedCronSecret(process.env.CRON_SECRET)
@@ -71,5 +82,34 @@ export const serverEnv = {
   },
   get r2Bucket(): string {
     return required('R2_BUCKET')
+  },
+
+  /**
+   * Google sign-in (Phase 4). The secret is exchanged server-to-server for an ID
+   * token; nothing here is ever inlined into a client bundle, and
+   * `npm run verify:isolation` proves it.
+   */
+  get googleOAuthClientId(): string {
+    return required('GOOGLE_OAUTH_CLIENT_ID')
+  },
+  get googleOAuthClientSecret(): string {
+    return required('GOOGLE_OAUTH_CLIENT_SECRET')
+  },
+
+  /** Signs the console session cookie. 32 random bytes as 64 hex characters. */
+  get authSessionSecret(): string {
+    return validatedSessionSecret(process.env.AUTH_SESSION_SECRET)
+  },
+
+  /**
+   * The origin the console is actually served from, without a trailing slash.
+   *
+   * Configured, never derived from the request's Host header. The redirect URI
+   * has to match what is registered on the OAuth client exactly, so guessing it
+   * from a header both breaks sign-in on a proxy and turns a forged Host into a
+   * way to point the redirect somewhere else.
+   */
+  get authBaseUrl(): string {
+    return required('AUTH_BASE_URL').replace(/\/+$/, '')
   },
 } as const

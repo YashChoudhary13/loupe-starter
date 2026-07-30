@@ -164,9 +164,16 @@ if (shopifySecret && shopifySecret.length > 12) {
 // Phase 3A. The base64 service-account document contains the private signing key,
 // and CRON_SECRET authorises every automated intake endpoint. Both are runtime
 // server values even though neither resembles a JWT.
+//
+// Phase 4 adds two more. GOOGLE_OAUTH_CLIENT_SECRET completes the sign-in
+// exchange, and AUTH_SESSION_SECRET signs the session cookie — anyone holding it
+// can mint a cookie for any operator, so it is strictly worse to leak than the
+// cookie itself.
 for (const [name, secret] of [
   ['GOOGLE_SERVICE_ACCOUNT_JSON', process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()],
   ['CRON_SECRET', process.env.CRON_SECRET?.trim()],
+  ['GOOGLE_OAUTH_CLIENT_SECRET', process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim()],
+  ['AUTH_SESSION_SECRET', process.env.AUTH_SESSION_SECRET?.trim()],
 ] as const) {
   if (secret && secret.length > 12) {
     const leaks = findInClientAssets(secret)

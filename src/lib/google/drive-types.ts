@@ -50,3 +50,19 @@ export interface DriveReader {
 export interface DriveDownloader {
   downloadFile(fileId: string): Promise<Buffer>
 }
+
+/**
+ * Moving a published photograph into /Processed. Housekeeping only (hard rule 3):
+ * nothing ever reads folder membership to decide what has been processed, so a
+ * failure here leaves a tidy-up outstanding and not a product in doubt.
+ */
+export interface DriveHousekeeper {
+  moveToFolder(fileId: string, targetFolderId: string): Promise<DriveMoveOutcome>
+}
+
+export interface DriveMoveOutcome {
+  readonly fileId: string
+  /** False when the file was already in the target folder — a retry, not an error. */
+  readonly moved: boolean
+  readonly parents: readonly string[]
+}

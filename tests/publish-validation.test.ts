@@ -18,7 +18,7 @@ import {
   resolveWeightG,
   validateDraftForPublish,
 } from '@/lib/publish/validate'
-import type { CategoryRow, DraftRow, PublishInput } from '@/lib/publish/types'
+import type { CategoryRow, DraftRow, PublishImage, PublishInput } from '@/lib/publish/types'
 
 const CATEGORY: CategoryRow = {
   id: 'cat-1',
@@ -44,10 +44,20 @@ const DRAFT: DraftRow = {
   shopify_product_id: null,
 }
 
+const IMAGE: PublishImage = {
+  imageVersionId: 'ver-1',
+  intakeFileId: 'file-1',
+  position: 0,
+  storageKey: 'versions/file-1/v1.png',
+  description: 'A single necklace in polished gold-tone metal.',
+  shopifyMediaId: null,
+  filename: 'necklace.png',
+}
+
 function input(
   draft: Partial<DraftRow> = {},
   category: Partial<CategoryRow> = {},
-  rest: Partial<Pick<PublishInput, 'materialName' | 'colours'>> = {},
+  rest: Partial<Pick<PublishInput, 'materialName' | 'colours' | 'images'>> = {},
 ): PublishInput {
   return {
     draft: { ...DRAFT, ...draft },
@@ -56,6 +66,7 @@ function input(
     // test, and `??` would quietly substitute the default and make it pass.
     materialName: 'materialName' in rest ? (rest.materialName ?? null) : '316L',
     colours: rest.colours ?? [],
+    images: rest.images ?? [IMAGE],
   }
 }
 
@@ -114,6 +125,19 @@ describe('publish validation', () => {
     ).toContain('tag_unconfirmed')
   })
 
+  // ── images ───────────────────────────────────────────────────────────────
+  it('blocks a draft with no image selected', () => {
+    expect(codes(input({}, {}, { images: [] }))).toContain('images_missing')
+  })
+
+  it('the image requirement is opt-OUT — verify:publish is the only caller that opts out', () => {
+    // Fail closed: a caller that never thinks about images gets the block.
+    expect(() => assertPublishable(input({}, {}, { images: [] }), {})).toThrow(PublishBlockedError)
+    expect(
+      validateDraftForPublish(input({}, {}, { images: [] }), { requireImages: false }),
+    ).toEqual([])
+  })
+
   // ── weight: NULL and 0 mean different things (D19) ───────────────────────
   it('blocks a weight nobody has set — NULL means unknown', () => {
     expect(codes(input({ weight_g: null }, { default_weight_g: null }))).toContain('weight_unknown')
@@ -150,11 +174,12 @@ describe('publish validation', () => {
       input(
         { price_paise: 0, stock: 0, weight_g: null },
         { default_weight_g: null, shopify_tag: null },
-        { materialName: null },
+        { materialName: null, images: [] },
       ),
     )
 
     expect(blocks.map((b) => b.code).sort()).toEqual([
+      'images_missing',
       'material_missing',
       'price_missing',
       'stock_zero',

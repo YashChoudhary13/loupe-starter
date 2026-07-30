@@ -36,6 +36,8 @@ export function googleDriveClient(): GoogleDriveClient {
           responseType: 'arraybuffer',
         })
       ).data as ArrayBuffer,
+    getFile: async (params) => (await client.files.get(params)).data,
+    updateFile: async (params) => (await client.files.update(params)).data,
   })
   return cached
 }
