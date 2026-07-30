@@ -1,218 +1,235 @@
 # Phase 4 — handoff
 
-Written 2026-07-30, mid-phase. **Phase 4 is not complete.** The console is built, deployed
-and publishes a correct product; the acceptance harness has never been run past `seed`, and
-operator testing found three requirements the build does not meet.
+Updated 2026-07-30 after live acceptance and cleanup. **Phase 4 is not complete.**
+Criteria 1 and 3–18 pass. Criterion 2 still needs a real Google account that is absent
+from `app_users`, and two owner decisions remain unanswered.
 
-Read `CLAUDE.md`, `docs/CONTEXT.md`, `docs/PROGRESS.md` (top entry) and
-`docs/phases/PHASE-4-listing-console.md` before touching anything. This file is the
-shortest path into the current state; it is not a substitute for those.
+Read `CLAUDE.md`, `docs/CONTEXT.md`, the top of `docs/PROGRESS.md`,
+`docs/phases/PHASE-4-listing-console.md` and D43–D48 in `docs/DECISIONS.md` before
+changing anything. This is only the shortest path into the current state.
 
 ---
 
-## 1 · What exists and works
+## 1 · What is finished
 
-The console is live at **https://qimati-loupe.vercel.app** — `/login`, `/console`,
-`/console/drafts/[draftId]`.
+The console is deployed at **https://qimati-loupe.vercel.app**.
 
-- **Sign-in.** Direct Google OAuth (D44), PKCE, HMAC-signed session cookie, authorisation by
-  exact `app_users` membership re-read on every protected surface. `/health` validates the
-  OAuth client pair and currently reports `accepted`.
-- **The write path.** All of it is Postgres functions (migration `20260730140000`), because
-  the three races the console can lose are decided there: grouping claims a photograph with
-  `WHERE product_draft_id IS NULL`, saving carries the `updated_at` it was loaded with, and
-  publishing takes a UUID lease. All three are proved against the deployed database in
-  `tests/console-drafts.sql.test.ts`.
-- **Publishing** goes through the existing `publishProduct()`. Images ride on `productSet`'s
-  declarative `files`; each draft image records the Shopify media id it became, which is
-  what stops a retry or a reorder duplicating media (D47). Alt text is the cached
-  description of that source photograph, trimmed at 512 characters, falling back to the
-  product title (D48). No model call is made anywhere in the console.
-- **Drive housekeeping** runs last, separately, and cannot fail a publish (hard rule 3).
+- The exact live catalogue tag is **`NEWEST`**, all caps. It was read from Necklace 970,
+  Earrings 453, Chain Bracelet 353 and Anklets 087 before implementation.
+  `publish-product.ts` now adds it beside every category tag for every publish path.
+- Save Draft visibly moves through `Saving…` to `Saved`.
+- A successful publish remains visible after the editor advances.
+- Keyboard focus advances by stable intake ID rather than an obsolete queue index.
+- Generated-image filenames use the selected R2 object extension, so a PNG generated from
+  a JPEG source is accepted by Shopify.
+- The live harness selects only fixtures that are still `enhanced` and ungrouped at
+  runtime. Cleanup is resumable and refuses to hide database deletion errors.
 
-**332 tests pass.** typecheck, lint, build, `verify:isolation` and `supabase db lint` are
-all clean.
+Final gates:
 
-### The one real end-to-end publish
-
-Done by the operator through the UI, not by the harness:
-
-```
-gid://shopify/Product/8033052557395
-Necklace 113 · necklace-113 · NK113 · tag Necklace · Jewellery · ACTIVE
-custom.material 316L · price 125.00 · stock 12 · weight 0 g
-1 image, alt = the 454-character cached description, verbatim
-phase4-necklace.png moved to Drive /Processed
+```text
+tests                    334 passed, 26 files
+typecheck / lint / build passed
+verify:isolation         all server secrets absent from client assets
+supabase db push dry-run remote database up to date
+supabase db lint         no schema errors
+deployment               dpl_3x9aKdzfW3J8XVqqoMSc8syXQEB3 · READY
 ```
 
-The event trail is complete and attributed to `lakhira.studio@gmail.com`.
+No Phase 3C model, provider, prompt, presentation, image-size or quality value changed,
+and the paid Phase 3C set was not rerun. Phase 3C remains **not complete** under D43.
 
 ---
 
-## 2 · The three gaps — do these first
+## 2 · Business decisions still required
 
-These came out of the owner using the console. Two are business decisions; one is a
-straightforward change.
+These questions were put to the owner this session but were not answered. Do not choose
+either one silently.
 
-### 2.1 The product has no description
+### 2.1 Description: keep D6 or reverse it
 
-**This is D6 working as designed**, and the design has a missing half. Loupe deliberately
-writes no `descriptionHtml` — the six bullets are supposed to render from the theme using
-`product.metafields.custom.material`, which is why the live catalogue's WhatsApp CSS classes
-are not being reproduced. The metafield **is** being written correctly (`316L` above).
+Loupe deliberately writes no `descriptionHtml`. It writes
+`product.metafields.custom.material`, and D6 expects the six bullets to render from that
+metafield in the theme. The theme has never been changed, so the product has no visible
+description.
 
-What has never happened is the theme change. It is open question 5 in `docs/CONTEXT.md`.
+The owner must choose:
 
-Two ways forward, and this is the business's call, not the next agent's:
+1. **Keep D6 and change the theme** to render the material-specific bullets. This keeps
+   wording centralised and avoids rewriting roughly 1,600 products when copy changes.
+2. **Reverse D6 and write `descriptionHtml` per product.** This makes the body self-contained
+   but returns wording to every product record.
 
-- **update the theme** to read `product.metafields.custom.material` and render the bullets —
-  keeps D6, keeps a wording change to one edit rather than 1,600 updates; or
-- **reverse D6** and have Loupe write `descriptionHtml` per product — faster to see, but
-  puts body copy back on every product and makes a wording change a bulk rewrite.
+If D6 is reversed, add a new numbered decision to `docs/DECISIONS.md` with the reasoning.
 
-Do not silently pick one. If D6 is reversed, that is a new numbered decision explaining why.
+### 2.2 Currency: test-store USD or intended production currency
 
-### 2.2 The price shows in USD
+`qimti.myshopify.com` has `shop.currencyCode = USD`. Loupe writes a currency-less decimal,
+so Shopify correctly renders `$125.00` for the operator’s `125`. This is store
+configuration, not a Loupe price conversion defect.
 
-`shop.currencyCode` on `qimti.myshopify.com` is **USD**, so `125.00` renders as $125.00.
-Loupe stores paise and writes a currency-less decimal string; Shopify applies the store's
-own currency. So this is store configuration rather than a Loupe defect — but it is open
-question 3 in `docs/CONTEXT.md` and it must be settled before the Phase 7 cutover.
+The owner must choose:
 
-Either set the test store to INR so what the operator sees matches what they typed, or
-accept the mismatch on the test store and make INR a hard precondition of cutover. Whichever
-is chosen, record it — an operator reading "$125.00" after typing 125 will eventually type
-the price they think fixes it.
+1. change the test store to the intended production currency now; or
+2. accept the test mismatch and make INR a hard Phase 7 cutover precondition.
 
-### 2.3 The `Newest` tag is missing
-
-New requirement, stated 2026-07-30: **every product needs a `Newest` tag alongside its
-category tag.** Not implemented — Loupe writes only `categories.shopify_tag` today.
-
-**Confirm the exact casing against a live product first.** The entire reason `shopify_tag`
-is stored per category and matched verbatim is that collections are tag-driven, so `newest`
-/ `NEWEST` / `New` would publish successfully and drop the product out of its collection
-with no error anywhere (D23 is the same trap).
-
-Where to change it, in preference order:
-
-- `src/lib/publish/publish-product.ts` builds `tags: [identity.shopifyTag, ...options.extraTags]`.
-  A constant beside `PRODUCT_TYPE` is the smallest change and applies to every publish path.
-- If the set of always-on tags is likely to grow, a table is better than a constant — but do
-  not build that until there is a second tag.
-
-Update `tests/` and re-run `npm run verify:publish` for the Phase 2 path, and add the tag to
-the criterion 10 assertions in `scripts/verify-phase4-live.ts`.
+Also confirm the live store’s actual currency before cutover. Record the choice in
+`docs/CONTEXT.md` and, if it establishes a durable architectural/operating rule, in
+`docs/DECISIONS.md`.
 
 ---
 
-## 3 · One reported bug that is not a persistence bug
+## 3 · Success-criterion evidence
 
-"Save Draft does not add the product to draft." The database disagrees: `draft.created` and
-`draft.saved` were both written at 08:33:05 and 08:33:09, before any publish, and the draft
-persisted.
+### Criterion 1 — authorised sign-in: PASS
 
-What is actually wrong is the **interface**. Save Draft is an icon-only button (`◷`) with a
-tooltip and no confirmation of any kind, so a successful save is visually identical to a
-dead button. Fix the feedback, not the persistence:
+`lakhira.studio@gmail.com` completed the real Google account chooser, reached `/console`,
+survived refresh, signed out to `/login`, then signed in again. `auth.signed_in` and
+`auth.signed_out` events were read back with that exact actor before cleanup.
 
-- label the button, or show a short confirmation next to it;
-- the saved draft appears in the queue as a tile — make that visible, e.g. select it;
-- `dirty` state is already tracked in `ConsoleScreen`; surface it as "saved" / "unsaved".
+Cleanup then exposed a harness bug: because the live acceptance actor was also the owner
+email, a broad delete-by-actor removed those authentication rows together with fixture
+events. They were not fabricated back. The cleanup code now deletes only exact fixture
+entity IDs. The pre-cleanup read-back remains the criterion evidence, but the live audit
+table no longer holds those two historical rows.
+The incident is recorded honestly as event `5212`, `phase4.cleanup.audit_loss`; its detail
+states that the deleted history was not recreated.
 
-`src/components/console/DraftEditor.tsx`, the sticky action bar at the bottom.
+### Criterion 2 — unauthorised refusal: NOT PROVEN
 
----
+Only the authorised owner account was available in the browser. Use any second valid
+Google account and **do not add it to `app_users`**.
 
-## 4 · Exact current state — nothing has been cleaned up
+Required evidence:
 
-| | |
-|---|---|
-| Drive `RAW IMAGES` | `phase4-chain-bracelet.jpg`, `phase4-anklet.jpg`, `phase4-ring-tray.png`, `phase4-earrings.png` |
-| Drive `PROCESSED IMAGES` | `phase4-necklace.png` (moved by the real publish) |
-| `intake_files` | 20 rows — 5 real fixtures, 15 `phase4-density-*` queue-density tiles |
-| `image_versions` | ~35 rows; R2 objects listed in `.artifacts/phase4-acceptance/fixtures.json` |
-| `product_drafts` | `NK113` (published, this session) and `NK090` (Phase 2's `verify-publish` leftover) |
-| Shopify | `gid://shopify/Product/8033052557395` — **not** in `fixtures.json`, add it before cleanup |
-| `sku_counters` | `NK = 113` |
-| pg_cron | all four jobs **active** (they were paused during seeding and have been restored) |
+- the Google callback reaches the clear Access denied screen;
+- an `auth.denied` event records the refused email;
+- no `loupe_session` cookie is issued;
+- `/console` still exposes no data;
+- a protected server action is refused.
 
-`.artifacts/` is Git-ignored. `fixtures.json` drives `npm run verify:phase4 -- cleanup`.
+This is the only unproven Phase 4 success criterion.
 
-**Before cleanup, append `gid://shopify/Product/8033052557395` to `shopifyProductIds` in
-`.artifacts/phase4-acceptance/fixtures.json`** — it was published through the UI, so the
-harness does not know about it.
+### Criteria 3, 5, 6, 7, 8 and 15: PASS
 
-### What is real and what is seeded
+Covered by the 334-test suite and `verify:isolation`, including deployed grouping/save
+races, version/order persistence, paise conversion, sticky defaults, preview/database
+parity for every configured category, browser resume and the default-deny boundary.
 
-The fixtures' *enhanced* state was seeded from the retained Phase 3C output rather than
-re-generated: Phase 4's brief says explicitly not to re-run that paid set, and re-generating
-would prove a Phase 3B criterion. Everything the console itself touches is real — real Drive
-files, real R2 objects, real presigned URLs, real Shopify products and media, real database
-functions. This is stated at the top of `scripts/verify-phase4-live.ts` too.
+### Criteria 4 and 9–14: PASS
 
----
+The guarded test-store harness completed with `failures: 0`.
+Retained evidence: `.artifacts/phase4-acceptance/acceptance.json`.
 
-## 5 · Remaining success criteria, in the order to do them
-
-Criteria 3, 5, 6, 7, 8 and 15 are covered by the test suite. These are not:
-
-1. **Criterion 1 — authorised sign-in.** The flow reached Google's consent screen and
-   stopped there; consent has never been granted. Complete it as
-   `lakhira.studio@gmail.com`, then evidence: session survives refresh, sign-out clears it,
-   `events.actor` is the email.
-2. **Criterion 2 — unauthorised sign-in denied.** A second Google account, **not** added to
-   `app_users`. `prompt=select_account` is always sent so the chooser appears. Expect the
-   access-denied screen, an `auth.denied` event, and no session cookie.
-3. **Criteria 4, 9–14 — `npm run verify:phase4 -- accept`.** Guarded by
-   `PHASE4_LIVE_ACCEPTANCE=I_UNDERSTAND_THIS_PUBLISHES_TO_THE_TEST_STORE`. It refuses to run
-   against anything but `qimti.myshopify.com`. It uses the first five fixtures by index — one
-   of them (`phase4-necklace.png`) is now published, so **make the script pick fixtures that
-   are still `enhanced` and ungrouped at runtime** rather than by index. That is a small edit
-   in `accept()` and it makes the harness re-runnable, which it should have been.
-4. **Criterion 16 — keyboard.** select tile → category → price → Enter → publish → advance.
-   The editor is a real `<form>`, so Enter submits and chips are `type="button"`; the colour
-   input intercepts Enter deliberately. Verify the focus rings and that Enter never publishes
-   from a chip or the colour field.
-5. **Criterion 17 — visual acceptance.** Desktop and narrower laptop widths, a 20-tile queue,
-   a draft with several images, a validation-error state and a successful publish. Compare
-   against `design/console-mockup.html` and `docs/DESIGN.md`. Document deliberate deviations —
-   there is at least one already: the sidebar shows Tracking and Prompts greyed out because
-   they are Phases 6 and 5, rather than as links that go nowhere.
-6. **Criterion 18 — cleanup.** `npm run verify:phase4 -- cleanup`, then confirm the four cron
-   jobs are active, an empty tick returns 200, and no live-store configuration changed.
-
----
-
-## 6 · Rules this phase must keep
-
-- **Test store only.** `qimti.myshopify.com`. Phase 7 owns the live cutover.
-- **D43 — model and provider selection is out of scope.** Do not change `DESCRIBE_MODEL`,
-  `DESCRIBE_REASONING_EFFORT`, `IMAGE_MODEL`, `IMAGE_SIZE` or `IMAGE_QUALITY`; do not touch
-  the Phase 3C prompt architecture or presentation classes; do not re-run the paid Phase 3C
-  acceptance set. Phase 3C stays **not complete**.
-- **Forward-only migrations.** Two are applied (`20260730140000`, `20260730141000`); do not
-  edit them.
-- **Do not weaken a test to make the phase green.** Two real defects came out of writing the
-  Phase 4 tests — the Shopify media position-repair and the fixture cleanup order — and both
-  looked like test problems first.
-- `supabase/migrations/20260729081425_remote_schema.sql` is an untracked `db pull` artifact
-  that starts with `drop extension if exists "pg_net"`. It is already recorded as applied
-  remotely, so it is inert — but do not commit it and do not apply it.
-
----
-
-## 7 · Where things are
-
+```text
+criterion 4   private signed thumbnail 200; expired 403; unsigned 400; 20 thumbnails
+criterion 9   images/material/price/stock blocked together; no SKU reservation
+criterion 10  gid://shopify/Product/8033090109523 · NK138 · 3 images
+              Necklace + NEWEST + loupe-phase4-acceptance
+criterion 11  retry reused NK138, handle, product ID and media IDs
+criterion 12  gid://shopify/Product/8033091190867 · NK139
+              two concurrent submits, one product, one image
+criterion 13  each alt matched its own cached source; no describe event
+criterion 14  Drive moves happened after publication; repeat safe; forced 403 did not undo
 ```
-src/lib/auth/            session cookie, Google OAuth, app_users authorisation
-src/lib/console/         queue read model, R2 signing, mutations, money, preview,
-                         publish-draft.ts + housekeeping.ts (injectable, testable),
-                         publish.ts (production wiring only)
-src/components/console/  ConsoleScreen, QueueGrid, DraftEditor, Sidebar, primitives
-src/app/console/         page, drafts/[draftId], actions.ts (every mutation re-authorises)
-scripts/verify-phase4-live.ts    seed / accept / cleanup
-tests/console-*.test.ts          races, preview parity, money, housekeeping
-tests/shopify-product-images.test.ts   alt text and media reuse
-docs/DECISIONS.md        D43–D48 are this phase
+
+All acceptance Shopify products were deleted during cleanup; the IDs remain evidence.
+
+### Criterion 16 — keyboard: PASS
+
+Proved in a real Chromium session:
+
+- Tab reached the roving queue;
+- arrows moved between tiles and Space selected one;
+- selection focused price;
+- Shift+Tab reached category; Enter/Space selected category and material;
+- Enter in Add colour added `Rose Gold` without publishing;
+- Escape cleared an in-progress selection;
+- Enter in price published;
+- visible focus treatment was a 2px black ring/inset shadow;
+- NK142 advanced focus to the next ungrouped photo,
+  `phase4-density-06.png`.
+
+### Criterion 17 — visual acceptance: PASS
+
+Compared to `docs/DESIGN.md` and `design/console-mockup.html`. Desktop and 1180×768
+laptop layouts have no horizontal overflow and retain dense thumbnails, photograph-only
+colour, pill controls, 24px cards, 16px tiles, black feature card and sticky actions.
+
+Screenshots:
+
+```text
+.artifacts/phase4-acceptance/screenshots/desktop-20-tile-queue.png
+.artifacts/phase4-acceptance/screenshots/desktop-multi-image-draft.png
+.artifacts/phase4-acceptance/screenshots/laptop-multi-image-draft.png
+.artifacts/phase4-acceptance/screenshots/validation-error.png
+.artifacts/phase4-acceptance/screenshots/keyboard-publish-success.png
 ```
+
+Deliberate deviation: Tracking and Prompts are grey labels for Phases 6 and 5 rather than
+links that go nowhere.
+
+### Criterion 18 — cleanup: PASS
+
+Retained receipt: `.artifacts/phase4-acceptance/cleanup.json`.
+
+```text
+Shopify       6 recorded Phase 4 products absent, including NK113 and NK138–NK142
+Drive         5 exact fixture IDs in Trash
+database      26 intake rows and 8 drafts deleted; 0 remain
+R2            15 recorded keys deleted; 0 remain
+pg_cron       4/4 Loupe jobs active; latest runs succeeded
+empty ticks   watch/reconcile/sweep/enhance all HTTP 200
+enhance tick  claimed=0 · enhanced=0 · descriptionCalls=0
+```
+
+The Drive service account can move those owner-created files but cannot trash them.
+Cleanup therefore used the owner’s authenticated Drive UI for the exact recorded five
+IDs, then the resumable harness verified their trashed state. No live-store write or
+configuration change occurred. A separate broad actor-event deletion was also removed
+after it was found to have erased the owner’s pre-cleanup authentication audit rows.
+
+---
+
+## 4 · Current production/test state
+
+- The deployment points only to `qimti.myshopify.com`.
+- All Phase 4 acceptance products and fixtures are gone.
+- The NK counter is at 142. Gaps from acceptance and cleaned products are intentional;
+  counters never move backwards after a real reservation.
+- The older Phase 2 NK090 draft was outside the Phase 4 fixture set and was not touched.
+- All four pg_cron schedules are active.
+- `.artifacts/` is Git-ignored and preserves acceptance JSON, cleanup receipt, screenshots
+  and browser trace/snapshots.
+
+---
+
+## 5 · Rules that do not move
+
+- Test store only. Phase 7 owns live cutover.
+- D43: do not change `DESCRIBE_MODEL`, `DESCRIBE_REASONING_EFFORT`, `IMAGE_MODEL`,
+  `IMAGE_SIZE`, `IMAGE_QUALITY`, Phase 3C prompts or presentation classes.
+- Do not rerun the paid Phase 3C acceptance set.
+- Forward-only migrations. `20260730140000` and `20260730141000` are applied.
+- Never weaken a test to make a phase green.
+- Do not mark Phase 4 complete until criterion 2 is demonstrated and the two owner
+  decisions above are recorded.
+
+---
+
+## 6 · Where the work is
+
+```text
+src/lib/auth/                    session, OAuth and app_users authorisation
+src/lib/console/                 queue, draft mutation, preview and housekeeping
+src/lib/publish/                 shared Shopify publish path and NEWEST invariant
+src/components/console/          queue, editor, keyboard and feedback
+src/app/console/                 protected pages and server actions
+scripts/verify-phase4-live.ts    guarded seed / accept / resumable cleanup
+tests/console-*.test.ts          database races, preview, money and housekeeping
+tests/shopify-product-images.test.ts
+docs/PROGRESS.md                 complete evidence and surprises
+docs/DECISIONS.md                D43–D48; add a new decision only if D6 is reversed
+```
+
+**Next action:** obtain the two owner decisions and a second Google account for criterion 2.

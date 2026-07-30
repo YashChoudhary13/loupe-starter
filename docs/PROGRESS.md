@@ -31,6 +31,152 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-30 — Phase 4 live acceptance and cleanup passed; NOT complete on criterion 2 and two business decisions
+
+**Goal this session:** implement the owner’s `NEWEST` requirement and Save Draft feedback,
+then demonstrate every remaining Phase 4 criterion in order without touching the live
+store or the Phase 3C model/prompt configuration.
+
+**PHASE 4 IS NOT COMPLETE.** Criteria 1 and 3–18 now pass with retained evidence.
+Criterion 2 still needs a real Google account that is absent from `app_users`; the only
+account available in the browser was the authorised owner. Two owner decisions also remain
+unanswered: keep D6 and change the theme, or reverse D6 and write per-product descriptions;
+and whether the USD test store should change currency or deliberately remain mismatched
+until an INR cutover precondition.
+
+### Built and corrected
+
+- Live catalogue read-back confirmed the exact always-on tag is **`NEWEST`** (all caps) on
+  Necklace 970, Earrings 453, Chain Bracelet 353 and Anklets 087. `NEWEST_TAG` now sits
+  beside `PRODUCT_TYPE` in `publish-product.ts`, so every publish path writes the category
+  tag plus `NEWEST`; Phase 2 and Phase 4 verifiers assert the exact casing.
+- Shopify rejected a generated PNG selected from a JPEG source because Loupe reused the
+  intake filename extension. `filenameForStorage()` now derives the declared extension from
+  the selected R2 object. The regression is covered in `shopify-product-images.test.ts`.
+- The Phase 4 harness now selects fixtures that are still `enhanced` and ungrouped at
+  runtime rather than by seed index. Its cleanup is resumable, detects already-absent
+  Shopify/Drive objects, and checks every database deletion error.
+- Save Draft is labelled and visibly moves through `Saving…` to `Saved`. Browser evidence
+  showed the draft tile appear while the NK counter stayed unchanged.
+- Visual acceptance found that the successful-publish notice was discarded when the editor
+  became empty. The empty state now retains its notice. Keyboard acceptance then found that
+  focus advanced by an obsolete numeric tile index; it now resolves the next photograph by
+  stable intake ID.
+
+### Live acceptance evidence — criteria 4 and 9–14
+
+`PHASE4_LIVE_ACCEPTANCE=I_UNDERSTAND_THIS_PUBLISHES_TO_THE_TEST_STORE npm run
+verify:phase4 -- accept` completed with `failures: 0`. Evidence is retained at
+`.artifacts/phase4-acceptance/acceptance.json`.
+
+```text
+criterion 4   signed thumbnail 200; 1-second URL expired 403; unsigned request 400;
+              20 thumbnails returned
+criterion 9   images/material/price/stock all blocked together; NK counter unchanged
+criterion 10  gid://shopify/Product/8033090109523 · NK138
+              Necklace 138 (Adjustable) · ACTIVE · Jewellery
+              tags Necklace + NEWEST + loupe-phase4-acceptance
+              material 316L · price 750.00 · stock 12 · weight 0 g
+              Gold/Silver · 3 selected media in draft order
+criterion 11  retry reused NK138, handle, product ID and all media IDs; one product
+criterion 12  gid://shopify/Product/8033091190867 · NK139
+              two concurrent submits: one success, one PublishInProgressError;
+              one product and one image
+criterion 13  every Shopify alt matched its own cached source description;
+              zero describe events
+criterion 14  three Drive moves followed database publication; repeat was a safe no-op;
+              forced 403 left the product published and readable
+```
+
+The separate Phase 2 live verifier also passed with a product carrying
+`NEWEST`, `Necklace` and `loupe-test`; its concurrent, retry and override products were
+deleted by `--cleanup-all`.
+
+### Authentication and keyboard evidence
+
+- **Criterion 1 passed.** `lakhira.studio@gmail.com` completed the real Google chooser,
+  reached `/console`, survived refresh, signed out to `/login`, then signed in again.
+  `auth.signed_in` and `auth.signed_out` events both carry that exact actor.
+- **Criterion 2 remains unproven.** No second Google account was available. Do not add one
+  to `app_users`; the required proof is a real absent account reaching Access denied,
+  writing `auth.denied`, receiving no Loupe session, and failing a protected action.
+- **Criterion 16 passed in a real Playwright Chromium session.** Tab reached the roving
+  queue, Arrow keys moved to a photograph, Space selected it and focused price,
+  Shift+Tab reached category, Enter/Space selected category and material, Enter in the
+  colour field added `Rose Gold` without publishing, Escape cleared an in-progress
+  selection, and Enter in price published. NK142 then advanced focus to the next ungrouped
+  tile, `phase4-density-06.png`. Computed focus treatment was the required 2px black ring
+  (price uses the equivalent 2px inset shadow).
+
+### Visual acceptance — criterion 17
+
+Compared against `docs/DESIGN.md` and `design/console-mockup.html`. The desktop and
+1180×768 laptop layouts preserve the monochrome chrome, photograph-only colour, pill
+geometry, 24px cards, 16px tiles, black feature card and sticky actions without horizontal
+overflow. Tracking and Prompts deliberately remain grey Phase 6/5 labels rather than dead
+links.
+
+```text
+.artifacts/phase4-acceptance/screenshots/desktop-20-tile-queue.png
+.artifacts/phase4-acceptance/screenshots/desktop-multi-image-draft.png
+.artifacts/phase4-acceptance/screenshots/laptop-multi-image-draft.png
+.artifacts/phase4-acceptance/screenshots/validation-error.png
+.artifacts/phase4-acceptance/screenshots/keyboard-publish-success.png
+```
+
+### Cleanup and production restoration — criterion 18
+
+The first cleanup exposed two harness defects rather than being treated as green: NK113’s
+UI-created draft ID was absent from the receipt, so one remaining image join made the whole
+intake delete fail; and Drive files created in the owner’s My Drive can be moved but cannot
+be trashed by the service account. The exact five files were selected in the owner’s
+authenticated Drive UI and moved to Trash. The corrected, resumable cleanup then passed:
+
+```text
+Shopify       6 recorded Phase 4 products absent, including NK113 and NK138–NK142
+Drive         5 exact fixture IDs trashed
+database      26 intake rows and 8 drafts deleted; 0 remain
+R2            15 recorded objects deleted; 0 remain
+cron          4/4 Loupe jobs active; latest runs succeeded
+empty ticks   watch/reconcile/sweep/enhance all HTTP 200
+enhance tick  claimed=0 · enhanced=0 · descriptionCalls=0
+```
+
+No live-store write or configuration change occurred. `SHOPIFY_STORE_DOMAIN` remained
+`qimti.myshopify.com`; Phase 7 still owns live cutover.
+
+A final audit query exposed a third cleanup defect: the acceptance actor is the real owner
+email, `lakhira.studio@gmail.com`, and cleanup also deleted events with that actor. That
+removed the real `auth.signed_in` / `auth.signed_out` rows which had been read back before
+cleanup, not just fixture events. They were not fabricated back into the audit table. The
+broad actor deletion is removed; cleanup now deletes events only by the exact recorded
+fixture entity IDs. Criterion 1’s pre-cleanup evidence remains recorded above, but the live
+database no longer contains those two historical authentication rows.
+The loss itself is now auditable as event `5212`, `phase4.cleanup.audit_loss`, actor
+`script:phase4-cleanup-remediation`; it states that the historical rows were not recreated.
+
+### Final quality evidence
+
+```text
+tests                    334 passed, 26 files
+typecheck / lint / build passed
+verify:isolation         all six server secrets absent; client server-only import refused
+supabase db push dry-run remote database up to date
+supabase db lint         no schema errors
+production deployment    dpl_3x9aKdzfW3J8XVqqoMSc8syXQEB3 · READY
+                         https://qimati-loupe.vercel.app
+```
+
+Phase 3C remains **not complete**. No model, reasoning, image size/quality, prompt or
+presentation-class value changed, and the paid Phase 3C set was not rerun.
+
+**Next session should start with:** have the owner answer the D6/theme and test-store
+currency questions, then use any second Google account (kept absent from `app_users`) to
+demonstrate criterion 2. Record any D6 reversal as a new numbered decision; only after that
+evidence may Phase 4 be marked complete.
+
+---
+
 ## 2026-07-30 — Phase 4 built and deployed; NOT complete, three business gaps found in operator testing
 
 **Goal this session:** record the description-model deferral, then build the authenticated

@@ -205,12 +205,16 @@ The following business facts remain unresolved and must not be guessed:
    - Hair Accessories
    - Indian Jewellery
    - Brass
-3. The live Shopify store currency must be confirmed before cutover.
+3. The test store is currently USD. Decide whether to change it to the intended production
+   currency now or accept the test mismatch and make INR a hard cutover precondition; the
+   live Shopify store currency must still be confirmed before cutover.
 4. Default stock per category must be confirmed.
-5. The live theme must be updated to read:
+5. Decide whether to keep D6 and update the live theme to read:
    ```text
    product.metafields.custom.material
    ```
+   or reverse D6 and write `descriptionHtml` on every product. A D6 reversal requires a new
+   numbered decision with its reasoning.
 6. At live cutover, `seed:counters` must be run against the live store while publishing is quiet.
 7. The expected live maxima should be sanity-checked:
    ```text
