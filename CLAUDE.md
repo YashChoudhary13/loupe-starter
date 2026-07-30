@@ -189,6 +189,12 @@ comparable five-product image run proves strict JSON, factual accuracy, correct 
 image fidelity and the 87-item tray count. The isolated cost evaluation is evidence, not
 permission to change `DESCRIBE_MODEL`.
 
+**That cost work is deliberately deferred past Phase 4** (D43). The business has moved
+description-model selection and cost optimisation to a later final optimisation stage, so
+Phase 4 proceeds with criterion 17 unresolved. Phase 3C stays *not complete*; the model,
+reasoning effort, image model, size, quality, prompts and presentation classes stay exactly
+as they are; and model/provider selection is out of scope for Phase 4.
+
 **Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
 - **Never rely on image API defaults.** Every request must send the env-backed `size` and

@@ -921,3 +921,42 @@ change**. Production remains on `openai/gpt-5.6-sol`. A model/provider change re
 5. visual proof that jewellery fidelity and the 87-item tray count do not degrade.
 
 Description-only evaluation never authorises a silent production swap.
+
+---
+
+### D43 — Description-model selection is deferred past Phase 4; Phase 4 proceeds anyway
+
+*Business decision, 2026-07-30, recorded before any Phase 4 code was written.*
+
+D42 leaves Phase 3C **implemented, deployed and visually verified, but not complete**:
+criterion 17 requires every description call below `$0.006` and the accepted
+`openai/gpt-5.6-sol` run cost `$0.014816–$0.016851`. That remains true and is not
+reinterpreted here.
+
+What the business has decided is *when* that gets resolved: **not now.** Description-model
+selection and description-cost optimisation move to a later final optimisation stage,
+after the operator console exists. The reasoning is that the console is what converts
+enhanced photographs into revenue, and roughly $0.016 per product at ~300 products/month
+is about ₹400 a month against a ₹5,000 budget — real, but not worth blocking the one
+remaining piece of the pipeline that nobody can work around.
+
+What that decision does and does not authorise:
+
+| | |
+|---|---|
+| Phase 3C status | still **not complete**; criterion 17 still failed |
+| implementation | stays deployed and unchanged |
+| `DESCRIBE_MODEL` | stays `gpt-5.6-sol` — unchanged |
+| `DESCRIBE_REASONING_EFFORT`, `IMAGE_MODEL`, `IMAGE_SIZE`, `IMAGE_QUALITY` | unchanged |
+| prompt architecture, presentation classes, provider configuration | unchanged |
+| the Gemini 3 Flash Preview shortlist | **evidence only** — still not authorised for production |
+| Phase 4 | allowed to proceed with the cost criterion unresolved |
+| model/provider selection | **out of scope for Phase 4** |
+
+The five conditions in D42 for a production model change are untouched and still all
+required. Nothing in Phase 4 may change a describe/image model, ceiling or prompt, and no
+Phase 4 work may re-run the paid Phase 3C acceptance set.
+
+**Rejected:** marking Phase 3C complete because the business is content to live with the
+cost. Deciding to defer a criterion is not the same as meeting it, and a phase marked
+complete on a failed criterion makes every other "complete" in PROGRESS.md worth less.
