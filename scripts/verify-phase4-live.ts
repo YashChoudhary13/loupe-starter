@@ -354,7 +354,51 @@ async function accept(): Promise<void> {
   const necklaces = (categories as { id: string; sku_prefix: string }[]).find((c) => c.sku_prefix === 'NK')!
   const { data: material } = await supabase.from('materials').select('id').eq('name', '316L').single<{ id: string }>()
 
-  const realIntakeIds = state.intakeFileIds.slice(0, RETAINED.length)
+  const { data: availableRows, error: availableError } = await supabase
+    .from('intake_files')
+    .select('id, filename')
+    .in('id', state.intakeFileIds)
+    .eq('status', 'enhanced')
+    .is('product_draft_id', null)
+  if (availableError) {
+    throw new Error(`Could not select available Phase 4 fixtures: ${availableError.message}`)
+  }
+
+  const availableById = new Map(
+    (availableRows ?? []).map((row) => [
+      (row as { id: string }).id,
+      row as { id: string; filename: string },
+    ]),
+  )
+  const available = state.intakeFileIds
+    .map((id) => availableById.get(id))
+    .filter((row): row is { id: string; filename: string } => row !== undefined)
+  const retainedNames = new Set(RETAINED.map((item) => item.name as string))
+  const realAvailable = available.filter((row) => retainedNames.has(row.filename))
+  const densityAvailable = available.filter((row) => !retainedNames.has(row.filename))
+
+  // Criteria 10 and 12 publish four real Drive-backed fixtures. Criterion 9
+  // only proves that a broken draft reserves nothing, so it may use one density
+  // tile when a previous UI publish has already consumed a retained fixture.
+  if (realAvailable.length < 4) {
+    throw new Error(
+      `Phase 4 acceptance needs four enhanced, ungrouped Drive fixtures; found ${realAvailable.length}.`,
+    )
+  }
+  const publishFixtures = realAvailable.slice(-4)
+  const publishIds = new Set(publishFixtures.map((row) => row.id))
+  const blockFixture =
+    realAvailable.find((row) => !publishIds.has(row.id)) ?? densityAvailable[0]
+  if (!blockFixture) {
+    throw new Error(
+      'Phase 4 acceptance needs one additional enhanced, ungrouped fixture for the blocked-publish proof.',
+    )
+  }
+  const realIntakeIds = [blockFixture.id, ...publishFixtures.map((row) => row.id)]
+  evidence.fixtureSelection = {
+    blockedPublish: blockFixture.filename,
+    published: publishFixtures.map((row) => row.filename),
+  }
 
   // ── criterion 4 ──────────────────────────────────────────────────────────
   heading('CRITERION 4 — private R2 through short-lived URLs')
@@ -503,7 +547,12 @@ async function accept(): Promise<void> {
   check('handle', readback!.handle, published.result.handle)
   check('product_type', readback!.productType, 'Jewellery')
   check('status', readback!.status, 'ACTIVE')
-  assert('tag', readback!.tags.includes('Necklace'), readback!.tags.join(', '))
+  assert('category tag', readback!.tags.includes('Necklace'), readback!.tags.join(', '))
+  assert(
+    'always-on tag uses the live casing NEWEST',
+    readback!.tags.includes('NEWEST'),
+    readback!.tags.join(', '),
+  )
   check('custom.material', readback!.metafield?.value ?? null, '316L')
   check('exactly one product for the handle', await countProductsByHandle(shopify, published.result.handle), 1)
 
@@ -797,8 +846,30 @@ async function cleanup(): Promise<void> {
   const receipt: Record<string, unknown> = { cleanedAt: new Date().toISOString(), runId: state.runId }
 
   heading('CLEANUP — Shopify')
+  const productReadback = await shopify.graphql<{
+    nodes: readonly ({ id: string } | null)[]
+  }>(
+    /* GraphQL */ `
+      query Phase4CleanupProducts($ids: [ID!]!) {
+        nodes(ids: $ids) {
+          ... on Product {
+            id
+          }
+        }
+      }
+    `,
+    { ids: state.shopifyProductIds },
+  )
+  const existingProductIds = new Set(
+    productReadback.nodes.filter((node): node is { id: string } => node !== null).map((node) => node.id),
+  )
   const deleted: string[] = []
   for (const id of state.shopifyProductIds) {
+    if (!existingProductIds.has(id)) {
+      deleted.push(id)
+      console.log(`  ✓ already absent ${id}`)
+      continue
+    }
     try {
       const gone = await deleteProduct(shopify, id)
       deleted.push(gone ?? id)
@@ -826,10 +897,25 @@ async function cleanup(): Promise<void> {
   const trashed: string[] = []
   for (const fileId of state.driveFileIds) {
     try {
+      const { data: current } = await api.files.get({
+        fileId,
+        fields: 'id, trashed',
+        supportsAllDrives: true,
+      })
+      if (current.trashed) {
+        trashed.push(fileId)
+        console.log(`  ✓ already trashed ${fileId}`)
+        continue
+      }
       await api.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true })
       trashed.push(fileId)
       console.log(`  ✓ trashed ${fileId}`)
     } catch (error) {
+      if ((error as { code?: number }).code === 404) {
+        trashed.push(fileId)
+        console.log(`  ✓ already absent ${fileId}`)
+        continue
+      }
       console.log(`  ✗ ${fileId}: ${(error as Error).message}`)
       failures += 1
     }
@@ -838,19 +924,51 @@ async function cleanup(): Promise<void> {
   void googleDriveClient
 
   heading('CLEANUP — database')
+  let databaseReady = true
   if (state.draftIds.length) {
-    await supabase.from('product_draft_images').delete().in('product_draft_id', state.draftIds)
+    const { error } = await supabase
+      .from('product_draft_images')
+      .delete()
+      .in('product_draft_id', state.draftIds)
+    if (error) {
+      console.log(`  ✗ product_draft_images: ${error.message}`)
+      failures += 1
+      databaseReady = false
+    }
   }
-  const { count: intakeDeleted } = await supabase
-    .from('intake_files')
-    .delete({ count: 'exact' })
-    .in('id', state.intakeFileIds)
-  const { count: draftsDeleted } = await supabase
-    .from('product_drafts')
-    .delete({ count: 'exact' })
-    .in('id', state.draftIds)
-  await supabase.from('events').delete().in('entity_id', [...state.intakeFileIds, ...state.draftIds])
-  await supabase.from('events').delete().eq('actor', ACTOR)
+  let intakeDeleted = 0
+  let draftsDeleted = 0
+  if (databaseReady) {
+    const intakeResult = await supabase
+      .from('intake_files')
+      .delete({ count: 'exact' })
+      .in('id', state.intakeFileIds)
+    if (intakeResult.error) {
+      console.log(`  ✗ intake_files: ${intakeResult.error.message}`)
+      failures += 1
+      databaseReady = false
+    } else {
+      intakeDeleted = intakeResult.count ?? 0
+    }
+  }
+  if (databaseReady) {
+    const draftResult = await supabase
+      .from('product_drafts')
+      .delete({ count: 'exact' })
+      .in('id', state.draftIds)
+    if (draftResult.error) {
+      console.log(`  ✗ product_drafts: ${draftResult.error.message}`)
+      failures += 1
+    } else {
+      draftsDeleted = draftResult.count ?? 0
+    }
+  }
+  const eventIds = [...state.intakeFileIds, ...state.draftIds]
+  const eventResult = await supabase.from('events').delete().in('entity_id', eventIds)
+  if (eventResult.error) {
+    console.log(`  ✗ events by entity: ${eventResult.error.message}`)
+    failures += 1
+  }
   console.log(`  ✓ ${intakeDeleted ?? 0} intake rows · ${draftsDeleted ?? 0} drafts`)
   receipt.databaseDeleted = { intake: intakeDeleted ?? 0, drafts: draftsDeleted ?? 0 }
 
