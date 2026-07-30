@@ -31,6 +31,58 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-30 — Phase 5 complete: prompt management and durable image redo
+
+**Goal this session:** finish every remaining Phase 5 criterion, prove the real paid path
+in the test environment, deploy it, and clean all acceptance fixtures.
+
+**Built:**
+
+- `/prompts` → authorised operators can create immutable non-current prompt versions and
+  deliberately promote one; image templates are validated and every action is audited.
+- Console editor → `Redo image` appends a new unselected version while original and all
+  earlier generated versions remain available for review.
+- `image_redo_jobs` and worker → redo reuses the cached description and presentation,
+  reserves deterministic output paths, records the exact prompt/model/cost, and fences an
+  ambiguous paid request from automatic duplicate charging.
+- Migrations `20260730170000` through `20260730173000` → prompt create/promote and the
+  durable redo state machine are applied forward-only to the linked database.
+
+**Verified:**
+
+- `380 passed` across 34 files; typecheck, lint, production build, `verify:isolation`, and
+  linked Supabase database lint passed.
+- Live prompt acceptance created/promoted/restored prompt
+  `863e25ec-8508-4c6e-8202-a42fa4d9ec34` and proved atomic activation plus audit history.
+- Live redo job `932dbeb1-ea9b-47c9-a89c-045dd03fc4b8` appended v2 for fixture
+  `74b7dde8-d5e2-42cb-b7b4-787547b3a450`, cost `$0.078064`, made zero descriptor calls,
+  retained original/v1/v2, left v1 selected, and stored the exact resolved prompt/model.
+- Production browser read-back showed both ten-model selectors, prompt history and promotion
+  controls, then showed original/v1/v2 and `Redo image` in the console. Evidence:
+  `.artifacts/phase5-acceptance/evidence.json`, `prompts.png`, `versions.png`, and
+  `redo-v2.png`.
+- Deployment `dpl_55xkFtB2vLJ81sT275Y24aiZM1oB` is Ready at
+  `https://qimati-loupe.vercel.app`.
+- Cleanup passed, restored exact prompt `f2f08fe5-708c-4366-9826-18f5857c9f54`, removed
+  five R2 objects and all temporary rows. Database read-back returned `0` intake rows,
+  `0` redo jobs and exactly one current image prompt.
+
+**Not finished / known broken:**
+
+- Phase 5 has no remaining criteria. Phase 3C remains separately incomplete on its
+  descriptor cost gate.
+- Tracking, duplicate detection and daily Shopify reconciliation remain Phase 6.
+
+**Surprises:** deployed SQL tests found PL/pgSQL name ambiguity and enum-assignment defects;
+three small forward-only repair migrations fixed the live database without weakening tests.
+The conservative D52 fence is necessary because a timed-out paid request can have an
+unknowable billing outcome even when no result reached R2.
+
+**Next session should start with:** read and execute the Phase 6 tracking, duplicate
+detection and daily reconciliation plan.
+
+---
+
 ## 2026-07-30 — Phase 5 curated model selection
 
 **Goal this session:** add a small, useful model choice to each prompt stage without

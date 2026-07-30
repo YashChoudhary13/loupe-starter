@@ -78,7 +78,7 @@ Do not point this project at the live store during an earlier phase.
 
 ## WHERE IT IS
 
-Phases 1, 2, 3A and 3B are complete, verified and deployed.
+Phases 1, 2, 3A, 3B, 4 and 5 are complete, verified and deployed.
 
 ### Phase 1
 
@@ -118,13 +118,12 @@ It must not become an unbounded creative-direction system.
 ### Remaining roadmap
 
 ```text
-4 — Listing Console
-5 — redo, version history and prompt management
 6 — tracking page, duplicate detection and daily reconciliation
 7 — parallel live-store run and cutover
 ```
 
-After Phase 3C, Phase 4 remains the next full phase.
+Phase 6 is the next full phase. Phase 3C remains separately incomplete on its descriptor
+cost gate; completing Phase 5 did not silently approve a different production model.
 
 Two items were deliberately deferred into Phase 4 because they require published intake rows, which nothing produces until the console exists:
 

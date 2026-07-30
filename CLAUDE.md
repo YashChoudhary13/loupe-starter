@@ -207,6 +207,18 @@ changing any model. In Phase 5 the owner explicitly brought curated model select
 scope (D51). Phase 3C stays *not complete* until a newly selected configuration passes its
 own comparable acceptance evidence; exposing a selector is not that evidence.
 
+**Phase 5 is complete.** `/prompts` lets an authorised operator create an immutable
+non-current prompt version, then deliberately promote it. Promotion leaves exactly one
+current prompt, validates the image template tokens and records the actor. A redo is a
+durable image-only job: it reserves the next version and deterministic R2 paths, reuses the
+cached description and presentation class, and never invokes the descriptor. The new image
+is appended unselected so original and prior generated versions remain available.
+
+Redo marks `generation_started_at` immediately before the paid request. Recovery completes
+from an already-written deterministic R2 object without another provider call; if the paid
+request started but no object exists, automatic retry stops because billing is ambiguous.
+Starting another redo is an explicit operator action with a new job and version. See D52.
+
 **Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
 - **Never rely on image shape defaults.** OpenAI image requests send the env-backed `size`

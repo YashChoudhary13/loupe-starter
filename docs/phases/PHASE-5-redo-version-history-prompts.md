@@ -1,6 +1,6 @@
 # Phase 5 — redo, version history and prompt management
 
-Recorded 2026-07-30. **Phase 5 has started and is not complete.**
+Recorded 2026-07-30. **Phase 5 is complete.**
 
 ## Purpose
 
@@ -47,9 +47,28 @@ Every generated result remains a separate version; nothing overwrites history.
 13. Tests, typecheck, lint, build, secret isolation and database lint pass; real
     test-environment evidence proves prompt activation and redo before completion.
 
-## Current slice
+## Completion evidence
 
-Criteria 1–4 are implemented: Prompt management is a protected route showing current
-prompts, immutable history, and separate curated model selectors. The accepted models
-remain selected; no paid generation was run. Prompt-body editing, promotion and redo are
-the next slice.
+- Criteria 1–4: the signed-in production browser opened `/prompts` through the console
+  sidebar. Both prompt kinds showed one current version plus immutable history, and each
+  selector exposed exactly ten choices with the accepted defaults still selected.
+- Criteria 5–8: deployed-database tests and the live acceptance created a non-current image
+  prompt, atomically promoted it, restored the original, and proved required-token
+  validation plus authorised audit events.
+- Criteria 9–11: live redo job `932dbeb1-ea9b-47c9-a89c-045dd03fc4b8` appended an
+  unselected v2 for fixture `74b7dde8-d5e2-42cb-b7b4-787547b3a450`. It made zero
+  descriptor calls, retained original/v1/v2, left v1 selected, and persisted the exact
+  model, resolved prompt and `$0.078064` provider cost. The production browser showed all
+  three versions and allowed v2 to be reviewed.
+- Criterion 12: recovery tests prove that an existing deterministic R2 result is completed
+  without another provider call, while an ambiguous started request with no object is
+  fenced instead of being charged twice. Deployed SQL proves an expired lease can be
+  reclaimed without losing that marker.
+- Criterion 13: `380 passed`; typecheck, lint, production build, secret isolation and
+  linked database lint all passed. Deployment `dpl_55xkFtB2vLJ81sT275Y24aiZM1oB` is
+  Ready at `https://qimati-loupe.vercel.app`.
+
+Evidence is retained under `.artifacts/phase5-acceptance/`. Cleanup restored the exact
+original image prompt `f2f08fe5-708c-4366-9826-18f5857c9f54`, removed the temporary
+intake, redo job and R2 objects, and a database read-back confirmed zero fixture/job rows
+and exactly one current image prompt.
