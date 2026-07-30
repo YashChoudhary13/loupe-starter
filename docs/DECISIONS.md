@@ -1103,3 +1103,47 @@ retailers who zoom in to judge build quality before staking their own reputation
 (docs/CONTEXT.md) — a fabricated "gold-plated" in alt text is a claim they would
 be entitled to rely on. The presentation class is not used either: it is a
 staging vocabulary, not a description of the piece (D41).
+
+---
+
+### D49 — Shopify store currency is authoritative
+
+*Business decision, 2026-07-30.*
+
+Loupe continues to write a currency-less decimal price. Shopify interprets it in the
+currency configured on the target store. Loupe does not convert, label or override
+currency.
+
+The test store may therefore remain USD. Phase 7 must confirm the live store currency
+before cutover; the live store's configured currency is the intended production currency.
+
+**Rejected:** adding a Loupe currency selector or converting rupees into the test store's
+USD. Either would create two sources of truth and could silently publish a converted price
+as a nominal price.
+
+---
+
+### D50 — Product descriptions are written per product, with a safe default and a rare override
+
+*Business decision, 2026-07-30. This supersedes D6.*
+
+The theme change anticipated by D6 was never made, so a metafield-only Loupe product has
+no visible description. The owner has chosen self-contained product descriptions instead:
+
+- Loupe still writes the selected material to `custom.material` (D21);
+- Loupe also writes clean `descriptionHtml` built from Qimati's six standard bullets;
+- the selected material is inserted into the first bullet;
+- the operator may choose one of the controlled materials or enter a one-off custom
+  material;
+- the operator may rarely edit the default six-bullet text for one product, or reset it to
+  the default.
+
+Custom material is stored on the product draft, not inserted into the global `materials`
+vocabulary. This keeps a one-off entry from becoming a permanent suggestion while still
+allowing it to carry as a browser-local sticky value during a batch.
+
+The override is stored as plain text and escaped before Loupe produces HTML. Operators
+never edit raw HTML, and WhatsApp CSS/classes cannot be reintroduced through this field.
+
+**Rejected:** theme-only rendering (the description is absent until a separate theme
+deployment), free-form HTML, and adding every one-off custom material to the global list.

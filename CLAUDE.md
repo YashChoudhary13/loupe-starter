@@ -71,11 +71,17 @@ Titles take an **optional free-text suffix**: `(Adjustable)`, `(Huggies)`, `(Sin
 
 ### Materials
 
-Exactly three, fixed: **`304`**, **`316L`**, **`Brass`**. Not free text.
+The normal choices are **`304`**, **`316L`**, **`Brass`**. The operator may enter a
+one-off custom material when needed; it stays on that product draft and does not silently
+expand the global suggestions.
 
 Write the material to the metafield **`custom.material`** (`single_line_text_field`) — a defined interface, not a guess: the live store has no material metafield at all today, so Loupe is establishing it. The theme template must later read the same `namespace.key`. See D21.
 
-The six description bullets render from the theme template. Do **not** write description HTML into the product body — the existing catalogue contains WhatsApp CSS classes (`class="_aupe copyable-text xkrh14z"`) and `<h5>` tags on body copy, pasted in by hand. Don't reproduce that.
+Write clean `descriptionHtml` containing Qimati's six standard bullets, with the selected
+material in the first bullet. The operator may rarely edit the default as plain text.
+Escape it before producing HTML; never accept raw HTML or reproduce the WhatsApp CSS
+classes (`class="_aupe copyable-text xkrh14z"`) and `<h5>` tags found in the old catalogue.
+See D50, which supersedes D6.
 
 ### Colours
 

@@ -205,16 +205,13 @@ The following business facts remain unresolved and must not be guessed:
    - Hair Accessories
    - Indian Jewellery
    - Brass
-3. The test store is currently USD. Decide whether to change it to the intended production
-   currency now or accept the test mismatch and make INR a hard cutover precondition; the
-   live Shopify store currency must still be confirmed before cutover.
+3. The live Shopify store currency must be confirmed before cutover. D49 settles the
+   application rule: Loupe writes no currency and performs no conversion; Shopify's target
+   store configuration is authoritative. The USD test-store mismatch is accepted.
 4. Default stock per category must be confirmed.
-5. Decide whether to keep D6 and update the live theme to read:
-   ```text
-   product.metafields.custom.material
-   ```
-   or reverse D6 and write `descriptionHtml` on every product. A D6 reversal requires a new
-   numbered decision with its reasoning.
+5. **Settled by D50.** Loupe writes clean per-product `descriptionHtml`, keeps
+   `custom.material`, permits a one-off custom material, and offers a rare plain-text
+   description override. The unmade theme dependency from D6 is removed.
 6. At live cutover, `seed:counters` must be run against the live store while publishing is quiet.
 7. The expected live maxima should be sanity-checked:
    ```text

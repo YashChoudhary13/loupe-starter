@@ -134,7 +134,10 @@ Shopify tag, product type, material metafield, variant structure, selected image
 - **Category** — the operator chooses; the AI never does (D1). A category with no
   confirmed `shopify_tag` is visibly unavailable for publishing, or produces the existing
   explicit validation error (D23). Never invent a prefix, title pattern or tag.
-- **Material** — exactly `304`, `316L`, `Brass`. No free text.
+- **Material** — normally `304`, `316L`, or `Brass`; a one-off custom material is allowed
+  and stored on the draft without changing the global suggestions (D50).
+- **Description** — clean six-bullet default derived from material, with a rare plain-text
+  per-product override and reset-to-default action. Raw HTML is never accepted (D50).
 - **Price** — integer paise, parsed from a rupee string **without floating point**.
   Reject empty, zero, negative, malformed and more than two decimal places.
 - **Stock** — category default, explicit override allowed; zero blocks unless the
@@ -308,8 +311,8 @@ Phase 4 is not complete until **every** item below is demonstrated with evidence
    rebuilding the draft.
 10. **End-to-end publish** — a real grouped product published to the test store and read
     back: title, handle, SKU, tag, `product_type = Jewellery`, price, stock, 0 g weight,
-    `custom.material`, variants, selected image count, image order, image alt text, active
-    status, exactly one product. Paste the Shopify product ID.
+    `custom.material`, clean `descriptionHtml`, variants, selected image count, image order,
+    image alt text, active status, exactly one product. Paste the Shopify product ID.
 11. **Idempotent retry** — force an interruption after Shopify has accepted the product but
     before Loupe records success, then retry: same SKU, same handle, same Shopify product
     ID, exactly one product, no duplicated media, final status published.
