@@ -175,10 +175,17 @@ export async function loadPublishImages(
  *   1. we recorded a media id for this image and Shopify still has it → reuse,
  *      which is what makes a REORDER move the picture rather than upload it
  *      again beside itself;
- *   2. we recorded nothing, but the product already carries exactly as many
- *      media as we are about to send → assume they are ours in order and repair
- *      them. This is the crash window: media created, ids never written down;
+ *   2. NOTHING is recorded for any image, and the product already carries exactly
+ *      as many media as we are about to send → assume they are ours in order and
+ *      repair them. This is the crash window: media created, ids never written
+ *      down;
  *   3. otherwise upload from a freshly presigned URL.
+ *
+ * Case 2 is deliberately all-or-nothing. A MIXED set — some ids recorded, one
+ * not — is not a crash, it is an edit: the usual way an image loses its id is the
+ * operator swapping which version to publish, which replaces the row. Repairing
+ * by position there would silently republish the version they just rejected, so
+ * the narrow rule is the safe one and one extra upload is the worst case.
  */
 export async function buildProductFiles(
   images: readonly PublishImage[],
@@ -187,10 +194,10 @@ export async function buildProductFiles(
   signImageUrl: (storageKey: string) => Promise<string>,
 ): Promise<{ files: readonly ProductSetFile[]; published: readonly PublishedImage[] }> {
   const known = new Set((existingMedia ?? []).map((m) => m.id))
-  const unclaimed = (existingMedia ?? []).filter(
-    (m) => !images.some((i) => i.shopifyMediaId === m.id),
-  )
-  const repairable = existingMedia !== null && existingMedia.length === images.length
+  const repairable =
+    existingMedia !== null &&
+    existingMedia.length === images.length &&
+    images.every((image) => image.shopifyMediaId === null)
 
   const files: ProductSetFile[] = []
   const published: PublishedImage[] = []
@@ -201,9 +208,8 @@ export async function buildProductFiles(
     let mediaId: string | null = null
     if (image.shopifyMediaId && known.has(image.shopifyMediaId)) {
       mediaId = image.shopifyMediaId
-    } else if (repairable && !image.shopifyMediaId) {
+    } else if (repairable) {
       mediaId = (existingMedia ?? [])[index]?.id ?? null
-      if (mediaId && !unclaimed.some((m) => m.id === mediaId)) mediaId = null
     }
 
     files.push({

@@ -14,6 +14,10 @@ import { shopifyConfig } from '@/lib/shopify/config'
 import { readProductByHandle, readProductMedia, type ShopifyMedia } from '@/lib/shopify/product-set'
 import { supabaseServer } from '@/lib/supabase/server'
 
+import {
+  tidyDriveForDraft as runDriveHousekeeping,
+  type DriveHousekeepingOutcome,
+} from './housekeeping'
 import { signKey } from './images'
 
 /**
@@ -38,16 +42,6 @@ export const PUBLISH_LEASE_SECONDS = 300
 
 /** Shopify fetches image URLs itself; they only need to survive that fetch. */
 export const SHOPIFY_FETCH_TTL_SECONDS = 15 * 60
-
-export interface DriveHousekeepingOutcome {
-  readonly intakeFileId: string
-  readonly filename: string
-  readonly driveFileId: string
-  readonly ok: boolean
-  /** False with `ok: true` means it was already in /Processed — a safe repeat. */
-  readonly moved: boolean
-  readonly error: string | null
-}
 
 export interface ConsolePublishResult {
   readonly result: PublishResult
@@ -148,76 +142,22 @@ export async function publishDraftForOperator(
 }
 
 /**
- * Moves every source photograph of a published draft into Drive /Processed.
- *
- * Runs only after the database says published, and cannot fail the publish. Each
- * file is independent: one file that will not move must not stop the others, and
- * `record_drive_housekeeping` records the reason where the tracking page can
- * find it later.
+ * Production wiring for the tidy-up. The logic — and every one of its failure
+ * paths — lives in ./housekeeping.ts so it can be exercised without a real Google
+ * credential.
  */
 export async function tidyDriveForDraft(
   draftId: string,
   operator: Operator,
   deps: PublishDeps = {},
 ): Promise<readonly DriveHousekeepingOutcome[]> {
-  const db = deps.db ?? supabaseServer()
-
-  const { data, error } = await db
-    .from('intake_files')
-    .select('id, filename, drive_file_id, status, drive_processed_at')
-    .eq('product_draft_id', draftId)
-    .eq('status', 'published')
-  if (error) throw new Error(`Could not read the draft's photographs: ${error.message}`)
-
-  const rows = (data ?? []) as {
-    id: string
-    filename: string
-    drive_file_id: string
-    drive_processed_at: string | null
-  }[]
-  if (rows.length === 0) return []
-
-  const drive = deps.drive ?? googleDriveClient()
-  const processedFolderId = deps.processedFolderId ?? serverEnv.driveProcessedFolderId
-  const outcomes: DriveHousekeepingOutcome[] = []
-
-  for (const row of rows) {
-    try {
-      const move = await drive.moveToFolder(row.drive_file_id, processedFolderId)
-      await db.rpc('record_drive_housekeeping', {
-        p_intake_file_id: row.id,
-        p_ok: true,
-        p_error: null,
-        p_actor: operator.email,
-      })
-      outcomes.push({
-        intakeFileId: row.id,
-        filename: row.filename,
-        driveFileId: row.drive_file_id,
-        ok: true,
-        moved: move.moved,
-        error: null,
-      })
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause)
-      await db.rpc('record_drive_housekeeping', {
-        p_intake_file_id: row.id,
-        p_ok: false,
-        p_error: message,
-        p_actor: operator.email,
-      })
-      outcomes.push({
-        intakeFileId: row.id,
-        filename: row.filename,
-        driveFileId: row.drive_file_id,
-        ok: false,
-        moved: false,
-        error: message,
-      })
-    }
-  }
-
-  return outcomes
+  return runDriveHousekeeping(draftId, {
+    db: deps.db ?? supabaseServer(),
+    drive: deps.drive ?? googleDriveClient(),
+    processedFolderId: deps.processedFolderId ?? serverEnv.driveProcessedFolderId,
+    actor: operator.email,
+  })
 }
 
 export { PublishBlockedError }
+export type { DriveHousekeepingOutcome }
