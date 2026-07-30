@@ -145,6 +145,92 @@ export interface TokenExchangeDeps {
   readonly fetchImpl?: typeof fetch
 }
 
+export interface OAuthClientCheck {
+  readonly ok: boolean
+  readonly reason: string
+  readonly detail: string
+}
+
+/**
+ * Is this client id / client secret pair one Google will actually accept?
+ *
+ * Presence is not validity — the same lesson as `GOOGLE_SERVICE_ACCOUNT_JSON`
+ * (D26), and it bites harder here because a WRONG SECRET IS INVISIBLE UNTIL THE
+ * LAST STEP. The authorization redirect only uses the client id, so Google shows
+ * its own sign-in page, the operator signs in successfully, and the failure
+ * arrives at the token exchange as an opaque 401 that reads like an outage.
+ *
+ * The probe deliberately sends a code that cannot possibly be valid and reads
+ * which complaint comes back:
+ *
+ *   400 invalid_grant   the credentials were ACCEPTED and only the code was
+ *                       rejected — which is the answer we want
+ *   401 invalid_client  the id/secret pair is not a client Google recognises
+ *
+ * It creates nothing, consumes nothing and cannot sign anybody in.
+ */
+export async function checkGoogleOAuthClient(
+  config: GoogleOAuthConfig,
+  deps: TokenExchangeDeps = {},
+): Promise<OAuthClientCheck> {
+  const doFetch = deps.fetchImpl ?? fetch
+
+  if (!config.clientId.endsWith('.apps.googleusercontent.com')) {
+    return {
+      ok: false,
+      reason: 'not a Google client id',
+      detail:
+        'GOOGLE_OAUTH_CLIENT_ID should end with .apps.googleusercontent.com. Copy it from the OAuth client, not from a service account.',
+    }
+  }
+
+  let response: Response
+  try {
+    response = await doFetch(GOOGLE_TOKEN_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: 'loupe-health-probe-not-a-real-code',
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        redirect_uri: config.redirectUri,
+        grant_type: 'authorization_code',
+      }).toString(),
+    })
+  } catch (cause) {
+    return {
+      ok: false,
+      reason: 'Google unreachable',
+      detail: cause instanceof Error ? cause.message : 'network error',
+    }
+  }
+
+  const body = (await response.json().catch(() => ({}))) as { error?: unknown }
+  const error = typeof body.error === 'string' ? body.error : `http ${response.status}`
+
+  if (error === 'invalid_grant') {
+    return { ok: true, reason: 'accepted', detail: 'Google accepted the client id and secret.' }
+  }
+  if (error === 'invalid_client' || response.status === 401) {
+    return {
+      ok: false,
+      reason: 'client id / secret rejected',
+      detail:
+        'Google returned invalid_client. The secret does not belong to this client id — or the ' +
+        'OAuth client is not of type "Web application", which is the only type that has one. ' +
+        'Create a Web application client and set both values from the same client.',
+    }
+  }
+  if (error === 'redirect_uri_mismatch') {
+    return {
+      ok: false,
+      reason: 'redirect URI not registered',
+      detail: `Add ${config.redirectUri} to the OAuth client's Authorised redirect URIs, exactly, with no trailing slash.`,
+    }
+  }
+  return { ok: false, reason: error, detail: `Google refused the probe with "${error}".` }
+}
+
 /** Exchanges the one-time code for an ID token. Server-to-server; secret stays here. */
 export async function exchangeCodeForIdentity(
   config: GoogleOAuthConfig,

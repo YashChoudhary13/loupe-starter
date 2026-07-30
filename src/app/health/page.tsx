@@ -1,3 +1,5 @@
+import { googleOAuthConfig } from '@/lib/auth/authorize'
+import { checkGoogleOAuthClient, type OAuthClientCheck } from '@/lib/auth/google'
 import { checkGoogleServiceAccount } from '@/lib/google/service-account'
 import { supabaseServer } from '@/lib/supabase/server'
 import { TABLES, type TableName } from '@/lib/tables'
@@ -58,6 +60,18 @@ async function collectHealth(): Promise<HealthReport> {
   }
 }
 
+async function checkOAuthClient(): Promise<OAuthClientCheck> {
+  try {
+    return await checkGoogleOAuthClient(googleOAuthConfig())
+  } catch (e) {
+    return {
+      ok: false,
+      reason: 'not configured',
+      detail: e instanceof Error ? e.message : String(e),
+    }
+  }
+}
+
 // Stored UTC, displayed Asia/Kolkata — the operators are in Jaipur.
 function formatIst(d: Date): string {
   return new Intl.DateTimeFormat('en-IN', {
@@ -74,6 +88,10 @@ export default async function HealthPage() {
   // Non-throwing on purpose: a broken Drive credential must be VISIBLE here, not
   // take the diagnostics page down with it.
   const google = checkGoogleServiceAccount()
+  // Same reason, one layer up: a client SECRET that Google does not accept is
+  // invisible until the very last step of sign-in, where it surfaces as an
+  // opaque 401 that reads like an outage rather than like a typo.
+  const oauth = await checkOAuthClient()
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-12">
@@ -149,6 +167,18 @@ export default async function HealthPage() {
                 )}
               </td>
             </tr>
+            <tr className="border-t border-black/[0.06]">
+              <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--ink-soft)]">
+                GOOGLE_OAUTH_CLIENT_ID / _SECRET
+              </td>
+              <td className="px-5 py-2.5 text-right">
+                <span
+                  className={`font-mono text-[12px] ${oauth.ok ? 'text-[var(--ink)]' : 'text-[var(--amber)]'}`}
+                >
+                  {oauth.reason}
+                </span>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -157,12 +187,16 @@ export default async function HealthPage() {
           {google.message}
         </p>
       )}
+      {!oauth.ok && (
+        <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--amber)]">
+          {oauth.detail}
+        </p>
+      )}
 
       <p className="mt-6 text-[12px] leading-relaxed text-[var(--muted)]">
         Counts are read with the server-only service-role client, which bypasses Row Level
         Security. Every table has RLS enabled and no policies, so the browser client reads
-        nothing at all. Authentication lands in Phase 4; this page is deliberately open until
-        then.
+        nothing at all.
       </p>
       <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted)]">
         The credential is validated, not merely checked for presence — an unquoted multi-line
@@ -170,6 +204,12 @@ export default async function HealthPage() {
         character <code className="font-mono">{'{'}</code>, which passes every truthiness test
         and then fails inside a worker. Only the service-account address is shown; the private
         key is never rendered or logged.
+      </p>
+      <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted)]">
+        The OAuth client is checked the same way: Google is asked to exchange a code that cannot
+        be valid, so <code className="font-mono">invalid_grant</code> means the id and secret were
+        accepted and <code className="font-mono">invalid_client</code> means they were not. The
+        probe signs nobody in and neither value is ever rendered.
       </p>
     </main>
   )
