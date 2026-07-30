@@ -87,6 +87,58 @@ export async function readImageDimensions(input: Buffer): Promise<ImageDimension
 }
 
 /**
+ * Curated image models share a square editing contract but not a pixel-size
+ * contract. Keep Loupe's storage/output dimensions stable without stretching a
+ * non-square response: only a genuinely square result may be resized.
+ */
+export async function normaliseGeneratedImage(
+  input: Buffer,
+  target: ImageDimensions,
+): Promise<Buffer> {
+  try {
+    const metadata = await sharp(input, { failOn: 'error' }).metadata()
+    const actual = dimensions(
+      metadata.width,
+      metadata.height,
+      'normalising the generated result',
+    )
+
+    if (actual.width * target.height !== actual.height * target.width) {
+      throw new EnhancementError(
+        `The image model returned ${actual.width}x${actual.height}; Loupe requires the ${target.width}x${target.height} aspect ratio.`,
+        {
+          stage: 'image',
+          code: 'image_aspect_ratio_not_honoured',
+          retryable: false,
+          detail: { requested: target, actual },
+        },
+      )
+    }
+
+    if (
+      actual.width === target.width &&
+      actual.height === target.height &&
+      metadata.format === 'png'
+    ) {
+      return input
+    }
+
+    return await sharp(input, { failOn: 'error' })
+      .resize(target.width, target.height, { fit: 'fill' })
+      .png({ compressionLevel: 9 })
+      .toBuffer()
+  } catch (error) {
+    if (error instanceof EnhancementError) throw error
+    throw new EnhancementError('The image model returned an unreadable image.', {
+      stage: 'image',
+      code: 'malformed_image_response',
+      retryable: false,
+      detail: error,
+    })
+  }
+}
+
+/**
  * The grid needs a small preview, not another full render. WebP quality is
  * reduced until the file is close to (and never materially above) ~50 KB.
  */

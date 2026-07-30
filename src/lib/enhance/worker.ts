@@ -10,6 +10,7 @@ import {
 } from './errors'
 import {
   makeThumbnail,
+  normaliseGeneratedImage,
   prepareModelInput,
   readImageDimensions,
 } from './image'
@@ -289,7 +290,7 @@ async function processClaim(
           prepared.mediaType,
           prompts.describe.body,
           {
-            model: config.describeModel,
+            model: prompts.describe.model,
             reasoningEffort: config.describeReasoningEffort,
           },
         )
@@ -385,7 +386,7 @@ async function processClaim(
         intakeFileId: claim.id,
         sourceSha256,
         promptSha256,
-        requestedModel: config.imageModel,
+        requestedModel: prompts.image.model,
         size: config.imageSize,
         quality: config.imageQuality,
         descriptionInjected,
@@ -397,23 +398,13 @@ async function processClaim(
         prepared.mediaType,
         resolvedPrompt.text,
         {
-          model: config.imageModel,
+          model: prompts.image.model,
           size: config.imageSize,
           quality: config.imageQuality,
         },
       )
-      const actual = await readImageDimensions(result.image)
-      if (actual.width !== expected.width || actual.height !== expected.height) {
-        throw new EnhancementError(
-          `The image model returned ${actual.width}x${actual.height}; Loupe explicitly requested ${config.imageSize}.`,
-          {
-            stage: 'image',
-            code: 'image_size_not_honoured',
-            retryable: false,
-            detail: { requested: config.imageSize, actual },
-          },
-        )
-      }
+      const generatedImage = await normaliseGeneratedImage(result.image, expected)
+      const actual = await readImageDimensions(generatedImage)
 
       const metadata = {
         'intake-id': claim.id,
@@ -421,7 +412,7 @@ async function processClaim(
         'source-sha256': sourceSha256,
         'prompt-sha256': promptSha256,
         model: result.model,
-        'requested-model': config.imageModel,
+        'requested-model': prompts.image.model,
         'image-size': config.imageSize,
         'image-quality': config.imageQuality,
         'cost-usd': result.costUsd.toString(),
@@ -431,10 +422,10 @@ async function processClaim(
         'description-missing': String(descriptionMissing),
         ...(result.generationId ? { 'generation-id': result.generationId } : {}),
       }
-      const thumbnail = await makeThumbnail(result.image)
+      const thumbnail = await makeThumbnail(generatedImage)
 
       await requireLease(repository, claim)
-      await store.putImmutable(generatedKey, result.image, 'image/png', metadata)
+      await store.putImmutable(generatedKey, generatedImage, 'image/png', metadata)
       await requireLease(repository, claim)
       await store.putImmutable(thumbKey, thumbnail, 'image/webp', {
         'intake-id': claim.id,
@@ -444,7 +435,7 @@ async function processClaim(
       })
 
       generated = {
-        image: result.image,
+        image: generatedImage,
         costUsd: result.costUsd,
         model: result.model,
         width: actual.width,

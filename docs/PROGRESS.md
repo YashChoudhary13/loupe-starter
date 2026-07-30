@@ -31,6 +31,46 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-30 — Phase 5 curated model selection
+
+**Goal this session:** add a small, useful model choice to each prompt stage without
+changing the accepted defaults or exposing OpenRouter's full catalogue.
+
+**Built:**
+
+- `/prompts` → separate Descriptor and Image generation selectors, each with ten
+  ordered choices from economical to premium. The current accepted models remain
+  selected by default.
+- `prompts.model` and `select_prompt_model` migration → model choice is versioned
+  with the immutable prompt, audited, constrained to the curated list, and refused
+  while an enhancement is in flight.
+- Enhancement worker → each run now uses the model saved with its live prompt.
+  Non-OpenAI image models receive a square request; square results are normalised to
+  Loupe's 1280×1280 PNG contract and non-square results are refused rather than stretched.
+
+**Verified:**
+
+- `356 passed` across 31 files; typecheck, lint, production build,
+  `verify:isolation`, and linked database lint passed.
+- Migration `20260730160000_prompt_model_selection.sql` is applied.
+- Database read-back still shows `openai/gpt-5.6-sol` and
+  `openai/gpt-image-2` as the current models. No paid generation was run.
+
+**Not finished / known broken:**
+
+- Phase 5 is not complete. Prompt-body creation/promotion, redo generation, version
+  comparison, paid-call crash recovery, and live acceptance remain.
+- Tracking remains Phase 6.
+
+**Surprises:** image-edit providers do not share one request shape or fixed-price unit.
+The curated list therefore shows compact provider hints, while Loupe keeps one output
+contract.
+
+**Next session should start with:** add append-only prompt-body creation and atomic
+promotion, including required-token validation and audit events.
+
+---
+
 ## 2026-07-30 — Phase 4 complete; Phase 5 prompt history started
 
 **Goal this session:** settle the owner decisions, add custom material and safe product

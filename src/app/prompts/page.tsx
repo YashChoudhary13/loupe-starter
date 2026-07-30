@@ -1,16 +1,24 @@
 import { Sidebar } from '@/components/console/Sidebar'
 import { requireOperator } from '@/lib/auth/authorize'
+import { curatedModel, modelsFor } from '@/lib/prompts/models'
 import {
   loadPromptLibrary,
   type PromptKind,
   type PromptVersion,
 } from '@/lib/prompts/library'
 
+import { selectPromptModelAction } from './actions'
+
 export const dynamic = 'force-dynamic'
 
-export default async function PromptsPage() {
+export default async function PromptsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ updated?: string; error?: string }>
+}) {
   const operator = await requireOperator()
   const prompts = await loadPromptLibrary()
+  const feedback = await searchParams
 
   return (
     <div className="grid min-h-dvh grid-cols-[216px_1fr] gap-[18px] p-[18px]">
@@ -23,6 +31,18 @@ export default async function PromptsPage() {
             Current enhancement instructions and their immutable history.
           </p>
         </header>
+
+        {feedback.updated ? (
+          <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
+            Model updated. New {feedback.updated === 'describe' ? 'descriptions' : 'images'} use
+            it; existing results stay unchanged.
+          </p>
+        ) : null}
+        {feedback.error ? (
+          <p className="mb-3.5 rounded-panel bg-[#fff7e8] px-4 py-3 text-[12px] text-amber">
+            {feedback.error}
+          </p>
+        ) : null}
 
         <div className="grid gap-3.5 xl:grid-cols-2">
           <PromptGroup kind="describe" versions={prompts.describe} />
@@ -41,6 +61,8 @@ function PromptGroup({
   versions: readonly PromptVersion[]
 }) {
   const current = versions.find((version) => version.isDefault && version.archivedAt === null)
+  const currentModel = current ? curatedModel(kind, current.model) : null
+  const options = modelsFor(kind)
 
   return (
     <section className="rounded-card bg-surface p-6">
@@ -69,6 +91,42 @@ function PromptGroup({
           <p className="mt-3 max-h-[340px] overflow-y-auto whitespace-pre-wrap text-[11.5px] leading-relaxed text-white/75">
             {current.body}
           </p>
+          <form
+            action={selectPromptModelAction}
+            className="mt-4 border-t border-white/15 pt-4"
+          >
+            <input type="hidden" name="kind" value={kind} />
+            <label
+              htmlFor={`${kind}-model`}
+              className="text-[9px] uppercase tracking-[0.12em] text-white/55"
+            >
+              {kind === 'describe' ? 'Descriptor model' : 'Image generation model'}
+            </label>
+            <div className="mt-2 flex gap-2">
+              <select
+                id={`${kind}-model`}
+                name="model"
+                defaultValue={current.model}
+                className="min-w-0 flex-1 rounded-field bg-white px-3 py-2 text-[11.5px] text-ink outline-none focus:ring-2 focus:ring-white/40"
+              >
+                {options.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.tier} · {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="shrink-0 rounded-pill bg-white px-3.5 py-2 text-[11px] font-medium text-ink transition-colors hover:bg-[#ededee]"
+              >
+                Use model
+              </button>
+            </div>
+            <p className="mt-2 text-[10.5px] leading-relaxed text-white/55">
+              {currentModel?.priceHint ?? current.model}
+              {currentModel ? ` · ${currentModel.note}` : ''}
+            </p>
+          </form>
         </article>
       ) : (
         <p className="mt-4 rounded-panel bg-[#fff7e8] p-4 text-[12px] text-amber">
@@ -94,6 +152,9 @@ function PromptGroup({
                       timeZone: 'Asia/Kolkata',
                     })}
                     {version.createdBy ? ` · ${version.createdBy}` : ''}
+                  </p>
+                  <p className="mt-1 truncate font-mono text-[9.5px] text-muted-foreground">
+                    {version.model}
                   </p>
                 </div>
                 <span className="rounded-pill bg-chip px-2 py-0.5 text-[9px] uppercase tracking-[0.08em] text-ink-soft">

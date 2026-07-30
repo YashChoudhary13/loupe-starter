@@ -23,12 +23,14 @@ export const TEST_PROMPTS: LivePrompts = {
     id: 'prompt-describe',
     name: 'describe',
     kind: 'describe',
+    model: 'openai/gpt-5.6-sol',
     body: 'Describe only the jewellery.',
   },
   image: {
     id: 'prompt-image',
     name: 'image',
     kind: 'image',
+    model: 'openai/gpt-image-2',
     body: `A hero image.
 
 PRODUCT

@@ -106,6 +106,66 @@ describe('OpenRouter two-call client', () => {
     })
   })
 
+  it('uses the shared 1:1 edit contract for a curated non-OpenAI image model', async () => {
+    const requests: Record<string, unknown>[] = []
+    const client = new OpenRouterClient(
+      'test-key',
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return Response.json({
+          id: 'flux-request',
+          model: 'black-forest-labs/flux.2-pro',
+          data: [{ b64_json: Buffer.from('generated-image').toString('base64') }],
+          usage: { cost: 0.03 },
+        })
+      }) as typeof fetch,
+    )
+
+    await client.enhance(Buffer.from('source'), 'image/jpeg', 'PROMPT', {
+      model: 'black-forest-labs/flux.2-pro',
+      size: '1280x1280',
+      quality: 'medium',
+    })
+
+    expect(requests[0]).toMatchObject({
+      model: 'black-forest-labs/flux.2-pro',
+      aspect_ratio: '1:1',
+      n: 1,
+    })
+    expect(requests[0]).not.toHaveProperty('size')
+    expect(requests[0]).not.toHaveProperty('quality')
+  })
+
+  it('omits OpenAI-only reasoning controls for another descriptor provider', async () => {
+    const requests: Record<string, unknown>[] = []
+    const client = new OpenRouterClient(
+      'test-key',
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+        return Response.json({
+          model: 'google/gemini-3.5-flash-lite',
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                description: TEST_DESCRIPTION,
+                presentation: 'pair-upright',
+              }),
+            },
+          }],
+          usage: { cost: 0.001 },
+        })
+      }) as typeof fetch,
+    )
+
+    await client.describe(Buffer.from('source'), 'image/jpeg', 'PROMPT', {
+      model: 'google/gemini-3.5-flash-lite',
+      reasoningEffort: 'minimal',
+    })
+
+    expect(requests[0]?.model).toBe('google/gemini-3.5-flash-lite')
+    expect(requests[0]).not.toHaveProperty('reasoning')
+  })
+
   it.each([
     {
       label: 'malformed JSON',

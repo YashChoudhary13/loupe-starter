@@ -82,6 +82,42 @@ function enhancer(costUsd = 0.083): ImageEnhancer & { enhance: ReturnType<typeof
 }
 
 describe('Phase 3B enhancement worker', () => {
+  it('uses the models selected on the two current prompt versions', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.prompts = {
+      describe: {
+        ...repository.prompts.describe,
+        model: 'google/gemini-3.5-flash-lite',
+      },
+      image: {
+        ...repository.prompts.image,
+        model: 'black-forest-labs/flux.2-pro',
+      },
+    }
+    repository.enqueue(claim('selected-models'))
+    const descriptionClient = describer()
+    const imageClient = enhancer()
+
+    await runEnhancementBatch(
+      {
+        drive: drive(),
+        repository,
+        store: new MemoryObjectStore(),
+        describer: descriptionClient,
+        enhancer: imageClient,
+        config: CONFIG,
+      },
+      { maxItems: 1 },
+    )
+
+    expect(descriptionClient.describe.mock.calls[0]?.[3]).toMatchObject({
+      model: 'google/gemini-3.5-flash-lite',
+    })
+    expect(imageClient.enhance.mock.calls[0]?.[3]).toMatchObject({
+      model: 'black-forest-labs/flux.2-pro',
+    })
+  })
+
   it('describes, injects, stores immutable original/result/thumbnail and completes one row', async () => {
     const repository = new MemoryEnhancementRepository()
     const item = claim('normal')

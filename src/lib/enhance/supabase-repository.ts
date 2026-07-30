@@ -151,7 +151,7 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
   async loadLivePrompts(): Promise<LivePrompts> {
     const { data, error } = await this.db
       .from('prompts')
-      .select('id, name, kind, body')
+      .select('id, name, kind, body, model')
       .eq('is_default', true)
       .is('archived_at', null)
       .in('kind', ['describe', 'image'])

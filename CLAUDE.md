@@ -157,16 +157,17 @@ so 0 g is the correct settled value and not a cutover item. See D19.
 
 ## Image enhancement
 
-**Route: OpenRouter.** `OPENROUTER_API_KEY` serves both model calls:
-`DESCRIBE_MODEL=gpt-5.6-sol` and `IMAGE_MODEL=gpt-image-2`. Friendly model names are
-qualified as `openai/...` at the wire boundary and that resolved slug is persisted. One
-key and billing account keep provider/model swaps in configuration rather than SDK-specific
-worker code.
+**Route: OpenRouter.** `OPENROUTER_API_KEY` serves both model calls. D51 moves the
+provider-qualified model onto each immutable prompt version and exposes ten curated choices
+per stage in `/prompts`; the current defaults remain `openai/gpt-5.6-sol` and
+`openai/gpt-image-2`. The env values remain compatibility defaults, not the live selector.
+One key and billing account keep model swaps out of provider-specific SDKs.
 
 **Enhancement is a durable two-call pipeline.**
 
 1. A describer sees only the 1024 px-long-edge source copy and the live default
-   `prompts.kind = 'describe'` body. It uses `DESCRIBE_REASONING_EFFORT=minimal` and must
+   `prompts.kind = 'describe'` body and selected model. It uses
+   `DESCRIBE_REASONING_EFFORT=minimal` where the provider supports that control and must
    return one strict JSON object with exactly `description` and `presentation`. Description
    is one factual 60–100 word paragraph. Presentation must be one of the database enum's
    six values: `pair-upright`, `flat-curve`, `standing-three-quarter`, `angled-band`,
@@ -201,18 +202,19 @@ comparable five-product image run proves strict JSON, factual accuracy, correct 
 image fidelity and the 87-item tray count. The isolated cost evaluation is evidence, not
 permission to change `DESCRIBE_MODEL`.
 
-**That cost work is deliberately deferred past Phase 4** (D43). The business has moved
-description-model selection and cost optimisation to a later final optimisation stage, so
-Phase 4 proceeds with criterion 17 unresolved. Phase 3C stays *not complete*; the model,
-reasoning effort, image model, size, quality, prompts and presentation classes stay exactly
-as they are; and model/provider selection is out of scope for Phase 4.
+**That cost work was deliberately deferred past Phase 4** (D43). Phase 4 completed without
+changing any model. In Phase 5 the owner explicitly brought curated model selection into
+scope (D51). Phase 3C stays *not complete* until a newly selected configuration passes its
+own comparable acceptance evidence; exposing a selector is not that evidence.
 
 **Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
-- **Never rely on image API defaults.** Every request must send the env-backed `size` and
-  `quality` explicitly. Agreed production defaults are `IMAGE_SIZE=1280x1280` and
-  `IMAGE_QUALITY=medium`; the source copy sent to the model is downscaled to a 1024 px
-  long edge first.
+- **Never rely on image shape defaults.** OpenAI image requests send the env-backed `size`
+  and `quality` explicitly. Other curated OpenRouter image models use the common `1:1`
+  aspect-ratio contract and their square result is converted to the configured
+  `IMAGE_SIZE=1280x1280` PNG; a non-square response is refused rather than stretched.
+  `IMAGE_QUALITY=medium` remains the OpenAI production default. The source copy sent to
+  every model is downscaled to a 1024 px long edge first.
 - `MAX_COST_USD_PER_IMAGE=0.20` is a hard guard. Persist the returned version and actual
   `usage.cost`, then fail the intake permanently with the actual cost in the readable
   reason when it exceeds the ceiling. Never estimate cost from a price table.

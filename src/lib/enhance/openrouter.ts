@@ -91,6 +91,21 @@ function dataUrl(input: Buffer, mediaType: string): string {
   return `data:${mediaType};base64,${input.toString('base64')}`
 }
 
+function supportsReasoningControl(model: string): boolean {
+  return model.startsWith('openai/')
+}
+
+function imageGenerationParameters(options: EnhanceOptions): Record<string, unknown> {
+  if (options.model.startsWith('openai/')) {
+    return { size: options.size, quality: options.quality }
+  }
+
+  // OpenRouter's dedicated Images API exposes a shared aspect-ratio contract
+  // across the curated non-OpenAI edit models. Their native pixel dimensions
+  // differ, so the worker normalises a square result to Loupe's configured size.
+  return { aspect_ratio: '1:1' }
+}
+
 function costOf(usage: OpenRouterUsage | undefined, stage: 'describe' | 'image'): number {
   const cost = typeof usage?.cost === 'string' ? Number(usage.cost) : usage?.cost
   if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) {
@@ -218,10 +233,14 @@ export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
               ],
             },
           ],
-          reasoning: {
-            effort: options.reasoningEffort,
-            exclude: true,
-          },
+          ...(supportsReasoningControl(options.model)
+            ? {
+                reasoning: {
+                  effort: options.reasoningEffort,
+                  exclude: true,
+                },
+              }
+            : {}),
           max_completion_tokens: 256,
           stream: false,
         }),
@@ -306,8 +325,7 @@ export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
               image_url: { url: dataUrl(input, mediaType) },
             },
           ],
-          size: options.size,
-          quality: options.quality,
+          ...imageGenerationParameters(options),
           n: 1,
         }),
       })

@@ -1147,3 +1147,42 @@ never edit raw HTML, and WhatsApp CSS/classes cannot be reintroduced through thi
 
 **Rejected:** theme-only rendering (the description is absent until a separate theme
 deployment), free-form HTML, and adding every one-off custom material to the global list.
+
+---
+
+### D51 — Phase 5 offers ten curated models per enhancement stage
+
+*Business decision, 2026-07-30. This supersedes D43 only for model selection after
+Phase 4; D43 remains the reason no model changed during Phase 4.*
+
+The Prompt screen has two independent model selectors:
+
+- ten image-capable text models for the descriptor, ordered from lowest cost to premium;
+- ten image-edit models for generation, also ordered from lowest cost to premium.
+
+The lists are curated against OpenRouter's official model and image-model endpoints, not
+loaded as an unbounded provider catalogue. Each option has a stable provider-qualified
+slug, a cost tier and a concise use note. Prices shown in the interface are hints;
+OpenRouter billing and Loupe's recorded `usage.cost` remain authoritative.
+
+Changing a model creates a new immutable prompt row with the same body and the new model,
+archives the prior default and records `prompt.model_selected`. The worker reads the model
+from the same current prompt row as the body, so prompt and model cannot drift into two
+configuration histories. A switch is refused while an enhancement lease is active.
+
+The current accepted defaults remain selected:
+
+```text
+descriptor        openai/gpt-5.6-sol
+image generation  openai/gpt-image-2
+```
+
+OpenAI image models keep explicit size and quality parameters. Other curated image models
+use OpenRouter's common 1:1 edit contract; Loupe converts a square result to the configured
+1280×1280 PNG and refuses a wrong aspect ratio. Size, quality, reasoning effort and
+provider credentials are not user-selectable.
+
+**Rejected:** listing every OpenRouter model, accepting an arbitrary slug, changing the
+provider key, silently changing the current default as part of deployment, or treating a
+model selection as acceptance evidence. A newly selected model still has to prove
+structured description output, jewellery fidelity and cost before Phase 3C can complete.

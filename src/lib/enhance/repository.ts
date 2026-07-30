@@ -27,6 +27,8 @@ export interface LivePrompt {
   readonly name: string
   readonly kind: PromptKind
   readonly body: string
+  /** Provider-qualified OpenRouter model tied to this immutable prompt version. */
+  readonly model: string
 }
 
 export interface LivePrompts {
