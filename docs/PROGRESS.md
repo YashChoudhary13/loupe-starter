@@ -55,6 +55,10 @@ changing the accepted defaults or exposing OpenRouter's full catalogue.
 - Migration `20260730160000_prompt_model_selection.sql` is applied.
 - Database read-back still shows `openai/gpt-5.6-sol` and
   `openai/gpt-image-2` as the current models. No paid generation was run.
+- Production browser read-back showed exactly ten choices in each separate selector,
+  with the accepted defaults selected and both controls fitting cleanly in their prompt
+  cards. Deployment `dpl_HNt4Et7rYgHCx1VTKxA9tB9jKtQS` is Ready at
+  `https://qimati-loupe.vercel.app`.
 
 **Not finished / known broken:**
 
