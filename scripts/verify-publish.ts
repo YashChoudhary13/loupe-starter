@@ -94,6 +94,11 @@ function check(label: string, actual: unknown, expected: unknown): void {
   )
 }
 
+/** Shopify pretty-prints stored rich text; spacing between tags is not content. */
+function normaliseHtml(html: string): string {
+  return html.trim().replace(/>\s+</g, '><')
+}
+
 /** Every product carrying the test tag, whichever run created it. */
 async function findTestProducts(shopify: ShopifyClient): Promise<string[]> {
   const data = await shopify.graphql<{
@@ -205,13 +210,17 @@ async function createDraft(
     title_suffix?: string | null
     colours?: boolean
     material?: boolean
+    customMaterial?: string
+    descriptionOverride?: string
   } = {},
 ): Promise<string> {
   const { data, error } = await db
     .from('product_drafts')
     .insert({
       category_id: f.necklaceId,
-      material_id: fields.material === false ? null : f.materialId,
+      material_id: fields.customMaterial || fields.material === false ? null : f.materialId,
+      custom_material: fields.customMaterial ?? null,
+      description_override: fields.descriptionOverride ?? null,
       price_paise: fields.price_paise === undefined ? 75_000 : fields.price_paise,
       stock: fields.stock ?? 12,
       weight_g: fields.weight_g === undefined ? 28 : fields.weight_g,
@@ -346,6 +355,11 @@ async function main(): Promise<void> {
     check('status', readback.status, 'ACTIVE')
     check('tags', [...readback.tags].sort(), ['Necklace', NEWEST_TAG, TEST_TAG].sort())
     check('material metafield', readback.metafield?.value ?? null, '316L')
+    check(
+      'descriptionHtml',
+      normaliseHtml(readback.descriptionHtml),
+      normaliseHtml(result1.descriptionHtml),
+    )
 
     const variants = variantSummary(readback)
     console.log(`  variants     ${JSON.stringify(variants, null, 0)}`)
@@ -543,6 +557,8 @@ async function main(): Promise<void> {
   const zeroPriceInsert = await db.from('product_drafts').insert({
     category_id: fixtures.necklaceId,
     material_id: fixtures.materialId,
+    custom_material: null,
+    description_override: null,
     price_paise: 0,
     stock: 12,
     weight_g: 28,
@@ -555,7 +571,12 @@ async function main(): Promise<void> {
   )
 
   const noPrice = await createDraft(fixtures, { price_paise: null })
-  const zeroStock = await createDraft(fixtures, { stock: 0 })
+  const customDescription = 'A limited sterling silver piece.\nKeep away from harsh chemicals.'
+  const zeroStock = await createDraft(fixtures, {
+    stock: 0,
+    customMaterial: 'Sterling Silver',
+    descriptionOverride: customDescription,
+  })
 
   for (const [label, id, options] of [
     ['empty price', noPrice, {}],
@@ -582,6 +603,13 @@ async function main(): Promise<void> {
   })
   createdProductIds.add(overridden.shopifyProductId)
   assert('zero stock publishes when explicitly overridden', true, overridden.sku)
+  const overriddenReadback = await readProductByHandle(shopify, overridden.handle)
+  check('custom material reaches Shopify', overriddenReadback?.metafield?.value ?? null, 'Sterling Silver')
+  check(
+    'description override reaches Shopify',
+    overriddenReadback ? normaliseHtml(overriddenReadback.descriptionHtml) : null,
+    normaliseHtml(overridden.descriptionHtml),
+  )
   check(
     'only the override burnt a number',
     await readCounter('NK'),

@@ -34,6 +34,8 @@ const DRAFT: DraftRow = {
   id: 'draft-1',
   category_id: 'cat-1',
   material_id: 'mat-1',
+  custom_material: null,
+  description_override: null,
   title_suffix: null,
   price_paise: 75_000,
   weight_g: null,

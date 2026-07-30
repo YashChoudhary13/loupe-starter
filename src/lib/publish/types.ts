@@ -4,6 +4,8 @@ export interface DraftRow {
   readonly id: string
   readonly category_id: string
   readonly material_id: string | null
+  readonly custom_material: string | null
+  readonly description_override: string | null
   readonly title_suffix: string | null
   readonly price_paise: number | null
   readonly weight_g: number | null
@@ -89,6 +91,7 @@ export interface PublishResult {
   readonly weightG: number
   readonly stock: number
   readonly material: string | null
+  readonly descriptionHtml: string
   readonly colours: readonly string[]
   /** True when this call updated an existing product rather than creating one. */
   readonly reusedIdentity: boolean

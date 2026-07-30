@@ -33,6 +33,7 @@ import {
   type ProductSetFile,
 } from '@/lib/shopify/product-set'
 
+import { buildDescriptionHtml } from './description'
 import { paiseToShopifyPrice } from './identity'
 import type {
   CategoryRow,
@@ -81,7 +82,7 @@ export function filenameForStorage(sourceFilename: string, storageKey: string): 
 }
 
 const DRAFT_COLUMNS =
-  'id, category_id, material_id, title_suffix, price_paise, weight_g, stock, status, reserved_sku, reserved_handle, shopify_product_id'
+  'id, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, status, reserved_sku, reserved_handle, shopify_product_id'
 const CATEGORY_COLUMNS =
   'id, name, sku_prefix, title_pattern, shopify_tag, default_weight_g, default_stock'
 
@@ -110,8 +111,8 @@ export async function loadPublishInput(
     )
   }
 
-  let materialName: string | null = null
-  if (draft.material_id) {
+  let materialName: string | null = draft.custom_material
+  if (!materialName && draft.material_id) {
     const { data, error } = await db
       .from('materials')
       .select('name')
@@ -326,6 +327,10 @@ export async function publishProduct(
   try {
     const locationId = await primaryLocationId(shopify)
     const price = paiseToShopifyPrice(input.draft.price_paise)
+    const descriptionHtml = buildDescriptionHtml(
+      input.materialName,
+      input.draft.description_override,
+    )
 
     const variants =
       input.colours.length > 0
@@ -363,6 +368,7 @@ export async function publishProduct(
       title: identity.title,
       productType: PRODUCT_TYPE,
       tags: buildProductTags(identity.shopifyTag, options.extraTags),
+      descriptionHtml,
       material: input.materialName,
       colours: input.colours,
       variants,
@@ -421,6 +427,7 @@ export async function publishProduct(
       weightG,
       stock: input.draft.stock,
       material: input.materialName,
+      descriptionHtml,
       colours: input.colours,
       reusedIdentity: identity.reused,
       images: published,

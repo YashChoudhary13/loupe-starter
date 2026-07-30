@@ -554,6 +554,11 @@ async function accept(): Promise<void> {
     readback!.tags.join(', '),
   )
   check('custom.material', readback!.metafield?.value ?? null, '316L')
+  check(
+    'descriptionHtml',
+    readback!.descriptionHtml.trim().replace(/>\s+</g, '><'),
+    published.result.descriptionHtml.trim().replace(/>\s+</g, '><'),
+  )
   check('exactly one product for the handle', await countProductsByHandle(shopify, published.result.handle), 1)
 
   const variants = readback!.variants.nodes
@@ -578,6 +583,7 @@ async function accept(): Promise<void> {
     status: readback!.status,
     productType: readback!.productType,
     material: readback!.metafield?.value ?? null,
+    descriptionHtml: readback!.descriptionHtml,
     price: variants[0]?.price,
     stock: variants[0]?.inventoryQuantity,
     weight: variants[0]?.inventoryItem?.measurement?.weight ?? null,

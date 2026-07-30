@@ -58,6 +58,8 @@ async function createDraft(fields: {
     .insert({
       category_id: fields.categoryId,
       material_id: fields.material === false ? null : materialId,
+      custom_material: null,
+      description_override: null,
       price_paise: fields.price_paise,
       stock: fields.stock ?? 5,
       weight_g: fields.weight_g ?? 20,

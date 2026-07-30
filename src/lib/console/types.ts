@@ -90,6 +90,10 @@ export interface DraftDetail {
   readonly updatedAt: string
   readonly categoryId: string
   readonly materialId: string | null
+  /** One-off material for this product. Mutually exclusive with materialId. */
+  readonly customMaterial: string | null
+  /** Plain-text replacement for the standard six-bullet description. */
+  readonly descriptionOverride: string | null
   readonly titleSuffix: string | null
   readonly pricePaise: number | null
   readonly weightG: number | null

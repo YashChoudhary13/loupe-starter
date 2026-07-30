@@ -114,7 +114,7 @@ async function createDraft(intakeFileIds: readonly string[], category = category
 async function draftRow(id: string) {
   const { data } = await db
     .from('product_drafts')
-    .select('id, status, category_id, price_paise, stock, weight_g, title_suffix, reserved_sku, updated_at, publish_lease_token, publish_lease_expires_at')
+    .select('id, status, category_id, material_id, custom_material, description_override, price_paise, stock, weight_g, title_suffix, reserved_sku, updated_at, publish_lease_token, publish_lease_expires_at')
     .eq('id', id)
     .single()
   return data as Record<string, unknown>
@@ -356,6 +356,27 @@ describe('saving', () => {
     expect(names).toEqual(['Gold', 'Rose Gold'])
 
     expect((await draftImages(draftId)).map((i) => i.position)).toEqual([0, 1, 2])
+  })
+
+  it('stores a one-off material and plain-text description without changing suggestions', async () => {
+    const { error } = await save({
+      p_material_id: null,
+      p_custom_material: '  Sterling   Silver  ',
+      p_description_override: '  A limited one-off piece.  ',
+    })
+    expect(error?.message).toBeUndefined()
+
+    const draft = await draftRow(draftId)
+    expect(draft.material_id).toBeNull()
+    expect(draft.custom_material).toBe('Sterling Silver')
+    expect(draft.description_override).toBe('A limited one-off piece.')
+
+    const both = await save({
+      p_material_id: materialId,
+      p_custom_material: 'Sterling Silver',
+    })
+    expect(both.error?.code).toBe('22023')
+    expect(both.error?.hint).toMatch(/Clear the custom material/)
   })
 
   it('reorders images and chooses the original for one source', async () => {

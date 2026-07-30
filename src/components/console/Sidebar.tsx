@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 import type { Operator } from '@/lib/auth/authorize'
 
 /**
@@ -11,9 +13,11 @@ import type { Operator } from '@/lib/auth/authorize'
 export function Sidebar({
   operator,
   attentionCount,
+  active = 'console',
 }: {
   operator: Operator
   attentionCount: number
+  active?: 'console' | 'prompts'
 }) {
   return (
     <aside className="flex min-h-0 flex-col gap-[26px] px-1 pt-2">
@@ -29,7 +33,12 @@ export function Sidebar({
           Workspace
         </div>
 
-        <span className="flex items-center gap-3 rounded-pill bg-ink px-4 py-2.5 font-medium text-white">
+        <Link
+          href="/console"
+          className={`flex items-center gap-3 rounded-pill px-4 py-2.5 font-medium ${
+            active === 'console' ? 'bg-ink text-white' : 'text-ink-soft hover:bg-chip'
+          }`}
+        >
           <SearchIcon />
           Console
           {attentionCount > 0 ? (
@@ -37,7 +46,7 @@ export function Sidebar({
               {attentionCount}
             </span>
           ) : null}
-        </span>
+        </Link>
 
         <span
           className="flex items-center gap-3 rounded-pill px-4 py-2.5 text-ink-soft opacity-50"
@@ -48,15 +57,15 @@ export function Sidebar({
           Tracking
           <span className="ml-auto text-[9px] uppercase tracking-[0.08em]">Phase 6</span>
         </span>
-        <span
-          className="flex items-center gap-3 rounded-pill px-4 py-2.5 text-ink-soft opacity-50"
-          title="Prompt management is planned for Phase 5"
-          aria-disabled="true"
+        <Link
+          href="/prompts"
+          className={`flex items-center gap-3 rounded-pill px-4 py-2.5 font-medium ${
+            active === 'prompts' ? 'bg-ink text-white' : 'text-ink-soft hover:bg-chip'
+          }`}
         >
           <ListIcon />
           Prompts
-          <span className="ml-auto text-[9px] uppercase tracking-[0.08em]">Phase 5</span>
-        </span>
+        </Link>
       </nav>
 
       <form action="/api/auth/signout" method="post" className="mt-auto">

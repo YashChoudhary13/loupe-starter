@@ -79,6 +79,7 @@ export interface ProductSetArgs {
   readonly title: string
   readonly productType: string
   readonly tags: readonly string[]
+  readonly descriptionHtml: string
   readonly material: string | null
   readonly colours: readonly string[]
   readonly variants: readonly ProductSetVariant[]
@@ -258,9 +259,10 @@ function buildInput(args: ProductSetArgs): Record<string, unknown> {
     // docs/DECISIONS.md D7 — the console IS the approval step. No Shopify draft stage.
     status: 'ACTIVE',
     tags: [...args.tags],
-    // NO descriptionHtml. The six bullets render from the theme using the material
-    // metafield (D6). Writing body copy here is how the live catalogue ended up
-    // with WhatsApp CSS classes pasted into it.
+    // D50: clean generated HTML only. The console accepts plain text and escapes
+    // it before it reaches this boundary, so pasted storefront markup cannot
+    // leak into a product.
+    descriptionHtml: args.descriptionHtml,
     ...(args.material
       ? { metafields: [{ ...MATERIAL_METAFIELD, value: args.material }] }
       : {}),
@@ -349,6 +351,7 @@ const PRODUCT_BY_HANDLE_QUERY = /* GraphQL */ `
       status
       productType
       tags
+      descriptionHtml
       metafield(namespace: "custom", key: "material") {
         value
       }
@@ -383,6 +386,7 @@ export interface ProductReadback {
   readonly status: string
   readonly productType: string | null
   readonly tags: readonly string[]
+  readonly descriptionHtml: string
   readonly metafield: { value: string } | null
   readonly variants: {
     readonly nodes: readonly {

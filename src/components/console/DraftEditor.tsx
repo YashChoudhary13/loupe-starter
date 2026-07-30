@@ -10,6 +10,10 @@ import type {
   MaterialOption,
   PhotoSummary,
 } from '@/lib/console/types'
+import {
+  defaultDescriptionText,
+  DESCRIPTION_OVERRIDE_MAX_LENGTH,
+} from '@/lib/publish/description'
 import type { PublishBlock } from '@/lib/publish/validate'
 import { cn } from '@/lib/utils'
 
@@ -38,6 +42,9 @@ export interface EditorImage {
 export interface EditorForm {
   readonly categoryId: string | null
   readonly materialId: string | null
+  readonly customMaterial: string
+  /** Null uses the standard six bullets; a string is the operator's replacement. */
+  readonly descriptionOverride: string | null
   /** Raw text. Parsed to paise by a string parser, never by a float. */
   readonly price: string
   readonly stock: string
@@ -98,6 +105,9 @@ export function DraftEditor(props: DraftEditorProps) {
 
   const [colourDraft, setColourDraft] = useState('')
   const category = categories.find((c) => c.id === form.categoryId) ?? null
+  const selectedMaterial = materials.find((m) => m.id === form.materialId)?.name ?? null
+  const materialName = form.customMaterial.trim() || selectedMaterial
+  const defaultDescription = materialName ? defaultDescriptionText(materialName) : ''
 
   if (mode === 'empty') {
     return (
@@ -268,17 +278,79 @@ export function DraftEditor(props: DraftEditorProps) {
                 key={option.id}
                 selected={option.id === form.materialId}
                 disabled={readOnly}
-                onClick={() => onChange({ materialId: option.id })}
+                onClick={() => onChange({ materialId: option.id, customMaterial: '' })}
               >
                 {option.name}
               </Chip>
             ))}
           </div>
+          <input
+            value={form.customMaterial}
+            disabled={readOnly}
+            maxLength={100}
+            onChange={(event) =>
+              onChange({ customMaterial: event.target.value, materialId: null })
+            }
+            onKeyDown={(event) => {
+              // A custom material is still a choice field. Enter here must not
+              // publish the form while the operator is typing it.
+              if (event.key === 'Enter') event.preventDefault()
+            }}
+            aria-label="Custom material"
+            placeholder="Or type a custom material"
+            className="mt-2.5 w-full rounded-field bg-chip px-3.5 py-2.5 text-[13px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset] placeholder:text-[#bfbfc4]"
+          />
           {blockFor('material') ? (
             <p className="mt-2 text-[11.5px] leading-relaxed text-amber">
               {blockFor('material')!.message}
             </p>
           ) : null}
+        </Field>
+
+        <Field label="Description">
+          {form.descriptionOverride === null ? (
+            <>
+              <div className="whitespace-pre-line rounded-field bg-chip px-3.5 py-3 text-[11.5px] leading-relaxed text-ink-soft">
+                {defaultDescription ||
+                  'Choose a material to preview the standard six-point description.'}
+              </div>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  disabled={!defaultDescription}
+                  onClick={() => onChange({ descriptionOverride: defaultDescription })}
+                  className="mt-2 rounded-pill bg-chip px-3 py-1.5 text-[11px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb] disabled:opacity-45"
+                >
+                  Edit default description
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <textarea
+                value={form.descriptionOverride}
+                disabled={readOnly}
+                maxLength={DESCRIPTION_OVERRIDE_MAX_LENGTH}
+                rows={7}
+                onChange={(event) => onChange({ descriptionOverride: event.target.value })}
+                aria-label="Product description"
+                className="w-full resize-y rounded-field bg-chip px-3.5 py-3 text-[12px] leading-relaxed text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
+              />
+              {!readOnly ? (
+                <button
+                  type="button"
+                  onClick={() => onChange({ descriptionOverride: null })}
+                  className="mt-2 rounded-pill bg-chip px-3 py-1.5 text-[11px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb]"
+                >
+                  Use standard description
+                </button>
+              ) : null}
+            </>
+          )}
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            The standard text follows the material. Editing creates a plain-text exception for
+            this product only.
+          </p>
         </Field>
 
         <Field label="Colours">

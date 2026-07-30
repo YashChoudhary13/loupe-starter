@@ -1,8 +1,8 @@
 # Phase 4 — handoff
 
-Updated 2026-07-30 after live acceptance and cleanup. **Phase 4 is not complete.**
-Criteria 1 and 3–18 pass. Criterion 2 still needs a real Google account that is absent
-from `app_users`, and two owner decisions remain unanswered.
+Updated 2026-07-30 after owner acceptance. **Phase 4 is complete.**
+All eighteen criteria pass, the two owner decisions are recorded as D49 and D50, and
+Phase 5 has started.
 
 Read `CLAUDE.md`, `docs/CONTEXT.md`, the top of `docs/PROGRESS.md`,
 `docs/phases/PHASE-4-listing-console.md` and D43–D48 in `docs/DECISIONS.md` before
@@ -41,41 +41,14 @@ and the paid Phase 3C set was not rerun. Phase 3C remains **not complete** under
 
 ---
 
-## 2 · Business decisions still required
+## 2 · Owner decisions settled
 
-These questions were put to the owner this session but were not answered. Do not choose
-either one silently.
-
-### 2.1 Description: keep D6 or reverse it
-
-Loupe deliberately writes no `descriptionHtml`. It writes
-`product.metafields.custom.material`, and D6 expects the six bullets to render from that
-metafield in the theme. The theme has never been changed, so the product has no visible
-description.
-
-The owner must choose:
-
-1. **Keep D6 and change the theme** to render the material-specific bullets. This keeps
-   wording centralised and avoids rewriting roughly 1,600 products when copy changes.
-2. **Reverse D6 and write `descriptionHtml` per product.** This makes the body self-contained
-   but returns wording to every product record.
-
-If D6 is reversed, add a new numbered decision to `docs/DECISIONS.md` with the reasoning.
-
-### 2.2 Currency: test-store USD or intended production currency
-
-`qimti.myshopify.com` has `shop.currencyCode = USD`. Loupe writes a currency-less decimal,
-so Shopify correctly renders `$125.00` for the operator’s `125`. This is store
-configuration, not a Loupe price conversion defect.
-
-The owner must choose:
-
-1. change the test store to the intended production currency now; or
-2. accept the test mismatch and make INR a hard Phase 7 cutover precondition.
-
-Also confirm the live store’s actual currency before cutover. Record the choice in
-`docs/CONTEXT.md` and, if it establishes a durable architectural/operating rule, in
-`docs/DECISIONS.md`.
+- **D49 — currency:** Loupe writes a currency-less decimal and never converts. Shopify's
+  target-store currency is authoritative. USD on the test store is accepted; confirm the
+  live store currency during Phase 7 cutover.
+- **D50 — description:** D6 is reversed. Loupe writes a clean standard six-point
+  `descriptionHtml`, still writes `custom.material`, allows a one-off custom material,
+  and permits a rare escaped plain-text description override.
 
 ---
 
@@ -95,20 +68,16 @@ table no longer holds those two historical rows.
 The incident is recorded honestly as event `5212`, `phase4.cleanup.audit_loss`; its detail
 states that the deleted history was not recreated.
 
-### Criterion 2 — unauthorised refusal: NOT PROVEN
+### Criterion 2 — unauthorised refusal: PASS
 
-Only the authorised owner account was available in the browser. Use any second valid
-Google account and **do not add it to `app_users`**.
+The owner signed in with `yashmiuky@gmail.com`, which is absent from `app_users`, and
+received the clear **No access** screen. The live audit read-back found
+`auth.denied` event `5964` at `2026-07-30T11:03:24.989503+00:00` with reason
+`not an active app_users row`; no application data was shown. The default-deny session
+and protected-action paths remain covered by the authentication test suite.
 
-Required evidence:
-
-- the Google callback reaches the clear Access denied screen;
-- an `auth.denied` event records the refused email;
-- no `loupe_session` cookie is issued;
-- `/console` still exposes no data;
-- a protected server action is refused.
-
-This is the only unproven Phase 4 success criterion.
+Screenshot:
+`.artifacts/phase4-acceptance/screenshots/unauthorised-denied.png`.
 
 ### Criteria 3, 5, 6, 7, 8 and 15: PASS
 
@@ -212,8 +181,8 @@ after it was found to have erased the owner’s pre-cleanup authentication audit
 - Do not rerun the paid Phase 3C acceptance set.
 - Forward-only migrations. `20260730140000` and `20260730141000` are applied.
 - Never weaken a test to make a phase green.
-- Do not mark Phase 4 complete until criterion 2 is demonstrated and the two owner
-  decisions above are recorded.
+- Phase 4 is complete. New redo/prompt work follows
+  `docs/phases/PHASE-5-redo-version-history-prompts.md`.
 
 ---
 
@@ -232,4 +201,4 @@ docs/PROGRESS.md                 complete evidence and surprises
 docs/DECISIONS.md                D43–D48; add a new decision only if D6 is reversed
 ```
 
-**Next action:** obtain the two owner decisions and a second Google account for criterion 2.
+**Next action:** continue Phase 5 with append-only prompt creation and atomic promotion.

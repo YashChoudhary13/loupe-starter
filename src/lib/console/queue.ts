@@ -77,6 +77,8 @@ interface DraftRow {
   updated_at: string
   category_id: string
   material_id: string | null
+  custom_material: string | null
+  description_override: string | null
   title_suffix: string | null
   price_paise: number | null
   weight_g: number | null
@@ -186,7 +188,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('product_drafts')
       .select(
-        'id, status, updated_at, category_id, material_id, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
       )
       .in('status', ['assembling', 'publishing', 'failed'])
       .order('updated_at', { ascending: false })
@@ -194,7 +196,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('product_drafts')
       .select(
-        'id, status, updated_at, category_id, material_id, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
         { count: 'exact' },
       )
       .eq('status', 'published')
@@ -415,7 +417,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
   const { data: draftRow, error: draftError } = await db
     .from('product_drafts')
     .select(
-      'id, status, updated_at, category_id, material_id, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+      'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
     )
     .eq('id', draftId)
     .maybeSingle<DraftRow>()
@@ -519,6 +521,8 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     updatedAt: draftRow.updated_at,
     categoryId: draftRow.category_id,
     materialId: draftRow.material_id,
+    customMaterial: draftRow.custom_material,
+    descriptionOverride: draftRow.description_override,
     titleSuffix: draftRow.title_suffix,
     pricePaise: draftRow.price_paise,
     weightG: draftRow.weight_g,

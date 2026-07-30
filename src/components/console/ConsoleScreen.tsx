@@ -63,22 +63,27 @@ const QUEUE_REFRESH_MS = 9 * 60 * 1000
 interface Sticky {
   categoryId: string | null
   materialId: string | null
+  customMaterial: string
   stock: string
 }
 
 function readSticky(): Sticky {
-  if (typeof window === 'undefined') return { categoryId: null, materialId: null, stock: '' }
+  if (typeof window === 'undefined') {
+    return { categoryId: null, materialId: null, customMaterial: '', stock: '' }
+  }
   try {
     const raw = window.localStorage.getItem(STICKY_KEY)
-    if (!raw) return { categoryId: null, materialId: null, stock: '' }
+    if (!raw) return { categoryId: null, materialId: null, customMaterial: '', stock: '' }
     const parsed = JSON.parse(raw) as Partial<Sticky>
     return {
       categoryId: typeof parsed.categoryId === 'string' ? parsed.categoryId : null,
       materialId: typeof parsed.materialId === 'string' ? parsed.materialId : null,
+      customMaterial:
+        typeof parsed.customMaterial === 'string' ? parsed.customMaterial.slice(0, 100) : '',
       stock: typeof parsed.stock === 'string' ? parsed.stock : '',
     }
   } catch {
-    return { categoryId: null, materialId: null, stock: '' }
+    return { categoryId: null, materialId: null, customMaterial: '', stock: '' }
   }
 }
 
@@ -93,6 +98,8 @@ function writeSticky(sticky: Sticky): void {
 const EMPTY_FORM: EditorForm = {
   categoryId: null,
   materialId: null,
+  customMaterial: '',
+  descriptionOverride: null,
   price: '',
   stock: '',
   weight: '',
@@ -115,6 +122,8 @@ function formFromBundle(bundle: DraftBundle): EditorForm {
   return {
     categoryId: draft.categoryId,
     materialId: draft.materialId,
+    customMaterial: draft.customMaterial ?? '',
+    descriptionOverride: draft.descriptionOverride,
     price: draft.pricePaise === null ? '' : formatRupees(draft.pricePaise),
     stock: String(draft.stock),
     // NULL is "nobody has said" and is NOT the same as 0 (D19), so an unset
@@ -296,6 +305,7 @@ export function ConsoleScreen({
       ...EMPTY_FORM,
       categoryId: stickyCategory?.id ?? null,
       materialId: sticky.materialId ?? null,
+      customMaterial: sticky.customMaterial,
       stock: sticky.stock || String(stickyCategory?.defaultStock ?? 0),
     }
   }, [catalog.categories])
@@ -365,6 +375,8 @@ export function ConsoleScreen({
         expectedUpdatedAt: target.draft.updatedAt,
         categoryId: form.categoryId!,
         materialId: form.materialId,
+        customMaterial: form.customMaterial.trim() || null,
+        descriptionOverride: form.descriptionOverride?.trim() || null,
         titleSuffix: form.titleSuffix.trim() || null,
         pricePaise: price.ok ? price.paise : null,
         // Empty stays NULL: "nobody has said" is a real state and 0 g is a
@@ -386,9 +398,10 @@ export function ConsoleScreen({
     writeSticky({
       categoryId: form.categoryId,
       materialId: form.materialId,
+      customMaterial: form.customMaterial.trim(),
       stock: form.stock,
     })
-  }, [form.categoryId, form.materialId, form.stock])
+  }, [form.categoryId, form.customMaterial, form.materialId, form.stock])
 
   const handleSaveDraft = useCallback(async () => {
     setBusy('save')
@@ -731,12 +744,12 @@ function localBlocks(
         'Stock is zero. Tick "publish with zero stock" if that is deliberate — a live product nobody can buy is usually a mistake, not a decision.',
     })
   }
-  if (!form.materialId) {
+  if (!form.materialId && !form.customMaterial.trim()) {
     blocks.push({
       code: 'material_missing',
       field: 'material',
       message:
-        'No material. The six description bullets render from the material metafield, so publishing without one ships a product with no description. Pick 304, 316L or Brass.',
+        'No material. It supplies the first description line and the Shopify material field. Pick 304, 316L or Brass, or enter a custom material.',
     })
   }
   if (form.weight.trim() === '' && (category?.defaultWeightG ?? null) === null) {

@@ -87,6 +87,8 @@ export interface DraftSaveInput {
   readonly expectedUpdatedAt: string | null
   readonly categoryId: string
   readonly materialId: string | null
+  readonly customMaterial: string | null
+  readonly descriptionOverride: string | null
   readonly titleSuffix: string | null
   readonly pricePaise: number | null
   readonly weightG: number | null
@@ -102,6 +104,8 @@ export async function saveDraft(operator: Operator, input: DraftSaveInput): Prom
     p_expected_updated_at: input.expectedUpdatedAt,
     p_category_id: input.categoryId,
     p_material_id: input.materialId,
+    p_custom_material: input.customMaterial,
+    p_description_override: input.descriptionOverride,
     p_title_suffix: input.titleSuffix,
     p_price_paise: input.pricePaise,
     p_weight_g: input.weightG,

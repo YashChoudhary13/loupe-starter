@@ -92,9 +92,8 @@ export function validateDraftForPublish(
       code: 'material_missing',
       field: 'material',
       message:
-        'No material. The six description bullets render from the material metafield, ' +
-        'so publishing without one ships a product with no description (docs/DECISIONS.md D6). ' +
-        'Pick 304, 316L or Brass.',
+        'No material. It supplies the first line of the product description and the ' +
+        'custom.material metafield. Pick 304, 316L or Brass, or enter a custom material.',
     })
   }
 
