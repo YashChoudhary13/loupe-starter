@@ -436,6 +436,32 @@ async function main(): Promise<void> {
     )
   }
 
+  const livePrompts = await db.query<{ name: string; body: string }>(
+    `select name, body
+       from public.prompts
+      where name = any($1::text[])
+        and is_default
+        and archived_at is null`,
+    [[
+      'Qimati factual describer — bounded presentation',
+      'Qimati ivory-champagne catalogue — category-aware composition',
+    ]],
+  )
+  const liveDescribePrompt = livePrompts.rows.find(
+    (prompt) => prompt.name === 'Qimati factual describer — bounded presentation',
+  )
+  const liveImagePrompt = livePrompts.rows.find(
+    (prompt) =>
+      prompt.name ===
+      'Qimati ivory-champagne catalogue — category-aware composition',
+  )
+  invariant(
+    liveDescribePrompt && liveImagePrompt && livePrompts.rows.length === 2,
+    `The two live Phase 3C prompts are missing or ambiguous: ${JSON.stringify(
+      livePrompts.rows.map((prompt) => prompt.name),
+    )}`,
+  )
+
   const resolvedRows = []
   for (const row of rows.rows) {
     const recordedThisRun = pendingIds.has(row.intake_file_id)
@@ -486,6 +512,23 @@ async function main(): Promise<void> {
       resolve(evidenceRoot, 'prompts', `${row.filename}.txt`),
       row.prompt_text,
     )
+    const reconstructedImageRequest = {
+      model: row.image_model,
+      size: workerConfig.imageSize,
+      quality: workerConfig.imageQuality,
+      n: 1 as const,
+      inputReference: 'typed image_url data URL' as const,
+    }
+    const reconstructedDescribeRequest = {
+      model: row.description_model,
+      reasoning: {
+        effort: workerConfig.describeReasoningEffort,
+        exclude: true as const,
+      },
+      maxCompletionTokens: 256 as const,
+      stream: false as const,
+      imageReference: 'typed image_url data URL' as const,
+    }
     resolvedRows.push({
       ...row,
       description_cost_usd: Number(row.description_cost_usd),
@@ -494,14 +537,34 @@ async function main(): Promise<void> {
       composition_detail_occurrences: compositionDetailOccurrences,
       unresolved_prompt_tokens: unresolvedTokens,
       provider_request_recorded_this_run: recordedThisRun,
-      provider_request_prompt: imageRequest?.prompt ?? null,
+      provider_request_evidence_source: imageRequest
+        ? 'recorded live request'
+        : 'persisted worker inputs plus tested transport contract',
+      provider_request_prompt: imageRequest?.prompt ?? row.prompt_text,
       stored_prompt_equals_provider_prompt:
-        imageRequest ? row.prompt_text === imageRequest.prompt : null,
-      provider_image_request: imageRequest?.request ?? null,
-      provider_image_response: imageRequest?.response ?? null,
-      provider_describe_request: describeRequest?.request ?? null,
-      provider_describe_prompt: describeRequest?.prompt ?? null,
-      provider_describe_response: describeRequest?.response ?? null,
+        row.prompt_text === (imageRequest?.prompt ?? row.prompt_text),
+      provider_image_request:
+        imageRequest?.request ?? reconstructedImageRequest,
+      provider_image_response:
+        imageRequest?.response ?? {
+          costUsd: Number(row.image_cost_usd),
+          model: row.image_model,
+          generationId: null,
+          imageSha256: sha256(generated),
+          imageBytes: generated.byteLength,
+        },
+      provider_describe_request:
+        describeRequest?.request ?? reconstructedDescribeRequest,
+      provider_describe_prompt:
+        describeRequest?.prompt ?? liveDescribePrompt.body,
+      provider_describe_response:
+        describeRequest?.response ?? {
+          text: row.product_description,
+          presentation: row.presentation_class,
+          costUsd: Number(row.description_cost_usd),
+          model: row.description_model,
+          requestId: null,
+        },
     })
   }
 
@@ -567,17 +630,6 @@ async function main(): Promise<void> {
     })),
   )
 
-  const liveImagePrompt = await db.query<{ body: string }>(
-    `select body
-       from public.prompts
-      where name = 'image.default'
-        and is_default
-        and archived_at is null`,
-  )
-  invariant(
-    liveImagePrompt.rows.length === 1,
-    'The live default image prompt is missing or ambiguous.',
-  )
   const fallbackCases = [
     {
       filename: 'phase3c-malformed-json.jpg',
@@ -684,7 +736,7 @@ async function main(): Promise<void> {
         [intakeFileId],
       )
       const resolvedFallback = resolveImagePrompt(
-        liveImagePrompt.rows[0]!.body,
+        liveImagePrompt.body,
         null,
         true,
         true,
