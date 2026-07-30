@@ -21,6 +21,7 @@
     "verify:intake": "tsx scripts/verify-drive-intake-live.ts",
     "verify:phase3c": "NODE_OPTIONS=--conditions=react-server tsx scripts/verify-phase3c-live.ts",
     "verify:phase3c:cleanup": "NODE_OPTIONS=--conditions=react-server tsx scripts/cleanup-phase3c-live.ts",
+    "verify:phase3c:description-models": "NODE_OPTIONS=--conditions=react-server tsx scripts/evaluate-description-models.ts",
     "verify:sku-control": "tsx scripts/control-naive-counter.ts",
     "verify:publish": "tsx scripts/verify-publish.ts"
   },
