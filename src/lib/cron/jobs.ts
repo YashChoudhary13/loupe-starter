@@ -27,8 +27,15 @@ export async function runSweepCron() {
 }
 
 export async function runEnhanceCron() {
-  // Importing the production worker validates Drive, OpenRouter and R2 only for
-  // this route; the lightweight watcher/reconcile endpoints do not need them.
+  // Redos are operator-requested and already have a cached description. Give
+  // one queued redo the whole request budget; if there is none, continue with
+  // the normal intake batch.
+  const { runProductionRedoBatch } = await import('@/lib/enhance/redo-server')
+  const redo = await runProductionRedoBatch()
+  if (redo.claimed > 0) return { redo, intake: null }
+
+  // Importing the production worker validates Drive only when intake work is
+  // actually needed; the lightweight watcher/reconcile endpoints do not need it.
   const { runProductionEnhancementBatch } = await import('@/lib/enhance/server')
-  return runProductionEnhancementBatch()
+  return { redo, intake: await runProductionEnhancementBatch() }
 }

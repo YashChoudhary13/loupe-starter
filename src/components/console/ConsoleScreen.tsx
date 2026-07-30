@@ -9,6 +9,7 @@ import {
   openDraftAction,
   previewPhotosAction,
   publishDraftAction,
+  redoImageAction,
   refreshQueueAction,
   saveDraftAction,
   type ActionError,
@@ -508,6 +509,37 @@ export function ConsoleScreen({
     }))
   }, [])
 
+  const redoImage = useCallback(
+    async (intakeFileId: string) => {
+      setBusy(`redo:${intakeFileId}`)
+      setLastPublish(null)
+      const data = handleResult(await redoImageAction(intakeFileId))
+      if (data) {
+        setPreview((current) => ({
+          ...current,
+          photos: current.photos.map((photo) =>
+            photo.intakeFileId === intakeFileId ? data.photo : photo,
+          ),
+        }))
+        setBundle((current) =>
+          current
+            ? {
+                ...current,
+                draft: {
+                  ...current.draft,
+                  photos: current.draft.photos.map((photo) =>
+                    photo.intakeFileId === intakeFileId ? data.photo : photo,
+                  ),
+                },
+              }
+            : current,
+        )
+      }
+      setBusy(null)
+    },
+    [handleResult],
+  )
+
   /** Escape abandons a selection without touching anything stored. */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -647,6 +679,7 @@ export function ConsoleScreen({
               onDetach={bundle && !listedReadOnly ? (id) => void handleDetach(id) : null}
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
+              onRedo={(intakeFileId) => void redoImage(intakeFileId)}
             >
               <div className="mt-3 flex flex-col gap-2">
                 {error ? (

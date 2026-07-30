@@ -7,14 +7,23 @@ import {
   type PromptVersion,
 } from '@/lib/prompts/library'
 
-import { selectPromptModelAction } from './actions'
+import {
+  createPromptVersionAction,
+  promotePromptVersionAction,
+  selectPromptModelAction,
+} from './actions'
 
 export const dynamic = 'force-dynamic'
 
 export default async function PromptsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ updated?: string; error?: string }>
+  searchParams: Promise<{
+    updated?: string
+    created?: string
+    promoted?: string
+    error?: string
+  }>
 }) {
   const operator = await requireOperator()
   const prompts = await loadPromptLibrary()
@@ -36,6 +45,18 @@ export default async function PromptsPage({
           <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
             Model updated. New {feedback.updated === 'describe' ? 'descriptions' : 'images'} use
             it; existing results stay unchanged.
+          </p>
+        ) : null}
+        {feedback.created ? (
+          <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
+            New {feedback.created === 'describe' ? 'descriptor' : 'image'} prompt version saved.
+            The current prompt did not change.
+          </p>
+        ) : null}
+        {feedback.promoted ? (
+          <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
+            Prompt promoted. New enhancement work uses it; prior versions and images stay
+            unchanged.
           </p>
         ) : null}
         {feedback.error ? (
@@ -134,6 +155,74 @@ function PromptGroup({
         </p>
       )}
 
+      <details className="mt-4 rounded-panel border border-[#e7e7e9] p-4">
+        <summary className="cursor-pointer select-none text-[11.5px] font-medium text-ink">
+          Create a new version
+        </summary>
+        <form action={createPromptVersionAction} className="mt-4">
+          <input type="hidden" name="kind" value={kind} />
+          <label
+            htmlFor={`${kind}-version-name`}
+            className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground"
+          >
+            Version name
+          </label>
+          <input
+            id={`${kind}-version-name`}
+            name="name"
+            required
+            maxLength={160}
+            defaultValue={current?.name ?? ''}
+            className="mt-1.5 w-full rounded-field bg-chip px-3 py-2.5 text-[12px] text-ink outline-none focus:ring-2 focus:ring-ink/15"
+          />
+          <label
+            htmlFor={`${kind}-version-body`}
+            className="mt-3 block text-[9px] uppercase tracking-[0.12em] text-muted-foreground"
+          >
+            Prompt
+          </label>
+          <textarea
+            id={`${kind}-version-body`}
+            name="body"
+            required
+            maxLength={20_000}
+            rows={12}
+            defaultValue={current?.body ?? ''}
+            className="mt-1.5 w-full resize-y rounded-field bg-chip px-3 py-2.5 font-mono text-[10.5px] leading-relaxed text-ink outline-none focus:ring-2 focus:ring-ink/15"
+          />
+          <label
+            htmlFor={`${kind}-version-model`}
+            className="mt-3 block text-[9px] uppercase tracking-[0.12em] text-muted-foreground"
+          >
+            Model
+          </label>
+          <select
+            id={`${kind}-version-model`}
+            name="model"
+            defaultValue={current?.model ?? options[0]?.id}
+            className="mt-1.5 w-full rounded-field bg-chip px-3 py-2.5 text-[11.5px] text-ink outline-none focus:ring-2 focus:ring-ink/15"
+          >
+            {options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.tier} · {option.label}
+              </option>
+            ))}
+          </select>
+          {kind === 'image' ? (
+            <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
+              Keep exactly one PRODUCT block and one {'{{COMPOSITION_DETAIL}}'} token.
+              Loupe checks both before saving and again before promotion.
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            className="mt-3 rounded-pill bg-ink px-4 py-2 text-[11px] font-medium text-white transition-colors hover:bg-[#242428]"
+          >
+            Save new version
+          </button>
+        </form>
+      </details>
+
       <div className="mt-5">
         <p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">History</p>
         <ol className="mt-2 divide-y divide-[#ececee]">
@@ -158,7 +247,11 @@ function PromptGroup({
                   </p>
                 </div>
                 <span className="rounded-pill bg-chip px-2 py-0.5 text-[9px] uppercase tracking-[0.08em] text-ink-soft">
-                  {version.isDefault && version.archivedAt === null ? 'current' : 'archived'}
+                  {version.isDefault && version.archivedAt === null
+                    ? 'current'
+                    : version.archivedAt === null
+                      ? 'ready'
+                      : 'archived'}
                 </span>
               </div>
               {version !== current ? (
@@ -168,6 +261,17 @@ function PromptGroup({
                     {version.body}
                   </p>
                 </details>
+              ) : null}
+              {version !== current ? (
+                <form action={promotePromptVersionAction} className="mt-2">
+                  <input type="hidden" name="promptId" value={version.id} />
+                  <button
+                    type="submit"
+                    className="rounded-pill bg-chip px-3 py-1.5 text-[10.5px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb]"
+                  >
+                    Promote this version
+                  </button>
+                </form>
               ) : null}
             </li>
           ))}

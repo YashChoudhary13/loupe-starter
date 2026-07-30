@@ -61,6 +61,15 @@ interface VersionRow {
   thumb_key: string | null
 }
 
+interface RedoRow {
+  id: string
+  intake_file_id: string
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  version_no: number
+  last_error: string | null
+  created_at: string
+}
+
 interface CategoryRow {
   id: string
   name: string
@@ -99,6 +108,34 @@ function preferredVersion(versions: readonly VersionRow[]): VersionRow | undefin
   return [...versions].sort(
     (a, b) => Number(b.is_selected) - Number(a.is_selected) || b.version_no - a.version_no,
   )[0]
+}
+
+async function latestRedos(intakeFileIds: readonly string[]): Promise<Map<string, RedoRow>> {
+  if (intakeFileIds.length === 0) return new Map()
+  const { data, error } = await supabaseServer()
+    .from('image_redo_jobs')
+    .select('id, intake_file_id, status, version_no, last_error, created_at')
+    .in('intake_file_id', intakeFileIds)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(`image_redo_jobs: ${error.message}`)
+
+  const byIntake = new Map<string, RedoRow>()
+  for (const row of (data ?? []) as RedoRow[]) {
+    if (!byIntake.has(row.intake_file_id)) byIntake.set(row.intake_file_id, row)
+  }
+  return byIntake
+}
+
+function redoSummary(row: RedoRow | undefined): PhotoSummary['redo'] {
+  return row
+    ? {
+        jobId: row.id,
+        status: row.status,
+        versionNo: row.version_no,
+        error: row.last_error,
+        createdAt: row.created_at,
+      }
+    : null
 }
 
 export async function loadCatalog(): Promise<ConsoleCatalog> {
@@ -363,6 +400,7 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
 
   const files = (filesResult.data ?? []) as IntakeRow[]
   const versions = (versionsResult.data ?? []) as VersionRow[]
+  const redos = await latestRedos(intakeFileIds)
   const signed = await signKeys([
     ...versions.map((v) => v.thumb_key),
     ...versions.map((v) => v.storage_key),
@@ -390,6 +428,7 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
       versions: (byIntake.get(file.id) ?? [])
         .sort((a, b) => a.version_no - b.version_no)
         .map((v) => toVersionSummary(v, signed)),
+      redo: redoSummary(redos.get(file.id)),
     }))
 }
 
@@ -464,6 +503,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     : { data: [], error: null }
   if (versionError) throw new Error(`image_versions: ${versionError.message}`)
   const versions = (versionRows ?? []) as VersionRow[]
+  const redos = await latestRedos(photos.map((photo) => photo.id))
 
   // Here the full images ARE signed: the editor shows one large review image and
   // lets the operator compare versions. That is the "larger review" case, and it
@@ -492,6 +532,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     versions: (versionsByIntake.get(photo.id) ?? [])
       .sort((a, b) => a.version_no - b.version_no)
       .map((v) => toVersionSummary(v, signed)),
+    redo: redoSummary(redos.get(photo.id)),
   }))
 
   const images: DraftImageRef[] = (

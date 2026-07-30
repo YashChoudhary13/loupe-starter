@@ -180,6 +180,66 @@ describe('server-only functions are not callable without the service role', () =
       p_description_missing: true,
       p_source: 'rls-probe',
     }],
+    ['validate_prompt_body', {
+      p_kind: 'describe',
+      p_body: 'anonymous',
+    }],
+    ['create_prompt_version', {
+      p_kind: 'describe',
+      p_name: 'anonymous',
+      p_body: 'anonymous',
+      p_model: 'openai/gpt-5.6-sol',
+      p_actor: 'anonymous',
+    }],
+    ['promote_prompt_version', {
+      p_prompt_id: '00000000-0000-0000-0000-000000000000',
+      p_actor: 'anonymous',
+    }],
+    ['select_prompt_model', {
+      p_kind: 'describe',
+      p_model: 'openai/gpt-5.6-sol',
+      p_actor: 'anonymous',
+    }],
+    ['enqueue_image_redo', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_prompt_id: '00000000-0000-0000-0000-000000000000',
+      p_prompt_text: 'anonymous',
+      p_description_injected: false,
+      p_description_missing: true,
+      p_actor: 'anonymous',
+    }],
+    ['claim_image_redo', {
+      p_lease_seconds: 300,
+      p_job_id: null,
+    }],
+    ['assert_image_redo_lease', {
+      p_job_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+    }],
+    ['mark_image_redo_generation_started', {
+      p_job_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+    }],
+    ['complete_image_redo', {
+      p_job_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+      p_storage_key: 'anonymous/v2.png',
+      p_thumb_key: 'anonymous/v2_thumb.webp',
+      p_width: 1280,
+      p_height: 1280,
+      p_actual_model: 'anonymous',
+      p_cost_usd: 0,
+      p_max_cost_usd: 0.2,
+      p_source: 'anonymous',
+    }],
+    ['record_image_redo_failure', {
+      p_job_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+      p_error: 'anonymous',
+      p_error_code: 'anonymous',
+      p_retryable: false,
+      p_source: 'anonymous',
+    }],
   ]
 
   for (const [fn, body] of phase3Functions) {

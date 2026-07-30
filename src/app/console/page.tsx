@@ -5,6 +5,7 @@ import { loadCatalog, loadQueue } from '@/lib/console/queue'
 // Every render is a fresh authorisation check and a fresh set of presigned URLs.
 // Caching either would be caching who is allowed in.
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 
 export default async function ConsolePage() {
   // Before any data is read. An unauthenticated visitor is redirected to

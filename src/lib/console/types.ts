@@ -29,6 +29,14 @@ export interface VersionSummary {
   readonly full: SignedImage | null
 }
 
+export interface RedoSummary {
+  readonly jobId: string
+  readonly status: 'queued' | 'processing' | 'completed' | 'failed'
+  readonly versionNo: number
+  readonly error: string | null
+  readonly createdAt: string
+}
+
 export interface PhotoSummary {
   readonly intakeFileId: string
   readonly filename: string
@@ -39,6 +47,8 @@ export interface PhotoSummary {
   readonly descriptionMissing: boolean
   readonly presentationClass: string | null
   readonly versions: readonly VersionSummary[]
+  /** Latest image-only redo request, if one exists. */
+  readonly redo: RedoSummary | null
 }
 
 export type QueueTileKind = 'photo' | 'draft'

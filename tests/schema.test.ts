@@ -64,6 +64,8 @@ describe('indexes the system actually queries on', () => {
     'intake_files_expired_lease_idx',
     'intake_files_ready_queue_idx',
     'intake_files_phash_idx',
+    'image_redo_claim_idx',
+    'image_redo_one_active_per_intake',
     'product_drafts_status_idx',
     'events_entity_idx',
   ]
@@ -118,6 +120,15 @@ describe('closed vocabularies', () => {
       'tray-grid',
     ])
   })
+
+  it('image_redo_status has only durable queue states', () => {
+    expect(report.enums.image_redo_status).toEqual([
+      'queued',
+      'processing',
+      'completed',
+      'failed',
+    ])
+  })
 })
 
 describe('conventions', () => {
@@ -157,6 +168,23 @@ describe('conventions', () => {
       'ensure_intake_presentation_fallback',
       'record_description_failure',
       'complete_intake_enhancement',
+    ]) {
+      expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
+    }
+  })
+
+  it('has the Phase 5 prompt and redo functions deployed', () => {
+    for (const fn of [
+      'validate_prompt_body',
+      'create_prompt_version',
+      'promote_prompt_version',
+      'select_prompt_model',
+      'enqueue_image_redo',
+      'claim_image_redo',
+      'assert_image_redo_lease',
+      'mark_image_redo_generation_started',
+      'complete_image_redo',
+      'record_image_redo_failure',
     ]) {
       expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
     }
@@ -226,6 +254,31 @@ describe('Phase 3A database capabilities', () => {
       'ensure_intake_presentation_fallback',
       'record_description_failure',
       'complete_intake_enhancement',
+    ]) {
+      const matches = Object.entries(report.function_execute).filter(([signature]) =>
+        signature.startsWith(`${fn}(`) || signature.startsWith(`public.${fn}(`),
+      )
+      expect(matches, `${fn} must have exactly one deployed signature`).toHaveLength(1)
+      expect(matches[0]?.[1]).toEqual({
+        anon: false,
+        authenticated: false,
+        service_role: true,
+      })
+    }
+  })
+
+  it('keeps every Phase 5 RPC service-role-only', () => {
+    for (const fn of [
+      'validate_prompt_body',
+      'create_prompt_version',
+      'promote_prompt_version',
+      'select_prompt_model',
+      'enqueue_image_redo',
+      'claim_image_redo',
+      'assert_image_redo_lease',
+      'mark_image_redo_generation_started',
+      'complete_image_redo',
+      'record_image_redo_failure',
     ]) {
       const matches = Object.entries(report.function_execute).filter(([signature]) =>
         signature.startsWith(`${fn}(`) || signature.startsWith(`public.${fn}(`),

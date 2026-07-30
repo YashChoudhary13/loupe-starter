@@ -115,6 +115,38 @@ export async function previewPhotosAction(
   return withOperator(() => loadPhotos(intakeFileIds))
 }
 
+export interface RedoImageResult {
+  readonly photo: PhotoSummary
+  readonly jobId: string
+  readonly completed: boolean
+  readonly paidCalls: number
+}
+
+/**
+ * Queue first, then opportunistically run this exact job. If the request is
+ * interrupted, the cron route reclaims the durable job; the deterministic R2
+ * key prevents a second paid generation after a stored result.
+ */
+export async function redoImageAction(
+  intakeFileId: string,
+): Promise<ActionResult<RedoImageResult>> {
+  return withOperator(async (operator) => {
+    const { queueImageRedo, runProductionRedoBatch } = await import(
+      '@/lib/enhance/redo-server'
+    )
+    const jobId = await queueImageRedo(intakeFileId, operator.email)
+    const result = await runProductionRedoBatch(jobId)
+    const [photo] = await loadPhotos([intakeFileId])
+    if (!photo) throw new ConsoleError('That photograph no longer exists.', null, false)
+    return {
+      photo,
+      jobId,
+      completed: result.completed === 1,
+      paidCalls: result.paidCalls,
+    }
+  })
+}
+
 export async function colourSuggestionsAction(
   categoryId: string,
 ): Promise<ActionResult<readonly ColourSuggestion[]>> {

@@ -12,6 +12,7 @@ export const TABLES = [
   'product_drafts',
   'intake_files',
   'image_versions',
+  'image_redo_jobs',
   'product_draft_images',
   'product_draft_variants',
   'prompts',

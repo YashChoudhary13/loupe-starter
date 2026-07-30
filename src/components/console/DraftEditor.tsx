@@ -76,6 +76,7 @@ export interface DraftEditorProps {
   readonly onDetach: ((intakeFileId: string) => void) | null
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
+  readonly onRedo: (intakeFileId: string) => void
   readonly children?: React.ReactNode
 }
 
@@ -100,6 +101,7 @@ export function DraftEditor(props: DraftEditorProps) {
     onDetach,
     onMoveImage,
     onChooseVersion,
+    onRedo,
     children,
   } = props
 
@@ -199,6 +201,30 @@ export function DraftEditor(props: DraftEditorProps) {
                         no description
                       </span>
                     ) : null}
+                    {row.photo.redo?.status === 'queued' ||
+                    row.photo.redo?.status === 'processing' ? (
+                      <span
+                        className="rounded-pill bg-surface px-2 py-[7px] text-[10.5px] text-ink-soft"
+                        role="status"
+                      >
+                        {row.photo.redo.status === 'queued' ? 'redo queued' : 'redoing…'}
+                      </span>
+                    ) : row.photo.redo?.status === 'failed' ? (
+                      <span
+                        className="rounded-pill px-2 py-[7px] text-[10.5px] text-amber"
+                        title={row.photo.redo.error ?? 'The last redo failed.'}
+                      >
+                        redo failed
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={readOnly || busy !== null}
+                      onClick={() => onRedo(row.image.intakeFileId)}
+                      className="rounded-pill bg-surface px-2.5 py-[7px] text-[10.5px] font-medium text-ink-soft transition-colors hover:bg-white disabled:opacity-40"
+                    >
+                      {busy === `redo:${row.image.intakeFileId}` ? 'Redoing…' : 'Redo image'}
+                    </button>
                   </div>
                 </div>
 

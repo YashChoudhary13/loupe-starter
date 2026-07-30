@@ -1186,3 +1186,29 @@ provider credentials are not user-selectable.
 provider key, silently changing the current default as part of deployment, or treating a
 model selection as acceptance evidence. A newly selected model still has to prove
 structured description output, jewellery fidelity and cost before Phase 3C can complete.
+
+---
+
+### D52 — Image redo is a durable, image-only job with a conservative paid-call fence
+
+*Implementation decision, 2026-07-30.*
+
+A redo is not performed as an untracked browser request. Loupe first creates an
+`image_redo_jobs` row that captures the current image prompt, selected model, cached
+description flags, original source version and a reserved next version number. The worker
+then writes the generated image to a deterministic R2 key before completing the database
+job. A crash after the R2 write recovers that object and makes no second model call.
+
+The job records `generation_started_at` immediately before dispatching the paid request.
+If the worker later finds that marker but no durable R2 result, it refuses to
+automatically call the provider again: the first request's billing outcome is unknowable.
+The operator may deliberately start a new redo, which gets a new job and version number,
+but one job never makes two potentially paid calls.
+
+Redo always reuses `intake_files.product_description` and `presentation_class`; it never
+invokes the descriptor. The resulting version is appended and remains unselected until
+the operator reviews and chooses it.
+
+**Rejected:** doing the generation only inside a server action (a timeout loses its
+state), overwriting version 1, automatically selecting an unseen redo, and retrying an
+ambiguous paid request.
