@@ -21,27 +21,33 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 export function StatPill({
   value,
   label,
-  dark = false,
+  selected = false,
   attention = false,
+  onClick,
 }: {
   value: number | string
   label: string
-  dark?: boolean
+  selected?: boolean
   attention?: boolean
+  onClick: () => void
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      aria-controls="console-queue"
       className={cn(
-        'flex items-center gap-2.5 rounded-pill px-4 py-2',
-        dark ? 'bg-ink text-white' : 'bg-surface',
+        'flex items-center gap-2.5 rounded-pill px-4 py-2 transition-colors',
+        selected ? 'bg-ink text-white' : 'bg-surface hover:bg-[#e7e7e7]',
       )}
     >
       {attention ? <span className="size-1.5 rounded-full bg-amber" aria-hidden /> : null}
       <b className="text-[15px] font-semibold tracking-[-0.02em]">{value}</b>
-      <span className={cn('text-[11px]', dark ? 'text-white/60' : 'text-muted-foreground')}>
+      <span className={cn('text-[11px]', selected ? 'text-white/60' : 'text-muted-foreground')}>
         {label}
       </span>
-    </div>
+    </button>
   )
 }
 

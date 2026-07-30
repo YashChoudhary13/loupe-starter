@@ -19,6 +19,11 @@ import {
 import type { Operator } from '@/lib/auth/authorize'
 import { parseRupeesToPaise } from '@/lib/console/money'
 import { predictIdentity, type PredictedIdentity } from '@/lib/console/preview'
+import {
+  QUEUE_VIEW_LABELS,
+  tilesForQueueView,
+  type QueueView,
+} from '@/lib/console/queue-view'
 import type {
   ColourSuggestion,
   ConsoleCatalog,
@@ -161,6 +166,7 @@ export function ConsoleScreen({
   const [error, setError] = useState<ActionError | null>(null)
   const [lastPublish, setLastPublish] = useState<PublishSummary | null>(null)
   const [focusIndex, setFocusIndex] = useState(0)
+  const [queueView, setQueueView] = useState<QueueView>('pending')
 
   const priceRef = useRef<HTMLInputElement>(null)
   const tileRefs = useRef(new Map<number, HTMLButtonElement>())
@@ -177,6 +183,8 @@ export function ConsoleScreen({
   const selectionKey = selectedPhotoIds.join(',')
   const previewPhotos = preview.key === selectionKey ? preview.photos : []
   const photos = mode === 'draft' ? (bundle?.draft.photos ?? []) : previewPhotos
+  const visibleTiles = useMemo(() => tilesForQueueView(queue, queueView), [queue, queueView])
+  const listedReadOnly = bundle?.draft.status === 'published'
 
   /** Signed URLs expire. Re-signing on a timer is cheaper than a broken grid. */
   useEffect(() => {
@@ -400,10 +408,10 @@ export function ConsoleScreen({
   }, [applyBundle, ensureDraft, handleResult, rememberSticky, saveRequest])
 
   const focusNextUngrouped = useCallback((snapshot: QueueSnapshot) => {
-    const index = snapshot.tiles.findIndex((tile) => tile.kind === 'photo')
-    if (index < 0) return
-    const nextPhoto = snapshot.tiles[index]
-    setFocusIndex(index)
+    const nextPhoto = snapshot.tiles.find((tile) => tile.kind === 'photo')
+    if (!nextPhoto) return
+    setQueueView('ungrouped')
+    setFocusIndex(0)
     window.setTimeout(() => {
       // The just-published tile still occupies its old numeric position until
       // React commits the updated queue. Resolve by stable photo id so focus
@@ -413,6 +421,11 @@ export function ConsoleScreen({
       ).find((tile) => tile.dataset.tileId === nextPhoto.id)
       node?.focus()
     }, 0)
+  }, [])
+
+  const showQueueView = useCallback((view: QueueView) => {
+    setQueueView(view)
+    setFocusIndex(0)
   }, [])
 
   const handlePublish = useCallback(async () => {
@@ -515,22 +528,49 @@ export function ConsoleScreen({
             <h1 className="text-[26px] font-medium tracking-[-0.025em]">Console</h1>
             <div className="text-[12px] text-muted-foreground">{today}</div>
           </div>
-          <div className="ml-auto flex gap-2">
-            <StatPill value={queue.ungroupedCount} label="ungrouped" />
-            <StatPill value={queue.publishedToday} label="listed today" />
+          <div className="ml-auto flex flex-wrap justify-end gap-2">
+            <StatPill
+              value={queue.tiles.length}
+              label="pending"
+              selected={queueView === 'pending'}
+              onClick={() => showQueueView('pending')}
+            />
+            <StatPill
+              value={queue.ungroupedCount}
+              label="ungrouped"
+              selected={queueView === 'ungrouped'}
+              onClick={() => showQueueView('ungrouped')}
+            />
+            <StatPill
+              value={queue.publishedToday}
+              label="listed today"
+              selected={queueView === 'listed'}
+              onClick={() => showQueueView('listed')}
+            />
             {queue.attentionCount > 0 ? (
-              <StatPill value={queue.attentionCount} label="need attention" attention />
+              <StatPill
+                value={queue.attentionCount}
+                label="need attention"
+                attention
+                selected={queueView === 'attention'}
+                onClick={() => showQueueView('attention')}
+              />
             ) : null}
-            <StatPill value={queue.draftCount} label="drafts" dark />
+            <StatPill
+              value={queue.draftCount}
+              label="drafts"
+              selected={queueView === 'drafts'}
+              onClick={() => showQueueView('drafts')}
+            />
           </div>
         </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_372px] gap-3.5 overflow-hidden">
           <Card className="flex min-h-0 flex-col">
             <div className="mb-4 flex items-center gap-2.5">
-              <h2 className="text-[14px] font-medium">Pending</h2>
+              <h2 className="text-[14px] font-medium">{QUEUE_VIEW_LABELS[queueView]}</h2>
               <span className="rounded-pill bg-chip px-2.5 py-0.5 text-[11px] text-muted-foreground">
-                {queue.tiles.length}
+                {visibleTiles.length}
               </span>
               {selectedPhotoIds.length > 0 ? (
                 <span className="rounded-pill bg-ink px-2.5 py-1 text-[11px] font-medium text-white">
@@ -550,7 +590,7 @@ export function ConsoleScreen({
             </div>
 
             <QueueGrid
-              tiles={queue.tiles}
+              tiles={visibleTiles}
               selectedPhotoIds={new Set(selectedPhotoIds)}
               openDraftId={bundle?.draft.id ?? null}
               onTogglePhoto={togglePhoto}
@@ -558,6 +598,18 @@ export function ConsoleScreen({
               focusIndex={focusIndex}
               onFocusIndexChange={setFocusIndex}
               registerTile={registerTile}
+              ariaLabel={`${QUEUE_VIEW_LABELS[queueView]} products`}
+              emptyMessage={
+                queueView === 'listed'
+                  ? 'Nothing has been listed today.'
+                  : queueView === 'drafts'
+                    ? 'There are no saved drafts.'
+                    : queueView === 'attention'
+                      ? 'Nothing needs attention.'
+                      : queueView === 'ungrouped'
+                        ? 'There are no ungrouped photographs.'
+                        : 'Nothing is waiting. Enhanced photographs appear here as the worker finishes them.'
+              }
             />
           </Card>
 
@@ -572,13 +624,14 @@ export function ConsoleScreen({
               colourSuggestions={colours}
               identity={identity}
               identityLocked={Boolean(bundle?.draft.reservedSku)}
+              readOnly={listedReadOnly}
               blocks={blocks}
               busy={busy}
               dirty={dirty}
               priceRef={priceRef}
               onPublish={() => void handlePublish()}
               onSaveDraft={() => void handleSaveDraft()}
-              onDetach={bundle ? (id) => void handleDetach(id) : null}
+              onDetach={bundle && !listedReadOnly ? (id) => void handleDetach(id) : null}
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
             >

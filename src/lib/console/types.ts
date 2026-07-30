@@ -110,7 +110,10 @@ export interface ColourSuggestion {
 }
 
 export interface QueueSnapshot {
+  /** Work still waiting for an operator: ungrouped photographs and open drafts. */
   readonly tiles: readonly QueueTile[]
+  /** Published drafts whose published_at falls in today's Asia/Kolkata day. */
+  readonly listedTodayTiles: readonly QueueTile[]
   readonly ungroupedCount: number
   readonly draftCount: number
   readonly publishedToday: number

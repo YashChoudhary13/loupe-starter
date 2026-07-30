@@ -40,18 +40,22 @@ export function Sidebar({
         </span>
 
         <span
-          className="flex items-center gap-3 rounded-pill px-4 py-2.5 text-ink-soft opacity-45"
-          title="Phase 6"
+          className="flex items-center gap-3 rounded-pill px-4 py-2.5 text-ink-soft opacity-50"
+          title="Tracking is planned for Phase 6"
+          aria-disabled="true"
         >
           <AlertIcon />
           Tracking
+          <span className="ml-auto text-[9px] uppercase tracking-[0.08em]">Phase 6</span>
         </span>
         <span
-          className="flex items-center gap-3 rounded-pill px-4 py-2.5 text-ink-soft opacity-45"
-          title="Phase 5"
+          className="flex items-center gap-3 rounded-pill px-4 py-2.5 text-ink-soft opacity-50"
+          title="Prompt management is planned for Phase 5"
+          aria-disabled="true"
         >
           <ListIcon />
           Prompts
+          <span className="ml-auto text-[9px] uppercase tracking-[0.08em]">Phase 5</span>
         </span>
       </nav>
 

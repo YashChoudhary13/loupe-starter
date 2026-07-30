@@ -59,6 +59,7 @@ export interface DraftEditorProps {
   readonly colourSuggestions: readonly ColourSuggestion[]
   readonly identity: PredictedIdentity | null
   readonly identityLocked: boolean
+  readonly readOnly?: boolean
   readonly blocks: readonly PublishBlock[]
   readonly busy: string | null
   readonly dirty: boolean
@@ -82,6 +83,7 @@ export function DraftEditor(props: DraftEditorProps) {
     colourSuggestions,
     identity,
     identityLocked,
+    readOnly = false,
     blocks,
     busy,
     dirty,
@@ -124,7 +126,7 @@ export function DraftEditor(props: DraftEditorProps) {
       className="flex h-full flex-col"
       onSubmit={(event) => {
         event.preventDefault()
-        if (!busy) onPublish()
+        if (!busy && !readOnly) onPublish()
       }}
     >
       <div className="loupe-scroll min-h-0 flex-1 overflow-y-auto pr-1">
@@ -168,6 +170,7 @@ export function DraftEditor(props: DraftEditorProps) {
                       <Chip
                         key={version.id}
                         selected={version.id === row.image.imageVersionId}
+                        disabled={readOnly}
                         title={
                           version.kind === 'original'
                             ? 'The photographer’s untouched file'
@@ -192,14 +195,14 @@ export function DraftEditor(props: DraftEditorProps) {
                 <div className="flex shrink-0 items-center gap-1">
                   <IconButton
                     label={`Move ${row.photo.filename} earlier`}
-                    disabled={index === 0}
+                    disabled={readOnly || index === 0}
                     onClick={() => onMoveImage(row.image.imageVersionId, -1)}
                   >
                     ↑
                   </IconButton>
                   <IconButton
                     label={`Move ${row.photo.filename} later`}
-                    disabled={index === orderedImages.length - 1}
+                    disabled={readOnly || index === orderedImages.length - 1}
                     onClick={() => onMoveImage(row.image.imageVersionId, 1)}
                   >
                     ↓
@@ -228,7 +231,7 @@ export function DraftEditor(props: DraftEditorProps) {
               <Chip
                 key={option.id}
                 selected={option.id === form.categoryId}
-                disabled={identityLocked && option.id !== form.categoryId}
+                disabled={readOnly || (identityLocked && option.id !== form.categoryId)}
                 title={
                   identityLocked && option.id !== form.categoryId
                     ? 'This product already holds a reserved SKU from its category’s sequence, so the category is frozen. Create a new draft to change it.'
@@ -264,6 +267,7 @@ export function DraftEditor(props: DraftEditorProps) {
               <Chip
                 key={option.id}
                 selected={option.id === form.materialId}
+                disabled={readOnly}
                 onClick={() => onChange({ materialId: option.id })}
               >
                 {option.name}
@@ -283,6 +287,7 @@ export function DraftEditor(props: DraftEditorProps) {
               <Chip
                 key={colour}
                 selected
+                disabled={readOnly}
                 title="Remove this colour"
                 onClick={() => onChange({ colours: form.colours.filter((c) => c !== colour) })}
               >
@@ -295,6 +300,7 @@ export function DraftEditor(props: DraftEditorProps) {
               .map((suggestion) => (
                 <Chip
                   key={suggestion.name}
+                  disabled={readOnly}
                   title={`Used ${suggestion.usageCount}× in ${category?.name ?? 'this category'}`}
                   onClick={() => onChange({ colours: [...form.colours, suggestion.name] })}
                 >
@@ -303,6 +309,7 @@ export function DraftEditor(props: DraftEditorProps) {
               ))}
             <input
               value={colourDraft}
+              disabled={readOnly}
               onChange={(event) => setColourDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
@@ -336,6 +343,7 @@ export function DraftEditor(props: DraftEditorProps) {
               <input
                 ref={priceRef}
                 value={form.price}
+                disabled={readOnly}
                 onChange={(event) => onChange({ price: event.target.value })}
                 inputMode="decimal"
                 autoComplete="off"
@@ -347,6 +355,7 @@ export function DraftEditor(props: DraftEditorProps) {
             <div>
               <input
                 value={form.stock}
+                disabled={readOnly}
                 onChange={(event) => onChange({ stock: event.target.value })}
                 inputMode="numeric"
                 autoComplete="off"
@@ -365,6 +374,7 @@ export function DraftEditor(props: DraftEditorProps) {
               <input
                 type="checkbox"
                 checked={form.allowZeroStock}
+                disabled={readOnly}
                 onChange={(event) => onChange({ allowZeroStock: event.target.checked })}
                 className="mt-0.5 accent-[var(--ink)]"
               />
@@ -377,6 +387,7 @@ export function DraftEditor(props: DraftEditorProps) {
           <div className="grid grid-cols-2 gap-2.5">
             <input
               value={form.weight}
+              disabled={readOnly}
               onChange={(event) => onChange({ weight: event.target.value })}
               inputMode="numeric"
               autoComplete="off"
@@ -390,6 +401,7 @@ export function DraftEditor(props: DraftEditorProps) {
             />
             <input
               value={form.titleSuffix}
+              disabled={readOnly}
               onChange={(event) => onChange({ titleSuffix: event.target.value })}
               autoComplete="off"
               aria-label="Title suffix"
@@ -429,32 +441,44 @@ export function DraftEditor(props: DraftEditorProps) {
 
       {/* Sticky. Publish never scrolls out of view (DESIGN.md · Interaction). */}
       <div className="sticky bottom-0 mt-3.5 flex gap-2 bg-surface pb-1 pt-3 shadow-[0_-14px_16px_-6px_var(--surface)]">
-        <button
-          type="submit"
-          disabled={busy !== null}
-          className={cn(
-            'flex flex-1 items-center justify-center gap-2 rounded-pill bg-ink py-3 text-[13px] font-medium text-white transition-colors',
-            busy ? 'opacity-60' : 'hover:bg-[#242428]',
-          )}
-        >
-          {busy === 'publish' ? 'Publishing…' : 'Publish'}
-          <kbd className="rounded bg-white/[0.18] px-1.5 py-px font-sans text-[10px]">↵</kbd>
-        </button>
-        <button
-          type="button"
-          onClick={onSaveDraft}
-          disabled={busy !== null}
-          title={
-            dirty
-              ? 'Save as draft — reserves no SKU and publishes nothing'
-              : 'This draft is saved'
-          }
-          aria-live="polite"
-          className="flex min-w-[108px] shrink-0 items-center justify-center gap-1.5 rounded-pill bg-chip px-4 text-[12px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb] disabled:opacity-60"
-        >
-          <span aria-hidden="true">{busy === 'save' ? '·' : dirty ? '◔' : '✓'}</span>
-          {busy === 'save' ? 'Saving…' : dirty ? 'Save draft' : 'Saved'}
-        </button>
+        {readOnly ? (
+          <div
+            className="flex flex-1 items-center justify-center gap-2 rounded-pill bg-ink py-3 text-[13px] font-medium text-white"
+            role="status"
+          >
+            <span aria-hidden="true">✓</span>
+            Listed · view only
+          </div>
+        ) : (
+          <>
+            <button
+              type="submit"
+              disabled={busy !== null}
+              className={cn(
+                'flex flex-1 items-center justify-center gap-2 rounded-pill bg-ink py-3 text-[13px] font-medium text-white transition-colors',
+                busy ? 'opacity-60' : 'hover:bg-[#242428]',
+              )}
+            >
+              {busy === 'publish' ? 'Publishing…' : 'Publish'}
+              <kbd className="rounded bg-white/[0.18] px-1.5 py-px font-sans text-[10px]">↵</kbd>
+            </button>
+            <button
+              type="button"
+              onClick={onSaveDraft}
+              disabled={busy !== null}
+              title={
+                dirty
+                  ? 'Save as draft — reserves no SKU and publishes nothing'
+                  : 'This draft is saved'
+              }
+              aria-live="polite"
+              className="flex min-w-[108px] shrink-0 items-center justify-center gap-1.5 rounded-pill bg-chip px-4 text-[12px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb] disabled:opacity-60"
+            >
+              <span aria-hidden="true">{busy === 'save' ? '·' : dirty ? '◔' : '✓'}</span>
+              {busy === 'save' ? 'Saving…' : dirty ? 'Save draft' : 'Saved'}
+            </button>
+          </>
+        )}
       </div>
     </form>
   )

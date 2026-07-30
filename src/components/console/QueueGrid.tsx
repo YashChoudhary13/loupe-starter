@@ -28,6 +28,8 @@ export interface QueueGridProps {
   readonly focusIndex: number
   readonly onFocusIndexChange: (index: number) => void
   readonly registerTile: (index: number, node: HTMLButtonElement | null) => void
+  readonly ariaLabel?: string
+  readonly emptyMessage?: string
 }
 
 export function QueueGrid({
@@ -39,6 +41,8 @@ export function QueueGrid({
   focusIndex,
   onFocusIndexChange,
   registerTile,
+  ariaLabel = 'Photographs and drafts waiting for an operator',
+  emptyMessage = 'Nothing is waiting. Enhanced photographs appear here as the worker finishes them.',
 }: QueueGridProps) {
   const gridRef = useRef<HTMLDivElement>(null)
 
@@ -69,9 +73,10 @@ export function QueueGrid({
   return (
     <div
       ref={gridRef}
+      id="console-queue"
       role="listbox"
       aria-multiselectable
-      aria-label="Photographs and drafts waiting for an operator"
+      aria-label={ariaLabel}
       className="loupe-scroll grid max-h-[calc(100%-46px)] grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2.5 overflow-y-auto pr-1"
       onKeyDown={(event) => {
         const columns = columnCount()
@@ -160,7 +165,7 @@ export function QueueGrid({
 
       {tiles.length === 0 ? (
         <p className="col-span-full py-10 text-center text-[12.5px] text-muted-foreground">
-          Nothing is waiting. Enhanced photographs appear here as the worker finishes them.
+          {emptyMessage}
         </p>
       ) : null}
     </div>

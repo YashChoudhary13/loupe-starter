@@ -3,6 +3,7 @@ import 'server-only'
 import { supabaseServer } from '@/lib/supabase/server'
 
 import { signKeys } from './images'
+import { startOfKolkataDayIso } from './queue-view'
 import type {
   ColourSuggestion,
   ConsoleCatalog,
@@ -170,8 +171,9 @@ export async function loadColourSuggestions(categoryId: string): Promise<readonl
 
 export async function loadQueue(): Promise<QueueSnapshot> {
   const db = supabaseServer()
+  const startOfToday = startOfKolkataDayIso(new Date())
 
-  const [photosResult, draftsResult, categoriesResult] = await Promise.all([
+  const [photosResult, draftsResult, publishedResult, categoriesResult] = await Promise.all([
     db
       .from('intake_files')
       .select(
@@ -189,20 +191,34 @@ export async function loadQueue(): Promise<QueueSnapshot> {
       .in('status', ['assembling', 'publishing', 'failed'])
       .order('updated_at', { ascending: false })
       .limit(DRAFT_LIMIT),
+    db
+      .from('product_drafts')
+      .select(
+        'id, status, updated_at, category_id, material_id, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+        { count: 'exact' },
+      )
+      .eq('status', 'published')
+      .gte('published_at', startOfToday)
+      .order('published_at', { ascending: false })
+      .limit(DRAFT_LIMIT),
     db.from('categories').select('id, name'),
   ])
 
   if (photosResult.error) throw new Error(`intake_files: ${photosResult.error.message}`)
   if (draftsResult.error) throw new Error(`product_drafts: ${draftsResult.error.message}`)
+  if (publishedResult.error) {
+    throw new Error(`product_drafts (published): ${publishedResult.error.message}`)
+  }
   if (categoriesResult.error) throw new Error(`categories: ${categoriesResult.error.message}`)
 
   const photos = (photosResult.data ?? []) as IntakeRow[]
   const drafts = (draftsResult.data ?? []) as DraftRow[]
+  const publishedDrafts = (publishedResult.data ?? []) as DraftRow[]
   const categoryNames = new Map(
     ((categoriesResult.data ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]),
   )
 
-  const draftIds = drafts.map((d) => d.id)
+  const draftIds = [...drafts, ...publishedDrafts].map((d) => d.id)
   const { data: draftPhotoRows, error: draftPhotoError } = draftIds.length
     ? await db
         .from('intake_files')
@@ -269,7 +285,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     photosByDraft.set(photo.product_draft_id, list)
   }
 
-  const draftTiles: QueueTile[] = drafts.map((draft) => {
+  function toDraftTile(draft: DraftRow): QueueTile {
     const members = photosByDraft.get(draft.id) ?? []
     const first = [...members].sort((a, b) => a.discovered_at.localeCompare(b.discovered_at))[0]
     const leaseHeld =
@@ -292,25 +308,21 @@ export async function loadQueue(): Promise<QueueSnapshot> {
             : null,
       reservedSku: draft.reserved_sku,
     }
-  })
+  }
 
-  const startOfDay = new Date()
-  startOfDay.setHours(0, 0, 0, 0)
-  const { count: publishedToday, error: publishedError } = await db
-    .from('product_drafts')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'published')
-    .gte('published_at', startOfDay.toISOString())
-  if (publishedError) throw new Error(`product_drafts (published): ${publishedError.message}`)
-
+  const draftTiles = drafts.map(toDraftTile)
+  const listedTodayTiles = publishedDrafts.map(toDraftTile)
   const tiles = [...draftTiles, ...photoTiles]
-  const expiries = tiles.map((t) => t.thumb?.expiresAt).filter((e): e is number => typeof e === 'number')
+  const expiries = [...tiles, ...listedTodayTiles]
+    .map((t) => t.thumb?.expiresAt)
+    .filter((e): e is number => typeof e === 'number')
 
   return {
     tiles,
+    listedTodayTiles,
     ungroupedCount: photoTiles.length,
     draftCount: draftTiles.length,
-    publishedToday: publishedToday ?? 0,
+    publishedToday: publishedResult.count ?? 0,
     attentionCount: tiles.filter((t) => t.attention !== null).length,
     signedUntil: expiries.length ? Math.min(...expiries) : Date.now() + 15 * 60 * 1000,
     generatedAt: new Date().toISOString(),
