@@ -28,12 +28,12 @@ The console is deployed at **https://qimati-loupe.vercel.app**.
 Final gates:
 
 ```text
-tests                    334 passed, 26 files
+tests                    345 passed, 28 files
 typecheck / lint / build passed
 verify:isolation         all server secrets absent from client assets
-supabase db push dry-run remote database up to date
+database migration       20260730150000 applied
 supabase db lint         no schema errors
-deployment               dpl_3x9aKdzfW3J8XVqqoMSc8syXQEB3 · READY
+deployment               dpl_13ixKkNT4QSx9jMJzJ11bAGioiLW · READY
 ```
 
 No Phase 3C model, provider, prompt, presentation, image-size or quality value changed,
@@ -81,7 +81,7 @@ Screenshot:
 
 ### Criteria 3, 5, 6, 7, 8 and 15: PASS
 
-Covered by the 334-test suite and `verify:isolation`, including deployed grouping/save
+Covered by the 345-test suite and `verify:isolation`, including deployed grouping/save
 races, version/order persistence, paise conversion, sticky defaults, preview/database
 parity for every configured category, browser resume and the default-deny boundary.
 
@@ -164,7 +164,7 @@ after it was found to have erased the owner’s pre-cleanup authentication audit
 
 - The deployment points only to `qimti.myshopify.com`.
 - All Phase 4 acceptance products and fixtures are gone.
-- The NK counter is at 142. Gaps from acceptance and cleaned products are intentional;
+- The NK counter is at 189. Gaps from acceptance and cleaned test products are intentional;
   counters never move backwards after a real reservation.
 - The older Phase 2 NK090 draft was outside the Phase 4 fixture set and was not touched.
 - All four pg_cron schedules are active.
@@ -179,7 +179,8 @@ after it was found to have erased the owner’s pre-cleanup authentication audit
 - D43: do not change `DESCRIBE_MODEL`, `DESCRIBE_REASONING_EFFORT`, `IMAGE_MODEL`,
   `IMAGE_SIZE`, `IMAGE_QUALITY`, Phase 3C prompts or presentation classes.
 - Do not rerun the paid Phase 3C acceptance set.
-- Forward-only migrations. `20260730140000` and `20260730141000` are applied.
+- Forward-only migrations. `20260730140000`, `20260730141000` and
+  `20260730150000` are applied.
 - Never weaken a test to make a phase green.
 - Phase 4 is complete. New redo/prompt work follows
   `docs/phases/PHASE-5-redo-version-history-prompts.md`.
@@ -198,7 +199,7 @@ scripts/verify-phase4-live.ts    guarded seed / accept / resumable cleanup
 tests/console-*.test.ts          database races, preview, money and housekeeping
 tests/shopify-product-images.test.ts
 docs/PROGRESS.md                 complete evidence and surprises
-docs/DECISIONS.md                D43–D48; add a new decision only if D6 is reversed
+docs/DECISIONS.md                D43–D50
 ```
 
 **Next action:** continue Phase 5 with append-only prompt creation and atomic promotion.

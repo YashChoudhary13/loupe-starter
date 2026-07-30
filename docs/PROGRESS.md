@@ -31,6 +31,56 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-30 — Phase 4 complete; Phase 5 prompt history started
+
+**Goal this session:** settle the owner decisions, add custom material and safe product
+descriptions, accept the owner’s unauthorised-account proof, and begin Phase 5.
+
+**Built:**
+
+- D49/D50 and migration `20260730150000` → Shopify store currency is authoritative;
+  drafts now support either a controlled or one-off material plus an optional plain-text
+  description override.
+- Listing editor and publisher → the standard six-point description follows the material,
+  can be edited/reset for a rare exception, is escaped into clean HTML, and is written
+  alongside `custom.material`.
+- `/prompts` → a protected Phase 5 screen showing the current Describe and Image prompts
+  and every immutable prior version. No prompt or model setting changed.
+- `PHASE-5-redo-version-history-prompts.md` → boundaries and twelve success criteria for
+  append-only prompt promotion and cached-description redo.
+
+**Verified:**
+
+- Phase 4 criterion 2 passed: owner-supplied **No access** screen for
+  `yashmiuky@gmail.com`; live `auth.denied` event `5964` records
+  `not an active app_users row`. Screenshot retained at
+  `.artifacts/phase4-acceptance/screenshots/unauthorised-denied.png`.
+- Live test-store verifier passed every assertion and cleaned all 23 created products.
+  `NK167` / `gid://shopify/Product/8033298972755` read back the standard 316L description;
+  `NK189` read back `Sterling Silver` and the custom description override.
+- Signed-in production browser opened `/prompts`, showed 2 Describe versions and 4 Image
+  versions with exactly one current prompt in each, and navigated Console → Prompts.
+- `345 passed` across 28 files; typecheck, lint, build, `verify:isolation`, and database
+  lint passed. Migration applied. Deployment
+  `dpl_13ixKkNT4QSx9jMJzJ11bAGioiLW` is Ready at
+  `https://qimati-loupe.vercel.app`.
+
+**Not finished / known broken:**
+
+- Phase 5 is not complete. Prompt creation/promotion, redo generation, version comparison,
+  paid-call crash recovery and live test evidence remain.
+- Tracking remains Phase 6. Live-store currency confirmation remains a Phase 7 manual
+  cutover check.
+
+**Surprises:** Shopify stores equivalent list HTML with line breaks between tags. The live
+verifier now ignores only inter-tag whitespace while still comparing the complete escaped
+HTML. No paid enhancement call was made.
+
+**Next session should start with:** add append-only prompt creation and atomic promotion,
+including required-token validation and audit events.
+
+---
+
 ## 2026-07-30 — Phase 4 queue counters now open real views; Tracking and Prompts remain scoped to Phases 6 and 5
 
 **Goal this session:** respond to owner feedback that Ungrouped and Listed looked clickable
