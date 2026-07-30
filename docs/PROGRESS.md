@@ -31,6 +31,432 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-30 — Phase 3C implemented and visually verified; criterion 17 blocks completion
+
+**Goal this session:** add bounded category-aware composition to the durable two-call
+worker, prove the new behavior against five real products, clean production fixtures, and
+evaluate cheaper description models without silently changing production.
+
+**PHASE 3C IS NOT COMPLETE.** Criteria 15, 16 and 18 pass. Criterion 17 explicitly fails:
+the five accepted `openai/gpt-5.6-sol` descriptions cost $0.014816–$0.016851 each, above
+the required `< $0.006` target. Production remains on the current model.
+
+**Built:**
+
+- `docs/CONTEXT.md` → preserved the business and operating context before implementation
+  in its own commit.
+- `src/lib/enhance/presentation.ts` → exact six-member vocabulary, strict structured-output
+  parser, exhaustive application-owned composition map and deterministic `flat-curve`
+  fallback.
+- `src/lib/enhance/openrouter.ts`, `prompt.ts`, `worker.ts`, repository adapters → strict
+  JSON describe results, two-token prompt resolution, cached presentation reuse, queryable
+  fallbacks and the existing bounded retry/lease/R2 recovery guarantees.
+- `20260730100000_phase_3c_category_aware_composition.sql` → enum and audit columns, exact
+  prompt versions, fenced structured cache/fallback RPCs and service-role-only grants.
+- `verify-phase3c-live.ts` and `cleanup-phase3c-live.ts` → guarded resumable live evidence,
+  cached redo, rollback-only fallback proof, contact sheet and exact cleanup receipt.
+- `evaluate-description-models.ts` → isolated, description-only candidate evaluation with
+  raw output, wire contract and actual provider-reported cost; it has no production write
+  path and does not change `DESCRIBE_MODEL`.
+
+### Criterion 15 — pass: five products, four classes, exact prompts
+
+All five rows stored a valid model-selected class with
+`presentation_fallback=false`. Every exact code-owned composition paragraph occurred once,
+every unresolved-token list was empty, and each stored `prompt_text` equalled the prompt
+sent to the provider.
+
+| file | class | generation attempts | description USD | image USD |
+|---|---|---:|---:|---:|
+| `phase3b-01.png` | `flat-curve` | 3 | 0.015801 | 0.078064 |
+| `phase3b-02.jpg` | `flat-arc` | 2 | 0.015351 | 0.077944 |
+| `phase3b-03.jpg` | `flat-arc` | 1 | 0.016851 | 0.078000 |
+| `phase3b-04.png` | `tray-grid` | 2 | 0.016821 | 0.078272 |
+| `user-earrings-source.png` | `pair-upright` | 2 | 0.014816 | 0.076248 |
+
+Provider request values were unchanged across the set:
+
+```text
+describe  openai/gpt-5.6-sol · reasoning minimal/excluded · max 256 · stream false
+image     openai/gpt-image-2 · 1280x1280 · medium · n=1
+input     typed image_url data-URL object for both stages
+```
+
+The complete resolved prompt for one product in each represented class follows.
+
+#### `flat-curve` — `phase3b-01.png`
+
+```text
+A single hero product photograph for an e-commerce jewellery catalogue.
+
+PRODUCT
+A single necklace in polished yellow-gold-tone metal, forming a long, gently curved drop with a centered pendant-like dangle. Round-cut stones in blue, red, green, black and pale pink are individually bezel-set at intervals along the lower chain, with a deeper red stone suspended at the centre. The fine cable-link chain is decorated with spaced polished gold-tone beads, creating an alternating arrangement of coloured bezels and small spherical drops. The surfaces are smooth and reflective, with no visible engraving.
+
+SUBJECT — the jewellery item only. The source photograph may show the piece attached to a
+display card, held in a hand, inside packaging, or on a cluttered surface. Remove all of
+it: cards, backing, tags, price stickers, plastic, hands and fingers, and any text, logo or
+branding that is not physically part of the jewellery. Present the piece as though
+photographed on its own. Where the item is a pair, show both, evenly spaced and
+symmetrically arranged side by side at the same scale and height — balanced, not
+mechanically duplicated.
+
+BACKGROUND — soft ivory-champagne satin with gentle natural folds, warm in tone, strongly
+out of focus so the folds read as texture rather than pattern. Monochromatic ivory, cream
+and warm beige palette. Smooth creamy bokeh, no hard lines. No props, no flowers, no vases,
+no risers, no boxes, nothing touching the jewellery.
+
+LIGHTING — warm luxury studio lighting: a large diffused key from the upper left and front,
+gentle warm fill from the front right, restrained rim light to separate polished edges from
+the background. Natural warm-gold reflections rather than flat yellow metal. Crisp,
+controlled specular points on faceted stones — no starbursts, no glitter, no blown
+highlights, no lens flare.
+
+SHADOWS — one soft, realistic contact shadow directly beneath and slightly behind the
+piece, anchoring it to the surface. Diffused and light. No harsh black shadows, no floating
+objects, no dramatic contrast.
+
+COMPOSITION — square framing, product centred, occupying roughly 70–75% of the frame
+with even margins and clean negative space. Eye-level or very slightly elevated camera
+angle. Keep this framing identical for every product.
+Lay the piece flat in a soft open curve, the pendant or centre feature toward the
+lower centre of the frame and the chain sweeping naturally above it. Clasp visible.
+
+CAMERA — premium macro product photography with the visual character of an 85–100mm macro
+lens. The piece completely sharp front to back with crisp micro-detail; the background
+transitioning rapidly into shallow depth of field. Clean high-end commercial retouching,
+realistic optical depth, accurate textures. The result must look like a real photograph —
+not a 3D render, illustration, painting or AI image.
+
+FIDELITY — this outranks everything above, and applies to the jewellery itself. Reproduce
+the piece exactly as photographed: form, proportion, stone shape and placement, setting
+style, chain or band construction, clasps, bezels, prongs, engraving, texture and plating
+colour must all match the source. Do not add sparkle, stones, links, engraving or
+decoration that is not present. Do not remove, straighten, lengthen, resize or restyle any
+part of it. Where a detail is unclear in the source, reproduce it as-is rather than
+inventing it. Only the surroundings may change.
+
+DO NOT INCLUDE — hands, fingers, skin, ears, people, models, mannequins, display cards,
+packaging, price tags, labels, text, logos, watermarks, borders, frames, stands, clips,
+wires, props touching the jewellery, extra or missing pieces, mismatched pairs, altered
+design, distorted proportions, bent or melted metal, duplicated components, floating
+jewellery, harsh shadows, dark backgrounds, cool blue lighting, oversaturated yellow,
+excessive bloom, excessive sparkle, star filters, motion blur, soft product focus, noise,
+grain, chromatic artifacts, plastic-looking materials, CGI or cartoon styling.
+```
+
+#### `flat-arc` — `phase3b-02.jpg`
+
+```text
+A single hero product photograph for an e-commerce jewellery catalogue.
+
+PRODUCT
+A single flexible chain bracelet in polished gold-tone metal, forming a slender open arc when laid flat. It has no visible stones. The bracelet combines a smooth, closely woven flat snake chain with an outer row of elongated rectangular paperclip links. Several links feature narrow ribbed or ridged inset sections, creating an alternating open and textured pattern. A lobster-claw clasp secures one end, while the opposite end has an adjustable extension chain finished with a slim bar-shaped terminal.
+
+SUBJECT — the jewellery item only. The source photograph may show the piece attached to a
+display card, held in a hand, inside packaging, or on a cluttered surface. Remove all of
+it: cards, backing, tags, price stickers, plastic, hands and fingers, and any text, logo or
+branding that is not physically part of the jewellery. Present the piece as though
+photographed on its own. Where the item is a pair, show both, evenly spaced and
+symmetrically arranged side by side at the same scale and height — balanced, not
+mechanically duplicated.
+
+BACKGROUND — soft ivory-champagne satin with gentle natural folds, warm in tone, strongly
+out of focus so the folds read as texture rather than pattern. Monochromatic ivory, cream
+and warm beige palette. Smooth creamy bokeh, no hard lines. No props, no flowers, no vases,
+no risers, no boxes, nothing touching the jewellery.
+
+LIGHTING — warm luxury studio lighting: a large diffused key from the upper left and front,
+gentle warm fill from the front right, restrained rim light to separate polished edges from
+the background. Natural warm-gold reflections rather than flat yellow metal. Crisp,
+controlled specular points on faceted stones — no starbursts, no glitter, no blown
+highlights, no lens flare.
+
+SHADOWS — one soft, realistic contact shadow directly beneath and slightly behind the
+piece, anchoring it to the surface. Diffused and light. No harsh black shadows, no floating
+objects, no dramatic contrast.
+
+COMPOSITION — square framing, product centred, occupying roughly 70–75% of the frame
+with even margins and clean negative space. Eye-level or very slightly elevated camera
+angle. Keep this framing identical for every product.
+Lay the piece flat in a relaxed open arc, clasp and extender chain visible and
+naturally placed rather than tucked away.
+
+CAMERA — premium macro product photography with the visual character of an 85–100mm macro
+lens. The piece completely sharp front to back with crisp micro-detail; the background
+transitioning rapidly into shallow depth of field. Clean high-end commercial retouching,
+realistic optical depth, accurate textures. The result must look like a real photograph —
+not a 3D render, illustration, painting or AI image.
+
+FIDELITY — this outranks everything above, and applies to the jewellery itself. Reproduce
+the piece exactly as photographed: form, proportion, stone shape and placement, setting
+style, chain or band construction, clasps, bezels, prongs, engraving, texture and plating
+colour must all match the source. Do not add sparkle, stones, links, engraving or
+decoration that is not present. Do not remove, straighten, lengthen, resize or restyle any
+part of it. Where a detail is unclear in the source, reproduce it as-is rather than
+inventing it. Only the surroundings may change.
+
+DO NOT INCLUDE — hands, fingers, skin, ears, people, models, mannequins, display cards,
+packaging, price tags, labels, text, logos, watermarks, borders, frames, stands, clips,
+wires, props touching the jewellery, extra or missing pieces, mismatched pairs, altered
+design, distorted proportions, bent or melted metal, duplicated components, floating
+jewellery, harsh shadows, dark backgrounds, cool blue lighting, oversaturated yellow,
+excessive bloom, excessive sparkle, star filters, motion blur, soft product focus, noise,
+grain, chromatic artifacts, plastic-looking materials, CGI or cartoon styling.
+```
+
+#### `tray-grid` — `phase3b-04.png`
+
+```text
+A single hero product photograph for an e-commerce jewellery catalogue.
+
+PRODUCT
+An assortment of multiple separate rings in varied, non-matching designs. The rings have polished gold-tone metal bands with slim, curved silhouettes, including linked hearts, interlocking circles, scalloped motifs and straight gemstone rows. Faceted stones in clear, blue, pink, red, green, orange, purple and yellow tones appear in round, oval, rectangular, heart and teardrop cuts. They are arranged as central solitaires, clustered accents, halos, graduated rows and multicoloured sequences, secured mainly by prong and bezel-style settings. Some bands feature openwork, beaded edges and repeating decorative links.
+
+SUBJECT — the jewellery item only. The source photograph may show the piece attached to a
+display card, held in a hand, inside packaging, or on a cluttered surface. Remove all of
+it: cards, backing, tags, price stickers, plastic, hands and fingers, and any text, logo or
+branding that is not physically part of the jewellery. Present the piece as though
+photographed on its own. Where the item is a pair, show both, evenly spaced and
+symmetrically arranged side by side at the same scale and height — balanced, not
+mechanically duplicated.
+
+BACKGROUND — soft ivory-champagne satin with gentle natural folds, warm in tone, strongly
+out of focus so the folds read as texture rather than pattern. Monochromatic ivory, cream
+and warm beige palette. Smooth creamy bokeh, no hard lines. No props, no flowers, no vases,
+no risers, no boxes, nothing touching the jewellery.
+
+LIGHTING — warm luxury studio lighting: a large diffused key from the upper left and front,
+gentle warm fill from the front right, restrained rim light to separate polished edges from
+the background. Natural warm-gold reflections rather than flat yellow metal. Crisp,
+controlled specular points on faceted stones — no starbursts, no glitter, no blown
+highlights, no lens flare.
+
+SHADOWS — one soft, realistic contact shadow directly beneath and slightly behind the
+piece, anchoring it to the surface. Diffused and light. No harsh black shadows, no floating
+objects, no dramatic contrast.
+
+COMPOSITION — square framing, product centred, occupying roughly 70–75% of the frame
+with even margins and clean negative space. Eye-level or very slightly elevated camera
+angle. Keep this framing identical for every product.
+Keep every item visible and evenly spaced in aligned rows at consistent scale, the
+whole set square to the frame. Do not crop any item. Do not restage into a scene.
+
+CAMERA — premium macro product photography with the visual character of an 85–100mm macro
+lens. The piece completely sharp front to back with crisp micro-detail; the background
+transitioning rapidly into shallow depth of field. Clean high-end commercial retouching,
+realistic optical depth, accurate textures. The result must look like a real photograph —
+not a 3D render, illustration, painting or AI image.
+
+FIDELITY — this outranks everything above, and applies to the jewellery itself. Reproduce
+the piece exactly as photographed: form, proportion, stone shape and placement, setting
+style, chain or band construction, clasps, bezels, prongs, engraving, texture and plating
+colour must all match the source. Do not add sparkle, stones, links, engraving or
+decoration that is not present. Do not remove, straighten, lengthen, resize or restyle any
+part of it. Where a detail is unclear in the source, reproduce it as-is rather than
+inventing it. Only the surroundings may change.
+
+DO NOT INCLUDE — hands, fingers, skin, ears, people, models, mannequins, display cards,
+packaging, price tags, labels, text, logos, watermarks, borders, frames, stands, clips,
+wires, props touching the jewellery, extra or missing pieces, mismatched pairs, altered
+design, distorted proportions, bent or melted metal, duplicated components, floating
+jewellery, harsh shadows, dark backgrounds, cool blue lighting, oversaturated yellow,
+excessive bloom, excessive sparkle, star filters, motion blur, soft product focus, noise,
+grain, chromatic artifacts, plastic-looking materials, CGI or cartoon styling.
+```
+
+#### `pair-upright` — `user-earrings-source.png`
+
+```text
+A single hero product photograph for an e-commerce jewellery catalogue.
+
+PRODUCT
+A matching pair of stud drop earrings in polished gold-tone metal. Each earring has a compact two-part silhouette, with an oval upper stud and a rounded teardrop pendant below. The upper oval is densely pavé-set with small, round-cut, colourless stones. The lower section holds a milky white, iridescent teardrop cabochon within a slim gold-tone bezel. A short concealed connection joins the two sections, allowing the lower element to hang beneath the stone-set stud.
+
+SUBJECT — the jewellery item only. The source photograph may show the piece attached to a
+display card, held in a hand, inside packaging, or on a cluttered surface. Remove all of
+it: cards, backing, tags, price stickers, plastic, hands and fingers, and any text, logo or
+branding that is not physically part of the jewellery. Present the piece as though
+photographed on its own. Where the item is a pair, show both, evenly spaced and
+symmetrically arranged side by side at the same scale and height — balanced, not
+mechanically duplicated.
+
+BACKGROUND — soft ivory-champagne satin with gentle natural folds, warm in tone, strongly
+out of focus so the folds read as texture rather than pattern. Monochromatic ivory, cream
+and warm beige palette. Smooth creamy bokeh, no hard lines. No props, no flowers, no vases,
+no risers, no boxes, nothing touching the jewellery.
+
+LIGHTING — warm luxury studio lighting: a large diffused key from the upper left and front,
+gentle warm fill from the front right, restrained rim light to separate polished edges from
+the background. Natural warm-gold reflections rather than flat yellow metal. Crisp,
+controlled specular points on faceted stones — no starbursts, no glitter, no blown
+highlights, no lens flare.
+
+SHADOWS — one soft, realistic contact shadow directly beneath and slightly behind the
+piece, anchoring it to the surface. Diffused and light. No harsh black shadows, no floating
+objects, no dramatic contrast.
+
+COMPOSITION — square framing, product centred, occupying roughly 70–75% of the frame
+with even margins and clean negative space. Eye-level or very slightly elevated camera
+angle. Keep this framing identical for every product.
+Show both pieces upright and front-facing, evenly spaced and symmetrically arranged
+side by side at identical scale and height. Balanced, not mechanically duplicated.
+
+CAMERA — premium macro product photography with the visual character of an 85–100mm macro
+lens. The piece completely sharp front to back with crisp micro-detail; the background
+transitioning rapidly into shallow depth of field. Clean high-end commercial retouching,
+realistic optical depth, accurate textures. The result must look like a real photograph —
+not a 3D render, illustration, painting or AI image.
+
+FIDELITY — this outranks everything above, and applies to the jewellery itself. Reproduce
+the piece exactly as photographed: form, proportion, stone shape and placement, setting
+style, chain or band construction, clasps, bezels, prongs, engraving, texture and plating
+colour must all match the source. Do not add sparkle, stones, links, engraving or
+decoration that is not present. Do not remove, straighten, lengthen, resize or restyle any
+part of it. Where a detail is unclear in the source, reproduce it as-is rather than
+inventing it. Only the surroundings may change.
+
+DO NOT INCLUDE — hands, fingers, skin, ears, people, models, mannequins, display cards,
+packaging, price tags, labels, text, logos, watermarks, borders, frames, stands, clips,
+wires, props touching the jewellery, extra or missing pieces, mismatched pairs, altered
+design, distorted proportions, bent or melted metal, duplicated components, floating
+jewellery, harsh shadows, dark backgrounds, cool blue lighting, oversaturated yellow,
+excessive bloom, excessive sparkle, star filters, motion blur, soft product focus, noise,
+grain, chromatic artifacts, plastic-looking materials, CGI or cartoon styling.
+```
+
+### Criterion 16 — pass: malformed and invented-class fallback
+
+A linked production transaction created and claimed one malformed-JSON fixture and one
+invented-`ring` fixture, set each to attempt four, and called the deployed
+`record_description_failure()` path. Both returned:
+
+```text
+status                       enhancing
+attempts                     5
+proceed_without_description  true
+presentation_class           flat-curve
+presentation_fallback        true
+```
+
+Reasons were respectively `description_invalid_json` and
+`description_presentation_invalid`. The exact raw provider strings remained in
+`description_error_detail`; `description.missing` events recorded
+`model_composition_prose_accepted=false`. Each fallback prompt contained the exact
+`flat-curve` code-owned paragraph, no PRODUCT block, no unresolved token and no invented
+`ring` prose. The transaction was rolled back after evidence capture.
+
+### Criterion 17 — failed: current-model description cost
+
+```text
+five accepted descriptions  $0.079640 total
+mean                         $0.015928
+range                        $0.014816–$0.016851
+required                     every call < $0.006
+```
+
+The measured $0.016851 anklet call remains valid evidence. The result is not reinterpreted:
+criterion 17 fails and the phase cannot close on the current model.
+
+### Criterion 18 — pass: contact sheet and catalogue-grid review
+
+The retained review sheet is:
+
+```text
+.artifacts/phase3c-acceptance/before-after-contact-sheet.png
+```
+
+All five results use the same ivory-champagne catalogue treatment, centred square framing,
+controlled shadows and readable product edges. The necklace follows a soft open curve; both
+flexible pieces use open arcs with fittings visible; the earrings remain a symmetric matched
+pair. The tray source and Phase 3C output both contain **87 rings** in the same row counts:
+`9/9/9/8/9/9/8/8/9/9`. Nothing is cropped or collapsed to a single invented item.
+
+### Retry, cached redo, fencing and cleanup
+
+- The first live run completed the anklet, then OpenRouter returned HTTP 403 “key total
+  limit exceeded” for the other four. Their existing rows and the completed anklet were
+  preserved. After the limit changed, the resumable verifier made no additional anklet
+  describe call and completed the four deferred rows with the same models.
+- A final cached replay claimed `phase3b-01.png`, reused its structured description and
+  immutable generated R2 object, completed in 6.160 s and recorded
+  `extraDescribeCalls=0`, `extraImageCalls=0`.
+- Existing deployed-SQL and worker gates still prove stale-token rejection, SKIP LOCKED
+  claims, retry backoff and immutable conflict handling.
+- Cleanup moved five Drive uploads to Trash and verified zero remained in Raw; deleted five
+  intake rows, ten image-version rows by cascade, 32 events and 15 R2 objects; and verified
+  zero matching database/R2 state remained. Local evidence was retained.
+- All four cron jobs are active again. Authenticated production ticks returned:
+
+  ```text
+  enhance    HTTP 200 · claimed=0 · enhanced=0 · descriptionCalls=0
+  reconcile  HTTP 200 · scanned=0 · inserted=0
+  ```
+
+### Isolated cheaper-model evaluation
+
+No production state or configuration changed. Five vision-capable candidates saw the same
+prepared source images and exact describe prompt.
+
+| candidate | strict JSON | classes | five-call cost | factual review | image gate |
+|---|---|---|---:|---|---|
+| GPT-5.4 Mini | fail | fail | $0.010254 | fail: rigid bracelet claim; tray truncated | not run |
+| GPT-5.4 Nano | pass | pass | $0.0028234 | fail: rigid/snake-like chain misdescription | not run |
+| Gemini 3.1 Flash Lite Preview | pass | pass | $0.00283525 | fail: guessed CZ/post and mentioned display tray | not run |
+| Gemini 3 Flash Preview | pass | pass | $0.005572 | pass; flat-chain wording flagged for image review | not run |
+| Claude Haiku 4.5 | fail | fail | $0.011962 | fail: fenced JSON and guessed stones/fittings | not run |
+
+Each individual provider-reported candidate cost was below $0.006. Gemini 3 Flash Preview
+is the only description-only shortlist: its five factual paragraphs are acceptable against
+the same source/baseline review, but its flat-chain terminology is called out for the image
+gate. No candidate passes all required gates because no image candidate run was made.
+Production remains `openai/gpt-5.6-sol`. A candidate run requires an explicit decision,
+updated evidence and a fresh comparable five-product acceptance proving jewellery fidelity
+and the 87-item tray count.
+
+Raw candidate evidence:
+
+```text
+.artifacts/phase3c-description-eval/evidence-batch-1.json
+.artifacts/phase3c-description-eval/evidence.json
+```
+
+### Final quality evidence
+
+```text
+production deployment    dpl_CicCH1uwcDP1TgyVT8Hqbx3ct8KM · READY
+production alias         https://qimati-loupe.vercel.app
+test files               19 passed (19)
+tests                    243 passed (243)
+typecheck                passed
+lint                     passed
+build                    passed
+secret isolation         passed
+linked migration dry-run remote database is up to date
+linked database lint     No schema errors found
+```
+
+**Not finished / known broken:**
+
+- Criterion 17 fails; Phase 3C must not be marked complete.
+- Gemini 3 Flash Preview passed the description-only gates, but no cheaper candidate has
+  passed the required end-to-end image gate.
+
+**Surprises:**
+
+- The OpenRouter application key had a total limit and stopped the first acceptance run
+  after one complete product. The resumable harness preserved that row and continued the
+  original four instead of creating replacements.
+- The live prompt names are descriptive version names, not `image.default`; the verifier
+  now resolves the exact two Phase 3C names and can finish from entirely cached state.
+- Cheap models can pass JSON, cost and class checks while still introducing small factual
+  errors that are dangerous for an image-edit prompt. Machine gates alone are insufficient.
+
+**Next session should start with:** explicitly approve or reject a fresh isolated
+five-product image comparison for Gemini 3 Flash Preview. Do not change production before
+that run proves jewellery fidelity and the 87-item tray count.
+
+---
+
 ## 2026-07-29 — Phase 3B complete: durable two-call enhancement and live A/B
 
 **Goal this session:** build the crash-safe two-call enhancement worker, prove every Phase

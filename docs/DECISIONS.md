@@ -859,3 +859,65 @@ description also supplies product alt text regardless of this decision.
 `INJECT_DESCRIPTION=true` therefore remains the production default. The one-time describe
 cost is accepted for the materially better multi-item fidelity, and a redo still makes zero
 describe calls.
+
+---
+
+### D41 — Category-aware composition is a closed enum; application code owns the prose
+
+The Phase 3C describe call returns exactly two JSON fields: a factual paragraph and one of
+six presentation classes. The presentation vocabulary is a Postgres enum and an exact
+TypeScript tuple:
+
+```text
+pair-upright
+flat-curve
+standing-three-quarter
+angled-band
+flat-arc
+tray-grid
+```
+
+This is a staging/composition vocabulary, not a Shopify category classifier. It cannot
+choose category, SKU, title, tag or collection. Application code owns one exact composition
+paragraph per enum member and replaces the single `{{COMPOSITION_DETAIL}}` token. Model
+composition prose is never accepted, stored or sent to the image model.
+
+Strict JSON parsing rejects extra fields, missing fields, non-string values, paragraphs
+outside 60–100 words, line breaks and invented presentation values. Bounded retries are
+unchanged. On the exhausted malformed/invented path, or for a legacy cached description
+without a class, Loupe uses only `flat-curve` and records
+`presentation_fallback=true` plus a queryable reason. It does not make a third model call.
+
+**Rejected:** free-form composition text, using the describer as the business category
+classifier, and silently accepting a near-match such as `ring`.
+
+---
+
+### D42 — Phase 3C remains incomplete until description cost passes a fresh comparable run
+
+The current-model acceptance used `openai/gpt-5.6-sol` for all five products and
+`openai/gpt-image-2` for all five images. It passed the bounded JSON, prompt-resolution,
+fallback and visual gates across four presentation classes, but description calls cost
+$0.014816–$0.016851 each. The criterion is strictly less than $0.006, so criterion 17 is
+failed and Phase 3C is **implemented and visually verified, not complete**.
+
+An isolated description-only comparison tested GPT-5.4 Mini, GPT-5.4 Nano, Gemini 3.1
+Flash Lite Preview, Gemini 3 Flash Preview and Claude Haiku 4.5 on the same five sources.
+Gemini 3 Flash Preview is the only candidate that passed strict JSON, all five expected
+classes, the per-call cost target and manual factual review. Its flat-chain terminology
+matches the level of specificity already accepted from the current model, but remains an
+explicit fidelity risk for the image gate. The other candidates had a factual or contract
+failure: truncation, a wrong class, Markdown-fenced JSON, guessed stones/fittings, or a
+rigid-chain misdescription.
+
+Gemini 3 Flash Preview is a **description-only shortlist, not an approved production
+change**. Production remains on `openai/gpt-5.6-sol`. A model/provider change requires:
+
+1. an explicit business decision naming the candidate;
+2. an updated configuration and evidence record;
+3. a fresh comparable five-product acceptance run;
+4. strict JSON, acceptable factual descriptions, correct classes and `< $0.006` actual
+   provider cost on every item; and
+5. visual proof that jewellery fidelity and the 87-item tray count do not degrade.
+
+Description-only evaluation never authorises a silent production swap.

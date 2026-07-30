@@ -154,23 +154,40 @@ worker code.
 **Enhancement is a durable two-call pipeline.**
 
 1. A describer sees only the 1024 px-long-edge source copy and the live default
-   `prompts.kind = 'describe'` body. It uses `DESCRIBE_REASONING_EFFORT=minimal`, and its
-   60–100 word factual result, model and actual cost are cached on `intake_files`. A retry
-   or redo with `product_description` populated makes zero describe calls.
+   `prompts.kind = 'describe'` body. It uses `DESCRIBE_REASONING_EFFORT=minimal` and must
+   return one strict JSON object with exactly `description` and `presentation`. Description
+   is one factual 60–100 word paragraph. Presentation must be one of the database enum's
+   six values: `pair-upright`, `flat-curve`, `standing-three-quarter`, `angled-band`,
+   `flat-arc`, or `tray-grid`. The paragraph, enum, model and actual cost are cached on
+   `intake_files`. A retry or redo with both cached values makes zero describe calls.
 2. The worker resolves the live default `prompts.kind = 'image'` body. With
    `INJECT_DESCRIPTION=true`, the cached text replaces the literal
-   `{{PRODUCT_DESCRIPTION}}`; otherwise the entire PRODUCT block is removed. The exact
-   post-resolution bytes sent to the image model are stored in
+   `{{PRODUCT_DESCRIPTION}}`; otherwise the entire PRODUCT block is removed. Application
+   code—not model prose—maps the enum to one audited composition paragraph and replaces
+   the one literal `{{COMPOSITION_DETAIL}}` token. A prompt with a missing, repeated or
+   unresolved token is rejected before image generation. The exact post-resolution bytes
+   sent to the image model are stored in
    `image_versions.prompt_text`, together with `description_injected` and
    `description_missing`.
 
 Describe attempts use the same bounded retry schedule as intake. On the fifth describe
 failure the row deliberately stays claimed, records `description_missing_at`, removes the
-PRODUCT block and continues to image generation. A describer outage degrades the image; it
-does not stop the pipeline. `MAX_COST_USD_PER_DESCRIPTION=0.02` guards accidental reasoning
-spend independently of the image ceiling. A successful describe response above that limit
-does **not** retry the same expensive configuration: it records the missing description and
-continues to the image call immediately.
+PRODUCT block, assigns the deterministic `flat-curve` fallback, records a queryable
+fallback reason and continues to image generation. Malformed JSON and invented classes
+follow the same bounded path; free-form model composition never reaches the image prompt.
+A describer outage degrades the image; it does not stop the pipeline.
+`MAX_COST_USD_PER_DESCRIPTION=0.02` guards accidental reasoning spend independently of the
+image ceiling. A successful describe response above that limit does **not** retry the same
+expensive configuration: it records the missing description and continues to the image call
+immediately.
+
+**Phase 3C status:** the bounded composition implementation is deployed and visually
+verified, but Phase 3C is not complete. The current `openai/gpt-5.6-sol` five-product
+acceptance cost $0.014816–$0.016851 per description, above the required `< $0.006` gate.
+Production stays on that model until an explicit decision selects a replacement and a fresh
+comparable five-product image run proves strict JSON, factual accuracy, correct classes,
+image fidelity and the 87-item tray count. The isolated cost evaluation is evidence, not
+permission to change `DESCRIBE_MODEL`.
 
 **Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
