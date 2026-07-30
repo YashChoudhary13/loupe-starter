@@ -31,6 +31,58 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-30 — Phase 4 queue counters now open real views; Tracking and Prompts remain scoped to Phases 6 and 5
+
+**Goal this session:** respond to owner feedback that Ungrouped and Listed looked clickable
+but did nothing, and make the future Tracking and Prompts labels unambiguous.
+
+**Built:**
+
+- `ConsoleScreen`, `StatPill`, `QueueGrid` → the header now has keyboard-accessible
+  Pending, Ungrouped, Listed today, Needs attention (when non-zero), and Drafts controls.
+  Black is the selected view; each click changes the queue heading, count, rows and empty
+  state rather than acting as a decorative counter.
+- `queue.ts`, `queue-view.ts`, console types → the queue snapshot now includes published
+  drafts from the current Asia/Kolkata day. Listed cards retain their photograph, SKU and
+  category and open the existing editor in a view-only state; they cannot be edited,
+  detached, saved or published again from that view.
+- `Sidebar` → Tracking and Prompts now carry visible `Phase 6` and `Phase 5` labels plus
+  explanatory accessible text. Their full screens remain deliberately out of Phase 4;
+  no placeholder screen is presented as a working feature.
+- `console-queue-view.test.ts` → six focused assertions cover every filter and the exact
+  Jaipur day boundary.
+
+**Verified:**
+
+- Production deployment `dpl_GEdHJT9dcFwrLUGGHwvjvMZKy23y` is Ready and aliased to
+  `https://qimati-loupe.vercel.app`.
+- In the signed-in production browser, clicking `0 ungrouped` selected the pill, changed
+  the heading/listbox to `Ungrouped`, and showed its specific empty state. Clicking
+  `0 listed today` did the same for `Listed today`. The sidebar exposed the Phase 6/5
+  scope labels, the 1180×768 layout had no overflow, and the browser console had no errors.
+- The live read model query returned `pending 0 · ungrouped 0 · drafts 0 · listed today 0`;
+  the acceptance fixtures have already been cleaned, so an empty production grid is the
+  correct current state. The populated view is covered by the pure filter test.
+- `340 passed`; typecheck, lint, production build and `verify:isolation` passed. One
+  pre-existing remote-DB concurrency test flaked while verification jobs accidentally
+  overlapped, passed immediately alone, then passed in the clean serial 340-test run.
+
+**Not finished / known broken:**
+
+- Phase 4 remains NOT complete: criterion 2 still needs a genuinely unauthorised Google
+  account, and the D6 description/theme and test-store currency decisions remain open.
+- Tracking is still Phase 6 and prompt management is still Phase 5. Implementing either
+  now would be a roadmap/scope change, not a repair to the Phase 4 console.
+
+**Surprises:** the former `listed today` number was calculated from the Vercel runtime's
+local midnight. The list now uses Jaipur midnight explicitly, matching the operator-facing
+date and remaining stable across deployment regions.
+
+**Next session should start with:** obtain the owner's description and currency decisions,
+or explicitly reprioritise Phase 5/6 if Prompt management or Tracking should be built next.
+
+---
+
 ## 2026-07-30 — Phase 4 live acceptance and cleanup passed; NOT complete on criterion 2 and two business decisions
 
 **Goal this session:** implement the owner’s `NEWEST` requirement and Save Draft feedback,
