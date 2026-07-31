@@ -76,6 +76,12 @@ export interface ProductSetFile {
 
 export interface ProductSetArgs {
   readonly handle: string
+  /**
+   * D60 (supersedes D7): 'DRAFT' is Save Draft pushing an unfinished product to
+   * Shopify; 'ACTIVE' is Publish putting it in the live catalogue. Publish must
+   * always send ACTIVE — a product left DRAFT is invisible to buyers.
+   */
+  readonly status?: 'ACTIVE' | 'DRAFT'
   readonly title: string
   readonly productType: string
   readonly tags: readonly string[]
@@ -256,8 +262,10 @@ function buildInput(args: ProductSetArgs): Record<string, unknown> {
     handle: args.handle,
     title: args.title,
     productType: args.productType,
-    // docs/DECISIONS.md D7 — the console IS the approval step. No Shopify draft stage.
-    status: 'ACTIVE',
+    // D60 supersedes D7: Save Draft pushes DRAFT, Publish pushes ACTIVE.
+    // Defaulting to ACTIVE keeps every existing caller (and the Phase 2
+    // verifier) publishing live products exactly as before.
+    status: args.status ?? 'ACTIVE',
     tags: [...args.tags],
     // D50: clean generated HTML only. The console accepts plain text and escapes
     // it before it reaches this boundary, so pasted storefront markup cannot

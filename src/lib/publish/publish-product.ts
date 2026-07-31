@@ -274,9 +274,19 @@ export async function reserveIdentity(
   db: SupabaseClient,
   draftId: string,
   actor?: string,
+  /**
+   * False only for the Shopify DRAFT path (D60), which relaxes the price guard
+   * because an unpriced product is exactly what a draft is. Every other
+   * invariant — category, confirmed tag, D27 category pin — still applies.
+   */
+  requirePublishable = true,
 ): Promise<ReservedIdentity> {
   const { data, error } = await db
-    .rpc('reserve_draft_identity', { p_draft_id: draftId, p_actor: actor ?? null })
+    .rpc('reserve_draft_identity', {
+      p_draft_id: draftId,
+      p_actor: actor ?? null,
+      p_require_publishable: requirePublishable,
+    })
     .select()
     .single<{
       draft_id: string
@@ -314,19 +324,40 @@ export async function publishProduct(
 ): Promise<PublishResult> {
   const input = await loadPublishInput(db, draftId)
 
+  /**
+   * D60. A Shopify DRAFT is an unfinished product on purpose: it may have no
+   * price and no material yet, which is exactly why the operator is saving it
+   * rather than publishing it. Publish (`ACTIVE`) is unchanged and still runs
+   * every block in hard rule 8.
+   */
+  const asDraft = options.shopifyStatus === 'DRAFT'
+
   // Before anything is reserved. A blocked publish must not burn a SKU number,
   // and must say every reason at once (hard rule 8).
-  assertPublishable(input, options)
+  if (!asDraft) assertPublishable(input, options)
 
-  const weightG = resolveWeightG(input)
-  if (weightG === null) throw new Error('unreachable: validation guarantees a weight')
-  if (input.draft.price_paise === null) throw new Error('unreachable: validation guarantees a price')
+  // D19: NULL weight means "nobody has said" and must never be coerced to 0 on
+  // the publish path — assertPublishable() blocks it there, so this stays an
+  // assertion. Only an unfinished Shopify DRAFT may stand in a 0, and the
+  // ACTIVE path will still block it later if it is never answered.
+  const resolvedWeightG = resolveWeightG(input)
+  if (!asDraft && resolvedWeightG === null) {
+    throw new Error('unreachable: validation guarantees a weight')
+  }
+  if (!asDraft && input.draft.price_paise === null) {
+    throw new Error('unreachable: validation guarantees a price')
+  }
+  const weightG = resolvedWeightG ?? 0
 
-  const identity = await reserveIdentity(db, draftId, options.actor)
+  const identity = await reserveIdentity(db, draftId, options.actor, !asDraft)
 
   try {
     const locationId = await primaryLocationId(shopify)
-    const price = paiseToShopifyPrice(input.draft.price_paise)
+    // A draft with no price yet goes to Shopify at 0.00 — Shopify requires a
+    // number. It is never published at that figure: hard rule 8 blocks an
+    // empty or zero price on the ACTIVE path, so this can only ever be a
+    // placeholder the operator must replace before the product goes live.
+    const price = paiseToShopifyPrice(input.draft.price_paise ?? 0)
     const descriptionHtml = buildDescriptionHtml(
       input.materialName,
       input.draft.description_override,
@@ -372,6 +403,7 @@ export async function publishProduct(
       material: input.materialName,
       colours: input.colours,
       variants,
+      ...(asDraft ? { status: 'DRAFT' as const } : {}),
       ...(files ? { files } : {}),
     })
 
@@ -401,11 +433,17 @@ export async function publishProduct(
       }
     }
 
-    const { error } = await db.rpc('mark_draft_published', {
-      p_draft_id: draftId,
-      p_shopify_product_id: product.id,
-      p_actor: options.actor ?? null,
-    })
+    const { error } = asDraft
+      ? await db.rpc('record_draft_shopify_product', {
+          p_draft_id: draftId,
+          p_shopify_product_id: product.id,
+          p_actor: options.actor ?? null,
+        })
+      : await db.rpc('mark_draft_published', {
+          p_draft_id: draftId,
+          p_shopify_product_id: product.id,
+          p_actor: options.actor ?? null,
+        })
     if (error) {
       // Shopify has the product; we failed to record it. Do not swallow this —
       // an unrecorded publish is how the same product gets published twice later.

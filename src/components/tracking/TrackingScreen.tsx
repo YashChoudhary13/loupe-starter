@@ -346,7 +346,26 @@ function TrackingItem({
           <div className="flex items-center gap-2">
             <span className="truncate font-mono text-[12px] font-medium">{row.label}</span>
             <Status tone={row.tone}>{row.statusLabel}</Status>
-            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+            {/*
+              What this photograph actually cost: the cached description plus
+              every generated image, redos included. Provider-reported only
+              (D5/D35) — never derived from a price table. Absent, not zero,
+              when nothing has been billed yet.
+            */}
+            {row.costUsd !== null ? (
+              <span
+                className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
+                title="Description + image generation for this photograph, as billed by the provider"
+              >
+                ${row.costUsd.toFixed(4)}
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                'shrink-0 text-[11px] text-muted-foreground',
+                row.costUsd === null && 'ml-auto',
+              )}
+            >
               {relativeAge(row.occurredAt, now)}
             </span>
           </div>

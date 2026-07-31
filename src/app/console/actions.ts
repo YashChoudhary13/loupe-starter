@@ -218,10 +218,47 @@ export interface SaveDraftRequest extends DraftSaveInput {
 
 export async function saveDraftAction(
   request: SaveDraftRequest,
-): Promise<ActionResult<{ bundle: DraftBundle; queue: QueueSnapshot }>> {
+): Promise<
+  ActionResult<{
+    bundle: DraftBundle
+    queue: QueueSnapshot
+    /** Set when the draft saved locally but could not reach Shopify (D60). */
+    shopifyDraftError: string | null
+  }>
+> {
   return withOperator(async (operator) => {
     await saveDraft(operator, request)
-    return { bundle: await bundle(request.draftId, request.allowZeroStock), queue: await loadQueue() }
+
+    /**
+     * D60 (supersedes D7): Save Draft now puts the product in Shopify with
+     * status DRAFT, so an unfinished piece is visible to the team there rather
+     * than only inside Loupe.
+     *
+     * Two things this deliberately does NOT do. It does not mark the Loupe
+     * draft published — it is still the operator's to finish. And it does not
+     * fail the save when Shopify is unreachable: the operator's typing is
+     * already safely in Postgres by this point, and losing that because a
+     * third-party API blinked would be a far worse outcome than a draft that
+     * has not reached Shopify yet. The failure is reported, not swallowed, and
+     * the next save retries by the same reserved handle (hard rule 2).
+     */
+    let shopifyDraftError: string | null = null
+    try {
+      await publishDraftForOperator(request.draftId, operator, {
+        allowZeroStock: request.allowZeroStock,
+        shopifyStatus: 'DRAFT',
+      })
+    } catch (error) {
+      if (error instanceof PublishInProgressError) throw error
+      shopifyDraftError =
+        error instanceof Error ? error.message : 'The draft could not be sent to Shopify.'
+    }
+
+    return {
+      bundle: await bundle(request.draftId, request.allowZeroStock),
+      queue: await loadQueue(),
+      shopifyDraftError,
+    }
   })
 }
 

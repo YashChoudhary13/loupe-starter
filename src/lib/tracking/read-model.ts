@@ -27,6 +27,7 @@ interface IntakeRow {
   discovered_at: string
   updated_at: string
   product_draft_id: string | null
+  description_cost_usd: string | number | null
 }
 
 interface DraftRow {
@@ -52,6 +53,8 @@ interface VersionRow {
   version_no: number
   is_selected: boolean
   thumb_key: string | null
+  /** numeric(12,6) arrives from PostgREST as a string. */
+  cost_usd: string | number | null
 }
 
 interface ReconciliationRunRow {
@@ -145,7 +148,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     db
       .from('intake_files')
       .select(
-        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, discovered_at, updated_at, product_draft_id',
+        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, discovered_at, updated_at, product_draft_id, description_cost_usd',
       )
       .order('updated_at', { ascending: false })
       .limit(500),
@@ -236,7 +239,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     intakes.length
       ? db
           .from('image_versions')
-          .select('intake_file_id, version_no, is_selected, thumb_key')
+          .select('intake_file_id, version_no, is_selected, thumb_key, cost_usd')
           .in('intake_file_id', intakes.map((row) => row.id))
       : Promise.resolve({ data: [], error: null }),
   ])
@@ -257,6 +260,29 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     ]),
   )
   const signed = await signKeys([...thumbKeyByIntake.values()])
+
+  /**
+   * PostgREST returns numeric(12,6) as a string to avoid float rounding. Parse
+   * defensively: an unreadable figure must not silently become 0, which would
+   * under-report spend against the ~₹5,000/month budget.
+   */
+  function usd(value: string | number | null | undefined): number | null {
+    if (value === null || value === undefined) return null
+    const parsed = typeof value === 'string' ? Number(value) : value
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  /** Description + every generated image for this photograph, redos included. */
+  function totalCostFor(intake: IntakeRow): number | null {
+    const parts = [
+      usd(intake.description_cost_usd),
+      ...(versionsByIntake.get(intake.id) ?? []).map((version) => usd(version.cost_usd)),
+    ].filter((part): part is number => part !== null)
+    if (parts.length === 0) return null
+    // Sum in micro-dollars: numeric(12,6) is exact to 6dp, and adding floats
+    // gives 0.07362399999999999 in the operator's face.
+    return parts.reduce((total, part) => total + Math.round(part * 1_000_000), 0) / 1_000_000
+  }
 
   const intakeRows: TrackingRow[] = intakes.map((row) => {
     const duplicate = duplicateByIntake.get(row.id)
@@ -297,6 +323,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
         : row.status === 'enhanced'
           ? '/console'
           : null,
+      costUsd: totalCostFor(row),
       driveHref: `https://drive.google.com/open?id=${encodeURIComponent(row.drive_file_id)}`,
       duplicate: duplicate
         ? {
@@ -340,6 +367,8 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       consoleHref: `/console/drafts/${row.id}`,
       driveHref: null,
       duplicate: null,
+      // Not a billed photograph — cost is recorded per source photograph.
+      costUsd: null,
     }
   })
 
@@ -363,6 +392,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     consoleHref: `/console/drafts/${issue.product_draft_id}`,
     driveHref: null,
     duplicate: null,
+    costUsd: null,
   }))
 
   if (latestRun?.status === 'failed' && issues.length === 0) {
@@ -386,6 +416,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       consoleHref: null,
       driveHref: null,
       duplicate: null,
+      costUsd: null,
     })
   }
 

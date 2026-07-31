@@ -136,6 +136,10 @@ Only the material varies across the six description bullets. Storing the materia
 
 ### D7 — The console is the approval step; publish goes straight live
 
+> **Superseded in part by D60 (2026-07-31).** "No Shopify draft stage" is no longer true:
+> Save Draft now creates a real Shopify product with status DRAFT. The rest of D7 stands —
+> Publish is still the approval, and it still goes straight live.
+
 No Shopify draft stage. The operator sees the image, the resolved SKU and the price before pressing Publish, which is the approval. A "Save as draft" button remains as an escape hatch for uncertain pieces.
 
 ---
@@ -1448,3 +1452,92 @@ in production instead of before shipping. D56 corrected it with two real API cal
 cost a few cents and took under thirty seconds. The project's own standard already says
 this — "Provider contracts must be verified against real requests," docs/CONTEXT.md — the
 gap here was applying it to a fix, not only to original implementation work.
+
+
+---
+
+### D60 — Save Draft creates a real Shopify product with status DRAFT
+
+*Business decision, 2026-07-31. Supersedes D7's "no Shopify draft stage"; the rest of D7
+stands.*
+
+D7 kept drafts inside Loupe so that Publish was the single approval step. The owner wants an
+unfinished product visible in Shopify, where the rest of the team already works, rather than
+only inside Loupe. That is a reasonable reason to reverse the decision, and it was taken
+explicitly rather than drifted into.
+
+**The consequence that had to be accepted first.** A Shopify product needs a SKU and a
+handle, and the handle is the idempotency key for `productSet` (hard rule 2). So drafting to
+Shopify allocates the SKU at DRAFT time instead of at publish, and a draft that is abandoned
+burns that number permanently. Gaps are survivable here — `RS218`, `RS220` and `RS222` are
+already missing from the live store and nothing depends on contiguity (D27) — but this is a
+real, irreversible cost per abandoned draft, and the owner accepted it knowingly.
+
+What changed, and what deliberately did not:
+
+| | |
+|---|---|
+| `reserve_draft_identity` | gains `p_require_publishable boolean default true` |
+| that flag relaxes | **the price guard only** |
+| still enforced for a draft | category present, confirmed Shopify tag (D23), D27 category pin |
+| still enforced for publish | every block in hard rule 8, unchanged — the default is `true` |
+| Loupe draft status | returns to `assembling`; a Shopify draft is not "published" |
+| Drive housekeeping | does **not** run for a draft — /Processed means the photograph is done |
+| images | not required for a draft; still required to publish (D45) |
+
+The old two-argument function is **dropped** rather than left beside the new one. Adding a
+parameter in Postgres creates an overload, and two live versions of the function that
+allocates SKU numbers is exactly the ambiguity this project cannot afford.
+
+`record_draft_shopify_product()` is separate from `mark_draft_published()` on purpose. The
+latter means "this is in the live catalogue" and also publishes the intake rows and counts
+colour usage; a Shopify draft is none of those things. It also resets the draft from
+`publishing` back to `assembling` — the first cut did not, and the deployed-SQL check caught
+a draft left permanently mid-publish, uneditable in the console and reported as stalled by
+Tracking within the hour.
+
+A Shopify draft with no price yet is sent at `0.00` because Shopify requires a number. It can
+never be *published* at that figure: hard rule 8 still blocks an empty or zero price on the
+ACTIVE path, so the placeholder cannot escape into the live catalogue.
+
+Saving is **not** failed when Shopify is unreachable. The operator's typing is already in
+Postgres by that point, and losing it because a third-party API blinked is a worse outcome
+than a draft that has not reached Shopify yet. The failure is reported to the operator, and
+the next save retries against the same reserved handle.
+
+**Rejected:** relaxing the price guard globally instead of behind a flag — that is hard rule
+8, and the whole point of D18 is that the database enforces it independently of the UI.
+**Rejected:** a second "Send to Shopify" button (offered and declined; the owner wants Save
+Draft itself to do this). **Rejected:** reusing `mark_draft_published` for drafts, which
+would have published the intake rows and counted colour usage for a product nobody has
+approved.
+
+---
+
+### D61 — Client navigation is cached for 30 seconds; the auth lookup is memoised per request
+
+*Performance decision, 2026-07-31.*
+
+Two caches, both deliberately narrow, added after D58/D59 left switching sections still
+paying a full round trip each way.
+
+`experimental.staleTimes.dynamic = 30` lets the App Router reuse an already-fetched section
+for 30 seconds. Every screen is `force-dynamic`, so without it the router re-fetched the
+whole payload on every navigation, including bouncing straight back to a section the operator
+had just left. Thirty seconds is matched to how the tool is used: new work arrives from Drive
+on a cron measured in minutes, and the console separately polls its own counters every five
+seconds and refreshes when work completes, so a cached shell cannot hide finished work.
+
+`currentOperator()` is wrapped in React's `cache()`, which memoises **per request**. One
+render can authorise several times across the page and the components and actions it fans out
+to, and each of those was a separate round trip to a database in another region.
+
+Neither is a security boundary, and this is the part worth being explicit about: the memo
+dies with the request, and authorisation is still re-read from `app_users` on the operator's
+very next request and inside every server action (D44). Deactivating someone still takes
+effect immediately. A cached navigation payload cannot authorise anything — every mutation
+re-checks server-side before it touches the database.
+
+**Rejected:** caching the queue or draft data itself. Those must stay live — a stale queue
+is how two operators group the same photograph — and D11 makes the browser structurally
+unable to read the database directly anyway.

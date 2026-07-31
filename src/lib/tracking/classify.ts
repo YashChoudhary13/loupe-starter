@@ -113,8 +113,11 @@ export function classifyIntake(
     group: 'progress',
     tone: 'running',
     statusLabel:
+      // "Enhanced" states the fact — the work finished and the photograph is in
+      // the console. "Waiting" described what the OPERATOR still has to do and
+      // read as though the pipeline had not finished.
       row.status === 'enhanced'
-        ? 'Waiting'
+        ? 'Enhanced'
         : row.status === 'grouped'
           ? 'Draft'
           : row.status === 'enhancing'
@@ -122,7 +125,7 @@ export function classifyIntake(
             : 'Queued',
     reason:
       row.status === 'enhanced'
-        ? 'Enhanced and waiting for an operator.'
+        ? 'Enhanced and ready in the console, waiting for an operator.'
         : row.status === 'grouped'
           ? 'Grouped into a product draft.'
           : row.status === 'enhancing'

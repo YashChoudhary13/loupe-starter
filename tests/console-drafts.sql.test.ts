@@ -159,7 +159,7 @@ beforeAll(async () => {
 
   counterBefore = await readCounter('NK')
 
-  for (let index = 0; index < 10; index += 1) await makePhoto(index)
+  for (let index = 0; index < 11; index += 1) await makePhoto(index)
 })
 
 afterAll(async () => {
@@ -773,5 +773,76 @@ describe('Drive housekeeping is recorded, never a state transition', () => {
     expect(first.data!.drive_processed_error).toBeNull()
     // The first successful move is the one that is remembered.
     expect(second.data!.drive_processed_at).toBe(first.data!.drive_processed_at)
+  })
+})
+
+/**
+ * D60 supersedes D7: Save Draft creates a real Shopify product with status
+ * DRAFT, so a SKU and handle must be reservable before a price exists.
+ *
+ * The danger in that change is not the draft path — it is that relaxing the
+ * price guard could quietly relax it for PUBLISH too, which is hard rule 8 and
+ * the single most expensive thing in this system to get wrong. These assert
+ * both directions against the deployed function.
+ */
+describe('the Shopify draft stage (D60)', () => {
+  let draftId: string
+
+  beforeAll(async () => {
+    const chosen = fixtures.slice(10, 11)
+    const { data } = await createDraft(chosen.map((f) => f.intakeFileId))
+    draftId = data as string
+  })
+
+  it('still REFUSES to reserve a priceless draft on the publish path', async () => {
+    const { error } = await db.rpc('reserve_draft_identity', {
+      p_draft_id: draftId,
+      p_actor: ACTOR,
+    })
+    expect(error?.message ?? '').toMatch(/has no price/i)
+  })
+
+  it('reserves an identity for a priceless draft when publishing is not required', async () => {
+    const { data, error } = await db
+      .rpc('reserve_draft_identity', {
+        p_draft_id: draftId,
+        p_actor: ACTOR,
+        p_require_publishable: false,
+      })
+      .select()
+      .single<{ sku: string; handle: string }>()
+
+    expect(error).toBeNull()
+    expect(data!.sku).toMatch(/^NK[0-9]{3,}$/)
+    expect(data!.handle.length).toBeGreaterThan(0)
+  })
+
+  it('records the Shopify id, leaves the draft editable, and never marks it published', async () => {
+    const { error } = await db.rpc('record_draft_shopify_product', {
+      p_draft_id: draftId,
+      p_shopify_product_id: 'gid://shopify/Product/D60-TEST',
+      p_actor: ACTOR,
+    })
+    expect(error).toBeNull()
+
+    const { data } = await db
+      .from('product_drafts')
+      .select('status, shopify_product_id')
+      .eq('id', draftId)
+      .single<{ status: string; shopify_product_id: string }>()
+
+    expect(data!.shopify_product_id).toBe('gid://shopify/Product/D60-TEST')
+    // Reserving moves a draft to 'publishing'. Left there it is uneditable in
+    // the console and Tracking calls it stalled after an hour.
+    expect(data!.status).toBe('assembling')
+  })
+
+  it('refuses an empty product id rather than recording a meaningless one', async () => {
+    const { error } = await db.rpc('record_draft_shopify_product', {
+      p_draft_id: draftId,
+      p_shopify_product_id: '   ',
+      p_actor: ACTOR,
+    })
+    expect(error?.code).toBe('22023')
   })
 })

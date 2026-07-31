@@ -63,7 +63,12 @@ export interface ConsolePublishDeps {
 export async function publishDraftForOperator(
   draftId: string,
   actor: string,
-  options: { allowZeroStock?: boolean; extraTags?: readonly string[] },
+  options: {
+    allowZeroStock?: boolean
+    extraTags?: readonly string[]
+    /** D60: 'DRAFT' saves to Shopify unfinished; 'ACTIVE' publishes live. */
+    shopifyStatus?: 'ACTIVE' | 'DRAFT'
+  },
   deps: ConsolePublishDeps,
 ): Promise<ConsolePublishResult> {
   const { db, shopify } = deps
@@ -85,8 +90,11 @@ export async function publishDraftForOperator(
       actor,
       allowZeroStock: options.allowZeroStock,
       extraTags: options.extraTags,
-      requireImages: true,
+      // A Shopify DRAFT may legitimately have no photograph attached yet; the
+      // ACTIVE path still refuses to publish a product with no image (D45).
+      requireImages: options.shopifyStatus !== 'DRAFT',
       signImageUrl: deps.signImageUrl,
+      shopifyStatus: options.shopifyStatus,
     })
   } finally {
     // Fenced release. If this publish overran its lease and a second attempt has
@@ -103,7 +111,9 @@ export async function publishDraftForOperator(
   ])
 
   const housekeeping =
-    deps.housekeeping === false
+    // Moving the source file to /Processed means "this photograph is done".
+    // A Shopify draft is not done, so a draft never tidies Drive.
+    deps.housekeeping === false || options.shopifyStatus === 'DRAFT'
       ? []
       : await tidyDriveForDraft(draftId, {
           db,

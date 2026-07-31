@@ -490,6 +490,21 @@ export function ConsoleScreen({
       setQueue(data.queue)
       applyBundle(data.bundle)
       rememberSticky()
+      // The draft IS saved either way — D60 keeps the local save authoritative
+      // and treats Shopify as the part that can fail. Say so plainly rather
+      // than letting a silent failure read as "it's in Shopify".
+      setError(
+        data.shopifyDraftError
+          ? {
+              kind: 'error',
+              message:
+                'Saved in Loupe, but this draft has not reached Shopify yet. Saving again will retry the same product.',
+              detail: data.shopifyDraftError,
+              retryable: true,
+              blocks: [],
+            }
+          : null,
+      )
     }
     setBusy(null)
   }, [applyBundle, ensureDraft, handleResult, rememberSticky, saveRequest])

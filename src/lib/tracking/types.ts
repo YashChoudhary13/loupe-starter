@@ -39,6 +39,15 @@ export interface TrackingRow {
   readonly consoleHref: string | null
   readonly driveHref: string | null
   readonly duplicate: TrackingDuplicate | null
+  /**
+   * What this photograph has actually cost so far, in USD: the cached
+   * description plus EVERY generated image, redos included — provider-reported
+   * figures only, never derived from a price table (D5/D35).
+   *
+   * Null means nothing has been billed yet. That is different from 0, which
+   * would claim a paid call returned free.
+   */
+  readonly costUsd: number | null
 }
 
 export interface ReconciliationSummary {

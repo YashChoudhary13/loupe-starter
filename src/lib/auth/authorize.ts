@@ -2,6 +2,7 @@ import 'server-only'
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { cache } from 'react'
 
 import { serverEnv } from '@/lib/env'
 import { supabaseServer } from '@/lib/supabase/server'
@@ -102,13 +103,27 @@ export function sessionFromCookie(raw: string | undefined): SessionPayload | nul
   return readSession(serverEnv.authSessionSecret, raw)
 }
 
-/** The signed-in operator, or null. Never throws on a bad cookie — that is a sign-out. */
-export async function currentOperator(): Promise<Operator | null> {
+/**
+ * The signed-in operator, or null. Never throws on a bad cookie — that is a
+ * sign-out.
+ *
+ * Wrapped in React's `cache()`, which memoises **per server request**, not
+ * across requests. One page render can authorise several times — the page
+ * itself, then any server component or action it fans out to — and each of
+ * those was a separate round trip to a database in another region. This
+ * collapses them into one lookup per request.
+ *
+ * What it deliberately does NOT do is make authorisation stickier: the memo
+ * dies with the request, so the `active = true` check still runs afresh on the
+ * operator's very next request. Deactivating someone still takes effect
+ * immediately (D44), which is the property that matters.
+ */
+export const currentOperator = cache(async function currentOperator(): Promise<Operator | null> {
   const jar = await cookies()
   const session = sessionFromCookie(jar.get(SESSION_COOKIE)?.value)
   if (!session) return null
   return findActiveAppUserById(session.uid)
-}
+})
 
 /** For pages. Sends an unauthenticated visitor to the sign-in screen. */
 export async function requireOperator(): Promise<Operator> {

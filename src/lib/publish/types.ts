@@ -125,4 +125,16 @@ export interface PublishOptions {
    * about buckets, credentials or expiry policy.
    */
   readonly signImageUrl?: (storageKey: string) => Promise<string>
+  /**
+   * D60 (supersedes D7). `'DRAFT'` is Save Draft pushing an unfinished product
+   * to Shopify: the product is created with status DRAFT, the price guard is
+   * relaxed, and the Loupe draft is NOT marked published — it is still the
+   * operator's to finish.
+   *
+   * Defaults to `'ACTIVE'`, which is the live publish path and behaves exactly
+   * as it always has. A caller that forgets this field publishes live, which is
+   * the safe direction to fail for a field whose other value means "invisible
+   * to buyers".
+   */
+  readonly shopifyStatus?: 'ACTIVE' | 'DRAFT'
 }

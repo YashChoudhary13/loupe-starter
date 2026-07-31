@@ -31,6 +31,80 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-31 — Shopify draft stage (D60), navigation caching (D61), Enhanced label, cost in Tracking
+
+**Goal this session:** four owner requests — caching so section switching feels smooth, Save
+Draft writing to Shopify, "Enhanced" instead of a vague in-progress label, and per-item cost
+in Tracking.
+
+**Built:**
+
+- **D60 — Save Draft now creates a real Shopify product with status DRAFT.** This reverses
+  D7's "no Shopify draft stage", so it was put to the owner as an explicit decision with its
+  cost attached rather than just implemented: a Shopify product needs a SKU and handle, so
+  drafting allocates the SKU early and an abandoned draft burns that number for good. The
+  owner accepted. `reserve_draft_identity` gains `p_require_publishable` (default `true`)
+  which relaxes **only** the price guard; category, confirmed tag (D23) and the D27 category
+  pin still apply to a draft, and publish is untouched. New
+  `record_draft_shopify_product()` records the id without publishing intake rows or counting
+  colour usage. Migration `20260731130000_shopify_draft_stage.sql`.
+- **D61 — two narrow caches.** `staleTimes.dynamic = 30` lets the client router reuse a
+  section for 30s; `currentOperator()` wrapped in React `cache()` collapses repeated auth
+  lookups within one request. Neither is a security boundary — auth is still re-read every
+  request and inside every server action (D44).
+- **Tracking:** an enhanced photograph now reads **Enhanced** rather than "Waiting" (the old
+  label described what the operator still had to do and read as though the pipeline had not
+  finished), and each row shows what that photograph actually cost — description plus every
+  generated image, redos included, from provider-reported figures only.
+
+**Verified:** `438 passed` across 41 files (+4 new D60 regressions), typecheck, lint, build,
+`verify:isolation` all clean. Deployed and aliased.
+
+Deployed-SQL evidence for D60, run against the live database inside a rolled-back
+transaction:
+
+```text
+publish path      BLOCKED: reserve_draft_identity: draft … has no price
+draft path        reserved NK191 with no price
+status after      assembling   (not 'publishing', not 'published')
+shopify id        recorded
+NK counter        190 -> 191 during the test, back to 190 after rollback
+```
+
+**Two defects this session's own checks caught, not inspection:**
+
+1. The first cut of `record_draft_shopify_product` left the draft in `publishing` — the
+   status `reserve_draft_identity` sets. It would have been uneditable in the console and
+   reported stalled by Tracking within the hour. Found by reading the actual status back
+   rather than trusting the function returned without error.
+2. While adding the draft branch I wrote `resolveWeightG(input) ?? 0`, which silently
+   defeats D19 on the **publish** path — NULL weight means "nobody has said" and must block,
+   never become 0. Caught on re-reading the diff; the coercion now applies to drafts only
+   and publish keeps its assertion.
+
+**Not finished / known broken:**
+
+- **D60 has not been exercised against the real test store.** Every check above is SQL-level
+  and unit-level; no Shopify draft product has actually been created by a real Save Draft
+  click. That is the next thing to prove.
+- The migration was corrected in place (ledger row dropped, `db:push` re-run) rather than
+  by a follow-up migration, because it was applied minutes earlier in this same uncommitted
+  session. Anything already committed must still be corrected forward-only.
+- Tracking shows cost per photograph only; drafts and reconciliation rows show nothing,
+  which is correct — cost is billed per source photograph, and null there means "not a
+  billed item", never zero.
+
+**Surprises:** the owner's four small requests split cleanly into two that were genuine
+one-liners and two that touched the most dangerous code in the system. Reversing D7 needed
+the SKU-burn consequence surfaced *before* implementing, not after.
+
+**Next session should start with:** click Save Draft on a real product and confirm a DRAFT
+product appears in the test store with the right SKU/handle, that Publish then flips that
+same product to ACTIVE without creating a second one, and that the burned-number behaviour
+is what the owner expected in practice.
+
+---
+
 ## 2026-07-31 — D56 proved live; console lag fixed (self-inflicted); arrival bubble
 
 **Goal this session:** owner reported five things — progress pill stuck on an already-enhanced

@@ -51,7 +51,11 @@ export async function describeBlocks(draftId: string, allowZeroStock: boolean) {
 export async function publishDraftForOperator(
   draftId: string,
   operator: Operator,
-  options: { allowZeroStock?: boolean; extraTags?: readonly string[] } = {},
+  options: {
+    allowZeroStock?: boolean
+    extraTags?: readonly string[]
+    shopifyStatus?: 'ACTIVE' | 'DRAFT'
+  } = {},
 ): Promise<ConsolePublishResult> {
   return runPublish(draftId, operator.email, options, {
     db: supabaseServer(),

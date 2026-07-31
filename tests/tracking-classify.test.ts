@@ -22,7 +22,7 @@ function intake(discoveredAt: string) {
 describe('tracking age and failure classification', () => {
   it('does not call recent enhanced work an error', () => {
     expect(classifyIntake(intake(new Date(NOW - STALE_UNGROUPED_MS + 1).toISOString()), NOW))
-      .toMatchObject({ group: 'progress', statusLabel: 'Waiting' })
+      .toMatchObject({ group: 'progress', statusLabel: 'Enhanced' })
   })
 
   it('marks the exact 24-hour ungrouped boundary stalled', () => {
