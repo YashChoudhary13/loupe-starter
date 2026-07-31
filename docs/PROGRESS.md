@@ -95,6 +95,24 @@ presigned URLs is indistinguishable from a cache-busting attack on your own UI.
 Drive, and confirms the bubble, the honest counter, a responsive UI, and the photo landing
 in the grid on its own.
 
+### Follow-up the same session — why switching sections was slow (D58, D59)
+
+The owner then asked why clicking a section takes time to open. Two causes, both measured:
+
+- **Functions ran on the wrong continent.** No `vercel.json` existed, so functions defaulted
+  to `iad1` (Washington DC) while Supabase is `ap-south-1` and R2 is APAC. Proven from the
+  response header, not assumed: `x-vercel-id: bom1::iad1::…` — Mumbai edge, Washington DC
+  function. Pinned to `bom1`. `/health` went from `0.738s / 1.101s / 1.289s` to a median of
+  `0.369s` over six warm runs (~3×), and the console does far more database work than
+  `/health` does. Header now reads `bom1::bom1`.
+- **No loading boundary.** All three protected routes are `force-dynamic`, and without a
+  `loading.tsx` Next.js keeps the old page on screen for the whole round trip — the click
+  appears to do nothing. Added `ScreenSkeleton` + a `loading.tsx` per route.
+
+Deployed `qimati-loupe-iroyu338i`, Ready and aliased. Note the first hit after any deploy is
+a cold start (measured 4.18s once, then 0.33–0.68s warm) — that is the function booting, not
+the region choice.
+
 ---
 
 ## 2026-07-31 — Real fix for the Gemini describe failure; GIF/TIFF intake; webhook question open

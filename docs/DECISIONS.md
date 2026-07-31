@@ -1382,6 +1382,62 @@ production so far has.
 
 ---
 
+### D58 — Serverless functions run in Mumbai (`bom1`), beside the database
+
+*Performance decision, 2026-07-31, measured rather than assumed.*
+
+There was no `vercel.json`, so functions defaulted to `iad1` (Washington DC) while Supabase
+is `ap-south-1` (Mumbai), the R2 bucket is APAC (D4) and the operators are in Jaipur. Every
+database round trip crossed the Pacific twice. Confirmed from the response header rather
+than inferred — `x-vercel-id: bom1::iad1::…` means the Mumbai edge accepted the request and
+a Washington DC function served it.
+
+This is not one slow query, it is a latency multiplier on every wave of them. `/console`
+issues several dependent waves — authorise, then queue, then the grouped photographs of
+those drafts, then their versions — and each wave paid the full intercontinental round trip.
+
+Measured against `/health`, which is a fixed set of counts and therefore a fair before/after:
+
+```text
+iad1 functions   0.738s · 1.101s · 1.289s
+bom1 functions   min 0.331s · median 0.369s · mean 0.455s   (6 warm runs)
+```
+
+Roughly a 3× improvement at the median, and it compounds on the console, which does far
+more database work than `/health`. `regions: ["bom1"]` in `vercel.json` is now the pinned
+choice. Note the first request after any deploy is a cold start (4.18s was measured
+immediately post-deploy) — that is the function booting, not the region, and it does not
+recur while warm.
+
+**Rejected:** moving the database to `iad1` instead. The bucket is already APAC and the
+operators are in Jaipur, so the database is in the correct place and the compute was not.
+**Rejected:** leaving it and caching harder. These screens re-check authorisation and
+re-sign image URLs on every render by design (D11, D4); the correct fix is to make the
+round trip short, not to cache the things that must not be cached.
+
+---
+
+### D59 — Every protected screen has a `loading.tsx` boundary
+
+*Implementation decision, 2026-07-31.*
+
+`/console`, `/tracking` and `/prompts` are all `force-dynamic`. Without a `loading.tsx`,
+Next.js App Router holds the PREVIOUS page on screen for the entire server round trip, so
+clicking Tracking produced no visible change until the new page was fully ready — which
+reads as a dead control and invites the second and third click the owner reported.
+
+Each route now renders `ScreenSkeleton` in its own Suspense boundary: the sidebar column,
+header and card geometry of the real screen, so navigation acknowledges the click instantly
+and the layout does not jump when real content arrives. This is presentation only — no
+authorisation decision is made in a skeleton, and the real screen still re-runs
+`requireOperator()` before reading any data.
+
+**Rejected:** a centred spinner (loses the layout, causes a visible jump) and making the
+screens static or cached (they are dynamic for authorisation and presigned-URL reasons that
+D11 and D4 make structural).
+
+---
+
 ### First fix that shipped without being checked — read before repeating the mistake
 
 D55 was deployed on documentation and reasoning alone. It was directed at a real, correctly
