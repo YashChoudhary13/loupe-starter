@@ -54,8 +54,10 @@ from Prompts should work; only the $0.20/image ceiling is non-negotiable.
   one current model per stage, and it is curated — not which one.
 
 **Verified:** `430 passed` (41 files, +3 net from splitting the reasoning-control test),
-typecheck, lint, production build all clean. **Not yet deployed**, and not re-exercised
-against a real Gemini describe call — no live OpenRouter call was made from this session.
+typecheck, lint, production build all clean. Deployed
+`dpl_HAawhLFviBqRLPjVHdiaapgsdogX`, Ready at `https://qimati-loupe.vercel.app`
+(`/health` returns 200 post-deploy). Not yet re-exercised against a real Gemini describe
+call — no live OpenRouter call was made from this session.
 
 **Not finished / known broken:** unverified against a real describe call on the actual
 Gemini model. The stuck intake row from the original failure is still mid-retry-backoff in
@@ -88,9 +90,10 @@ nothing until a manual refresh, with no sense of what was happening in between.
   above the grid. The same poll that refreshes URLs is what moves a freshly enhanced photo
   into the grid, so no second timer was added.
 
-**Verified:** `427 passed` (41 files), typecheck, lint, production build all clean. Not yet
-deployed or exercised against a real Drive upload — no `.env` access to trigger one from
-this session; see the ask to the owner below.
+**Verified:** `427 passed` (41 files), typecheck, lint, production build all clean. Deployed
+same session as the D55 fix below, `dpl_HAawhLFviBqRLPjVHdiaapgsdogX`, Ready at
+`https://qimati-loupe.vercel.app`. Not yet exercised against a real Drive upload — no
+`.env` access to trigger one from this session; see the ask to the owner below.
 
 **Not finished / known broken:** unverified against a live upload. The 5s poll is a fixed
 interval, not a push — worst case is a 5s-old count, which was judged acceptable against
