@@ -213,7 +213,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
   const db = supabaseServer()
   const startOfToday = startOfKolkataDayIso(new Date())
 
-  const [photosResult, draftsResult, publishedResult, categoriesResult] = await Promise.all([
+  const [photosResult, draftsResult, publishedResult, categoriesResult, uploadingResult, processingResult] = await Promise.all([
     db
       .from('intake_files')
       .select(
@@ -242,6 +242,8 @@ export async function loadQueue(): Promise<QueueSnapshot> {
       .order('published_at', { ascending: false })
       .limit(DRAFT_LIMIT),
     db.from('categories').select('id, name'),
+    db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'discovered'),
+    db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
   ])
 
   if (photosResult.error) throw new Error(`intake_files: ${photosResult.error.message}`)
@@ -250,6 +252,8 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     throw new Error(`product_drafts (published): ${publishedResult.error.message}`)
   }
   if (categoriesResult.error) throw new Error(`categories: ${categoriesResult.error.message}`)
+  if (uploadingResult.error) throw new Error(`intake_files (discovered): ${uploadingResult.error.message}`)
+  if (processingResult.error) throw new Error(`intake_files (enhancing): ${processingResult.error.message}`)
 
   const photos = (photosResult.data ?? []) as IntakeRow[]
   const drafts = (draftsResult.data ?? []) as DraftRow[]
@@ -370,6 +374,10 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     draftCount: draftTiles.length,
     publishedToday: publishedResult.count ?? 0,
     attentionCount: tiles.filter((t) => t.attention !== null).length,
+    pipelineActivity: {
+      uploading: uploadingResult.count ?? 0,
+      processing: processingResult.count ?? 0,
+    },
     signedUntil: expiries.length ? Math.min(...expiries) : Date.now() + 15 * 60 * 1000,
     generatedAt: new Date().toISOString(),
   }

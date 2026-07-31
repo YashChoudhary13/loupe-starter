@@ -37,6 +37,7 @@ const queue: QueueSnapshot = {
   draftCount: 1,
   publishedToday: 1,
   attentionCount: 1,
+  pipelineActivity: { uploading: 0, processing: 0 },
   signedUntil: 0,
   generatedAt: '2026-07-30T00:00:00.000Z',
 }

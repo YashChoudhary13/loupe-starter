@@ -1254,3 +1254,46 @@ Repair requires a separate deliberate operator workflow after the mismatch is un
 **Rejected:** automatic “healing” (could overwrite an intentional Shopify edit), comparing
 only row counts, keeping only the latest result, and running one unbounded request per
 product.
+
+---
+
+### D55 — Reasoning-effort suppression applies to every reasoning-capable curated describer, not only OpenAI
+
+*Business decision, 2026-07-31: the owner selected `google/gemini-3.1-pro-preview` as the
+describe model from the Phase 5 selector (D51) and its very first live call failed.*
+
+`supportsReasoningControl()` sent OpenRouter's unified `reasoning: {effort, exclude}`
+control only when `model.startsWith('openai/')`. That predates D51's multi-provider
+describe selector — it was written when `gpt-5.6-sol` was the only describe model that
+existed — and nobody revisited it when D51 exposed nine more. OpenRouter's own
+documentation states the parameter is normalised across OpenAI, Anthropic, Google Gemini
+"thinking" models and Qwen, not OpenAI alone.
+
+The consequence was live and immediate: `google/gemini-3.1-pro-preview` received no
+effort/exclude control, spent its completion budget on unsuppressed reasoning (billed even
+with `exclude: true` — the docs are explicit that excluded reasoning is still generated and
+charged, just not returned), and returned `` ```json\n{"description": `` — fenced *and* cut
+off before any content. `parseStructuredDescription()` correctly rejected it
+(`invalid_json`); that parser stays exactly as strict as D41 requires — rejecting fenced or
+prose-wrapped JSON is deliberate and tested (`tests/presentation.test.ts`), and this
+decision does not touch it. The fix belongs upstream, in making the request itself produce
+bare JSON regardless of which curated model is selected.
+
+`REASONING_CAPABLE_PREFIXES` in `src/lib/enhance/openrouter.ts` now covers
+`openai/`, `google/`, `anthropic/` and `qwen/` — every family OpenRouter documents as
+supported, which is also every family in the ten curated describe models
+(`src/lib/prompts/models.ts`). `max_completion_tokens` also moved 256 → 512 as a margin for
+suppressed-but-billed reasoning tokens; `MAX_COST_USD_PER_DESCRIPTION` still bounds actual
+spend independently, so this does not weaken that ceiling. `MAX_COST_USD_PER_IMAGE` (D35,
+$0.20) is untouched and was already fully model-agnostic — it checks the provider's actual
+reported `usage.cost`, never a token estimate, regardless of which curated image model is
+selected.
+
+**Rejected:** loosening `parseStructuredDescription()` to strip a markdown fence before
+parsing. That would weaken a deliberate, tested strictness boundary (D41) to paper over a
+symptom instead of the cause, and would not have fixed this specific failure anyway — the
+captured response was truncated mid-value, not merely fenced; stripping the fence alone
+still leaves incomplete JSON. **Rejected:** sending `reasoning` unconditionally to every
+model string. The curated list is bounded (D51) and OpenRouter does not document behaviour
+for a reasoning-incapable model receiving the parameter, so scoping to the four confirmed
+families is the evidence-grounded choice rather than an assumption.

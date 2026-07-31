@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { PromptKind } from '@/lib/enhance/repository'
+import { isCuratedModel } from '@/lib/prompts/models'
 
 import { serviceClient } from './helpers/db'
 
@@ -19,9 +20,16 @@ async function livePrompt(kind: PromptKind) {
 }
 
 describe('deployed prompt model selection', () => {
-  it('has one current model on each live prompt', async () => {
-    expect((await livePrompt('describe')).model).toBe('openai/gpt-5.6-sol')
-    expect((await livePrompt('image')).model).toBe('openai/gpt-image-2')
+  // Not pinned to one literal model: D51 exists so an operator can pick any
+  // curated option, and D55 makes the pipeline work across all of them. What
+  // must stay true regardless of which one is live is that there is exactly
+  // one, and it is a model Loupe actually knows how to run — never an
+  // arbitrary string that bypassed the RPC's curated-list CHECK constraint.
+  it('has exactly one current model on each live prompt, and it is curated', async () => {
+    const describePrompt = await livePrompt('describe')
+    const imagePrompt = await livePrompt('image')
+    expect(isCuratedModel('describe', describePrompt.model)).toBe(true)
+    expect(isCuratedModel('image', imagePrompt.model)).toBe(true)
   })
 
   it('selecting the current model is an idempotent no-op', async () => {

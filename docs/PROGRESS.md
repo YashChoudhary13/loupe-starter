@@ -31,6 +31,127 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-31 — Describe model choice now works for any curated provider (D55)
+
+**Goal this session:** owner switched the describe model to `google/gemini-3.1-pro-preview`
+in `/prompts`; its first live call failed `description_invalid_json` on a real photo
+(`IMG20260731130153.jpg`, intake `9…` — see Tracking). Owner's instruction: any model chosen
+from Prompts should work; only the $0.20/image ceiling is non-negotiable.
+
+**Built:**
+- `src/lib/enhance/openrouter.ts` → `supportsReasoningControl()` widened from `openai/`-only
+  to the four provider families OpenRouter documents as supporting the unified `reasoning`
+  parameter (`openai/`, `google/`, `anthropic/`, `qwen/`) — every family in the ten curated
+  describe models. `max_completion_tokens` 256 → 512 as margin for suppressed-but-still-billed
+  reasoning tokens. D55 records why, and explicitly why `parseStructuredDescription()` was
+  NOT loosened (D41's fenced/prose-JSON rejection is deliberate and tested).
+- `tests/openrouter-enhancement.test.ts` → replaced the single "OpenAI-only" test with one
+  proving reasoning controls now reach `google/`, `anthropic/` and `qwen/` describe models,
+  plus a kept negative case (an uncurated provider family still gets nothing).
+- `tests/prompt-model-selection.sql.test.ts` → was pinned to the literal
+  `openai/gpt-5.6-sol`/`openai/gpt-image-2`, which broke the moment the owner legitimately
+  picked a different curated model. Rewritten to assert the durable invariant instead: exactly
+  one current model per stage, and it is curated — not which one.
+
+**Verified:** `430 passed` (41 files, +3 net from splitting the reasoning-control test),
+typecheck, lint, production build all clean. **Not yet deployed**, and not re-exercised
+against a real Gemini describe call — no live OpenRouter call was made from this session.
+
+**Not finished / known broken:** unverified against a real describe call on the actual
+Gemini model. The stuck intake row from the original failure is still mid-retry-backoff in
+production on the OLD code; it will only benefit from this fix after redeploy, either on its
+next automatic retry or a fresh upload.
+
+**Surprises:** the "OpenAI-only" restriction wasn't a recorded decision at all — just
+leftover from when `gpt-5.6-sol` was the only describe model in existence, never revisited
+when D51 added nine more. The test that encoded it was named after the CURRENT behavior
+("omits OpenAI-only...") rather than a stated requirement, which is exactly the kind of test
+that silently goes stale when the feature it predates changes.
+
+**Next session should start with:** after deploy, confirm a Gemini (or other non-OpenAI)
+describe call actually returns clean JSON against a real photo — this session's fix is
+code-reasoned from OpenRouter's docs, not yet proven against a live response.
+
+---
+
+## 2026-07-31 — Console: live upload/processing progress, no manual refresh needed
+
+**Goal this session:** operator feedback — after dropping files in Drive, the console showed
+nothing until a manual refresh, with no sense of what was happening in between.
+
+**Built:**
+- `loadQueue()` (`src/lib/console/queue.ts`) → two added counts, `intake_files` status
+  `discovered` and `enhancing`, returned as `QueueSnapshot.pipelineActivity`.
+- `ConsoleScreen` → the existing 9-minute signed-URL refresh timer now runs every 5s
+  instead whenever `pipelineActivity` is non-zero, and a plain-tone status pill (no amber —
+  this is normal activity, not attention per D9) shows "N photos uploaded · N processing"
+  above the grid. The same poll that refreshes URLs is what moves a freshly enhanced photo
+  into the grid, so no second timer was added.
+
+**Verified:** `427 passed` (41 files), typecheck, lint, production build all clean. Not yet
+deployed or exercised against a real Drive upload — no `.env` access to trigger one from
+this session; see the ask to the owner below.
+
+**Not finished / known broken:** unverified against a live upload. The 5s poll is a fixed
+interval, not a push — worst case is a 5s-old count, which was judged acceptable against
+adding Realtime (would need a new RLS policy per D11, a bigger structural change for a
+progress pill).
+
+**Surprises:** none — `refreshQueueAction` and its timer already existed for signed-URL
+expiry; this reused it rather than adding parallel polling infrastructure.
+
+**Next session should start with:** get the owner's real-upload confirmation (below) before
+calling this done.
+
+---
+
+## 2026-07-31 — Session: independent verification audit, no code changes
+
+**Goal this session:** answer "has the project finished, and does it work as intended" by
+independently re-checking claims against the live system rather than trusting the log.
+
+**Built:** nothing — read-only verification session.
+
+**Verified:**
+- Re-ran the full gate independently: `427 passed` (41 files), typecheck, lint, production
+  build and `verify:isolation` all clean — same result as the Phase 6 entry below, confirmed
+  fresh rather than assumed to still hold.
+- Live production `/health` (`https://qimati-loupe.vercel.app/health`) reachable, 18 tables
+  readable, both Google credentials accepted.
+- All 5 cron jobs active with correct schedules, including `loupe-shopify-reconcile` at
+  `30 21 * * *` (03:00 IST, per D54).
+- Live database matches the documented state: exactly 7 categories exist — the 7 TBD
+  categories from `docs/CONTEXT.md` open question 2 are genuinely absent from the schema,
+  not just undocumented. `Nose Pins.shopify_tag` is still NULL, so that category remains
+  publish-blocked exactly as CLAUDE.md and D23 describe.
+- Found the system already processing real work unattended, post-launch: intake file
+  `IMG20260731130153.jpg` (a real phone-camera filename, not a fixture) was discovered,
+  hashed, described, enhanced and generated end-to-end at 07:33–07:34 UTC today — about an
+  hour after the Phase 6 commit — for `$0.073624`, and sits `enhanced`/ungrouped waiting for
+  an operator. The real owner (`lakhira.studio@gmail.com`) signed in at 07:29 UTC today.
+
+**Not finished / known broken:** unchanged from the Phase 6 entry below; restated here so
+it's visible without reading the whole file:
+- Phase 3C: description cost is ~$0.015–0.017/product against a required `< $0.006` target,
+  deliberately deferred per D43/D42, not fixed.
+- Phase 7 (live-store cutover) has not started — no phase prompt file exists for it yet.
+  Loupe still points only at `qimti.myshopify.com`.
+- Nose Pins publish is still blocked (`shopify_tag` NULL); seven categories (Watches, Hand
+  Chains, Jewellery Box, Bags, Hair Accessories, Indian Jewellery, Brass) still have no SKU
+  prefix, title pattern or tag defined at all.
+- One real ungrouped photograph (`IMG20260731130153.jpg`, intake id
+  `77f54637-ee23-4880-bca9-b62664ca6558`) now sits in the queue waiting for an operator to
+  group and publish it.
+
+**Surprises:** the owner had already started using the deployed console for real before this
+session, unprompted — not something logged by a prior session.
+
+**Next session should start with:** if continuing product work, group and publish
+`IMG20260731130153.jpg` from the real queue, or start scoping Phase 7 (parallel live-store
+run and cutover) per `docs/CONTEXT.md` open questions 1, 3, 4, 6 and 7.
+
+---
+
 ## 2026-07-31 — Phase 6 complete: tracking, duplicate detection and Shopify reconciliation
 
 **Goal this session:** finish Phase 6, prove every operating path against the deployed test

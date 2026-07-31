@@ -91,8 +91,20 @@ function dataUrl(input: Buffer, mediaType: string): string {
   return `data:${mediaType};base64,${input.toString('base64')}`
 }
 
+/**
+ * Provider families OpenRouter documents as normalising the unified `reasoning`
+ * parameter (effort/exclude) onto their own native control — OpenAI, Anthropic,
+ * Google Gemini "thinking" models and Qwen. Every curated describe model
+ * (src/lib/prompts/models.ts) falls into one of these four (D51). Restricting
+ * this to `openai/` alone left every other curated model spending its whole
+ * completion budget on unsuppressed reasoning before emitting any JSON — caught
+ * live against `google/gemini-3.1-pro-preview` (docs/PROGRESS.md, 2026-07-31).
+ * See D55.
+ */
+const REASONING_CAPABLE_PREFIXES = ['openai/', 'google/', 'anthropic/', 'qwen/']
+
 function supportsReasoningControl(model: string): boolean {
-  return model.startsWith('openai/')
+  return REASONING_CAPABLE_PREFIXES.some((prefix) => model.startsWith(prefix))
 }
 
 function imageGenerationParameters(options: EnhanceOptions): Record<string, unknown> {
@@ -241,7 +253,12 @@ export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
                 },
               }
             : {}),
-          max_completion_tokens: 256,
+          // 60-100 words of JSON content needs well under this even with the
+          // fence/preamble some non-OpenAI models add; the margin exists so a
+          // model's own suppressed-reasoning tokens (still billed even with
+          // exclude:true) don't crowd out the actual answer. Cost stays bounded
+          // by MAX_COST_USD_PER_DESCRIPTION regardless of this ceiling.
+          max_completion_tokens: 512,
           stream: false,
         }),
       })

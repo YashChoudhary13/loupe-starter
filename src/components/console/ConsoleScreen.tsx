@@ -60,6 +60,9 @@ import { Sidebar } from './Sidebar'
 const STICKY_KEY = 'loupe.sticky.v1'
 /** Presigned URLs live 15 minutes; refresh well inside that. */
 const QUEUE_REFRESH_MS = 9 * 60 * 1000
+/** While Drive intake is uploading or the worker is processing, poll fast enough
+ *  that a finished photograph appears without a manual refresh. */
+const QUEUE_ACTIVE_REFRESH_MS = 5 * 1000
 
 interface Sticky {
   categoryId: string | null
@@ -198,14 +201,22 @@ export function ConsoleScreen({
   const visibleTiles = useMemo(() => tilesForQueueView(queue, queueView), [queue, queueView])
   const listedReadOnly = bundle?.draft.status === 'published'
 
-  /** Signed URLs expire. Re-signing on a timer is cheaper than a broken grid. */
+  const { uploading, processing } = queue.pipelineActivity
+  const pipelineBusy = uploading + processing > 0
+
+  /**
+   * Signed URLs expire, so this timer exists regardless. While Drive intake has
+   * work in flight it also doubles as the operator's live progress: the same
+   * poll that re-signs URLs is what makes a newly enhanced photograph appear in
+   * the grid without a manual refresh, so a second parallel timer is not needed.
+   */
   useEffect(() => {
     const timer = window.setInterval(async () => {
       const result = await refreshQueueAction()
       if (result.ok) setQueue(result.data)
-    }, QUEUE_REFRESH_MS)
+    }, pipelineBusy ? QUEUE_ACTIVE_REFRESH_MS : QUEUE_REFRESH_MS)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [pipelineBusy])
 
   /** Versions and full images for photographs that are selected but not grouped. */
   useEffect(() => {
@@ -611,6 +622,28 @@ export function ConsoleScreen({
             />
           </div>
         </div>
+
+        {pipelineBusy ? (
+          <div
+            className="flex items-center gap-2 rounded-pill bg-chip px-4 py-2 text-[12px] text-ink-soft"
+            role="status"
+          >
+            <span className="size-1.5 animate-pulse rounded-full bg-ink-soft" aria-hidden />
+            {uploading > 0 ? (
+              <span>
+                <b className="font-semibold text-ink">{uploading}</b>{' '}
+                {uploading === 1 ? 'photo' : 'photos'} uploaded
+              </span>
+            ) : null}
+            {uploading > 0 && processing > 0 ? <span className="text-muted-foreground">·</span> : null}
+            {processing > 0 ? (
+              <span>
+                <b className="font-semibold text-ink">{processing}</b>{' '}
+                {processing === 1 ? 'photo' : 'photos'} processing
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_372px] gap-3.5 overflow-hidden">
           <Card className="flex min-h-0 flex-col">

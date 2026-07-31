@@ -46,7 +46,7 @@ describe('OpenRouter two-call client', () => {
     expect(requests[0]?.body).toMatchObject({
       model: 'openai/gpt-5.6-sol',
       reasoning: { effort: 'minimal', exclude: true },
-      max_completion_tokens: 256,
+      max_completion_tokens: 512,
       messages: [
         {
           role: 'user',
@@ -136,14 +136,47 @@ describe('OpenRouter two-call client', () => {
     expect(requests[0]).not.toHaveProperty('quality')
   })
 
-  it('omits OpenAI-only reasoning controls for another descriptor provider', async () => {
+  it.each(['google/gemini-3.5-flash-lite', 'anthropic/claude-haiku-4.5', 'qwen/qwen3.7-flash'])(
+    'sends minimal-effort reasoning controls to the curated descriptor provider %s',
+    async (model) => {
+      const requests: Record<string, unknown>[] = []
+      const client = new OpenRouterClient(
+        'test-key',
+        vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+          requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+          return Response.json({
+            model,
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  description: TEST_DESCRIPTION,
+                  presentation: 'pair-upright',
+                }),
+              },
+            }],
+            usage: { cost: 0.001 },
+          })
+        }) as typeof fetch,
+      )
+
+      await client.describe(Buffer.from('source'), 'image/jpeg', 'PROMPT', {
+        model,
+        reasoningEffort: 'minimal',
+      })
+
+      expect(requests[0]?.model).toBe(model)
+      expect(requests[0]?.reasoning).toEqual({ effort: 'minimal', exclude: true })
+    },
+  )
+
+  it('omits reasoning controls for a provider family OpenRouter does not document as reasoning-capable', async () => {
     const requests: Record<string, unknown>[] = []
     const client = new OpenRouterClient(
       'test-key',
       vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
         requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
         return Response.json({
-          model: 'google/gemini-3.5-flash-lite',
+          model: 'mistralai/pixtral-large-2.1',
           choices: [{
             message: {
               content: JSON.stringify({
@@ -158,11 +191,11 @@ describe('OpenRouter two-call client', () => {
     )
 
     await client.describe(Buffer.from('source'), 'image/jpeg', 'PROMPT', {
-      model: 'google/gemini-3.5-flash-lite',
+      model: 'mistralai/pixtral-large-2.1',
       reasoningEffort: 'minimal',
     })
 
-    expect(requests[0]?.model).toBe('google/gemini-3.5-flash-lite')
+    expect(requests[0]?.model).toBe('mistralai/pixtral-large-2.1')
     expect(requests[0]).not.toHaveProperty('reasoning')
   })
 

@@ -129,6 +129,17 @@ export interface ColourSuggestion {
   readonly usageCount: number
 }
 
+/**
+ * Drive files the pipeline has not yet finished with — no tile exists for these
+ * yet, so the grid alone cannot show them. `uploading` is Loupe's own word for
+ * `discovered`: the file has landed in Drive and Loupe has noticed it, before the
+ * two-call enhancement starts.
+ */
+export interface PipelineActivity {
+  readonly uploading: number
+  readonly processing: number
+}
+
 export interface QueueSnapshot {
   /** Work still waiting for an operator: ungrouped photographs and open drafts. */
   readonly tiles: readonly QueueTile[]
@@ -138,6 +149,7 @@ export interface QueueSnapshot {
   readonly draftCount: number
   readonly publishedToday: number
   readonly attentionCount: number
+  readonly pipelineActivity: PipelineActivity
   /** Epoch ms at which the earliest presigned URL in this snapshot dies. */
   readonly signedUntil: number
   readonly generatedAt: string
