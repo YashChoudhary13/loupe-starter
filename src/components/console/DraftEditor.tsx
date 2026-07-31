@@ -17,6 +17,7 @@ import {
 import type { PublishBlock } from '@/lib/publish/validate'
 import { cn } from '@/lib/utils'
 
+import { ImageLightbox, type LightboxImage } from './ImageLightbox'
 import { Chip, FeatureCard, SectionLabel } from './primitives'
 
 /**
@@ -106,6 +107,8 @@ export function DraftEditor(props: DraftEditorProps) {
   } = props
 
   const [colourDraft, setColourDraft] = useState('')
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const openLightbox = (index: number) => setLightboxIndex(index)
   const category = categories.find((c) => c.id === form.categoryId) ?? null
   const selectedMaterial = materials.find((m) => m.id === form.materialId)?.name ?? null
   const materialName = form.customMaterial.trim() || selectedMaterial
@@ -133,6 +136,26 @@ export function DraftEditor(props: DraftEditorProps) {
   const heroVersion = hero?.photo.versions.find((v) => v.id === hero.image.imageVersionId)
   const blockFor = (field: string) => blocks.find((b) => b.field === field)
 
+  /**
+   * Full-size review, in the operator's chosen publish order — so stepping
+   * through the lightbox is stepping through what Shopify will actually show.
+   * Only the SELECTED version of each photograph appears here; comparing
+   * versions is what the orig/v1/v2 chips below are for.
+   */
+  const lightboxImages: LightboxImage[] = orderedImages
+    .map((row) => {
+      const version = row.photo.versions.find((v) => v.id === row.image.imageVersionId)
+      if (!version?.full) return null
+      return {
+        url: version.full.url,
+        alt: row.photo.description ?? row.photo.filename,
+        caption: `${row.photo.filename} · ${
+          version.kind === 'original' ? 'original' : `v${version.versionNo}`
+        }`,
+      }
+    })
+    .filter((image): image is LightboxImage => image !== null)
+
   return (
     <form
       className="flex h-full flex-col"
@@ -141,16 +164,36 @@ export function DraftEditor(props: DraftEditorProps) {
         if (!busy && !readOnly) onPublish()
       }}
     >
+      <ImageLightbox
+        images={lightboxImages}
+        index={lightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+        onIndexChange={setLightboxIndex}
+      />
+
       <div className="loupe-scroll min-h-0 flex-1 overflow-y-auto pr-1">
         {/* Hero — the "larger review" case. Thumbnails are for the grid. */}
         <div className="relative aspect-[4/3] overflow-hidden rounded-panel bg-chip">
           {heroVersion?.full ? (
-            // eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL.
-            <img
-              src={heroVersion.full.url}
-              alt={hero.photo.description ?? hero.photo.filename}
-              className="absolute inset-0 size-full object-contain"
-            />
+            <button
+              // This sits inside the editor's <form>, whose submit publishes the
+              // product — an implicit type="submit" here would publish on click.
+              type="button"
+              onClick={() => openLightbox(0)}
+              aria-label="View this photograph full size"
+              title="View full size"
+              className="group absolute inset-0 cursor-zoom-in focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--ink)_inset]"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL. */}
+              <img
+                src={heroVersion.full.url}
+                alt={hero.photo.description ?? hero.photo.filename}
+                className="absolute inset-0 size-full object-contain"
+              />
+              <span className="pointer-events-none absolute bottom-2 right-2 rounded-pill bg-ink/75 px-2.5 py-1 text-[10.5px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                Full size
+              </span>
+            </button>
           ) : (
             <span className="absolute inset-0 grid place-items-center text-[11px] text-muted-foreground">
               no image selected
@@ -174,9 +217,15 @@ export function DraftEditor(props: DraftEditorProps) {
                 </span>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-[11px] text-ink-soft">
+                  <button
+                    // Inside the publish <form>: never an implicit submit.
+                    type="button"
+                    onClick={() => openLightbox(index)}
+                    title="View full size"
+                    className="block max-w-full cursor-zoom-in truncate font-mono text-[11px] text-ink-soft underline decoration-transparent underline-offset-2 transition-colors hover:decoration-current focus:outline-none focus-visible:decoration-current"
+                  >
                     {row.photo.filename}
-                  </p>
+                  </button>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {row.photo.versions.map((version) => (
                       <Chip

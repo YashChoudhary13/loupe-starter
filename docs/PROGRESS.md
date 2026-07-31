@@ -113,6 +113,35 @@ Deployed `qimati-loupe-iroyu338i`, Ready and aliased. Note the first hit after a
 a cold start (measured 4.18s once, then 0.33–0.68s warm) — that is the function booting, not
 the region choice.
 
+The owner then asked whether the remaining skeleton flash is a free-Vercel limit. Answered
+honestly: **no**. It is the dynamic round trip these screens require by design (D11 auth
+re-check, D4 presigned URLs); the free tier only contributes the occasional cold start. Left
+as-is by agreement — the dependent query waves in `loadQueue()` and a per-request memo on
+the `app_users` lookup are the real remaining optimisations, and neither was done.
+
+### Full-size image review in the console
+
+Owner asked to be able to click the product image in the editor and maximise it. Built
+`ImageLightbox`: the hero image and each photograph's filename open a full-screen review,
+with arrow keys / on-screen arrows stepping through the product's images **in publish
+order**, showing only each photograph's SELECTED version (comparing versions stays with the
+orig/v1/v2 chips). This is a real operating need, not decoration — the operator is the last
+person who can catch a generated image that invented a chain link or a stone, and Qimati's
+retailer buyers zoom in to judge build quality (docs/CONTEXT.md).
+
+Two hazards handled deliberately:
+
+- Every new control is `type="button"`. The editor's hero sits inside the publish `<form>`,
+  so an implicit `type="submit"` on the image would have **published the product on click**.
+- The lightbox's Escape listener runs in the capture phase and calls
+  `stopImmediatePropagation()`. The console already listens for Escape on `window` to
+  abandon a photograph selection, so without this, closing the image would also have
+  silently discarded the operator's selection. Focus is restored to the trigger on close, so
+  the keyboard path (Phase 4 criterion 16) survives.
+
+`434 passed`, typecheck, lint, build clean. Deployed and aliased. Not yet exercised by the
+owner against a real multi-image product.
+
 ---
 
 ## 2026-07-31 — Real fix for the Gemini describe failure; GIF/TIFF intake; webhook question open
