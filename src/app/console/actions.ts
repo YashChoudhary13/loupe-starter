@@ -8,11 +8,18 @@ import {
   PublishInProgressError,
   type DriveHousekeepingOutcome,
 } from '@/lib/console/publish'
-import { loadColourSuggestions, loadDraft, loadPhotos, loadQueue } from '@/lib/console/queue'
+import {
+  loadColourSuggestions,
+  loadDraft,
+  loadPhotos,
+  loadPipelineActivity,
+  loadQueue,
+} from '@/lib/console/queue'
 import type {
   ColourSuggestion,
   DraftDetail,
   PhotoSummary,
+  PipelineActivity,
   QueueSnapshot,
 } from '@/lib/console/types'
 import { PublishBlockedError, type PublishBlock } from '@/lib/publish/validate'
@@ -102,6 +109,15 @@ async function withOperator<T>(run: (operator: Awaited<ReturnType<typeof require
 
 export async function refreshQueueAction(): Promise<ActionResult<QueueSnapshot>> {
   return withOperator(() => loadQueue())
+}
+
+/**
+ * The cheap poll: two counters, no rows and no presigned URLs. The console asks
+ * for this every few seconds while Drive intake is moving and only pays for a
+ * full `refreshQueueAction()` when the counters say something actually finished.
+ */
+export async function pipelineActivityAction(): Promise<ActionResult<PipelineActivity>> {
+  return withOperator(() => loadPipelineActivity())
 }
 
 /**

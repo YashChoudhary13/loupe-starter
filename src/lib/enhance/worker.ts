@@ -88,12 +88,14 @@ function md5(input: Buffer): string {
   return createHash('md5').update(input).digest('hex')
 }
 
-function originalExtension(mimeType: string): 'jpg' | 'png' | 'webp' {
+function originalExtension(mimeType: string): 'jpg' | 'png' | 'webp' | 'gif' | 'tiff' {
   if (mimeType === 'image/jpeg') return 'jpg'
   if (mimeType === 'image/png') return 'png'
   if (mimeType === 'image/webp') return 'webp'
+  if (mimeType === 'image/gif') return 'gif'
+  if (mimeType === 'image/tiff') return 'tiff'
   throw new EnhancementError(
-    `The file format is ${mimeType}. Loupe can enhance JPEG, PNG or WebP images.`,
+    `The file format is ${mimeType}. Loupe can enhance JPEG, PNG, WebP, GIF or TIFF images.`,
     {
       stage: 'input',
       code: 'unsupported_mime_type',

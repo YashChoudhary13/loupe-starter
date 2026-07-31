@@ -39,3 +39,41 @@ export function startOfKolkataDayIso(now: Date): string {
   inKolkata.setUTCHours(0, 0, 0, 0)
   return new Date(inKolkata.getTime() - kolkataOffsetMs).toISOString()
 }
+
+/**
+ * Carry still-valid presigned thumbnail URLs from one snapshot to the next.
+ *
+ * A presigned URL is different on every call, so replacing a snapshot wholesale
+ * changes every `img src` on the page even when nothing about the photograph
+ * changed — and the browser re-downloads the entire grid. At a five-second poll
+ * that is a download storm, and it is what made the console feel laggy and
+ * swallow clicks.
+ *
+ * A URL is reused only while it has at least a minute of life left, so a tile
+ * never inherits a URL that is about to expire mid-view. Everything else in the
+ * snapshot (counts, attention, status, which tiles exist) always comes from the
+ * NEW data — this preserves image identity, never stale state.
+ */
+export function preserveThumbs(
+  previous: QueueSnapshot,
+  next: QueueSnapshot,
+  now: number = Date.now(),
+): QueueSnapshot {
+  const stillValid = new Map<string, QueueTile['thumb']>()
+  for (const tile of [...previous.tiles, ...previous.listedTodayTiles]) {
+    if (tile.thumb && tile.thumb.expiresAt > now + 60_000) stillValid.set(tile.id, tile.thumb)
+  }
+  if (stillValid.size === 0) return next
+
+  const keep = (tiles: readonly QueueTile[]): QueueTile[] =>
+    tiles.map((tile) => {
+      const previousThumb = stillValid.get(tile.id)
+      return previousThumb && tile.thumb ? { ...tile, thumb: previousThumb } : tile
+    })
+
+  return {
+    ...next,
+    tiles: keep(next.tiles),
+    listedTodayTiles: keep(next.listedTodayTiles),
+  }
+}

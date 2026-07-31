@@ -31,6 +31,140 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-31 — D56 proved live; console lag fixed (self-inflicted); arrival bubble
+
+**Goal this session:** owner reported five things — progress pill stuck on an already-enhanced
+photo, Drive files not moving to /Processed, a re-upload that "didn't process", a request for
+an arrival bubble, and a UI that needed 2–3 clicks to switch sections.
+
+**D56 is now proven live, not just by probe.** Intake `35a9161d` (the .webp) shows
+attempts 1 and 2 failing `description_invalid_json` with fenced JSON, then attempt 3 at
+09:19:06 — after the prompt promotion — succeeding: `description.stored`,
+`google/gemini-3.1-pro-preview`, 87 words, `pair-upright`, `$0.004584`, then
+`intake.enhanced` at `$0.0686625` (under the $0.20 ceiling). The fence fix works end to end
+on a real Drive photograph with a non-OpenAI model.
+
+**Diagnosis of the five reports:**
+
+1. **Stuck progress pill — real bug, mine.** `pipelineActivity.uploading` counted every
+   `discovered` row. A row in retry backoff is *also* `discovered` (D29), so a photograph
+   waiting up to an hour between bounded retries was reported as "uploading" the whole time.
+   Now counts `attempts = 0` only; backoff belongs to Tracking, which alerts on age and
+   failure (hard rule 5).
+2. **The UI lag — also mine, same change.** The 5-second poll called the FULL
+   `refreshQueueAction()`, which re-signs every thumbnail; a presigned URL differs on every
+   call, so every `img src` on the page changed every five seconds and the browser
+   re-downloaded the entire grid — continuously, because bug 1 held it in fast-poll mode.
+   That is the "stuck, laggy, needs 2–3 clicks". Split into a cheap `pipelineActivityAction()`
+   (two COUNTs, no rows, no signing) polled every 5s, with a full refresh only when the
+   in-flight count *falls* (work finished) or on the existing 9-minute URL timer.
+   `preserveThumbs()` additionally carries still-valid URLs across a refresh so the images
+   never churn; it lives in `queue-view.ts` with four tests, including one asserting that
+   only the URL is inherited and never a stale count, tile or attention flag.
+3. **/Processed — working as designed, not a regression.** Drive housekeeping runs on
+   PUBLISH, not on enhance (D37, hard rule 3). `77f54637` was published at 07:36 and moved;
+   the others were never published, so they correctly stayed in RAW.
+4. **The "re-upload that didn't process" — it did.** It was discovered at 08:07 as a new
+   Drive id, failed describe three times on the fence bug, and was then **skipped by the
+   owner** — `intake.skipped`, actor `lakhira.studio@gmail.com`, 08:35. `skipped` is a
+   terminal operator decision, so the worker correctly ignores it, and it stays in RAW
+   because it was never published.
+5. **Arrival bubble — built.** A monochrome toast at the top of the console when the
+   uploading count rises, auto-dismissing after 6s. Deliberately not amber: amber means "a
+   human is needed" and nothing else (D9); a photograph arriving is normal.
+
+**Verified:** `434 passed` (41 files, +4 for `preserveThumbs`), typecheck, lint, build all
+clean. Deployed `dpl_DzNQue4ysd8xiKvmToadFk5GVSit`, Ready, `/health` 200.
+
+**Not finished / known broken:**
+- The new console behaviour is deployed but not yet exercised by the owner against a real
+  Drive upload. **A hard refresh is required** — client JS does not hot-swap across a
+  deploy, so an old tab keeps the old polling code (this likely explains part of report 5).
+- Intake `3fbc19e1` remains `skipped` and its file remains in RAW. Reconcile re-scans it
+  harmlessly every 15 minutes (`inserted: 0`). If the owner wants that photograph after all,
+  it needs a fresh upload — skip is terminal by design.
+- Files that end `skipped`/`failed` accumulate in RAW forever, since only publish moves a
+  file. Not a bug today at this volume; worth a decision before the live cutover.
+- Drive push notifications (webhooks) still not built — see the entry below.
+
+**Surprises:** both genuine bugs this session were introduced by the previous session's
+progress-pill feature, not by anything older. A 5-second poll of an endpoint that mints new
+presigned URLs is indistinguishable from a cache-busting attack on your own UI.
+
+**Next session should start with:** owner hard-refreshes `/console`, drops a real photo in
+Drive, and confirms the bubble, the honest counter, a responsive UI, and the photo landing
+in the grid on its own.
+
+---
+
+## 2026-07-31 — Real fix for the Gemini describe failure; GIF/TIFF intake; webhook question open
+
+**Goal this session:** owner reported a new Drive upload "did not take" and "did not start
+any queue" after the D55 deploy, and asked for real testing, broader format support, and to
+consider Drive push notifications. Investigation found D55 shipped on documentation
+reasoning alone, unverified against a real call — and the file HAD queued; the describe
+call was still failing the same way.
+
+**Built:**
+- **D56** — two real OpenRouter calls to `google/gemini-3.1-pro-preview` (a few cents,
+  `.artifacts` not needed, logged in DECISIONS.md) proved the failure was the markdown fence,
+  not reasoning-token truncation as D55 assumed (`reasoning_tokens: 0` in both real calls).
+  Fixed the live describe prompt itself, through the proper Phase 5 mechanism
+  (`create_prompt_version` + `promote_prompt_version`, actor
+  `script:describe-prompt-fence-fix`) — added an explicit "no markdown, raw JSON only"
+  instruction. `max_completion_tokens` raised 512 → 1500 as an evidence-scoped margin, not
+  because either real call needed more than 122 tokens.
+- **D57** — `supabase/migrations/20260731120000_widen_intake_image_formats.sql` widens
+  intake from JPEG/PNG/WebP to also accept GIF and TIFF, checked directly against the
+  deployed sharp/libvips build's actual codec support rather than assumed. HEIC/HEIF
+  (iPhone default) deliberately NOT added — the same runtime check shows libheif present
+  without the licensed HEVC decoder real `.heic` files need; accepting the MIME type would
+  have traded a clear intake rejection for a confusing worker-stage failure.
+- Self-caught regression: the first cut of the D57 migration was based on the *original*
+  Phase 3A `discover_intake_file`, silently reverting a same-week decimal-MB fix
+  (`20260729124000_intake_size_limit_decimal_mb.sql`, 50 MiB back to 50,000,000 bytes) that
+  a later migration had already corrected. Caught by the existing test suite
+  (`intake-queue.sql.test.ts`), not by inspection. Fixed live within minutes via
+  `apply_migration`, ledger re-synced by dropping and re-running the corrected file through
+  `db:push` so the recorded migration matches what's actually deployed.
+
+**Verified:** `430 passed` (41 files — the count is unchanged net; one test rewritten to
+assert the durable invariant instead of a pinned prompt hash, one message-text assertion
+updated for the widened format list), typecheck, lint, build all clean. Live-verified
+directly against the database: GIF and TIFF now queue (`status: discovered`); a
+50,000,001-byte file is still rejected and exactly 50,000,000 bytes still passes; the
+malformed-JSON regression from the migration mistake is gone. **Not yet deployed to
+Vercel** — code changes are local; the prompt and migration fixes are already live in the
+database (Supabase changes apply immediately, independent of the Vercel deploy).
+
+**Not finished / known broken:**
+- The describe-prompt fix is evidence-based (two real calls) but not yet proven against a
+  real Drive upload end-to-end post-deploy — ask below.
+- Real-time progress: investigation found polling already detects a new Drive file within
+  ~60s as designed — that was not actually the "did not take" cause. The likelier
+  explanations: (a) the console tab was open from before the earlier deploy, so the faster
+  polling code hadn't loaded yet (a page reload is required — client JS does not hot-swap
+  across a Vercel deploy); (b) the file WAS discovered and queued but then sat invisible
+  through repeated describe-retry backoff (up to ~90 minutes across 5 attempts) because of
+  the same fence bug — now fixed. No code change made here; flagging rather than guessing
+  further.
+- Google Drive push notifications (webhooks) were asked about but not built. Evidence above
+  shows polling was not the actual bottleneck this time, and webhooks are a real subsystem
+  (public receiver endpoint, channel verification token, 7-day channel expiry + renewal
+  cron) — deferred pending an explicit answer to the question posed to the owner rather than
+  building it speculatively.
+
+**Surprises:** the empirical test directly contradicted D55's own reasoning — real
+`reasoning_tokens` were 0, not the dominant spend the documentation-only theory predicted.
+Documentation explains what a provider *can* do; it doesn't substitute for one real call
+when a fix is about to ship a second guess on the same failure.
+
+**Next session should start with:** deploy to Vercel, then get the owner to drop a real
+photo in Drive and confirm end-to-end: discovered → described (clean JSON, any curated
+model) → enhanced → visible in console without a manual refresh.
+
+---
+
 ## 2026-07-31 — Describe model choice now works for any curated provider (D55)
 
 **Goal this session:** owner switched the describe model to `google/gemini-3.1-pro-preview`

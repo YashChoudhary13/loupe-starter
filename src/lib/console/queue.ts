@@ -12,6 +12,7 @@ import type {
   DraftImageRef,
   MaterialOption,
   PhotoSummary,
+  PipelineActivity,
   QueueSnapshot,
   QueueTile,
   VersionSummary,
@@ -209,6 +210,40 @@ export async function loadColourSuggestions(categoryId: string): Promise<readonl
     .filter((c): c is ColourSuggestion => c !== null)
 }
 
+/**
+ * Just the pipeline counters — two COUNT queries, no rows, no presigned URLs.
+ *
+ * This exists so the console can watch Drive intake progress every few seconds
+ * without paying for `loadQueue()`. A full snapshot re-signs every thumbnail,
+ * and a presigned URL is different on every call, so polling the full snapshot
+ * changed every `img src` on the page and made the browser re-download the whole
+ * grid — which is what made the console feel stuck and swallow clicks.
+ *
+ * `uploading` deliberately counts only `attempts = 0`. A row in retry backoff is
+ * also `discovered`, but it is waiting on a bounded retry (D29), not uploading:
+ * counting it held the console in fast-poll mode for up to an hour and told the
+ * operator a photograph was in progress when nothing was happening to it. That
+ * state belongs to Tracking, which alerts on age and failure (hard rule 5).
+ */
+export async function loadPipelineActivity(): Promise<PipelineActivity> {
+  const db = supabaseServer()
+  const [uploadingResult, processingResult] = await Promise.all([
+    db
+      .from('intake_files')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'discovered')
+      .eq('attempts', 0),
+    db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
+  ])
+  if (uploadingResult.error) throw new Error(`intake_files (discovered): ${uploadingResult.error.message}`)
+  if (processingResult.error) throw new Error(`intake_files (enhancing): ${processingResult.error.message}`)
+
+  return {
+    uploading: uploadingResult.count ?? 0,
+    processing: processingResult.count ?? 0,
+  }
+}
+
 export async function loadQueue(): Promise<QueueSnapshot> {
   const db = supabaseServer()
   const startOfToday = startOfKolkataDayIso(new Date())
@@ -242,7 +277,11 @@ export async function loadQueue(): Promise<QueueSnapshot> {
       .order('published_at', { ascending: false })
       .limit(DRAFT_LIMIT),
     db.from('categories').select('id, name'),
-    db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'discovered'),
+    db
+      .from('intake_files')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'discovered')
+      .eq('attempts', 0),
     db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
   ])
 

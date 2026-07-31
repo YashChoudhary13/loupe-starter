@@ -60,7 +60,7 @@ export async function prepareModelInput(input: Buffer): Promise<PreparedImage> {
   } catch (error) {
     if (error instanceof EnhancementError) throw error
     throw new EnhancementError(
-      'The source image is corrupt or cannot be decoded. Export it again as JPEG, PNG or WebP.',
+      'The source image is corrupt or cannot be decoded. Export it again as JPEG, PNG, WebP, GIF or TIFF.',
       {
         stage: 'input',
         code: 'unsupported_or_corrupt_image',

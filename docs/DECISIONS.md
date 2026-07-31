@@ -1297,3 +1297,98 @@ still leaves incomplete JSON. **Rejected:** sending `reasoning` unconditionally 
 model string. The curated list is bounded (D51) and OpenRouter does not document behaviour
 for a reasoning-incapable model receiving the parameter, so scoping to the four confirmed
 families is the evidence-grounded choice rather than an assumption.
+
+---
+
+### D56 — The Gemini describe failure was the markdown fence, not reasoning tokens; the prompt was fixed directly, not guessed at again
+
+*Correction, 2026-07-31, same day as D55. A second live failure on
+`google/gemini-3.1-pro-preview` after D55 shipped — same symptom, fenced/truncated JSON —
+forced an actual empirical test instead of a second theory.*
+
+Two real calls were made to `google/gemini-3.1-pro-preview` through the live
+`OPENROUTER_API_KEY`, same prompt, same image, `reasoning: {effort: 'minimal', exclude:
+true}`, `max_completion_tokens: 3000`:
+
+```text
+A: current prompt body            → completion_tokens 121, reasoning_tokens 0, finish_reason
+                                     "stop" (NOT truncated) — but wrapped in ```json anyway
+B: prompt + explicit "no markdown, → completion_tokens 122, reasoning_tokens 0, finish_reason
+   raw JSON only" instruction         "stop" — clean bare JSON
+```
+
+This overturns D55's working theory. Reasoning tokens were not the dominant cost in either
+call (`reasoning_tokens: 0` both times, well under the old 256/512 ceiling) — the model
+simply defaults to wrapping JSON in a markdown fence regardless of reasoning settings, and
+`parseStructuredDescription()` correctly, deliberately rejects that (D41). D55's earlier
+live failure that looked like pure truncation was most likely an unlucky call landing on
+the opaque, provider-controlled reasoning spend OpenRouter's own docs warn about for Gemini
+3 (`thinkingLevel` — "the actual number of reasoning tokens consumed is determined
+internally by Google... no publicly documented token limit breakpoints") — real, but not
+the dominant failure mode.
+
+Two changes, evidence-scoped to what was actually measured:
+
+1. The live `describe` prompt was updated through the proper Phase 5 mechanism —
+   `create_prompt_version()` then `promote_prompt_version()`, actor
+   `script:describe-prompt-fence-fix`, fully audited — appending: *"Output raw JSON only. Do
+   not wrap it in markdown, code fences, or triple backticks. The response must start with {
+   and end with } and contain nothing else."* Not a raw `UPDATE` — prompts are immutable,
+   versioned, audited data (D51), and a direct write would have bypassed that contract even
+   though the effect was correct. Because D51 already carries a prompt's body forward
+   verbatim when the model changes, this instruction now benefits every future model
+   selection automatically, not only Gemini.
+2. `max_completion_tokens` raised again, 512 → 1500 (src/lib/enhance/openrouter.ts). Not
+   because 1500 was measured as necessary — 121-122 tokens sufficed in both real calls — but
+   because Gemini's own reasoning spend is documented as opaque and non-deterministic, so a
+   generous margin absorbs an occasional heavy call without the request-level ceiling being
+   the thing that turns it into truncated garbage. `MAX_COST_USD_PER_DESCRIPTION` still
+   bounds actual spend from the real reported cost regardless of this number (D39) — a call
+   that genuinely runs long is still caught there, just by the ceiling that was designed to
+   catch it, not by an undersized request parameter.
+
+**Rejected:** trusting the first fix without a real call. D55 was reasoned correctly from
+OpenRouter's documentation but was not empirically verified against the specific model in
+production, and it shipped anyway — the second failure is the direct cost of that. **Not
+repeated here**: both changes in this decision were checked against real OpenRouter
+responses before being promoted to the live prompt.
+
+---
+
+### D57 — Intake accepts GIF and TIFF; HEIC/HEIF stays rejected until decoding is verified
+
+*Implementation decision, 2026-07-31, prompted by the owner asking for broader format
+support alongside the describe-model fix.*
+
+`sharp`/libvips in the deployed environment (checked directly via `sharp.format` and
+`sharp.versions` at runtime, not assumed) reports working `gif` and `tiff` codecs. Both were
+added to `discover_intake_file()`'s MIME allowlist and to `originalExtension()` in the
+enhancement worker (`supabase/migrations/20260731120000_widen_intake_image_formats.sql`),
+per D31's own anticipation that widening the intake format list would be "a deliberate
+capability change" made later, on evidence.
+
+HEIC/HEIF — the default iPhone camera format — was deliberately left out. The same runtime
+check shows `sharp.format.heif.input.fileSuffix` lists only `.avif`: libheif is present, but
+without the licensed HEVC decoder that real `.heic` files are encoded with. Accepting the
+MIME type at intake without being able to decode it later would trade a clear, immediate
+"unsupported format" rejection for a confusing failure deeper in the enhancement worker.
+
+**Rejected:** accepting `image/heic` on the assumption that "the HEIF library is present, so
+it probably works" — the fileSuffix list is direct evidence it does not, and this project's
+standard is verifying provider/library contracts, not inferring them. Real HEIC support
+needs either a differently-built image library or an explicit conversion step, and is future
+work if the photographer's camera actually produces `.heic` files — nothing observed in
+production so far has.
+
+---
+
+### First fix that shipped without being checked — read before repeating the mistake
+
+D55 was deployed on documentation and reasoning alone. It was directed at a real, correctly
+diagnosed class of problem (reasoning-capable models restricted to `openai/` only) and the
+change itself was not wrong — but it was not the actual cause of the failure it was meant to
+fix, and a second live failure on the owner's real upload was the cost of finding that out
+in production instead of before shipping. D56 corrected it with two real API calls that
+cost a few cents and took under thirty seconds. The project's own standard already says
+this — "Provider contracts must be verified against real requests," docs/CONTEXT.md — the
+gap here was applying it to a fix, not only to original implementation work.

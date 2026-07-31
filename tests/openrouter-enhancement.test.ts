@@ -46,7 +46,7 @@ describe('OpenRouter two-call client', () => {
     expect(requests[0]?.body).toMatchObject({
       model: 'openai/gpt-5.6-sol',
       reasoning: { effort: 'minimal', exclude: true },
-      max_completion_tokens: 512,
+      max_completion_tokens: 1500,
       messages: [
         {
           role: 'user',

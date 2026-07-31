@@ -477,8 +477,8 @@ describe('seed data', () => {
     ).toEqual([
       {
         kind: 'describe',
-        chars: 1730,
-        sha256: 'a23dfcff1a81b087dc613b7ad1edc358086bcd413e91abccd71245b26d2d31a7',
+        chars: 1887,
+        sha256: 'dc6b538b7dcecdcb445ac7d47a316be196b05d965fd7a75c9ff871ba5f545245',
       },
       {
         kind: 'image',

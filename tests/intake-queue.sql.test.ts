@@ -131,7 +131,7 @@ describe('Phase 3A intake queue SQL state machine', () => {
     )
     expect(rejected.rows[0]).toEqual({
       last_error:
-        'The file format is application/pdf. Loupe can enhance JPEG, PNG or WebP images. Export it in one of those formats and try again.',
+        'The file format is application/pdf. Loupe can enhance JPEG, PNG, WebP, GIF or TIFF images. Export it in one of those formats and try again.',
       last_error_code: 'unsupported_mime_type',
       last_error_detail: expect.stringContaining('application/pdf'),
       error_class: 'permanent',

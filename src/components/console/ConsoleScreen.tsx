@@ -7,6 +7,7 @@ import {
   detachPhotoAction,
   groupPhotosAction,
   openDraftAction,
+  pipelineActivityAction,
   previewPhotosAction,
   publishDraftAction,
   redoImageAction,
@@ -21,6 +22,7 @@ import type { Operator } from '@/lib/auth/authorize'
 import { parseRupeesToPaise } from '@/lib/console/money'
 import { predictIdentity, type PredictedIdentity } from '@/lib/console/preview'
 import {
+  preserveThumbs,
   QUEUE_VIEW_LABELS,
   tilesForQueueView,
   type QueueView,
@@ -60,9 +62,21 @@ import { Sidebar } from './Sidebar'
 const STICKY_KEY = 'loupe.sticky.v1'
 /** Presigned URLs live 15 minutes; refresh well inside that. */
 const QUEUE_REFRESH_MS = 9 * 60 * 1000
-/** While Drive intake is uploading or the worker is processing, poll fast enough
- *  that a finished photograph appears without a manual refresh. */
-const QUEUE_ACTIVE_REFRESH_MS = 5 * 1000
+/**
+ * The cheap counter poll. This is NOT a full queue refresh — see
+ * `loadPipelineActivity()`. A full snapshot re-signs every thumbnail, and a
+ * presigned URL differs on every call, so polling it at this rate replaced every
+ * `img src` on the page every few seconds and the browser re-downloaded the
+ * whole grid. That is what made the console feel laggy and drop clicks.
+ */
+const ACTIVITY_POLL_MS = 5 * 1000
+/** How long a "new photograph" bubble stays on screen. */
+const TOAST_MS = 6 * 1000
+
+interface Toast {
+  readonly id: number
+  readonly text: string
+}
 
 interface Sticky {
   categoryId: string | null
@@ -164,6 +178,8 @@ export function ConsoleScreen({
   trackingAttentionCount,
 }: ConsoleScreenProps) {
   const [queue, setQueue] = useState(initialQueue)
+  const [activity, setActivity] = useState(initialQueue.pipelineActivity)
+  const [toasts, setToasts] = useState<readonly Toast[]>([])
   const [bundle, setBundle] = useState<DraftBundle | null>(initialBundle)
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<readonly string[]>([])
   // Keyed by the selection it belongs to, so a stale preview is never rendered
@@ -201,22 +217,66 @@ export function ConsoleScreen({
   const visibleTiles = useMemo(() => tilesForQueueView(queue, queueView), [queue, queueView])
   const listedReadOnly = bundle?.draft.status === 'published'
 
-  const { uploading, processing } = queue.pipelineActivity
+  const { uploading, processing } = activity
   const pipelineBusy = uploading + processing > 0
 
+  const refreshQueue = useCallback(async () => {
+    const result = await refreshQueueAction()
+    if (result.ok) setQueue((current) => preserveThumbs(current, result.data))
+  }, [])
+
+  /** Signed URLs expire on their own schedule, regardless of Drive activity. */
+  useEffect(() => {
+    const timer = window.setInterval(() => void refreshQueue(), QUEUE_REFRESH_MS)
+    return () => window.clearInterval(timer)
+  }, [refreshQueue])
+
   /**
-   * Signed URLs expire, so this timer exists regardless. While Drive intake has
-   * work in flight it also doubles as the operator's live progress: the same
-   * poll that re-signs URLs is what makes a newly enhanced photograph appear in
-   * the grid without a manual refresh, so a second parallel timer is not needed.
+   * The live progress loop. Cheap by design: it polls two counters, and only
+   * pays for a full queue refresh when the counters show work has actually
+   * FINISHED (in-flight total fell) — which is exactly when a new photograph is
+   * ready to appear in the grid. A rising count only raises the bubble.
    */
   useEffect(() => {
+    let cancelled = false
     const timer = window.setInterval(async () => {
-      const result = await refreshQueueAction()
-      if (result.ok) setQueue(result.data)
-    }, pipelineBusy ? QUEUE_ACTIVE_REFRESH_MS : QUEUE_REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [pipelineBusy])
+      const result = await pipelineActivityAction()
+      if (cancelled || !result.ok) return
+      const next = result.data
+
+      setActivity((current) => {
+        const inFlightBefore = current.uploading + current.processing
+        const inFlightNow = next.uploading + next.processing
+
+        if (next.uploading > current.uploading) {
+          const arrived = next.uploading - current.uploading
+          setToasts((list) => [
+            ...list,
+            {
+              id: Date.now(),
+              text:
+                arrived === 1
+                  ? 'New photograph from Drive — enhancing now'
+                  : `${arrived} new photographs from Drive — enhancing now`,
+            },
+          ])
+        }
+        if (inFlightNow < inFlightBefore) void refreshQueue()
+        return next
+      })
+    }, ACTIVITY_POLL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [refreshQueue])
+
+  /** Bubbles clear themselves; they are information, never a decision point. */
+  useEffect(() => {
+    if (toasts.length === 0) return
+    const timer = window.setTimeout(() => setToasts((list) => list.slice(1)), TOAST_MS)
+    return () => window.clearTimeout(timer)
+  }, [toasts])
 
   /** Versions and full images for photographs that are selected but not grouped. */
   useEffect(() => {
@@ -578,6 +638,29 @@ export function ConsoleScreen({
 
   return (
     <div className="grid h-dvh grid-cols-[216px_1fr] gap-[18px] p-[18px]">
+      {/*
+        Drive arrivals announce themselves. Deliberately NOT amber: amber means
+        "a human is needed" and nothing else (D9). A photograph arriving is
+        normal, so this is the plain monochrome chrome.
+      */}
+      {toasts.length > 0 ? (
+        <div
+          className="pointer-events-none fixed left-1/2 top-5 z-50 flex -translate-x-1/2 flex-col items-center gap-2"
+          role="status"
+          aria-live="polite"
+        >
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className="flex items-center gap-2.5 rounded-pill bg-ink/95 px-4 py-2.5 text-[12.5px] text-white shadow-lg backdrop-blur-sm"
+            >
+              <span className="size-1.5 animate-pulse rounded-full bg-white/80" aria-hidden />
+              {toast.text}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <Sidebar operator={operator} attentionCount={trackingAttentionCount} />
 
       <main className="flex min-h-0 min-w-0 flex-col gap-3.5">
