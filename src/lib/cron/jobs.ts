@@ -39,3 +39,8 @@ export async function runEnhanceCron() {
   const { runProductionEnhancementBatch } = await import('@/lib/enhance/server')
   return { redo, intake: await runProductionEnhancementBatch() }
 }
+
+export async function runShopifyReconciliationCron() {
+  const { runShopifyReconciliation } = await import('@/lib/reconciliation/server')
+  return runShopifyReconciliation('supabase-pg-cron')
+}

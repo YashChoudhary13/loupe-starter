@@ -6,6 +6,7 @@ import {
   type PromptKind,
   type PromptVersion,
 } from '@/lib/prompts/library'
+import { loadTrackingAttentionCount } from '@/lib/tracking/read-model'
 
 import {
   createPromptVersionAction,
@@ -26,12 +27,15 @@ export default async function PromptsPage({
   }>
 }) {
   const operator = await requireOperator()
-  const prompts = await loadPromptLibrary()
+  const [prompts, attentionCount] = await Promise.all([
+    loadPromptLibrary(),
+    loadTrackingAttentionCount(),
+  ])
   const feedback = await searchParams
 
   return (
     <div className="grid min-h-dvh grid-cols-[216px_1fr] gap-[18px] p-[18px]">
-      <Sidebar operator={operator} attentionCount={0} active="prompts" />
+      <Sidebar operator={operator} attentionCount={attentionCount} active="prompts" />
 
       <main className="min-w-0">
         <header className="mb-4">

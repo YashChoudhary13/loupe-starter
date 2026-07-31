@@ -150,6 +150,7 @@ export interface ConsoleScreenProps {
   readonly initialQueue: QueueSnapshot
   readonly catalog: ConsoleCatalog
   readonly initialBundle: DraftBundle | null
+  readonly trackingAttentionCount: number
 }
 
 export function ConsoleScreen({
@@ -157,6 +158,7 @@ export function ConsoleScreen({
   initialQueue,
   catalog,
   initialBundle,
+  trackingAttentionCount,
 }: ConsoleScreenProps) {
   const [queue, setQueue] = useState(initialQueue)
   const [bundle, setBundle] = useState<DraftBundle | null>(initialBundle)
@@ -565,7 +567,7 @@ export function ConsoleScreen({
 
   return (
     <div className="grid h-dvh grid-cols-[216px_1fr] gap-[18px] p-[18px]">
-      <Sidebar operator={operator} attentionCount={queue.attentionCount} />
+      <Sidebar operator={operator} attentionCount={trackingAttentionCount} />
 
       <main className="flex min-h-0 min-w-0 flex-col gap-3.5">
         <div className="flex items-center gap-3">

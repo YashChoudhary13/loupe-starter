@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import type { DriveDownloader } from '@/lib/google/drive-types'
+import { perceptualHash } from '@/lib/duplicates/phash'
 
 import type { EnhancementConfig } from './config'
 import {
@@ -256,6 +257,14 @@ async function processClaim(
         },
       )
     }
+
+    const phash = await perceptualHash(original)
+    await repository.storePerceptualHash({
+      intakeFileId: claim.id,
+      leaseToken: claim.leaseToken,
+      phash,
+      source: SOURCE,
+    })
 
     const prepared = await prepareModelInput(original)
     const sourceSha256 = sha256(original)

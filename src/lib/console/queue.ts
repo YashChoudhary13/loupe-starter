@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { supabaseServer } from '@/lib/supabase/server'
+import { loadDuplicateCandidates } from '@/lib/duplicates/read-model'
 
 import { signKeys } from './images'
 import { startOfKolkataDayIso } from './queue-view'
@@ -256,6 +257,10 @@ export async function loadQueue(): Promise<QueueSnapshot> {
   const categoryNames = new Map(
     ((categoriesResult.data ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]),
   )
+  const duplicateCandidates = await loadDuplicateCandidates(photos.map((photo) => photo.id))
+  const duplicateByIntake = new Map(
+    duplicateCandidates.map((candidate) => [candidate.intakeFileId, candidate]),
+  )
 
   const draftIds = [...drafts, ...publishedDrafts].map((d) => d.id)
   const { data: draftPhotoRows, error: draftPhotoError } = draftIds.length
@@ -310,9 +315,11 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     // Hard rule 5. An ungrouped enhanced photo is normal — it is waiting for an
     // operator. The same photo still waiting tomorrow is a problem.
     attention:
-      hoursSince(photo.discovered_at) >= STALE_UNGROUPED_HOURS
-        ? `Waiting ${Math.floor(hoursSince(photo.discovered_at) / 24)}d for an operator`
-        : null,
+      duplicateByIntake.has(photo.id)
+        ? `Possible duplicate of ${duplicateByIntake.get(photo.id)!.matchFilename}`
+        : hoursSince(photo.discovered_at) >= STALE_UNGROUPED_HOURS
+          ? `Waiting ${Math.floor(hoursSince(photo.discovered_at) / 24)}d for an operator`
+          : null,
     reservedSku: null,
   }))
 
@@ -401,6 +408,10 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
   const files = (filesResult.data ?? []) as IntakeRow[]
   const versions = (versionsResult.data ?? []) as VersionRow[]
   const redos = await latestRedos(intakeFileIds)
+  const duplicateCandidates = await loadDuplicateCandidates(intakeFileIds)
+  const duplicateByIntake = new Map(
+    duplicateCandidates.map((candidate) => [candidate.intakeFileId, candidate]),
+  )
   const signed = await signKeys([
     ...versions.map((v) => v.thumb_key),
     ...versions.map((v) => v.storage_key),
@@ -425,6 +436,13 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
       description: file.product_description,
       descriptionMissing: file.description_missing_at !== null,
       presentationClass: file.presentation_class,
+      possibleDuplicate: duplicateByIntake.has(file.id)
+        ? {
+            matchIntakeFileId: duplicateByIntake.get(file.id)!.matchIntakeFileId,
+            matchFilename: duplicateByIntake.get(file.id)!.matchFilename,
+            distance: duplicateByIntake.get(file.id)!.distance,
+          }
+        : null,
       versions: (byIntake.get(file.id) ?? [])
         .sort((a, b) => a.version_no - b.version_no)
         .map((v) => toVersionSummary(v, signed)),
@@ -504,6 +522,10 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
   if (versionError) throw new Error(`image_versions: ${versionError.message}`)
   const versions = (versionRows ?? []) as VersionRow[]
   const redos = await latestRedos(photos.map((photo) => photo.id))
+  const duplicateCandidates = await loadDuplicateCandidates(photos.map((photo) => photo.id))
+  const duplicateByIntake = new Map(
+    duplicateCandidates.map((candidate) => [candidate.intakeFileId, candidate]),
+  )
 
   // Here the full images ARE signed: the editor shows one large review image and
   // lets the operator compare versions. That is the "larger review" case, and it
@@ -529,6 +551,13 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     description: photo.product_description,
     descriptionMissing: photo.description_missing_at !== null,
     presentationClass: photo.presentation_class,
+    possibleDuplicate: duplicateByIntake.has(photo.id)
+      ? {
+          matchIntakeFileId: duplicateByIntake.get(photo.id)!.matchIntakeFileId,
+          matchFilename: duplicateByIntake.get(photo.id)!.matchFilename,
+          distance: duplicateByIntake.get(photo.id)!.distance,
+        }
+      : null,
     versions: (versionsByIntake.get(photo.id) ?? [])
       .sort((a, b) => a.version_no - b.version_no)
       .map((v) => toVersionSummary(v, signed)),

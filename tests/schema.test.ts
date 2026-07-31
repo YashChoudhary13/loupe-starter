@@ -66,6 +66,9 @@ describe('indexes the system actually queries on', () => {
     'intake_files_phash_idx',
     'image_redo_claim_idx',
     'image_redo_one_active_per_intake',
+    'duplicate_reviews_duplicate_target_idx',
+    'shopify_reconciliation_one_active',
+    'shopify_reconciliation_issues_run_idx',
     'product_drafts_status_idx',
     'events_entity_idx',
   ]
@@ -129,6 +132,15 @@ describe('closed vocabularies', () => {
       'failed',
     ])
   })
+
+  it('has exact duplicate review and reconciliation states', () => {
+    expect(report.enums.duplicate_review_decision).toEqual(['dismissed', 'duplicate'])
+    expect(report.enums.shopify_reconciliation_status).toEqual([
+      'running',
+      'completed',
+      'failed',
+    ])
+  })
 })
 
 describe('conventions', () => {
@@ -185,6 +197,21 @@ describe('conventions', () => {
       'mark_image_redo_generation_started',
       'complete_image_redo',
       'record_image_redo_failure',
+    ]) {
+      expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
+    }
+  })
+
+  it('has the Phase 6 tracking and reconciliation functions deployed', () => {
+    for (const fn of [
+      'store_intake_phash',
+      'retry_intake_file',
+      'skip_intake_file',
+      'review_duplicate_pair',
+      'claim_shopify_reconciliation',
+      'assert_shopify_reconciliation_lease',
+      'complete_shopify_reconciliation',
+      'fail_shopify_reconciliation',
     ]) {
       expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
     }
@@ -279,6 +306,29 @@ describe('Phase 3A database capabilities', () => {
       'mark_image_redo_generation_started',
       'complete_image_redo',
       'record_image_redo_failure',
+    ]) {
+      const matches = Object.entries(report.function_execute).filter(([signature]) =>
+        signature.startsWith(`${fn}(`) || signature.startsWith(`public.${fn}(`),
+      )
+      expect(matches, `${fn} must have exactly one deployed signature`).toHaveLength(1)
+      expect(matches[0]?.[1]).toEqual({
+        anon: false,
+        authenticated: false,
+        service_role: true,
+      })
+    }
+  })
+
+  it('keeps every Phase 6 RPC service-role-only', () => {
+    for (const fn of [
+      'store_intake_phash',
+      'retry_intake_file',
+      'skip_intake_file',
+      'review_duplicate_pair',
+      'claim_shopify_reconciliation',
+      'assert_shopify_reconciliation_lease',
+      'complete_shopify_reconciliation',
+      'fail_shopify_reconciliation',
     ]) {
       const matches = Object.entries(report.function_execute).filter(([signature]) =>
         signature.startsWith(`${fn}(`) || signature.startsWith(`public.${fn}(`),

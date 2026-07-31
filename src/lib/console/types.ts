@@ -46,6 +46,12 @@ export interface PhotoSummary {
   readonly description: string | null
   readonly descriptionMissing: boolean
   readonly presentationClass: string | null
+  /** Warning only. Publishing remains available until an operator decides. */
+  readonly possibleDuplicate: {
+    readonly matchIntakeFileId: string
+    readonly matchFilename: string
+    readonly distance: number
+  } | null
   readonly versions: readonly VersionSummary[]
   /** Latest image-only redo request, if one exists. */
   readonly redo: RedoSummary | null

@@ -78,7 +78,7 @@ Do not point this project at the live store during an earlier phase.
 
 ## WHERE IT IS
 
-Phases 1, 2, 3A, 3B, 4 and 5 are complete, verified and deployed.
+Phases 1, 2, 3A, 3B, 4, 5 and 6 are complete, verified and deployed.
 
 ### Phase 1
 
@@ -107,7 +107,7 @@ Durable two-call enhancement:
 
 Descriptions are cached on the intake row. Exact resolved image prompts and exact model strings are stored with every image version.
 
-### Phase 3C — current amendment
+### Phase 3C — separate incomplete amendment
 
 Bounded presentation classification and category-appropriate composition using the existing describe call.
 
@@ -118,12 +118,11 @@ It must not become an unbounded creative-direction system.
 ### Remaining roadmap
 
 ```text
-6 — tracking page, duplicate detection and daily reconciliation
 7 — parallel live-store run and cutover
 ```
 
-Phase 6 is the next full phase. Phase 3C remains separately incomplete on its descriptor
-cost gate; completing Phase 5 did not silently approve a different production model.
+Phase 7 is the next full phase. Phase 3C remains separately incomplete on its descriptor
+cost gate; completing Phases 5 and 6 did not silently approve a different production model.
 
 Two items were deliberately deferred into Phase 4 because they require published intake rows, which nothing produces until the console exists:
 

@@ -219,6 +219,25 @@ from an already-written deterministic R2 object without another provider call; i
 request started but no object exists, automatic retry stops because billing is ambiguous.
 Starting another redo is an explicit operator action with a new job and version. See D52.
 
+**Phase 6 is complete.** `/tracking` is the protected operating view for failed, stalled
+and mismatched work. A failed intake needs attention immediately; an enhanced, ungrouped
+photograph becomes stalled only after 24 hours. Photograph and product counts remain
+separate and use the Asia/Kolkata day boundary. Retry, skip and duplicate-review actions
+are validated in SQL and audited.
+
+Every decodable source receives a deterministic 64-bit perceptual hash: 32×32 grayscale,
+2D DCT and median-thresholded 8×8 low-frequency coefficients. Hamming distance `<= 8`
+raises a warning only. The operator decides whether to dismiss the canonical pair or mark
+one intake duplicate; duplicate detection never blocks Publish and never decides on its
+own. See D53.
+
+Shopify reconciliation is a daily authenticated, read-only job at `03:00 Asia/Kolkata`.
+One leased run compares each Loupe-published product's existence, ACTIVE state, handle,
+title, product type, required category and `Newest` tags, description HTML, material,
+variants, weight and recorded media/order. Extra tags and changing stock are not drift.
+Runs and issues are durable and visible in Tracking; Loupe records differences but never
+repairs Shopify automatically. See D54.
+
 **Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
 
 - **Never rely on image shape defaults.** OpenAI image requests send the env-backed `size`

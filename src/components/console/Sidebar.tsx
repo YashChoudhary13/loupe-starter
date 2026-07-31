@@ -5,10 +5,7 @@ import Link from 'next/link'
 import type { Operator } from '@/lib/auth/authorize'
 
 /**
- * The nav rail from the mockup. Console is the only screen Phase 4 builds;
- * Tracking, Prompts and Reports are later phases and are shown as what they are
- * rather than as links that go nowhere — a dead nav item is worse than an
- * honest one.
+ * Shared authenticated navigation for the operator workspace.
  */
 export function Sidebar({
   operator,
@@ -17,7 +14,7 @@ export function Sidebar({
 }: {
   operator: Operator
   attentionCount: number
-  active?: 'console' | 'prompts'
+  active?: 'console' | 'tracking' | 'prompts'
 }) {
   return (
     <aside className="flex min-h-0 flex-col gap-[26px] px-1 pt-2">
@@ -48,15 +45,24 @@ export function Sidebar({
           ) : null}
         </Link>
 
-        <span
-          className="flex items-center gap-3 rounded-pill px-4 py-2.5 text-ink-soft opacity-50"
-          title="Tracking is planned for Phase 6"
-          aria-disabled="true"
+        <Link
+          href="/tracking"
+          className={`flex items-center gap-3 rounded-pill px-4 py-2.5 font-medium ${
+            active === 'tracking' ? 'bg-ink text-white' : 'text-ink-soft hover:bg-chip'
+          }`}
         >
           <AlertIcon />
           Tracking
-          <span className="ml-auto text-[9px] uppercase tracking-[0.08em]">Phase 6</span>
-        </span>
+          {attentionCount > 0 ? (
+            <span
+              className={`ml-auto grid h-[18px] min-w-[18px] place-items-center rounded-[9px] px-1 text-[10px] font-semibold ${
+                active === 'tracking' ? 'bg-white text-ink' : 'bg-amber text-white'
+              }`}
+            >
+              {attentionCount}
+            </span>
+          ) : null}
+        </Link>
         <Link
           href="/prompts"
           className={`flex items-center gap-3 rounded-pill px-4 py-2.5 font-medium ${

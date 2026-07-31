@@ -1212,3 +1212,45 @@ the operator reviews and chooses it.
 **Rejected:** doing the generation only inside a server action (a timeout loses its
 state), overwriting version 1, automatically selecting an unseen redo, and retrying an
 ambiguous paid request.
+
+---
+
+### D53 — Duplicate warnings use a 64-bit source pHash with an explicit review pair
+
+*Implementation decision, 2026-07-31.*
+
+Loupe computes a deterministic 64-bit perceptual hash from the decoded source photograph:
+32×32 greyscale pixels, a two-dimensional DCT, and the median-thresholded 8×8 low-frequency
+block. Two photographs at Hamming distance 8 or less are possible duplicates.
+
+The threshold is deliberately a warning threshold, not a correctness boundary. A
+`duplicate_reviews` row stores the canonical ordered pair and the operator’s decision,
+preventing the same dismissed pair from returning while preserving who decided and why.
+Only an ungrouped photograph may be marked duplicate; grouping or publishing wins over a
+late duplicate action. Dismissal never changes either photograph.
+
+**Rejected:** exact checksums (miss resized/recompressed copies), a learned similarity
+model (non-deterministic and paid), silently deleting one file, or blocking publish on a
+distance threshold.
+
+---
+
+### D54 — Shopify reconciliation is read-only, durable and single-run leased
+
+*Implementation decision, 2026-07-31.*
+
+The daily reconciliation reads every `published` Loupe draft from Shopify in bounded
+batches and compares identity plus catalogue fields that Loupe owns: product existence,
+status, handle, title, product type, required tags, description, material, variants and
+recorded media. Each run and mismatch is stored immutably and audited.
+
+One database lease admits a single active run. Overlapping cron or manual requests return
+the active run instead of issuing the same full-store read twice. A failed run remains
+visible with its readable error; a later daily run is a new record.
+
+Reconciliation never edits Shopify and never rewrites a draft to match observed drift.
+Repair requires a separate deliberate operator workflow after the mismatch is understood.
+
+**Rejected:** automatic “healing” (could overwrite an intentional Shopify edit), comparing
+only row counts, keeping only the latest result, and running one unbounded request per
+product.

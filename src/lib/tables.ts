@@ -13,12 +13,15 @@ export const TABLES = [
   'intake_files',
   'image_versions',
   'image_redo_jobs',
+  'duplicate_reviews',
   'product_draft_images',
   'product_draft_variants',
   'prompts',
   'events',
   'app_users',
   'sync_state',
+  'shopify_reconciliation_runs',
+  'shopify_reconciliation_issues',
 ] as const
 
 export type TableName = (typeof TABLES)[number]

@@ -133,6 +133,28 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
     }
   }
 
+  async storePerceptualHash(input: {
+    readonly intakeFileId: string
+    readonly leaseToken: string
+    readonly phash: string
+    readonly source: string
+  }): Promise<string> {
+    const { data, error } = await this.db.rpc('store_intake_phash', {
+      p_intake_file_id: input.intakeFileId,
+      p_lease_token: input.leaseToken,
+      p_phash: input.phash,
+      p_source: input.source,
+    })
+    if (error) throw dbError('Could not store the source perceptual hash.', error)
+    if (typeof data !== 'string') {
+      throw new EnhancementRepositoryError('The perceptual-hash write returned no hash.', {
+        retryable: false,
+        detail: data,
+      })
+    }
+    return data
+  }
+
   async assertLease(intakeFileId: string, leaseToken: string): Promise<boolean> {
     const { data, error } = await this.db.rpc('assert_intake_lease', {
       p_intake_file_id: intakeFileId,

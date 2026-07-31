@@ -108,6 +108,12 @@ export interface IntakeFailureResult {
 export interface EnhancementRepository {
   claim(leaseSeconds: number): Promise<EnhancementClaim | null>
   assertLease(intakeFileId: string, leaseToken: string): Promise<boolean>
+  storePerceptualHash(input: {
+    readonly intakeFileId: string
+    readonly leaseToken: string
+    readonly phash: string
+    readonly source: string
+  }): Promise<string>
   loadLivePrompts(): Promise<LivePrompts>
   storeDescription(input: {
     readonly intakeFileId: string

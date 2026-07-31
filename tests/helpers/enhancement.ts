@@ -79,6 +79,10 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
     model: string
     costUsd: number
   }> = []
+  readonly storedPerceptualHashes: Array<{
+    intakeFileId: string
+    phash: string
+  }> = []
   readonly completions: Parameters<EnhancementRepository['complete']>[0][] = []
   readonly failures: IntakeFailureInput[] = []
   readonly descriptionFailures: string[] = []
@@ -103,6 +107,16 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
 
   async assertLease(_intakeFileId: string, leaseToken: string): Promise<boolean> {
     return this.validLeases.has(leaseToken)
+  }
+
+  async storePerceptualHash(input: {
+    readonly intakeFileId: string
+    readonly leaseToken: string
+    readonly phash: string
+  }): Promise<string> {
+    if (!this.validLeases.has(input.leaseToken)) throw new Error('stale')
+    this.storedPerceptualHashes.push(input)
+    return input.phash
   }
 
   async loadLivePrompts(): Promise<LivePrompts> {

@@ -201,6 +201,14 @@ export function DraftEditor(props: DraftEditorProps) {
                         no description
                       </span>
                     ) : null}
+                    {row.photo.possibleDuplicate ? (
+                      <span
+                        className="rounded-pill bg-[#faf2e4] px-2 py-[7px] text-[10.5px] text-amber"
+                        title={`Perceptual-hash distance ${row.photo.possibleDuplicate.distance}. This warning does not block publishing.`}
+                      >
+                        possible duplicate · {row.photo.possibleDuplicate.matchFilename}
+                      </span>
+                    ) : null}
                     {row.photo.redo?.status === 'queued' ||
                     row.photo.redo?.status === 'processing' ? (
                       <span

@@ -31,6 +31,62 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-07-31 — Phase 6 complete: tracking, duplicate detection and Shopify reconciliation
+
+**Goal this session:** finish Phase 6, prove every operating path against the deployed test
+environment, deploy it and remove all acceptance data.
+
+**Built:**
+
+- `/tracking` → protected attention, progress and all-work views with truthful photo/product
+  counts, age/status/error/search filters, plain reasons, detail history and audited actions.
+- Enhancement and Console → deterministic 64-bit perceptual hashes, near-copy warnings and
+  durable operator review decisions that never block publishing.
+- Shopify reconciliation → one leased, read-only run with durable field-level issues, a
+  signed-in manual action and an authenticated daily `03:00 Asia/Kolkata` cron.
+- Migration `20260731100000_phase_6_tracking.sql` → Phase 6 tables, enums and service-role
+  RPCs; D53 and D54 record the duplicate and reconciliation contracts.
+
+**Verified:**
+
+- `427 passed` across 41 files; typecheck, lint, production build, `verify:isolation`, and
+  linked Supabase database lint passed.
+- Live duplicate fixtures produced pHash distance `2`; the newer image was warned in
+  Tracking and Console while Publish remained available. Browser dismissal stored
+  `dismissed` for the canonical pair with actor `lakhira.studio@gmail.com`.
+- Live product `NK190` / `gid://shopify/Product/8033774403667` first reconciled clean,
+  produced one durable issue after a deliberate expected-title mismatch, and returned
+  clean after restoration. Signed-in manual run
+  `d8d59a64-4b88-4a6c-93b5-82f8eb1659a4` completed `1/1` with zero issues.
+- Production browser review proved the attention badge, photo/product labels, failed,
+  stalled and duplicate rows, filters, keyboard search/clear, details, manual Shopify check,
+  duplicate warning and the working Ungrouped/Listed console views. Evidence:
+  `.artifacts/phase6-acceptance/tracking.png`, `tracking-details.png` and
+  `console-duplicate-warning.png`.
+- Five cron jobs are active; `loupe-shopify-reconcile` runs at `30 21 * * *`.
+  Deployment `dpl_FXFDSY958S7MAaPjXhg8ik4mqqLr` is Ready at
+  `https://qimati-loupe.vercel.app`.
+- Cleanup removed all four intake fixtures, the draft, reconciliation runs, six R2 objects
+  and the Shopify product. Read-back returned `0` intakes, `0` drafts, `0` acceptance runs
+  and a null Shopify node.
+
+**Not finished / known broken:**
+
+- Phase 6 has no remaining criteria. Phase 3C remains separately incomplete on its
+  descriptor cost gate.
+- Phase 7 live-store parallel run and cutover has not started. Loupe still points only at
+  `qimti.myshopify.com`.
+
+**Surprises:** browser acceptance exposed inconsistent sidebar attention badges outside
+Tracking; Console and Prompts now load the same real count. Cleanup exposed two foreign-key
+ordering assumptions and is now idempotent and dependency-safe.
+
+**Next session should start with:** define the Phase 7 parallel-run and cutover plan, then
+settle the remaining live-store category/tag, stock and currency checks before changing any
+Shopify credentials.
+
+---
+
 ## 2026-07-30 — Phase 5 complete: prompt management and durable image redo
 
 **Goal this session:** finish every remaining Phase 5 criterion, prove the real paid path

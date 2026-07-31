@@ -240,6 +240,49 @@ describe('server-only functions are not callable without the service role', () =
       p_retryable: false,
       p_source: 'anonymous',
     }],
+    ['store_intake_phash', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+      p_phash: '0000000000000000',
+      p_source: 'anonymous',
+    }],
+    ['retry_intake_file', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_actor: 'anonymous',
+    }],
+    ['skip_intake_file', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_actor: 'anonymous',
+    }],
+    ['review_duplicate_pair', {
+      p_left_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_right_intake_file_id: '00000000-0000-0000-0000-000000000001',
+      p_decision: 'dismissed',
+      p_duplicate_intake_file_id: null,
+      p_distance: 0,
+      p_actor: 'anonymous',
+    }],
+    ['claim_shopify_reconciliation', {
+      p_actor: 'anonymous',
+      p_lease_seconds: 300,
+    }],
+    ['assert_shopify_reconciliation_lease', {
+      p_run_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+    }],
+    ['complete_shopify_reconciliation', {
+      p_run_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+      p_total_products: 0,
+      p_issues: [],
+      p_source: 'anonymous',
+    }],
+    ['fail_shopify_reconciliation', {
+      p_run_id: '00000000-0000-0000-0000-000000000000',
+      p_lease_token: '00000000-0000-0000-0000-000000000000',
+      p_error: 'anonymous',
+      p_source: 'anonymous',
+    }],
   ]
 
   for (const [fn, body] of phase3Functions) {

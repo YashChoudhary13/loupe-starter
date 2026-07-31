@@ -45,6 +45,13 @@ const JOBS: readonly CronJob[] = [
     path: '/api/cron/enhance',
     timeoutMilliseconds: 285_000,
   },
+  {
+    // 03:00 Asia/Kolkata. pg_cron schedules are UTC.
+    name: 'loupe-shopify-reconcile',
+    schedule: '30 21 * * *',
+    path: '/api/cron/shopify-reconcile',
+    timeoutMilliseconds: 285_000,
+  },
 ]
 
 function required(key: string): string {
