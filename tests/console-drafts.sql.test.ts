@@ -595,9 +595,28 @@ describe('the invariants the console must not be able to route around', () => {
       p_actor: ACTOR,
     })
 
-    const { error } = await db.rpc('reserve_draft_identity', { p_draft_id: draftId, p_actor: ACTOR })
-    expect(error?.message).toMatch(/no confirmed Shopify tag/)
-    expect(await readCounter('NP')).toBe(before)
+    // Nose Pins has a confirmed tag since 2026-08-01, so this creates the
+    // unconfirmed condition itself. D23's guard has to hold whether or not a
+    // real category happens to be missing a tag today.
+    const { data: saved } = await db
+      .from('categories')
+      .select('shopify_tag')
+      .eq('id', noseCategoryId)
+      .single<{ shopify_tag: string | null }>()
+    await db.from('categories').update({ shopify_tag: null }).eq('id', noseCategoryId)
+    try {
+      const { error } = await db.rpc('reserve_draft_identity', {
+        p_draft_id: draftId,
+        p_actor: ACTOR,
+      })
+      expect(error?.message).toMatch(/no confirmed Shopify tag/)
+      expect(await readCounter('NP')).toBe(before)
+    } finally {
+      await db
+        .from('categories')
+        .update({ shopify_tag: saved?.shopify_tag ?? 'NP' })
+        .eq('id', noseCategoryId)
+    }
   })
 
   it('marks the intake rows published with the draft, in one transaction', async () => {

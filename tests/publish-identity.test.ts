@@ -356,16 +356,24 @@ describe('reserve_draft_identity (deployed function)', () => {
   })
 
   it('refuses a category whose Shopify tag is unconfirmed, and burns no number', async () => {
+    // This used to rely on Nose Pins having an unconfirmed tag. It has one now
+    // (read off the live store, 2026-08-01), and D23's guard must stay proven
+    // whether or not any real category happens to be missing a tag — so the
+    // test creates the condition itself and puts it back.
     const np = categories.find((c) => c.sku_prefix === 'NP')
     expect(np, 'the NP / Nose Pins category should exist after Phase 2').toBeTruthy()
-    expect(np!.shopify_tag).toBeNull()
+    const restoreTag = np!.shopify_tag
 
     const before = await readCounter('NP')
-    const draftId = await createDraft({ categoryId: np!.id, price_paise: 20_000 })
-
-    const { error } = await reserve(draftId)
-    expect(error?.message).toMatch(/no confirmed Shopify tag/i)
-    expect(await readCounter('NP')).toBe(before)
+    await db.from('categories').update({ shopify_tag: null }).eq('id', np!.id)
+    try {
+      const draftId = await createDraft({ categoryId: np!.id, price_paise: 20_000 })
+      const { error } = await reserve(draftId)
+      expect(error?.message).toMatch(/no confirmed Shopify tag/i)
+      expect(await readCounter('NP')).toBe(before)
+    } finally {
+      await db.from('categories').update({ shopify_tag: restoreTag }).eq('id', np!.id)
+    }
   })
 })
 

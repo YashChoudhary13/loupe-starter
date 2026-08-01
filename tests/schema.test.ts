@@ -354,9 +354,12 @@ describe('seed data', () => {
     // Tags are inconsistently cased in the live store. Collections are tag-driven,
     // so "tidying" one silently drops the product out of its collection.
     //
-    // Nose Pins (Phase 2) is the odd one out: its prefix and title pattern are
-    // confirmed, its TAG IS NOT, so the tag is NULL and publish refuses the
-    // category rather than inventing one.
+    // Nose Pins' tag was NULL from Phase 2 until 2026-08-01, when all 20 live
+    // Nose Pins were read and found to carry exactly one tag: NP.
+    //
+    // Watches, Hand Chains, Indian Jewellery and Hair Accessories were added
+    // the same day from the live catalogue, each with a tag that is unanimous
+    // across every live product of that prefix.
     expect(data).toEqual([
       { name: 'Necklaces', sku_prefix: 'NK', title_pattern: 'Necklace {n}', shopify_tag: 'Necklace' },
       { name: 'Earrings', sku_prefix: 'ER', title_pattern: 'Earrings {n}', shopify_tag: 'earrings' },
@@ -364,17 +367,23 @@ describe('seed data', () => {
       { name: 'Chain Bracelets', sku_prefix: 'CB', title_pattern: 'Chain Bracelet {n}', shopify_tag: 'cb' },
       { name: 'Rings', sku_prefix: 'RS', title_pattern: 'Rings {n}', shopify_tag: 'Rings' },
       { name: 'Anklets', sku_prefix: 'AK', title_pattern: 'Anklets {n} (Single Piece)', shopify_tag: 'anklets' },
-      { name: 'Nose Pins', sku_prefix: 'NP', title_pattern: 'Nose Pin {n}', shopify_tag: null },
+      { name: 'Nose Pins', sku_prefix: 'NP', title_pattern: 'Nose Pin {n}', shopify_tag: 'NP' },
+      { name: 'Watches', sku_prefix: 'WH', title_pattern: 'Watch {n}', shopify_tag: 'watch' },
+      { name: 'Hand Chains', sku_prefix: 'HC', title_pattern: 'Hand Chain {n}', shopify_tag: 'Hand Chain' },
+      { name: 'Indian Jewellery', sku_prefix: 'INJ', title_pattern: 'Indian Pendant Sets {n}', shopify_tag: 'INJ' },
+      { name: 'Hair Accessories', sku_prefix: 'HA', title_pattern: 'Hairband {n}', shopify_tag: 'HA' },
     ])
   })
 
-  it('invents no prefix for the seven still-TBD categories', async () => {
-    // Watches, Hand Chains, Jewellery Box, Bags, Hair Accessories, Indian
-    // Jewellery and Brass have no confirmed prefix. An invented one starts a
-    // sequence that has to be unpicked later.
+  it('invents no prefix for the categories still unresolved on the live store', async () => {
+    // The live store also uses S, BG, JB, CR, ST, FL, ND, KC, AS and BR. Their
+    // tags are NOT unanimous (Tote Bag tagged "AS", Clutcher tagged "HA") or
+    // the sample is a handful of products, so none is added. An invented tag
+    // publishes successfully and drops the product out of its collection
+    // silently (D23) — the worst failure this system has.
     const { data } = await serviceClient().from('categories').select('sku_prefix')
     expect((data as { sku_prefix: string }[]).map((c) => c.sku_prefix).sort()).toEqual([
-      'AK', 'BK', 'CB', 'ER', 'NK', 'NP', 'RS',
+      'AK', 'BK', 'CB', 'ER', 'HA', 'HC', 'INJ', 'NK', 'NP', 'RS', 'WH',
     ])
   })
 
