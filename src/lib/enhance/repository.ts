@@ -29,6 +29,12 @@ export interface LivePrompt {
   readonly body: string
   /** Provider-qualified OpenRouter model tied to this immutable prompt version. */
   readonly model: string
+  /**
+   * Image prompts only. False for a preset that stages the product itself
+   * (worn on a hand, bag standing), which therefore carries no
+   * {{COMPOSITION_DETAIL}} token.
+   */
+  readonly usesComposition: boolean
 }
 
 export interface LivePrompts {

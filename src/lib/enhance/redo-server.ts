@@ -19,6 +19,7 @@ interface IntakeRedoRow {
 }
 
 interface ImagePromptRow {
+  uses_composition?: boolean | null
   id: string
   body: string
   model: string
@@ -63,7 +64,7 @@ async function resolveRedo(intakeFileId: string) {
       .maybeSingle<IntakeRedoRow>(),
     db
       .from('prompts')
-      .select('id, body, model')
+      .select('id, body, model, uses_composition')
       .eq('kind', 'image')
       .eq('is_default', true)
       .is('archived_at', null)
@@ -88,6 +89,7 @@ async function resolveRedo(intakeFileId: string) {
     config.injectDescription,
     file.description_missing_at !== null,
     presentationClass,
+    promptResult.data.uses_composition ?? true,
   )
 
   return {

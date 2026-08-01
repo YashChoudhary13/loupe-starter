@@ -23,6 +23,7 @@ export const TEST_PROMPTS: LivePrompts = {
     id: 'prompt-describe',
     name: 'describe',
     kind: 'describe',
+    usesComposition: true,
     model: 'openai/gpt-5.6-sol',
     body: 'Describe only the jewellery.',
   },
@@ -30,6 +31,7 @@ export const TEST_PROMPTS: LivePrompts = {
     id: 'prompt-image',
     name: 'image',
     kind: 'image',
+    usesComposition: true,
     model: 'openai/gpt-image-2',
     body: `A hero image.
 

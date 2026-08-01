@@ -12,7 +12,8 @@ export interface ResolvedImagePrompt {
   readonly text: string
   readonly descriptionInjected: boolean
   readonly descriptionMissing: boolean
-  readonly compositionDetail: string
+  /** Null when the prompt staged the product itself (no class was injected). */
+  readonly compositionDetail: string | null
 }
 
 function tokenCount(template: string, token: string): number {
@@ -42,6 +43,14 @@ export function resolveImagePrompt(
   injectDescription: boolean,
   descriptionMissing: boolean,
   presentationClass: PresentationClass,
+  /**
+   * False for a preset that stages the product itself — "worn on a hand", "bag
+   * standing upright". Those contradict the describer's composition classes,
+   * which all describe a piece laid out on a surface ("lay the piece flat in a
+   * relaxed open arc"). Sending both leaves the image model to resolve a
+   * contradiction, which it does differently every time.
+   */
+  usesComposition = true,
 ): ResolvedImagePrompt {
   if (
     tokenCount(template, PRODUCT_DESCRIPTION_TOKEN) !== 1 ||
@@ -53,9 +62,12 @@ export function resolveImagePrompt(
       )}`,
     )
   }
-  if (tokenCount(template, COMPOSITION_DETAIL_TOKEN) !== 1) {
+  const expectedCompositionTokens = usesComposition ? 1 : 0
+  if (tokenCount(template, COMPOSITION_DETAIL_TOKEN) !== expectedCompositionTokens) {
     throw new Error(
-      `The live image prompt must contain exactly one ${COMPOSITION_DETAIL_TOKEN} token.`,
+      usesComposition
+        ? `The live image prompt must contain exactly one ${COMPOSITION_DETAIL_TOKEN} token.`
+        : `This prompt stages the product itself, so it must NOT contain ${COMPOSITION_DETAIL_TOKEN}.`,
     )
   }
 
@@ -78,8 +90,12 @@ export function resolveImagePrompt(
     }
   }
 
-  const compositionDetail = compositionDetailFor(presentationClass)
-  text = text.replace(COMPOSITION_DETAIL_TOKEN, compositionDetail)
+  // A self-staging preset records null rather than a class it did not use, so
+  // image_versions never claims a composition the model was not given.
+  const compositionDetail = usesComposition ? compositionDetailFor(presentationClass) : null
+  if (compositionDetail !== null) {
+    text = text.replace(COMPOSITION_DETAIL_TOKEN, compositionDetail)
+  }
   assertFullyResolved(text)
 
   return {

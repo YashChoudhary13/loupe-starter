@@ -141,3 +141,44 @@ describe('Phase 3C production prompt resolution', () => {
     ).toThrow(/unresolved template tokens.*FUTURE_TOKEN/)
   })
 })
+
+/**
+ * Self-staging presets (hand chain worn on a hand, bag standing upright) fix the
+ * staging themselves. The describer's composition classes all describe a piece
+ * lying on a surface, so injecting one would send the image model two
+ * contradictory instructions — and it would resolve that differently every time.
+ */
+describe('presets that stage the product themselves', () => {
+  const selfStaging = PHASE_3C_IMAGE_TEMPLATE.replace(
+    '{{COMPOSITION_DETAIL}}',
+    'Worn on a relaxed hand.',
+  )
+
+  it('resolves without injecting any composition class', () => {
+    const resolved = resolveImagePrompt(
+      selfStaging,
+      TEST_DESCRIPTION,
+      true,
+      false,
+      'flat-arc',
+      false,
+    )
+    expect(resolved.compositionDetail).toBeNull()
+    expect(resolved.text).toContain('Worn on a relaxed hand.')
+    // The flat-arc paragraph must be nowhere near it.
+    expect(resolved.text).not.toContain('lay the piece flat')
+    expect(resolved.text).not.toContain('{{')
+  })
+
+  it('refuses a self-staging prompt that still carries the token', () => {
+    expect(() =>
+      resolveImagePrompt(PHASE_3C_IMAGE_TEMPLATE, TEST_DESCRIPTION, true, false, 'flat-arc', false),
+    ).toThrow(/must NOT contain/i)
+  })
+
+  it('still refuses a composition-using prompt that is missing the token', () => {
+    expect(() =>
+      resolveImagePrompt(selfStaging, TEST_DESCRIPTION, true, false, 'flat-arc', true),
+    ).toThrow(/exactly one/i)
+  })
+})

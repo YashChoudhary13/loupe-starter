@@ -381,6 +381,7 @@ async function processClaim(
       config.injectDescription,
       descriptionMissing,
       presentationClass,
+      prompts.image.usesComposition,
     )
     descriptionInjected = resolvedPrompt.descriptionInjected
     descriptionMissing = resolvedPrompt.descriptionMissing

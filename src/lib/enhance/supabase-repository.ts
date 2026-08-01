@@ -173,13 +173,30 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
   async loadLivePrompts(): Promise<LivePrompts> {
     const { data, error } = await this.db
       .from('prompts')
-      .select('id, name, kind, body, model')
+      .select('id, name, kind, body, model, uses_composition')
       .eq('is_default', true)
       .is('archived_at', null)
       .in('kind', ['describe', 'image'])
     if (error) throw dbError('Could not load the live enhancement prompts.', error)
 
-    const rows = (data ?? []) as LivePrompt[]
+    // Mapped, not cast: the column is uses_composition and the domain type is
+    // usesComposition, so a straight cast would silently leave it undefined —
+    // which reads as falsy and would strip the composition from every prompt.
+    const rows: LivePrompt[] = ((data ?? []) as {
+      id: string
+      name: string
+      kind: LivePrompt['kind']
+      body: string
+      model: string
+      uses_composition: boolean | null
+    }[]).map((row) => ({
+      id: row.id,
+      name: row.name,
+      kind: row.kind,
+      body: row.body,
+      model: row.model,
+      usesComposition: row.uses_composition ?? true,
+    }))
     const describe = rows.filter((row) => row.kind === 'describe')
     const image = rows.filter((row) => row.kind === 'image')
     if (describe.length !== 1 || image.length !== 1) {
