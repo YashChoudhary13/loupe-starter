@@ -2,7 +2,7 @@
   "name": "loupe",
   "version": "0.1.0",
   "private": true,
-  "description": "Loupe — Qimati listing console. Phase 2: the Shopify write path.",
+  "description": "Loupe \u2014 Qimati listing console. Phase 2: the Shopify write path.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -14,6 +14,8 @@
     "cron:configure": "tsx scripts/configure-cron.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:counters": "tsx scripts/seed-counters.ts",
+    "carry:export": "tsx scripts/carry-over.ts export",
+    "carry:apply": "tsx scripts/carry-over.ts apply",
     "test": "vitest run",
     "test:watch": "vitest",
     "shopify:introspect": "tsx scripts/shopify-introspect.ts",
