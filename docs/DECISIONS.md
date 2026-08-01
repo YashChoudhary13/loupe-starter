@@ -1706,3 +1706,30 @@ is worse than no message: it makes a fixed thing look broken.
 Every banner now carries **Dismiss**, a plain link to the clean URL. No client JavaScript, so
 it cannot fail to clear. **Rejected:** stripping the parameter with `history.replaceState`
 after mount — a real error would vanish before it was read.
+
+---
+
+### D67 — Tracking shows a thumbnail for drafts and Shopify mismatches too
+
+*Reported from the live console, 2026-08-01.*
+
+Only intake rows had a picture. `thumb: null` was hardcoded on draft rows, on Shopify
+mismatch rows and on the failed-run row, so Tracking rendered an empty grey square for every
+product — the rows an operator is most likely to be triaging, since a draft is the unit of
+work they actually recognise.
+
+A draft's cover is **image position 1** — the operator's own order, and the one Shopify shows
+first. Mismatch rows resolve through the same map; their drafts are *published*, so they are
+not in the draft query and their ids are collected separately.
+
+**Purged versions never produce a URL.** Retention deletes the R2 object seven days after
+publish and deliberately keeps the row for the audit trail (D5), so `thumb_key` still reads
+fine and still presigns fine — and then 404s in the browser. That would surface a week after
+the work, on published products only. A blank square is honest; a broken image looks like a
+bug in the console. The rule now also covers intake rows, which had the same latent hole.
+
+The two selection rules were pulled into `src/lib/tracking/thumbs.ts` purely so they could be
+tested — the read model is `server-only` and cannot be imported from vitest.
+
+**Rejected:** falling through to image 2 when the cover is purged. Two different products
+would then show the same photograph and look like a duplicate.

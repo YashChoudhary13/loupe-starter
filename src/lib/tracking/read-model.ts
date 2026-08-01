@@ -6,6 +6,7 @@ import { loadDuplicateCandidates } from '@/lib/duplicates/read-model'
 import { supabaseServer } from '@/lib/supabase/server'
 
 import { classifyDraft, classifyIntake } from './classify'
+import { draftCoverKeys, preferredThumbKey } from './thumbs'
 import type {
   ReconciliationSummary,
   TrackingEvent,
@@ -53,8 +54,17 @@ interface VersionRow {
   version_no: number
   is_selected: boolean
   thumb_key: string | null
+  /** Set once retention has deleted the R2 object. The key still reads. */
+  purged_at: string | null
   /** numeric(12,6) arrives from PostgREST as a string. */
   cost_usd: string | number | null
+}
+
+/** A draft's cover photograph, via the operator's own image order. */
+interface DraftImageRow {
+  product_draft_id: string
+  position: number
+  image_versions: { thumb_key: string | null; purged_at: string | null } | null
 }
 
 interface ReconciliationRunRow {
@@ -109,10 +119,15 @@ function eventMap(rows: readonly EventRow[]): Map<string, TrackingEvent[]> {
   return map
 }
 
-function preferredThumb(rows: readonly VersionRow[]): VersionRow | undefined {
-  return [...rows].sort(
-    (a, b) => Number(b.is_selected) - Number(a.is_selected) || b.version_no - a.version_no,
-  )[0]
+function preferredThumb(rows: readonly VersionRow[]): string | null {
+  return preferredThumbKey(
+    rows.map((row) => ({
+      versionNo: row.version_no,
+      isSelected: row.is_selected,
+      thumbKey: row.thumb_key,
+      purgedAt: row.purged_at,
+    })),
+  )
 }
 
 function reconciliationSummary(row: ReconciliationRunRow | undefined): ReconciliationSummary | null {
@@ -227,7 +242,12 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     ...drafts.map((row) => row.id),
     ...runs.map((row) => row.id),
   ]
-  const [eventsResult, versionsResult] = await Promise.all([
+  // Drafts on screen, plus the drafts a Shopify mismatch points at — those are
+  // published, so they are not in the draft query above.
+  const draftIdsNeedingCover = [
+    ...new Set([...drafts.map((row) => row.id), ...issues.map((issue) => issue.product_draft_id)]),
+  ]
+  const [eventsResult, versionsResult, draftImagesResult] = await Promise.all([
     entityIds.length
       ? db
           .from('events')
@@ -239,12 +259,22 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     intakes.length
       ? db
           .from('image_versions')
-          .select('intake_file_id, version_no, is_selected, thumb_key, cost_usd')
+          .select('intake_file_id, version_no, is_selected, thumb_key, purged_at, cost_usd')
           .in('intake_file_id', intakes.map((row) => row.id))
+      : Promise.resolve({ data: [], error: null }),
+    draftIdsNeedingCover.length
+      ? db
+          .from('product_draft_images')
+          .select('product_draft_id, position, image_versions ( thumb_key, purged_at )')
+          .in('product_draft_id', draftIdsNeedingCover)
+          .order('position', { ascending: true })
       : Promise.resolve({ data: [], error: null }),
   ])
   if (eventsResult.error) throw new Error(`tracking events: ${eventsResult.error.message}`)
   if (versionsResult.error) throw new Error(`tracking thumbnails: ${versionsResult.error.message}`)
+  if (draftImagesResult.error) {
+    throw new Error(`tracking draft covers: ${draftImagesResult.error.message}`)
+  }
 
   const events = eventMap((eventsResult.data ?? []) as EventRow[])
   const versionsByIntake = new Map<string, VersionRow[]>()
@@ -256,10 +286,20 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
   const thumbKeyByIntake = new Map(
     intakes.map((intake) => [
       intake.id,
-      preferredThumb(versionsByIntake.get(intake.id) ?? [])?.thumb_key ?? null,
+      preferredThumb(versionsByIntake.get(intake.id) ?? []),
     ]),
   )
-  const signed = await signKeys([...thumbKeyByIntake.values()])
+
+  const thumbKeyByDraft = draftCoverKeys(
+    ((draftImagesResult.data ?? []) as unknown as DraftImageRow[]).map((row) => ({
+      draftId: row.product_draft_id,
+      position: row.position,
+      thumbKey: row.image_versions?.thumb_key ?? null,
+      purgedAt: row.image_versions?.purged_at ?? null,
+    })),
+  )
+
+  const signed = await signKeys([...thumbKeyByIntake.values(), ...thumbKeyByDraft.values()])
 
   /**
    * PostgREST returns numeric(12,6) as a string to avoid float rounding. Parse
@@ -372,7 +412,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       errorCode: row.status === 'failed' ? 'publish_failed' : null,
       errorClass: row.status === 'failed' ? 'operator' : null,
       rawDetail: row.error?.slice(0, 2_000) ?? null,
-      thumb: null,
+      thumb: signed.get(thumbKeyByDraft.get(row.id) ?? '') ?? null,
       events: events.get(row.id) ?? [],
       canRetry: false,
       canSkip: false,
@@ -399,7 +439,9 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     errorCode: issue.code,
     errorClass: 'reconciliation',
     rawDetail: safeDetail({ field: issue.field, expected: issue.expected, actual: issue.actual }),
-    thumb: null,
+    // Published seven days or more ago and the R2 objects are gone (D5) — the
+    // row keeps its audit trail and the square stays blank.
+    thumb: signed.get(thumbKeyByDraft.get(issue.product_draft_id) ?? '') ?? null,
     events: events.get(issue.run_id) ?? [],
     canRetry: false,
     canSkip: false,
