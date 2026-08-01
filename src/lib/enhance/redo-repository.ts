@@ -35,6 +35,8 @@ export interface RedoRepository {
     readonly intakeFileId: string
     readonly promptId: string
     readonly promptText: string
+    /** Set when the operator edited this redo's prompt by hand. Audit only. */
+    readonly promptOverride?: string | null
     readonly descriptionInjected: boolean
     readonly descriptionMissing: boolean
     readonly actor: string

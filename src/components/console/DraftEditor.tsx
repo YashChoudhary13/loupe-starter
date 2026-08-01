@@ -77,7 +77,7 @@ export interface DraftEditorProps {
   readonly onDetach: ((intakeFileId: string) => void) | null
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
-  readonly onRedo: (intakeFileId: string) => void
+  readonly onRedo: (intakeFileId: string, filename: string) => void
   readonly children?: React.ReactNode
 }
 
@@ -277,7 +277,7 @@ export function DraftEditor(props: DraftEditorProps) {
                     <button
                       type="button"
                       disabled={readOnly || busy !== null}
-                      onClick={() => onRedo(row.image.intakeFileId)}
+                      onClick={() => onRedo(row.image.intakeFileId, row.photo.filename)}
                       className="rounded-pill bg-surface px-2.5 py-[7px] text-[10.5px] font-medium text-ink-soft transition-colors hover:bg-white disabled:opacity-40"
                     >
                       {busy === `redo:${row.image.intakeFileId}` ? 'Redoing…' : 'Redo image'}

@@ -90,22 +90,25 @@ export function classifyIntake(
     }
   }
 
-  if (row.status === 'published' || row.status === 'skipped' || row.status === 'duplicate') {
+  if (row.status === 'skipped') {
+    return {
+      group: 'progress',
+      tone: 'running',
+      statusLabel: 'On hold',
+      reason:
+        'You put this photograph aside. Resume it to send it back for enhancement, or discard it to remove it from Loupe and take it out of the RAW folder.',
+    }
+  }
+
+  if (row.status === 'published' || row.status === 'duplicate') {
     return {
       group: 'complete',
       tone: 'complete',
-      statusLabel:
-        row.status === 'published'
-          ? 'Published'
-          : row.status === 'duplicate'
-            ? 'Duplicate'
-            : 'Skipped',
+      statusLabel: row.status === 'published' ? 'Published' : 'Duplicate',
       reason:
         row.status === 'published'
           ? 'Published to Shopify.'
-          : row.status === 'duplicate'
-            ? 'An operator marked this photograph as a duplicate.'
-            : 'An operator deliberately removed this photograph from the queue.',
+          : 'An operator marked this photograph as a duplicate.',
     }
   }
 

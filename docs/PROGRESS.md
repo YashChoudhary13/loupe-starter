@@ -31,6 +31,66 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-01 — R2 retention (D62), redo prompt review (D63), on-hold work (D64)
+
+**Goal this session:** three owner requests — purge R2 seven days after a product reaches
+Shopify, review/edit the prompt before paying for a redo, and turn terminal "skipped" into
+resumable/discardable work.
+
+**Built:**
+
+- **D62 retention.** Daily `loupe-retention` cron at 03:30 IST purges a photograph's
+  original, versions and thumbnails 7 days after its product reached Shopify by either route
+  (published or the D60 draft stage). `shopify_first_sent_at` is stamped by a trigger on the
+  null→non-null transition of `shopify_product_id`, so it catches every route and cannot
+  drift from the two functions that set it. `image_versions` ROWS are kept forever — they
+  hold the model and exact prompt behind every image (D5) — with a new `purged_at` marking
+  that the bytes are gone.
+- **D63 redo prompt review.** "Redo image" now opens the exact resolved prompt, editable for
+  that product only, before the ~$0.07 call. An unresolved `{{TOKEN}}` is refused rather than
+  sent as literal text. Resolution is shared with the queue path so preview and reality
+  cannot diverge.
+- **D64 on hold.** Skipped work is reclassified as **On hold** in the in-progress group with
+  **Resume** (fresh retry budget — a hold is a decision, not a failure) and **Discard**
+  (Drive file out of RAW → R2 objects → row, in that order, each step idempotent).
+
+**Verified:** `441 passed` across 41 files (+3 on-hold SQL regressions), typecheck, lint,
+build clean. Six cron jobs active including `loupe-retention` at `0 22 * * *`. Deployed and
+aliased; `/health` 200 and `POST /api/cron/retention` unauthenticated returns **401** — the
+endpoint that deletes files refuses anonymous callers.
+
+Retention proved against the live database rather than assumed empty:
+
+```text
+retention_candidates(7)  → 0   (products reached Shopify yesterday, not 7 days ago)
+retention_candidates(0)  → 7   (the same query finds all 7 versions)
+```
+
+The zero is the age gate doing its job, not a query that matches nothing.
+
+**Owner setup completed mid-session:** `DRIVE_DISCARDED_FOLDER_ID` was created and set. It
+was local-only, so production would have silently fallen back to `/Processed`; it is now set
+on Vercel production and documented in `.env.local.example`.
+
+**Not finished / known broken:**
+
+- **None of the three has been exercised end-to-end by a human.** Retention has no rows old
+  enough to purge yet (first real purge ~2026-08-07). Redo review and Resume/Discard are
+  proven at SQL and unit level only — no real redo has been run through the dialog and no
+  real file has been discarded out of RAW.
+- `enqueue_image_redo()` predates `prompt_override`, so the override marker is recorded by a
+  follow-up UPDATE rather than inside the RPC transaction. What the model receives is correct
+  either way; only the "a human edited this" flag could be lost, and that is logged.
+
+**Surprises:** the on-hold tests initially failed with "current transaction is aborted" —
+that suite shares one connection inside a rolled-back transaction, so a deliberately-raised
+error poisons everything after it. Expected failures now run inside savepoints.
+
+**Next session should start with:** run a real redo through the review dialog, and discard a
+real held photograph, confirming the file actually leaves RAW and lands in /Discarded.
+
+---
+
 ## 2026-07-31 — Shopify draft stage (D60), navigation caching (D61), Enhanced label, cost in Tracking
 
 **Goal this session:** four owner requests — caching so section switching feels smooth, Save

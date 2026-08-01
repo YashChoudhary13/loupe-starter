@@ -19,6 +19,8 @@ function row(overrides: Partial<TrackingRow> = {}): TrackingRow {
     errorCode: 'rate_limited',
     errorClass: 'retryable',
     costUsd: null,
+    canResume: false,
+    canDiscard: false,
     rawDetail: null,
     thumb: null,
     events: [],

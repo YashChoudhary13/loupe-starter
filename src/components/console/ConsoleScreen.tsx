@@ -11,6 +11,7 @@ import {
   previewPhotosAction,
   publishDraftAction,
   redoImageAction,
+  redoPromptPreviewAction,
   refreshQueueAction,
   saveDraftAction,
   type ActionError,
@@ -38,6 +39,7 @@ import type { PublishBlock } from '@/lib/publish/validate'
 import { DraftEditor, type EditorForm } from './DraftEditor'
 import { Card, Notice, StatPill } from './primitives'
 import { QueueGrid } from './QueueGrid'
+import { RedoPromptDialog } from './RedoPromptDialog'
 import { Sidebar } from './Sidebar'
 
 /**
@@ -180,6 +182,13 @@ export function ConsoleScreen({
   const [queue, setQueue] = useState(initialQueue)
   const [activity, setActivity] = useState(initialQueue.pipelineActivity)
   const [toasts, setToasts] = useState<readonly Toast[]>([])
+  /** The redo awaiting prompt review. Null when no dialog is open. */
+  const [redoReview, setRedoReview] = useState<{
+    intakeFileId: string
+    filename: string
+    promptText: string | null
+    model: string | null
+  } | null>(null)
   const [bundle, setBundle] = useState<DraftBundle | null>(initialBundle)
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<readonly string[]>([])
   // Keyed by the selection it belongs to, so a stale preview is never rendered
@@ -597,11 +606,38 @@ export function ConsoleScreen({
     }))
   }, [])
 
+  /**
+   * Redo is a paid call. Show the exact prompt first and let the operator edit
+   * it for this product before anything is spent.
+   */
+  const openRedoReview = useCallback(
+    async (intakeFileId: string, filename?: string) => {
+      setRedoReview({
+        intakeFileId,
+        filename: filename ?? 'this photograph',
+        promptText: null,
+        model: null,
+      })
+      const result = await redoPromptPreviewAction(intakeFileId)
+      if (!result.ok) {
+        setRedoReview(null)
+        handleResult(result)
+        return
+      }
+      setRedoReview((current) =>
+        current && current.intakeFileId === intakeFileId
+          ? { ...current, promptText: result.data.promptText, model: result.data.model }
+          : current,
+      )
+    },
+    [handleResult],
+  )
+
   const redoImage = useCallback(
-    async (intakeFileId: string) => {
+    async (intakeFileId: string, promptOverride: string | null) => {
       setBusy(`redo:${intakeFileId}`)
       setLastPublish(null)
-      const data = handleResult(await redoImageAction(intakeFileId))
+      const data = handleResult(await redoImageAction(intakeFileId, promptOverride))
       if (data) {
         setPreview((current) => ({
           ...current,
@@ -674,6 +710,20 @@ export function ConsoleScreen({
             </div>
           ))}
         </div>
+      ) : null}
+
+      {redoReview ? (
+        <RedoPromptDialog
+          filename={redoReview.filename}
+          promptText={redoReview.promptText}
+          model={redoReview.model}
+          busy={busy === `redo:${redoReview.intakeFileId}`}
+          onCancel={() => setRedoReview(null)}
+          onContinue={(promptOverride) => {
+            const target = redoReview.intakeFileId
+            void redoImage(target, promptOverride).then(() => setRedoReview(null))
+          }}
+        />
       ) : null}
 
       <Sidebar operator={operator} attentionCount={trackingAttentionCount} />
@@ -812,7 +862,7 @@ export function ConsoleScreen({
               onDetach={bundle && !listedReadOnly ? (id) => void handleDetach(id) : null}
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
-              onRedo={(intakeFileId) => void redoImage(intakeFileId)}
+              onRedo={(intakeFileId, filename) => void openRedoReview(intakeFileId, filename)}
             >
               <div className="mt-3 flex flex-col gap-2">
                 {error ? (

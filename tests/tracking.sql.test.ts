@@ -203,3 +203,98 @@ describe('Phase 6 tracking transitions', () => {
     ).rejects.toMatchObject({ code: '55000' })
   })
 })
+
+/**
+ * Held work is the operator's to pick back up or throw away. Both transitions
+ * are validated in SQL so nothing reaching the database another way can route
+ * around them (D18).
+ */
+/**
+ * Runs a statement that is EXPECTED to raise, without poisoning the surrounding
+ * transaction. These tests share one connection inside a rolled-back
+ * transaction, and a raised error aborts it — every later statement would fail
+ * with "current transaction is aborted" and the real assertion would never run.
+ */
+async function expectRaise(sql: string, params: unknown[], match: RegExp): Promise<void> {
+  await db.query('savepoint expect_raise')
+  let message: string | null = null
+  try {
+    await db.query(sql, params)
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error)
+  }
+  await db.query('rollback to savepoint expect_raise')
+  expect(message ?? '<no error raised>').toMatch(match)
+}
+
+describe('on-hold transitions', () => {
+  it('resumes held work with a clean retry budget, and refuses anything not on hold', async () => {
+    const id = await intake({ status: 'enhanced' })
+
+    await expectRaise(
+      `select public.resume_intake_file($1, 'test:hold')`,
+      [id],
+      /only work on hold can be resumed/i,
+    )
+
+    await db.query(`select public.skip_intake_file($1, 'test:hold')`, [id])
+    await db.query(
+      `update public.intake_files
+          set attempts = 4, last_error = 'spent', error_class = 'retryable'
+        where id = $1`,
+      [id],
+    )
+
+    await db.query(`select public.resume_intake_file($1, 'test:hold')`, [id])
+    const after = await db.query<{
+      status: string
+      attempts: number
+      last_error: string | null
+      lease_token: string | null
+    }>(
+      `select status, attempts, last_error, lease_token
+         from public.intake_files where id = $1`,
+      [id],
+    )
+
+    expect(after.rows[0]!.status).toBe('discovered')
+    // A hold is a human decision, not a failure. Inheriting spent attempts
+    // would leave resumed work one error from terminal (hard rule 4).
+    expect(after.rows[0]!.attempts).toBe(0)
+    expect(after.rows[0]!.last_error).toBeNull()
+    expect(after.rows[0]!.lease_token).toBeNull()
+  })
+
+  it('discards only held work, and audits before the row disappears', async () => {
+    const id = await intake({ status: 'enhanced' })
+
+    await expectRaise(
+      `select public.discard_intake_file($1, 'test:hold')`,
+      [id],
+      /only work on hold can be discarded/i,
+    )
+
+    await db.query(`select public.skip_intake_file($1, 'test:hold')`, [id])
+    await db.query(`select public.discard_intake_file($1, 'test:hold')`, [id])
+
+    const gone = await db.query(`select id from public.intake_files where id = $1`, [id])
+    expect(gone.rowCount).toBe(0)
+
+    // The row is deleted; the audit trail has to outlive it.
+    const audited = await db.query(
+      `select 1 from public.events
+        where entity_id = $1 and event = 'intake.discarded'`,
+      [id],
+    )
+    expect(audited.rowCount).toBe(1)
+  })
+
+  it('refuses to discard a photograph that belongs to a product', async () => {
+    const id = await intake({ grouped: true })
+    await expectRaise(
+      `select public.discard_intake_file($1, 'test:hold')`,
+      [id],
+      /only work on hold can be discarded/i,
+    )
+  })
+})

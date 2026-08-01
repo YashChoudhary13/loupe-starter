@@ -143,14 +143,24 @@ export interface RedoImageResult {
  * interrupted, the cron route reclaims the durable job; the deterministic R2
  * key prevents a second paid generation after a stored result.
  */
+export async function redoPromptPreviewAction(
+  intakeFileId: string,
+): Promise<ActionResult<{ promptText: string; model: string }>> {
+  return withOperator(async () => {
+    const { previewRedoPrompt } = await import('@/lib/enhance/redo-server')
+    return previewRedoPrompt(intakeFileId)
+  })
+}
+
 export async function redoImageAction(
   intakeFileId: string,
+  promptOverride?: string | null,
 ): Promise<ActionResult<RedoImageResult>> {
   return withOperator(async (operator) => {
     const { queueImageRedo, runProductionRedoBatch } = await import(
       '@/lib/enhance/redo-server'
     )
-    const jobId = await queueImageRedo(intakeFileId, operator.email)
+    const jobId = await queueImageRedo(intakeFileId, operator.email, promptOverride)
     const result = await runProductionRedoBatch(jobId)
     const [photo] = await loadPhotos([intakeFileId])
     if (!photo) throw new ConsoleError('That photograph no longer exists.', null, false)

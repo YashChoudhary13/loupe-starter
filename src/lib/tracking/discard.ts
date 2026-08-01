@@ -1,0 +1,90 @@
+import 'server-only'
+
+import { consoleObjectStore } from '@/lib/console/images'
+import { serverEnv } from '@/lib/env'
+import { googleDriveClient } from '@/lib/google/drive-server'
+import { supabaseServer } from '@/lib/supabase/server'
+
+/**
+ * Discard a held photograph for good.
+ *
+ * The ORDER is the whole design, and both other orders are wrong:
+ *
+ *   1. move the Drive file out of RAW
+ *   2. delete its R2 objects
+ *   3. delete the database row
+ *
+ * Deleting the row first would strand a file in RAW that Loupe no longer knows
+ * about — the watcher rediscovers it within a minute and it reappears in the
+ * queue, which is exactly the confusion this feature exists to end. Deleting R2
+ * before Drive would leave a queue row pointing at images that no longer load.
+ *
+ * Every step before the last is idempotent, so a failure part-way leaves the row
+ * intact and the operator simply presses Discard again.
+ */
+export async function discardHeldIntake(
+  intakeFileId: string,
+  actor: string,
+): Promise<{ movedTo: string; objectsDeleted: number }> {
+  const db = supabaseServer()
+
+  const { data: file, error: fileError } = await db
+    .from('intake_files')
+    .select('id, status, drive_file_id, filename, product_draft_id')
+    .eq('id', intakeFileId)
+    .maybeSingle<{
+      id: string
+      status: string
+      drive_file_id: string
+      filename: string
+      product_draft_id: string | null
+    }>()
+  if (fileError) throw new Error(`intake_files: ${fileError.message}`)
+  if (!file) throw new Error('That photograph no longer exists.')
+
+  // Checked here for a readable message, and again inside discard_intake_file()
+  // so nothing reaching the database another way can route around it (D18).
+  if (file.status !== 'skipped') {
+    throw new Error('Only a photograph that is on hold can be discarded.')
+  }
+
+  const { data: versions, error: versionError } = await db
+    .from('image_versions')
+    .select('storage_key, thumb_key, purged_at')
+    .eq('intake_file_id', intakeFileId)
+  if (versionError) throw new Error(`image_versions: ${versionError.message}`)
+
+  // 1. Out of RAW first.
+  const folderId = serverEnv.driveDiscardedFolderId
+  await googleDriveClient().moveToFolder(file.drive_file_id, folderId)
+
+  // 2. Then the bytes. Already-purged rows have nothing left to delete.
+  const store = consoleObjectStore()
+  let objectsDeleted = 0
+  for (const version of (versions ?? []) as {
+    storage_key: string | null
+    thumb_key: string | null
+    purged_at: string | null
+  }[]) {
+    if (version.purged_at) continue
+    for (const key of [version.storage_key, version.thumb_key]) {
+      if (!key) continue
+      await store.delete(key)
+      objectsDeleted += 1
+    }
+  }
+
+  // 3. Finally the row. This audits before deleting.
+  const { error: discardError } = await db.rpc('discard_intake_file', {
+    p_intake_file_id: intakeFileId,
+    p_actor: actor,
+  })
+  if (discardError) {
+    throw new Error(
+      `${file.filename} was moved out of RAW and its images deleted, but the record could not be ` +
+        `removed: ${discardError.hint || discardError.message}. Press Discard again.`,
+    )
+  }
+
+  return { movedTo: folderId, objectsDeleted }
+}

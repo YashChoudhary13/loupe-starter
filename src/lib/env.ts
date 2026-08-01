@@ -55,6 +55,27 @@ export const serverEnv = {
     return required('DRIVE_PROCESSED_FOLDER_ID')
   },
 
+  /**
+   * Where discarded photographs are moved to. OPTIONAL.
+   *
+   * Discarding must get the file out of RAW — otherwise the watcher rediscovers
+   * it minutes later and it reappears in the queue — but the service account
+   * cannot trash a file owned by the operator's own Drive (proved in Phase 4).
+   * Moving it is therefore the mechanism, and this is the destination.
+   *
+   * When unset, discarding falls back to the Processed folder so the feature
+   * works with no extra setup. Set this to a dedicated "Discarded" folder to
+   * keep genuinely-published photographs separate from abandoned ones; the
+   * audit event records which folder was actually used.
+   */
+  get driveDiscardedFolderId(): string {
+    return process.env.DRIVE_DISCARDED_FOLDER_ID?.trim() || required('DRIVE_PROCESSED_FOLDER_ID')
+  },
+
+  get driveDiscardedFolderIsDedicated(): boolean {
+    return Boolean(process.env.DRIVE_DISCARDED_FOLDER_ID?.trim())
+  },
+
   /** Shared secret accepted by server-side cron routes. */
   get cronSecret(): string {
     return validatedCronSecret(process.env.CRON_SECRET)

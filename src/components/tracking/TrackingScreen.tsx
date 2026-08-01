@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
 import {
+  discardIntakeAction,
   refreshTrackingAction,
+  resumeIntakeAction,
   retryIntakeAction,
   reviewDuplicateAction,
   runReconciliationAction,
@@ -253,9 +255,32 @@ export function TrackingScreen({
                   void update(
                     `skip:${row.entityId}`,
                     () => skipIntakeAction(row.entityId),
-                    `${row.label} was skipped.`,
+                    `${row.label} is on hold.`,
                   )
                 }
+                onResume={() =>
+                  void update(
+                    `resume:${row.entityId}`,
+                    () => resumeIntakeAction(row.entityId),
+                    `${row.label} is back in the enhancement queue.`,
+                  )
+                }
+                onDiscard={() => {
+                  // Irreversible and off-site: it deletes the images and moves
+                  // the file out of RAW. Worth one deliberate confirmation.
+                  if (
+                    !window.confirm(
+                      `Discard ${row.label}?\n\nIts images will be deleted and the file moved out of the RAW folder. This cannot be undone.`,
+                    )
+                  ) {
+                    return
+                  }
+                  void update(
+                    `discard:${row.entityId}`,
+                    () => discardIntakeAction(row.entityId),
+                    `${row.label} was discarded and moved out of RAW.`,
+                  )
+                }}
                 onDuplicate={(decision) =>
                   row.duplicate
                     ? void update(
@@ -324,6 +349,8 @@ function TrackingItem({
   busy,
   onRetry,
   onSkip,
+  onResume,
+  onDiscard,
   onDuplicate,
 }: {
   row: TrackingRow
@@ -331,6 +358,8 @@ function TrackingItem({
   busy: string | null
   onRetry: () => void
   onSkip: () => void
+  onResume: () => void
+  onDiscard: () => void
   onDuplicate: (decision: 'dismissed' | 'duplicate') => void
 }) {
   return (
@@ -407,6 +436,27 @@ function TrackingItem({
                 className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft disabled:opacity-40"
               >
                 Skip
+              </button>
+            ) : null}
+            {row.canResume ? (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={onResume}
+                className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
+              >
+                {busy === `resume:${row.entityId}` ? 'Resuming…' : 'Resume'}
+              </button>
+            ) : null}
+            {row.canDiscard ? (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={onDiscard}
+                title="Deletes the images and moves the file out of the RAW folder"
+                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft disabled:opacity-40"
+              >
+                {busy === `discard:${row.entityId}` ? 'Discarding…' : 'Discard'}
               </button>
             ) : null}
             {row.duplicate ? (

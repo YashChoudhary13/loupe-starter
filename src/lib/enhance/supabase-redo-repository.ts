@@ -62,6 +62,23 @@ export class SupabaseRedoRepository implements RedoRepository {
     if (error || typeof data !== 'string') {
       throw new Error(error?.hint?.trim() || error?.message || 'Could not queue the image redo.')
     }
+
+    // Recorded after the fact because enqueue_image_redo() predates this column
+    // (Phase 5) and rewriting a committed SQL function to carry an audit flag
+    // would be a heavier change than the flag is worth. What the model actually
+    // receives is already correct either way — p_prompt_text above IS the
+    // edited text. This only records that a human edited it, so a failure here
+    // must not fail the redo the operator already asked for.
+    if (input.promptOverride) {
+      const { error: markError } = await this.db
+        .from('image_redo_jobs')
+        .update({ prompt_override: input.promptOverride })
+        .eq('id', data)
+      if (markError) {
+        console.warn(`redo ${data}: prompt_override not recorded: ${markError.message}`)
+      }
+    }
+
     return data
   }
 

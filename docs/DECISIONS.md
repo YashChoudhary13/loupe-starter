@@ -1541,3 +1541,97 @@ re-checks server-side before it touches the database.
 **Rejected:** caching the queue or draft data itself. Those must stay live — a stale queue
 is how two operators group the same photograph — and D11 makes the browser structurally
 unable to read the database directly anyway.
+
+
+---
+
+### D62 — R2 objects are deleted 7 days after a product reaches Shopify; the rows are kept forever
+
+*Business decision, 2026-08-01.*
+
+Nothing deleted anything from R2 before this, so every original (up to 50 MB) and every
+generated version accumulated indefinitely. Retention now runs daily and purges a
+photograph's objects seven days after its product reached Shopify — by EITHER route:
+published, or saved there as a draft (D60).
+
+The bytes are genuinely redundant at that point, from two independent directions: Shopify
+serves the published image from its own CDN, and Google Drive `/Processed` still holds the
+untouched original. The owner chose to purge everything for the photograph — original,
+generated versions and thumbnails — rather than versions alone, because the original is the
+largest file and keeping it saves little.
+
+**What is deleted and what is emphatically not.** The `image_versions` ROW is never deleted.
+It carries the exact model and exact `prompt_text` behind every published image, and that
+record is the entire mitigation for silent style drift (D5) — it is what makes "these forty
+products look different, and here is the model string that produced them" answerable months
+later. A new `purged_at` column marks that the bytes are gone; the audit trail outlives them.
+
+Two mechanics worth knowing:
+
+- `shopify_first_sent_at` is stamped by a **trigger** on the null → non-null transition of
+  `shopify_product_id`, not by editing `mark_draft_published` and
+  `record_draft_shopify_product`. The trigger catches every route into Shopify including any
+  future one, and cannot drift out of step with them. Re-publishing does not restart the
+  clock.
+- A version is marked purged only when **every** one of its objects actually deleted. Marking
+  it after a partial failure would strand the survivor: nothing would ever look at that key
+  again and it would sit in the bucket permanently, invisible and still billed.
+
+**Rejected:** deleting the `image_versions` rows to reclaim a few hundred bytes, which would
+trade the drift audit trail for nothing. **Rejected:** running retention continuously —
+deleting bytes is the least urgent thing Loupe does and the least reversible, so it runs once
+daily in the quiet window after reconciliation.
+
+---
+
+### D63 — A redo shows its prompt before it is paid for, and may be edited for that product only
+
+*Business decision, 2026-08-01.*
+
+"Redo image" spent roughly $0.07 immediately, on a prompt the operator could not see. It now
+opens the exact resolved text — description injected, composition paragraph substituted —
+and lets the operator edit it before pressing Continue.
+
+An edit applies to **that redo only**. It is deliberately not a new prompt version: prompts
+are immutable, versioned and audited (D51), and a tweak for one awkward photograph must never
+quietly become the catalogue-wide default. `image_redo_jobs.prompt_override` records that a
+human edited it; `image_versions.prompt_text` still stores the exact bytes sent, so a redo
+from an edited prompt stays exactly as traceable as any other.
+
+The operator edits the RESOLVED prompt, so no `{{TOKEN}}` should survive. One is refused
+rather than sent — the image model would receive it as literal text and quietly degrade the
+result. Resolution is shared with the queueing path so the preview cannot drift from what is
+actually sent.
+
+---
+
+### D64 — Skipped work is "on hold": resumable, or discarded out of RAW
+
+*Business decision, 2026-08-01.*
+
+Skipping was terminal and invisible — the row sat in Tracking's All list reading "Skipped"
+while the file stayed in RAW, rescanned every fifteen minutes forever. Held work is now
+first-class:
+
+- it is classified as **On hold** in the in-progress group, where an operator will look for
+  it, rather than filed under complete;
+- **Resume** returns it to the queue with a **fresh retry budget**. A hold is a human
+  decision, not a failure; inheriting spent attempts would leave resumed work one error from
+  terminal (hard rule 4);
+- **Discard** removes it for good.
+
+Discard's ORDER is the whole design, and both alternatives are wrong. Drive file out of RAW
+first, then the R2 objects, then the database row. Deleting the row first strands a file in
+RAW that Loupe no longer knows about — the watcher rediscovers it within a minute and it
+reappears in the queue, which is precisely the confusion this feature exists to end. Every
+step before the last is idempotent, so a failure part-way leaves the row intact and the
+operator simply presses Discard again.
+
+The Drive file is **moved to a `/Discarded` folder, not trashed**. Phase 4 proved the service
+account cannot trash a file owned by the operator's own Drive; moving it out of RAW is what
+actually matters. `DRIVE_DISCARDED_FOLDER_ID` is optional and falls back to the Processed
+folder, so the feature works before that folder exists.
+
+**Rejected:** leaving the Drive file in RAW and only removing the Loupe row — the watcher
+would simply rediscover it. **Rejected:** allowing discard of grouped or published work;
+both are refused in SQL as well as in the UI.

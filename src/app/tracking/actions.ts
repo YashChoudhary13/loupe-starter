@@ -64,6 +64,45 @@ export async function skipIntakeAction(
   })
 }
 
+/** Puts a held photograph back in the enhancement queue with a clean retry budget. */
+export async function resumeIntakeAction(
+  intakeFileId: string,
+): Promise<TrackingActionResult<TrackingSnapshot>> {
+  return withOperator(async (email) => {
+    const { error } = await supabaseServer().rpc('resume_intake_file', {
+      p_intake_file_id: intakeFileId,
+      p_actor: email,
+    })
+    if (error) throw new Error(error.hint || error.message)
+    return loadTracking()
+  })
+}
+
+/**
+ * Discards a held photograph for good.
+ *
+ * Order matters and is deliberate: the Drive file leaves RAW first, then the R2
+ * objects, and only then the database row. Every step before the last is
+ * idempotent, so a failure part-way leaves the row intact and the operator can
+ * simply press Discard again. The reverse order would delete the row first and
+ * strand a file in RAW that Loupe no longer knows about — the watcher would
+ * rediscover it minutes later and it would reappear in the queue.
+ *
+ * The Drive file is MOVED to /Discarded rather than trashed: Phase 4 proved the
+ * service account cannot trash files owned by the operator's own Drive. Moving
+ * it out of RAW is what actually matters — it stops being rescanned — and the
+ * owner can empty /Discarded themselves.
+ */
+export async function discardIntakeAction(
+  intakeFileId: string,
+): Promise<TrackingActionResult<TrackingSnapshot>> {
+  return withOperator(async (email) => {
+    const { discardHeldIntake } = await import('@/lib/tracking/discard')
+    await discardHeldIntake(intakeFileId, email)
+    return loadTracking()
+  })
+}
+
 export async function reviewDuplicateAction(input: {
   readonly intakeFileId: string
   readonly matchIntakeFileId: string

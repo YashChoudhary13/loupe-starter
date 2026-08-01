@@ -52,6 +52,15 @@ const JOBS: readonly CronJob[] = [
     path: '/api/cron/shopify-reconcile',
     timeoutMilliseconds: 285_000,
   },
+  {
+    // 03:30 Asia/Kolkata, after reconciliation has had its half hour. Deleting
+    // bytes is the least urgent thing Loupe does and the least reversible, so
+    // it runs once a day in the quietest window rather than continuously.
+    name: 'loupe-retention',
+    schedule: '0 22 * * *',
+    path: '/api/cron/retention',
+    timeoutMilliseconds: 285_000,
+  },
 ]
 
 function required(key: string): string {

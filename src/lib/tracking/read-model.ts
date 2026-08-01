@@ -315,6 +315,10 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       thumb: (thumbKey ? signed.get(thumbKey) : null) ?? null,
       events: events.get(row.id) ?? [],
       canRetry: row.status === 'failed' && row.error_class === 'retryable',
+      // Held work is the operator's to pick back up or throw away. Both are
+      // refused in SQL for anything grouped, published or in flight.
+      canResume: row.status === 'skipped',
+      canDiscard: row.status === 'skipped' && row.product_draft_id === null,
       canSkip:
         row.product_draft_id === null &&
         !['enhancing', 'grouped', 'published', 'duplicate', 'skipped'].includes(row.status),
@@ -364,6 +368,8 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       events: events.get(row.id) ?? [],
       canRetry: false,
       canSkip: false,
+      canResume: false,
+      canDiscard: false,
       consoleHref: `/console/drafts/${row.id}`,
       driveHref: null,
       duplicate: null,
@@ -389,6 +395,8 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     events: events.get(issue.run_id) ?? [],
     canRetry: false,
     canSkip: false,
+    canResume: false,
+    canDiscard: false,
     consoleHref: `/console/drafts/${issue.product_draft_id}`,
     driveHref: null,
     duplicate: null,
@@ -413,6 +421,8 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       events: events.get(latestRun.id) ?? [],
       canRetry: false,
       canSkip: false,
+      canResume: false,
+      canDiscard: false,
       consoleHref: null,
       driveHref: null,
       duplicate: null,

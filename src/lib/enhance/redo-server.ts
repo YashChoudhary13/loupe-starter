@@ -39,7 +39,21 @@ function productionDependencies() {
   }
 }
 
-export async function queueImageRedo(intakeFileId: string, actor: string): Promise<string> {
+/**
+ * The exact prompt a redo WOULD send, without spending anything.
+ *
+ * The operator reviews this before the paid call, and may edit it for this one
+ * product. Resolution is shared with `queueImageRedo` so the preview cannot
+ * drift from what is actually sent.
+ */
+export async function previewRedoPrompt(
+  intakeFileId: string,
+): Promise<{ promptText: string; model: string }> {
+  const { promptText, model } = await resolveRedo(intakeFileId)
+  return { promptText, model }
+}
+
+async function resolveRedo(intakeFileId: string) {
   const db = supabaseServer()
   const [fileResult, promptResult] = await Promise.all([
     db
@@ -76,10 +90,52 @@ export async function queueImageRedo(intakeFileId: string, actor: string): Promi
     presentationClass,
   )
 
-  return new SupabaseRedoRepository(db).enqueue({
-    intakeFileId,
+  return {
+    db,
     promptId: promptResult.data.id,
+    model: promptResult.data.model,
     promptText: resolved.text,
+    descriptionInjected: resolved.descriptionInjected,
+    descriptionMissing: resolved.descriptionMissing,
+  }
+}
+
+/**
+ * A per-product prompt edit. Deliberately NOT a new prompt version: prompts are
+ * immutable, versioned and audited (D51), and a one-off tweak for a single
+ * photograph must never become the catalogue-wide default. The exact bytes
+ * actually sent are still recorded on `image_versions.prompt_text` either way,
+ * so a redo run from an edited prompt stays as traceable as any other.
+ */
+export async function queueImageRedo(
+  intakeFileId: string,
+  actor: string,
+  promptOverride?: string | null,
+): Promise<string> {
+  const resolved = await resolveRedo(intakeFileId)
+
+  const override = promptOverride?.trim() ? promptOverride : null
+  if (override) {
+    // The operator edits the RESOLVED prompt, so no template token should
+    // survive. An unreplaced {{TOKEN}} would be sent to the image model as
+    // literal text and quietly degrade the result.
+    const leftover = override.match(/\{\{[A-Z_]+\}\}/gu)
+    if (leftover) {
+      throw new Error(
+        `The edited prompt still contains ${[...new Set(leftover)].join(', ')}. ` +
+          'Replace or remove it — the model would receive it as literal text.',
+      )
+    }
+    if (override.length > 20_000) {
+      throw new Error('The edited prompt is too long. Keep it under 20,000 characters.')
+    }
+  }
+
+  return new SupabaseRedoRepository(resolved.db).enqueue({
+    intakeFileId,
+    promptId: resolved.promptId,
+    promptText: override ?? resolved.promptText,
+    promptOverride: override,
     descriptionInjected: resolved.descriptionInjected,
     descriptionMissing: resolved.descriptionMissing,
     actor,

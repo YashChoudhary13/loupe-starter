@@ -36,6 +36,10 @@ export interface TrackingRow {
   readonly events: readonly TrackingEvent[]
   readonly canRetry: boolean
   readonly canSkip: boolean
+  /** On-hold work only: send it back to the enhancement queue. */
+  readonly canResume: boolean
+  /** On-hold work only: remove it from Loupe and move it out of RAW. */
+  readonly canDiscard: boolean
   readonly consoleHref: string | null
   readonly driveHref: string | null
   readonly duplicate: TrackingDuplicate | null
