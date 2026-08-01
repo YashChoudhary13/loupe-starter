@@ -1733,3 +1733,52 @@ tested — the read model is `server-only` and cannot be imported from vitest.
 
 **Rejected:** falling through to image 2 when the cover is purged. Two different products
 would then show the same photograph and look like a duplicate.
+
+---
+
+### D68 — Four photographs per tick, in parallel; finished failures leave /Raw
+
+*Business decision, 2026-08-01, after the owner asked why concurrency would cost more.*
+
+**It does not, and the earlier claim was wrong.** A photograph costs $0.0756 (measured:
+$0.005992 describe + $0.069611 image). Four hundred of them cost ~$30 whether that takes
+twenty minutes or three hours. Concurrency changes the rate at which a fixed cost is paid,
+not the price. The only thing it genuinely changes is how much an *unnoticed* mistake
+accumulates before a human looks: ~$9/hour becomes ~$36/hour. That is an argument for an
+aggregate spend cap, which is still **not built**, and it was not a reason to withhold the
+throughput the business asked for.
+
+**Parallel, not a bigger sequential batch.** Four sequential calls at ~65 s overrun the
+240 s budget and the 300 s Vercel limit, so the fourth would never run. Parallel finishes in
+`max(4)` rather than `sum(4)`, which also makes it *less* likely to be killed mid-call than
+raising the sequential batch — and a kill after the paid request is the one path that can pay
+twice.
+
+Claims are still taken one at a time: each is a single atomic `UPDATE … RETURNING` that takes
+the row lock, so concurrent claims would serialise on the database anyway. Only the slow part
+runs in parallel.
+
+`Promise.allSettled`, not `all`. `processClaim` rethrows when *this* worker has lost its lease
+to a replacement — a fact about one photograph. Rejecting the batch would discard three
+siblings' finished work from the result while their rows sit correctly written in the
+database. The count surfaces as `stale`.
+
+The cost: a killed tick now strands four leases instead of one. The 900 s lease and the
+five-minute sweeper already handle that; it is fifteen minutes of delay, not lost work.
+
+**Discovery nudges enhancement.** Both jobs already run every minute, so this only removes the
+gap between them — up to a minute of dead time on the first photograph, which is the entire
+wait when someone drops in a single test image. Fire-and-forget, two-second abort, exactly the
+pg_net pattern. `CRON_BASE_URL` was **missing from Vercel production**, so the first version
+of this would have silently done nothing for ever while every test passed; the variable is now
+set and the nudge returns its reason instead of a bare boolean.
+
+**Terminal failures leave /Raw for /Discarded.** Only `failed` and `cost_ceiling_failed` move.
+`retry_scheduled` must not: the photograph is coming back, and a file in /Discarded would tell
+whoever is watching the folder that Loupe had given up on queued work. Drive file ids are
+stable across moves and the worker downloads by id, so Retry from Tracking still works.
+
+**This is not a spending guard, and must not be sold as one.** Re-scanning /Raw has never
+re-enqueued anything — `drive_file_id` is UNIQUE, so a file left in place is read and skipped
+(hard rule 3). It keeps the folder honest for the human looking at it, which is a smaller and
+different claim than preventing runaway spend.

@@ -35,7 +35,19 @@ import {
 
 const SOURCE = 'enhancement-worker'
 const LEASE_SECONDS = 900
-const MAX_BATCH_SIZE = 2
+/**
+ * Photographs claimed per tick, processed CONCURRENTLY.
+ *
+ * The tick fires once a minute, so this is also the throughput ceiling: four
+ * per minute, 100 photographs in ~25 ticks. Raising it without going parallel
+ * would not help — four sequential calls at ~65 s each overrun the 240 s budget
+ * and the 300 s Vercel limit, so the fourth would never be reached.
+ *
+ * Concurrency does NOT change what a photograph costs, only how fast the
+ * catalogue's fixed cost is paid. What it does change is how much an unnoticed
+ * mistake accumulates before a human looks — see D68.
+ */
+const MAX_BATCH_SIZE = 4
 const DEFAULT_TIME_BUDGET_MS = 240_000
 
 export type EnhancementOutcomeStatus =
@@ -46,6 +58,8 @@ export type EnhancementOutcomeStatus =
 
 export interface EnhancementOutcome {
   readonly intakeFileId: string
+  /** Carried out so terminal failures can be swept out of Drive /Raw. */
+  readonly driveFileId: string
   readonly status: EnhancementOutcomeStatus
   readonly attempts: number
   readonly imageVersionId?: string
@@ -57,6 +71,8 @@ export interface EnhancementOutcome {
 
 export interface EnhancementBatchResult {
   readonly claimed: number
+  /** Claims whose lease was taken by a replacement worker mid-flight. */
+  readonly stale: number
   readonly enhanced: number
   readonly retryScheduled: number
   readonly failed: number
@@ -336,6 +352,7 @@ async function processClaim(
         if (!recorded.proceedWithoutDescription) {
           return {
             intakeFileId: claim.id,
+            driveFileId: claim.driveFileId,
             status: 'retry_scheduled',
             attempts: recorded.attempts,
             descriptionCalled,
@@ -488,6 +505,7 @@ async function processClaim(
 
     return {
       intakeFileId: claim.id,
+      driveFileId: claim.driveFileId,
       status: completion.status === 'enhanced' ? 'enhanced' : 'cost_ceiling_failed',
       attempts: completion.attempts,
       imageVersionId: completion.imageVersionId,
@@ -544,6 +562,7 @@ async function processClaim(
     })
     return {
       intakeFileId: claim.id,
+      driveFileId: claim.driveFileId,
       status: failure.status === 'failed' ? 'failed' : 'retry_scheduled',
       attempts: failure.attempts,
       descriptionCalled,
@@ -564,16 +583,35 @@ export async function runEnhancementBatch(
   const started = now()
   const maxItems = Math.min(Math.max(options.maxItems ?? MAX_BATCH_SIZE, 1), MAX_BATCH_SIZE)
   const budget = Math.max(options.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS, 1)
-  const outcomes: EnhancementOutcome[] = []
-
-  while (outcomes.length < maxItems && now() - started < budget) {
+  // Claims are taken one at a time on purpose: each is a single atomic
+  // UPDATE … RETURNING that takes the row lock, so concurrent claims would
+  // serialise on the database anyway. Only the slow part — download, describe,
+  // generate, upload — runs in parallel.
+  const claims: EnhancementClaim[] = []
+  while (claims.length < maxItems && now() - started < budget) {
     const claim = await dependencies.repository.claim(LEASE_SECONDS)
     if (!claim) break
-    outcomes.push(await processClaim(claim, dependencies))
+    claims.push(claim)
+  }
+
+  // allSettled, not all. processClaim rethrows when THIS worker has lost its
+  // lease to a replacement — a fact about one photograph. Letting it reject the
+  // whole batch would discard three siblings' finished work from the result,
+  // and their rows are already written and correct.
+  const settled = await Promise.allSettled(
+    claims.map((claim) => processClaim(claim, dependencies)),
+  )
+  const outcomes = settled.flatMap((result) =>
+    result.status === 'fulfilled' ? [result.value] : [],
+  )
+  const stale = settled.length - outcomes.length
+  if (stale > 0 && outcomes.length === 0) {
+    throw (settled.find((result) => result.status === 'rejected') as PromiseRejectedResult).reason
   }
 
   return {
-    claimed: outcomes.length,
+    claimed: claims.length,
+    stale,
     enhanced: outcomes.filter((row) => row.status === 'enhanced').length,
     retryScheduled: outcomes.filter((row) => row.status === 'retry_scheduled').length,
     failed: outcomes.filter((row) => row.status === 'failed').length,
