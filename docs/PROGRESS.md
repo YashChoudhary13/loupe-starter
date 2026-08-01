@@ -31,6 +31,76 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-01 — Style presets set BOTH prompts; promotion of a self-staging preset fixed
+
+**Goal this session:** fix the two defects the owner hit in the live console — "Promote this
+version" failing with `Add or remove the composition token so it appears once.`, and the
+describer still instructing hand removal when the hand-chain preset is selected.
+
+**Built:**
+- `supabase/migrations/20260801170000_prompt_presets_pair_both_stages.sql`
+  - `validate_prompt_body(kind, body, uses_composition default true)` — one composition
+    token when the describer composes, **zero** when the prompt stages the product itself.
+    Refuses both directions with a message naming which shape it expected.
+  - `create_prompt_version()` now **derives** `uses_composition` from the token count, so the
+    flag cannot contradict the body and no new control was added to the form.
+  - `promote_prompt_version()` — the archived-reactivation branch now carries
+    `uses_composition` and `preset_slug` onto the copy it inserts.
+  - describe halves for all four presets, joined by `preset_slug`. marble/yellow are
+    byte-identical to the accepted live describer; hand-chain records how the piece connects
+    (which section takes the wrist, how many chains run from it, which loops take fingers);
+    bag is a bag describer that transcribes printed lettering exactly.
+  - `promote_prompt_preset(slug, actor)` — both halves in one transaction, no-op per half
+    already live, refuses a preset missing either half.
+- `20260801180000_composition_token_repeat_message.sql` — two tokens now says "repeats N
+  times" instead of the derived-and-misleading "self-staging must not contain".
+- `src/lib/prompts/library.ts` — exposes `presetSlug`, and a `presets` list built only from
+  slugs that have **both** halves.
+- `src/lib/prompts/presets.ts`, `src/app/prompts/page.tsx` — "Style preset" picker above the
+  two prompt panels, marking which is in use.
+- `src/app/prompts/actions.ts` — `promptPresetAction`; the create action reads the saved row
+  back and says whether the describer composes or the prompt self-stages.
+
+**Verified:**
+- Both migrations applied to the deployed database (`npm run db:push` → `apply … ok`).
+- Against the deployed DB, in a rolled-back transaction: `promote_prompt_preset('hand-chain')`
+  returned `describe changed:true` + `image changed:true`; live image prompt came out
+  `uses_composition:false, tokens:0`; re-running returned `changed:false` for both; `marble`
+  came out `uses_composition:true, tokens:1`. Promoting the hand-chain image row **on its own
+  from History** — literally what the owner clicked — now succeeds.
+- `tests/prompt-management.sql.test.ts` grew from 3 to 9 tests, including one asserting the
+  promoted copy's flag *and* token count, and one that forces the flag/body disagreement and
+  proves promotion still catches it.
+- `promote_prompt_preset` added to both the deployed-function list and the anon-cannot-call
+  list in `tests/schema.test.ts` / `tests/rls.test.ts`.
+- **450/450 tests pass**, lint clean, typecheck clean, `npm run build` clean.
+
+**Not finished / known broken:**
+- The presets are still archived and non-default in production — nothing about the current
+  look changes until the owner picks one in `/prompts`. This is deliberate (D51).
+- No image has yet been generated through the hand-chain or bag preset. The prompts are
+  written and the plumbing is proven; **the output is unverified**.
+- 3 editable description slots, selectable in the console — not started.
+- Custom category option — not started.
+
+**Surprises:**
+- `promote_prompt_version()`'s reactivation branch dropped `uses_composition` and
+  `preset_slug`. Because every preset ships archived, that copy is the *only* path a preset
+  can be promoted through — it would have produced a live prompt flagged describer-composed
+  with no token in its body, and `resolveImagePrompt()` would have thrown on every subsequent
+  enhancement. Found by reading the branch, not by a failing test.
+- Deriving `uses_composition` changes an existing behaviour: deleting the composition token
+  used to be a hard error and is now a valid self-staging prompt. The old test asserting the
+  error was rewritten to assert the new meaning, and the console now states which of the two
+  it saved.
+
+**Next session should start with:** 3 editable description slots selectable in the console,
+then the custom category option. Before the hand-chain or bag preset is used on real stock,
+run one photograph through each and look at the result.
+
+
+---
+
 ## 2026-08-01 — Drafts are their own stage: one row each, own section, autosave, Shopify→Loupe promotion
 
 **Goal this session:** owner feedback after using the D60 draft stage in anger. Five distinct

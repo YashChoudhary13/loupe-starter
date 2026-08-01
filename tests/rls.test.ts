@@ -195,6 +195,10 @@ describe('server-only functions are not callable without the service role', () =
       p_prompt_id: '00000000-0000-0000-0000-000000000000',
       p_actor: 'anonymous',
     }],
+    ['promote_prompt_preset', {
+      p_slug: 'anonymous',
+      p_actor: 'anonymous',
+    }],
     ['select_prompt_model', {
       p_kind: 'describe',
       p_model: 'openai/gpt-5.6-sol',

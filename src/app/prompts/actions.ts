@@ -9,7 +9,7 @@ import { isCuratedModel } from '@/lib/prompts/models'
 import { supabaseServer } from '@/lib/supabase/server'
 
 function returnToPrompts(
-  key: 'updated' | 'created' | 'promoted' | 'error',
+  key: 'updated' | 'created' | 'promoted' | 'preset' | 'error',
   value: string,
 ): never {
   redirect(`/prompts?${key}=${encodeURIComponent(value)}`)
@@ -57,7 +57,8 @@ export async function createPromptVersionAction(formData: FormData): Promise<voi
     returnToPrompts('error', 'The prompt must contain 1–20,000 characters.')
   }
 
-  const { error } = await supabaseServer().rpc('create_prompt_version', {
+  const db = supabaseServer()
+  const { data, error } = await db.rpc('create_prompt_version', {
     p_kind: kind,
     p_name: name,
     p_body: body,
@@ -71,8 +72,50 @@ export async function createPromptVersionAction(formData: FormData): Promise<voi
     )
   }
 
+  // Whether an image prompt lets the describer choose the pose is DERIVED from
+  // the body, so a deleted composition token quietly changes what the prompt
+  // means. Read the result back and say which one was saved, rather than letting
+  // the operator find out three hundred photographs later.
+  let staging: 'composed' | 'self' | null = null
+  if (kind === 'image' && typeof data === 'string') {
+    const { data: saved } = await db
+      .from('prompts')
+      .select('uses_composition')
+      .eq('id', data)
+      .maybeSingle<{ uses_composition: boolean }>()
+    if (saved) staging = saved.uses_composition ? 'composed' : 'self'
+  }
+
   revalidatePath('/prompts')
-  returnToPrompts('created', kind)
+  returnToPrompts('created', staging ? `${kind}:${staging}` : kind)
+}
+
+/**
+ * Applies a saved style preset: both the describer and the image prompt move to
+ * that preset in one transaction. Promoting only the image half would leave the
+ * describer writing about a piece laid flat on a surface while the image prompt
+ * stands it on a hand.
+ */
+export async function promptPresetAction(formData: FormData): Promise<void> {
+  const operator = await requireOperatorForAction()
+  const slug = String(formData.get('slug') ?? '').trim()
+  if (!/^[a-z0-9-]{1,64}$/u.test(slug)) {
+    returnToPrompts('error', 'That style preset is invalid.')
+  }
+
+  const { error } = await supabaseServer().rpc('promote_prompt_preset', {
+    p_slug: slug,
+    p_actor: operator.email,
+  })
+  if (error) {
+    returnToPrompts(
+      'error',
+      error.hint?.trim() || error.message || 'That style preset could not be applied.',
+    )
+  }
+
+  revalidatePath('/prompts')
+  returnToPrompts('preset', slug)
 }
 
 export async function promotePromptVersionAction(formData: FormData): Promise<void> {

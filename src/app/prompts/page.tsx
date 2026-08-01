@@ -4,13 +4,16 @@ import { curatedModel, modelsFor } from '@/lib/prompts/models'
 import {
   loadPromptLibrary,
   type PromptKind,
+  type PromptPreset,
   type PromptVersion,
 } from '@/lib/prompts/library'
+import { presetNote } from '@/lib/prompts/presets'
 import { loadTrackingAttentionCount } from '@/lib/tracking/read-model'
 
 import {
   createPromptVersionAction,
   promotePromptVersionAction,
+  promptPresetAction,
   selectPromptModelAction,
 } from './actions'
 
@@ -23,6 +26,7 @@ export default async function PromptsPage({
     updated?: string
     created?: string
     promoted?: string
+    preset?: string
     error?: string
   }>
 }) {
@@ -53,8 +57,14 @@ export default async function PromptsPage({
         ) : null}
         {feedback.created ? (
           <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
-            New {feedback.created === 'describe' ? 'descriptor' : 'image'} prompt version saved.
-            The current prompt did not change.
+            New {feedback.created.startsWith('describe') ? 'descriptor' : 'image'} prompt version
+            saved. The current prompt did not change.
+            {feedback.created.endsWith(':self')
+              ? ' It has no composition token, so it stages the product itself and the describer’s'
+                + ' chosen pose is ignored.'
+              : feedback.created.endsWith(':composed')
+                ? ' The describer chooses the pose for each piece.'
+                : ''}
           </p>
         ) : null}
         {feedback.promoted ? (
@@ -63,11 +73,19 @@ export default async function PromptsPage({
             unchanged.
           </p>
         ) : null}
+        {feedback.preset ? (
+          <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
+            Style preset applied to both stages. Photographs uploaded from now on use it;
+            everything already enhanced stays unchanged.
+          </p>
+        ) : null}
         {feedback.error ? (
           <p className="mb-3.5 rounded-panel bg-[#fff7e8] px-4 py-3 text-[12px] text-amber">
             {feedback.error}
           </p>
         ) : null}
+
+        <PresetPicker presets={prompts.presets} />
 
         <div className="grid gap-3.5 xl:grid-cols-2">
           <PromptGroup kind="describe" versions={prompts.describe} />
@@ -75,6 +93,64 @@ export default async function PromptsPage({
         </div>
       </main>
     </div>
+  )
+}
+
+function PresetPicker({ presets }: { presets: readonly PromptPreset[] }) {
+  if (presets.length === 0) return null
+
+  return (
+    <section className="mb-3.5 rounded-card bg-surface p-6">
+      <div className="flex items-start gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">
+            Before you upload
+          </p>
+          <h2 className="mt-1 text-[17px] font-medium">Style preset</h2>
+        </div>
+      </div>
+      <p className="mt-2 max-w-[70ch] text-[11.5px] leading-relaxed text-muted-foreground">
+        A preset sets both stages at once — how the product is described and how it is
+        photographed. Choose one before dropping a batch into Drive. It changes nothing that
+        has already been enhanced.
+      </p>
+
+      <ul className="mt-4 grid gap-2.5 md:grid-cols-2">
+        {presets.map((preset) => (
+          <li
+            key={preset.slug}
+            className={`rounded-panel border p-4 ${
+              preset.isActive ? 'border-ink bg-chip' : 'border-[#e7e7e9]'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              <p className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink">
+                {preset.name}
+              </p>
+              {preset.isActive ? (
+                <span className="shrink-0 rounded-pill bg-ink px-2 py-0.5 text-[9px] uppercase tracking-[0.1em] text-white">
+                  In use
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1.5 text-[10.5px] leading-relaxed text-muted-foreground">
+              {presetNote(preset.slug) ?? 'Saved describer and image prompt.'}
+            </p>
+            {preset.isActive ? null : (
+              <form action={promptPresetAction} className="mt-3">
+                <input type="hidden" name="slug" value={preset.slug} />
+                <button
+                  type="submit"
+                  className="rounded-pill bg-ink px-3.5 py-1.5 text-[10.5px] font-medium text-white transition-colors hover:bg-[#242428]"
+                >
+                  Use this preset
+                </button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -214,8 +290,9 @@ function PromptGroup({
           </select>
           {kind === 'image' ? (
             <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
-              Keep exactly one PRODUCT block and one {'{{COMPOSITION_DETAIL}}'} token.
-              Loupe checks both before saving and again before promotion.
+              Keep exactly one PRODUCT block. Keep the {'{{COMPOSITION_DETAIL}}'} token if the
+              describer should choose the pose, or remove it entirely if the prompt stages the
+              product itself. Loupe checks both before saving and again before promotion.
             </p>
           ) : null}
           <button

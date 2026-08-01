@@ -1635,3 +1635,46 @@ folder, so the feature works before that folder exists.
 **Rejected:** leaving the Drive file in RAW and only removing the Loupe row — the watcher
 would simply rediscover it. **Rejected:** allowing discard of grouped or published work;
 both are refused in SQL as well as in the UI.
+
+---
+
+### D65 — A style preset is a PAIR of prompts, and the pair moves together
+
+*Reported from the live console, 2026-08-01.*
+
+Two defects, both from the same root cause: presets were built as image prompts only.
+
+**"Add or remove the composition token so it appears once."** `validate_prompt_body()`
+predates `uses_composition` and demanded exactly one `{{COMPOSITION_DETAIL}}` token from
+*every* image prompt. The hand-chain and bag presets deliberately carry none, so they could
+be saved but never promoted — D51's "create, then deliberately promote" flow was broken for
+exactly the presets that most needed it. Validation now takes the staging flag and requires
+one token or zero accordingly, refusing **both** directions.
+
+**Half a preset was a reachable state.** Promoting the image half alone left the accepted
+describer — written for jewellery lying on a surface, forbidding any mention of a hand,
+speaking in stones and clasps and prongs — feeding the hand-chain and bag prompts. Every
+preset now has a describe half joined by `preset_slug`, and `promote_prompt_preset()`
+promotes both inside one transaction. Marble and yellow reuse the accepted describer
+byte-for-byte: a described piece must not change because the surface under it did.
+
+**`uses_composition` is DERIVED from the body, never asked for.** One token means the
+describer composes; zero means the prompt stages the product itself; two or more is refused
+with its own message. The flag and the tokens therefore cannot disagree, and editing a
+preset body needs no second control that could be set wrongly. The cost is that deleting the
+token silently *changes* a prompt's meaning instead of erroring, so `/prompts` states which
+of the two was saved in the confirmation line.
+
+**The bug this class of change exists to catch:** `promote_prompt_version()`'s
+reactivation branch copied name, body, kind and model — but not `uses_composition` or
+`preset_slug`. Since every preset ships archived, that copy is the *only* path a preset can
+be promoted through. It would have produced a live prompt flagged describer-composed with no
+token in its body, and `resolveImagePrompt()` would have thrown on every enhancement from
+that moment. It is now covered by a test that asserts the promoted copy's flag *and* its
+token count.
+
+**Rejected:** letting the describer keep choosing a composition class for the self-staging
+presets and ignoring it in code — the class would still be recorded against the photograph
+and read as meaningful later. It is recorded and explicitly documented as unused instead.
+**Rejected:** a `uses_composition` checkbox on the create form. See D51 — one more control
+that can contradict the text next to it.
