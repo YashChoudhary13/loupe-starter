@@ -41,6 +41,22 @@ export async function runEnhanceCron() {
 }
 
 export async function runShopifyReconciliationCron() {
+  // Promotion runs FIRST. A draft the operator published from Shopify's own
+  // admin should be compared as a published product in the very same run,
+  // rather than waiting another day to be noticed.
+  const { promotePublishedInShopify } = await import('@/lib/reconciliation/promote')
   const { runShopifyReconciliation } = await import('@/lib/reconciliation/server')
-  return runShopifyReconciliation('supabase-pg-cron')
+
+  let promotion
+  try {
+    promotion = await promotePublishedInShopify('supabase-pg-cron')
+  } catch (cause) {
+    // Promotion is an enhancement to reconciliation, not a precondition for it.
+    // A failure here must not stop the drift check that the business actually
+    // depends on.
+    promotion = { error: cause instanceof Error ? cause.message : String(cause) }
+  }
+
+  const reconciliation = await runShopifyReconciliation('supabase-pg-cron')
+  return { promotion, reconciliation }
 }

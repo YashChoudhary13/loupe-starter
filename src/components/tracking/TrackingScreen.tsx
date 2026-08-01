@@ -150,6 +150,7 @@ export function TrackingScreen({
             <div className="flex rounded-pill bg-chip p-[3px]" aria-label="Tracking view">
               {([
                 ['attention', 'Needs attention'],
+                ['draft', 'Drafts'],
                 ['progress', 'In progress'],
                 ['all', 'All'],
               ] as const).map(([value, label]) => (
@@ -168,11 +169,7 @@ export function TrackingScreen({
                   {label}
                   {value !== 'all' ? (
                     <span className="ml-1.5 rounded-pill bg-black/10 px-1.5 text-[10px]">
-                      {snapshot.rows.filter((row) =>
-                        value === 'attention'
-                          ? row.group === 'attention'
-                          : row.group === 'progress',
-                      ).length}
+                      {snapshot.rows.filter((row) => row.group === value).length}
                     </span>
                   ) : null}
                 </button>

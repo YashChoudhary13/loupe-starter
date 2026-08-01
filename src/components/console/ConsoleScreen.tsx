@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  autosaveDraftAction,
   colourSuggestionsAction,
   detachPhotoAction,
   groupPhotosAction,
@@ -348,6 +349,7 @@ export function ConsoleScreen({
 
   const dirty = savedForm === null || JSON.stringify(savedForm) !== JSON.stringify(form)
 
+
   const updateForm = useCallback((patch: Partial<EditorForm>) => {
     setForm((current) => ({ ...current, ...patch }))
     setError(null)
@@ -476,6 +478,35 @@ export function ConsoleScreen({
     },
     [form],
   )
+
+  /**
+   * Autosave: typing is never lost because somebody navigated away.
+   *
+   * Local only — it does NOT touch Shopify. Since D60 "Save draft" also pushes a
+   * real product and reserves a SKU, so running that on a timer would create
+   * Shopify products from half-typed forms and burn a SKU number on every pause.
+   * Autosave protects the work; Save draft remains the deliberate act.
+   *
+   * It also only runs for a draft that already EXISTS. A selection that has not
+   * been grouped yet has no draft row to write to, and silently creating one
+   * would turn "I clicked a photograph" into a product the operator never asked
+   * for.
+   */
+  useEffect(() => {
+    if (!bundle || !dirty || busy !== null || listedReadOnly) return
+    const draftId = bundle.draft.id
+    const timer = window.setTimeout(async () => {
+      const result = await autosaveDraftAction(saveRequest(bundle))
+      if (!result.ok) return // The operator keeps typing; Save draft reports properly.
+      setSavedForm(formFromBundle(result.data.bundle))
+      setBundle((current) =>
+        current && current.draft.id === draftId
+          ? { ...current, draft: result.data.bundle.draft, blocks: result.data.bundle.blocks }
+          : current,
+      )
+    }, 1_500)
+    return () => window.clearTimeout(timer)
+  }, [bundle, busy, dirty, listedReadOnly, saveRequest])
 
   const rememberSticky = useCallback(() => {
     writeSticky({
@@ -736,16 +767,10 @@ export function ConsoleScreen({
           </div>
           <div className="ml-auto flex flex-wrap justify-end gap-2">
             <StatPill
-              value={queue.tiles.length}
-              label="pending"
-              selected={queueView === 'pending'}
-              onClick={() => showQueueView('pending')}
-            />
-            <StatPill
               value={queue.ungroupedCount}
-              label="ungrouped"
-              selected={queueView === 'ungrouped'}
-              onClick={() => showQueueView('ungrouped')}
+              label="pending"
+              selected={queueView === 'pending' || queueView === 'ungrouped'}
+              onClick={() => showQueueView('pending')}
             />
             <StatPill
               value={queue.publishedToday}

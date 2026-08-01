@@ -272,6 +272,24 @@ export async function saveDraftAction(
   })
 }
 
+/**
+ * Persists what the operator has typed WITHOUT touching Shopify.
+ *
+ * Autosave uses this rather than `saveDraftAction`, which since D60 also pushes
+ * a real product to Shopify and reserves a SKU. Doing that on a debounce timer
+ * would create Shopify products from half-typed forms and burn SKU numbers on
+ * every pause in typing. Autosave protects the operator's work; "Save draft"
+ * remains the deliberate act that puts the product in Shopify.
+ */
+export async function autosaveDraftAction(
+  request: SaveDraftRequest,
+): Promise<ActionResult<{ bundle: DraftBundle }>> {
+  return withOperator(async (operator) => {
+    await saveDraft(operator, request)
+    return { bundle: await bundle(request.draftId, request.allowZeroStock) }
+  })
+}
+
 export interface PublishSummary {
   readonly sku: string
   readonly title: string

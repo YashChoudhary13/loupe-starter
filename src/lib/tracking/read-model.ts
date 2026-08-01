@@ -284,7 +284,15 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     return parts.reduce((total, part) => total + Math.round(part * 1_000_000), 0) / 1_000_000
   }
 
-  const intakeRows: TrackingRow[] = intakes.map((row) => {
+  /**
+   * A photograph that belongs to a product draft is NOT listed separately.
+   * The draft already represents it, and listing both showed the same piece of
+   * work twice — once as "Draft" (the photograph, grouped) and again as
+   * "Draft" (the product). One unit of work, one row.
+   */
+  const intakeRows: TrackingRow[] = intakes
+    .filter((row) => row.product_draft_id === null)
+    .map((row) => {
     const duplicate = duplicateByIntake.get(row.id)
     const classification = classifyIntake(
       {
@@ -431,7 +439,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
   }
 
   const rows = [...issueRows, ...draftRows, ...intakeRows].sort((a, b) => {
-    const groupRank = { attention: 0, progress: 1, complete: 2 } as const
+    const groupRank = { attention: 0, draft: 1, progress: 2, complete: 3 } as const
     return (
       groupRank[a.group] - groupRank[b.group] ||
       b.occurredAt.localeCompare(a.occurredAt)

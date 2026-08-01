@@ -4,7 +4,7 @@ export type QueueView = 'pending' | 'ungrouped' | 'listed' | 'attention' | 'draf
 
 export const QUEUE_VIEW_LABELS: Readonly<Record<QueueView, string>> = {
   pending: 'Pending',
-  ungrouped: 'Ungrouped',
+  ungrouped: 'Pending',
   listed: 'Listed today',
   attention: 'Needs attention',
   drafts: 'Drafts',
@@ -24,7 +24,11 @@ export function tilesForQueueView(
     case 'drafts':
       return queue.tiles.filter((tile) => tile.kind === 'draft')
     default:
-      return queue.tiles
+      // "Pending" means photographs that arrived enhanced and have not been
+      // made into a product yet. Once one is saved as a draft it belongs to
+      // Drafts and must leave Pending — showing it in both made a drafted
+      // product look like outstanding work.
+      return queue.tiles.filter((tile) => tile.kind === 'photo')
   }
 }
 

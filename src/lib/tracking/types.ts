@@ -1,7 +1,13 @@
 import type { SignedImage } from '@/lib/console/types'
 
-export type TrackingView = 'attention' | 'progress' | 'all'
-export type TrackingGroup = 'attention' | 'progress' | 'complete'
+export type TrackingView = 'attention' | 'draft' | 'progress' | 'all'
+/**
+ * `draft` is its own group, not a flavour of `progress`. Qimati's operators
+ * build 100-150 drafts and only then publish the batch, so drafts are the
+ * working set — burying them among transient pipeline work made the one list
+ * they live in hardest to read.
+ */
+export type TrackingGroup = 'attention' | 'draft' | 'progress' | 'complete'
 export type TrackingTone = 'failed' | 'stalled' | 'running' | 'mismatch' | 'complete'
 
 export interface TrackingEvent {

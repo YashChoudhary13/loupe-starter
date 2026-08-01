@@ -45,7 +45,9 @@ const queue: QueueSnapshot = {
 
 describe('console queue views', () => {
   it.each<[QueueView, readonly string[]]>([
-    ['pending', ['draft', 'ungrouped', 'stale']],
+    // Pending means photographs not yet made into a product. A saved draft
+    // belongs to Drafts and must not also read as outstanding work.
+    ['pending', ['ungrouped', 'stale']],
     ['ungrouped', ['ungrouped', 'stale']],
     ['listed', ['listed']],
     ['attention', ['stale']],

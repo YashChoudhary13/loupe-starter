@@ -177,8 +177,14 @@ describe('Phase 6 tracking transitions', () => {
       right_intake_file_id: string
       decision: string
       duplicate_intake_file_id: string
-    }>(`select left_intake_file_id, right_intake_file_id, decision, duplicate_intake_file_id
-          from public.duplicate_reviews`)
+    }>(
+      `select left_intake_file_id, right_intake_file_id, decision, duplicate_intake_file_id
+         from public.duplicate_reviews
+        where left_intake_file_id in ($1, $2) or right_intake_file_id in ($1, $2)`,
+      [first, second],
+    )
+    // Scoped to this test's own pair. Counting every row in the table made a
+    // real operator's duplicate decision in production fail the suite.
     expect(review.rowCount).toBe(1)
     expect(review.rows[0]).toMatchObject({
       decision: 'duplicate',

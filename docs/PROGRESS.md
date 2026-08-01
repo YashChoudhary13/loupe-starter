@@ -31,6 +31,68 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-01 — Drafts are their own stage: one row each, own section, autosave, Shopify→Loupe promotion
+
+**Goal this session:** owner feedback after using the D60 draft stage in anger. Five distinct
+problems, four of them real defects.
+
+**Fixed:**
+
+1. **The same work appeared twice in Tracking.** A grouped photograph produced an intake row
+   labelled "Draft" AND its product draft produced another row labelled "Draft". Confirmed in
+   the live database: intake `3fbc19e1` `grouped` + draft `13e5972e` `assembling`, one piece
+   of work. Tracking now suppresses an intake row that belongs to a product draft — the
+   draft represents it. One unit of work, one row.
+2. **Drafts had no section of their own.** They were filed under "In progress" beside
+   transient pipeline work. `draft` is now its own `TrackingGroup` with its own tab and
+   count. This matches how Qimati actually works — 100-150 drafts are built up and published
+   as a batch, so drafts ARE the working set, not a transitional state.
+3. **A drafted product still showed in the console's Pending.** Pending returned every tile,
+   drafts included, so saving a draft left it looking like outstanding work. Pending now
+   means what the owner said it means: photographs that arrived enhanced and have not been
+   made into a product. The redundant "ungrouped" pill (identical to the new Pending) is gone.
+4. **Autosave.** Edits now persist ~1.5s after typing stops, via a new `autosaveDraftAction`
+   that is **local only**. It deliberately does NOT use `saveDraftAction`, which since D60
+   also pushes to Shopify and reserves a SKU — running that on a debounce would create
+   Shopify products from half-typed forms and burn a SKU number on every pause. Autosave
+   protects the work; "Save draft" stays the deliberate act that puts it in Shopify. It only
+   runs for a draft that already exists, so clicking a photograph never silently creates a
+   product.
+5. **Publishing from Shopify now updates Loupe** (the owner's question — yes, and it is
+   built). `promotePublishedInShopify()` runs at the start of the daily reconciliation: any
+   Loupe draft whose Shopify product reads ACTIVE is promoted through `mark_draft_published()`
+   — the same function the console's own publish uses, so intake rows are published and
+   colour usage counted identically. Deliberately **one-way**: Shopify ACTIVE promotes a
+   draft, but a product Loupe thinks is published which Shopify reports as draft is *drift*
+   and stays reconciliation's business to report, never silently rewritten (D54).
+
+**Verified:** `441 passed` across 41 files, typecheck, lint, build clean. Deployed and
+aliased.
+
+**A real test defect the owner's own usage exposed:** `tracking.sql.test.ts` asserted
+`select … from duplicate_reviews` returned exactly one row — counting the WHOLE table. The
+moment the owner made a real duplicate decision in production, the suite failed. Now scoped
+to the test's own pair. This is the second time a test has assumed it owns a shared table;
+worth watching for.
+
+**The duplicate error the owner hit** ("That duplicate warning has already been reviewed or
+is no longer current") was the pair already having been decided — the warning is removed once
+reviewed, so a second click on a stale screen finds nothing to act on. The message is
+accurate but reads like a failure; it should probably just refresh silently. Not changed.
+
+**Not finished / known broken:**
+- None of this is exercised end-to-end by a human yet, and the Shopify→Loupe promotion in
+  particular has never run against a product actually published from Shopify's admin.
+- `next-sku.concurrency` flaked again on transport (12/100 calls), passed alone. Pre-existing;
+  the SKU correctness assertion itself has never failed.
+- Autosave silently does nothing on failure — the operator keeps typing and Save draft
+  reports properly. A persistent "not saved" indicator would be better.
+
+**Next session should start with:** publish a Loupe draft from the Shopify admin, then run
+the reconciliation cron and confirm it flips to Published in Loupe.
+
+---
+
 ## 2026-08-01 — R2 retention (D62), redo prompt review (D63), on-hold work (D64)
 
 **Goal this session:** three owner requests — purge R2 seven days after a product reaches

@@ -180,13 +180,20 @@ export function classifyDraft(row: DraftForTracking, now: number): Classificatio
     }
   }
 
+  if (row.status === 'publishing') {
+    return {
+      group: 'progress',
+      tone: 'running',
+      statusLabel: 'Publishing',
+      reason: 'Shopify publishing is in progress.',
+    }
+  }
+
   return {
-    group: 'progress',
+    group: 'draft',
     tone: 'running',
-    statusLabel: row.status === 'publishing' ? 'Publishing' : 'Draft',
+    statusLabel: 'Draft',
     reason:
-      row.status === 'publishing'
-        ? 'Shopify publishing is in progress.'
-        : 'Saved product draft waiting for an operator.',
+      'Saved as a draft. It exists in Shopify as a draft product and is waiting to be published.',
   }
 }
