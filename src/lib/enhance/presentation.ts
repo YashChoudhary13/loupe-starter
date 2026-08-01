@@ -67,6 +67,17 @@ function wordCount(text: string): number {
   return text.split(/\s+/u).filter(Boolean).length
 }
 
+/**
+ * Some otherwise-compliant chat models wrap their JSON response in a Markdown
+ * code fence. Accept one fence only when it encloses the entire response; this
+ * keeps surrounding prose and every other structured-output check strict.
+ */
+function jsonPayload(rawResult: string): string {
+  const trimmed = rawResult.trim()
+  const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu.exec(trimmed)
+  return fenced?.[1]?.trim() ?? rawResult
+}
+
 export function isPresentationClass(value: string): value is PresentationClass {
   return PRESENTATION_CLASS_SET.has(value)
 }
@@ -80,7 +91,7 @@ export function compositionDetailFor(
 export function parseStructuredDescription(rawResult: string): StructuredDescription {
   let parsed: unknown
   try {
-    parsed = JSON.parse(rawResult) as unknown
+    parsed = JSON.parse(jsonPayload(rawResult)) as unknown
   } catch {
     return fail('invalid_json', rawResult)
   }

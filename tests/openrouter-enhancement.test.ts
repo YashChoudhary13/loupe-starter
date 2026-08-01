@@ -169,6 +169,39 @@ describe('OpenRouter two-call client', () => {
     },
   )
 
+  it('accepts a structured description wrapped in a Markdown JSON fence', async () => {
+    const client = new OpenRouterClient(
+      'test-key',
+      vi.fn(async () =>
+        Response.json({
+          id: 'fenced-structured-request',
+          model: 'openai/gpt-5.6-sol',
+          choices: [{
+            message: {
+              content: `\`\`\`json\n${JSON.stringify({
+                description: TEST_DESCRIPTION,
+                presentation: 'angled-band',
+              })}\n\`\`\``,
+            },
+          }],
+          usage: { cost: 0.004 },
+        }),
+      ) as typeof fetch,
+    )
+
+    await expect(
+      client.describe(Buffer.from('source'), 'image/jpeg', 'structured prompt', {
+        model: 'openai/gpt-5.6-sol',
+        reasoningEffort: 'minimal',
+      }),
+    ).resolves.toMatchObject({
+      text: TEST_DESCRIPTION,
+      presentation: 'angled-band',
+      model: 'openai/gpt-5.6-sol',
+      requestId: 'fenced-structured-request',
+    })
+  })
+
   it('omits reasoning controls for a provider family OpenRouter does not document as reasoning-capable', async () => {
     const requests: Record<string, unknown>[] = []
     const client = new OpenRouterClient(

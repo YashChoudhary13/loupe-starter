@@ -67,8 +67,20 @@ describe('strict structured description parser', () => {
     expectReason(`${raw()}\nDone.`, 'invalid_json')
   })
 
-  it('rejects fenced JSON', () => {
-    expectReason(`\`\`\`json\n${raw()}\n\`\`\``, 'invalid_json')
+  it.each([
+    ['JSON-labeled', `\`\`\`json\n${raw()}\n\`\`\``],
+    ['uppercase JSON-labeled', `\`\`\`JSON\r\n${raw()}\r\n\`\`\``],
+    ['unlabeled', `\`\`\`\n${raw()}\n\`\`\``],
+  ])('accepts one outer %s Markdown fence', (_label, value) => {
+    expect(parseStructuredDescription(value)).toEqual({
+      description: TEST_DESCRIPTION,
+      presentation: 'flat-curve',
+    })
+  })
+
+  it('rejects fenced JSON with surrounding prose or a different language', () => {
+    expectReason(`Here is the result:\n\`\`\`json\n${raw()}\n\`\`\``, 'invalid_json')
+    expectReason(`\`\`\`javascript\n${raw()}\n\`\`\``, 'invalid_json')
   })
 
   it('rejects a missing description', () => {
