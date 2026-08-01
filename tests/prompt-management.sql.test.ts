@@ -241,8 +241,35 @@ describe('deployed style presets', () => {
       'bag',
       'hand-chain',
       'marble',
+      'satin',
       'yellow',
     ])
     expect(halves.rows.every((row) => row.kinds === 2)).toBe(true)
+  })
+
+  it('offers the accepted catalogue prompt as a preset, so there is a way back', async () => {
+    // The live pair is TAGGED, not copied — a copy would have to be kept
+    // byte-identical to the accepted body forever, and would stop being it the
+    // first time the two drifted.
+    const live = await db.query<{ kind: string; preset_slug: string | null }>(
+      `select kind, preset_slug
+         from public.prompts
+        where is_default and archived_at is null
+        order by kind`,
+    )
+    expect(live.rows).toEqual([
+      { kind: 'describe', preset_slug: 'satin' },
+      { kind: 'image', preset_slug: 'satin' },
+    ])
+
+    // Away and back, and the catalogue prompt is live again.
+    await db.query(`select * from public.promote_prompt_preset('marble', 'test:presets')`)
+    await db.query(`select * from public.promote_prompt_preset('satin', 'test:presets')`)
+
+    const back = await db.query<{ body: string }>(
+      `select body from public.prompts
+        where kind = 'image' and is_default and archived_at is null`,
+    )
+    expect(back.rows[0]!.body).toContain('ivory-champagne satin')
   })
 })

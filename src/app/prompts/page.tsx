@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 import { Sidebar } from '@/components/console/Sidebar'
 import { requireOperator } from '@/lib/auth/authorize'
 import { curatedModel, modelsFor } from '@/lib/prompts/models'
@@ -50,13 +52,13 @@ export default async function PromptsPage({
         </header>
 
         {feedback.updated ? (
-          <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
+          <Banner>
             Model updated. New {feedback.updated === 'describe' ? 'descriptions' : 'images'} use
             it; existing results stay unchanged.
-          </p>
+          </Banner>
         ) : null}
         {feedback.created ? (
-          <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
+          <Banner>
             New {feedback.created.startsWith('describe') ? 'descriptor' : 'image'} prompt version
             saved. The current prompt did not change.
             {feedback.created.endsWith(':self')
@@ -65,25 +67,21 @@ export default async function PromptsPage({
               : feedback.created.endsWith(':composed')
                 ? ' The describer chooses the pose for each piece.'
                 : ''}
-          </p>
+          </Banner>
         ) : null}
         {feedback.promoted ? (
-          <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
+          <Banner>
             Prompt promoted. New enhancement work uses it; prior versions and images stay
             unchanged.
-          </p>
+          </Banner>
         ) : null}
         {feedback.preset ? (
-          <p className="mb-3.5 rounded-panel bg-surface px-4 py-3 text-[12px] text-ink-soft">
+          <Banner>
             Style preset applied to both stages. Photographs uploaded from now on use it;
             everything already enhanced stays unchanged.
-          </p>
+          </Banner>
         ) : null}
-        {feedback.error ? (
-          <p className="mb-3.5 rounded-panel bg-[#fff7e8] px-4 py-3 text-[12px] text-amber">
-            {feedback.error}
-          </p>
-        ) : null}
+        {feedback.error ? <Banner tone="error">{feedback.error}</Banner> : null}
 
         <PresetPicker presets={prompts.presets} />
 
@@ -92,6 +90,37 @@ export default async function PromptsPage({
           <PromptGroup kind="image" versions={prompts.image} />
         </div>
       </main>
+    </div>
+  )
+}
+
+/**
+ * Every outcome on this page is carried back in the query string, so the message
+ * survives a reload — a failed action pins its error to the address bar and the
+ * operator cannot tell a stale message from a fresh one. Dismiss is a plain link
+ * back to the clean URL: no client JavaScript, and it always works.
+ */
+function Banner({
+  children,
+  tone = 'info',
+}: {
+  children: React.ReactNode
+  tone?: 'info' | 'error'
+}) {
+  return (
+    <div
+      className={`mb-3.5 flex items-start gap-3 rounded-panel px-4 py-3 text-[12px] ${
+        tone === 'error' ? 'bg-[#fff7e8] text-amber' : 'bg-surface text-ink-soft'
+      }`}
+    >
+      <p className="min-w-0 flex-1">{children}</p>
+      <Link
+        href="/prompts"
+        aria-label="Dismiss this message"
+        className="shrink-0 rounded-pill px-2 py-0.5 text-[10.5px] font-medium underline-offset-2 hover:underline"
+      >
+        Dismiss
+      </Link>
     </div>
   )
 }

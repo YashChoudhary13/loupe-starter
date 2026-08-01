@@ -1678,3 +1678,31 @@ presets and ignoring it in code — the class would still be recorded against th
 and read as meaningful later. It is recorded and explicitly documented as unused instead.
 **Rejected:** a `uses_composition` checkbox on the create form. See D51 — one more control
 that can contradict the text next to it.
+
+---
+
+### D66 — The accepted prompt is a preset too, and feedback is dismissible
+
+*Reported from the live console, 2026-08-01.*
+
+Two follow-ups to D65, both found by the owner using the picker rather than reading it.
+
+**The picker offered four alternatives and no way back.** The live pair carried no
+`preset_slug`, so nothing read as "in use" and an operator who tried marble had no button
+that returned them to the prompt the catalogue was actually built on. The accepted pair is
+now the `satin` preset — and it is genuinely not marble: the accepted background is
+ivory-champagne satin with soft folds.
+
+The two live rows are **tagged, not copied**. A copy would have to be kept byte-identical to
+the accepted body forever, and the first time the two drifted the preset would quietly stop
+being the thing it claims to be.
+
+**"Add or remove the composition token so it appears once." would not go away.** The string
+no longer existed anywhere in the deployed database — every action on `/prompts` returns its
+outcome in the query string, so the failed attempt had pinned its message to the address bar
+and every reload re-rendered it. A stale error is indistinguishable from a live one, which
+is worse than no message: it makes a fixed thing look broken.
+
+Every banner now carries **Dismiss**, a plain link to the clean URL. No client JavaScript, so
+it cannot fail to clear. **Rejected:** stripping the parameter with `history.replaceState`
+after mount — a real error would vanish before it was read.

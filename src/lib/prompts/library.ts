@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { presetLabel, presetRank } from '@/lib/prompts/presets'
 import { supabaseServer } from '@/lib/supabase/server'
 
 export type PromptKind = 'describe' | 'image'
@@ -91,7 +92,8 @@ function presetsFrom(versions: readonly PromptVersion[]): readonly PromptPreset[
     .filter(([, entry]) => entry.kinds.has('describe') && entry.kinds.has('image'))
     .map(([slug, entry]) => ({
       slug,
-      name: entry.name,
+      name: presetLabel(slug) ?? entry.name,
       isActive: activeDescribe === slug && activeImage === slug,
     }))
+    .sort((a, b) => presetRank(a.slug) - presetRank(b.slug) || a.slug.localeCompare(b.slug))
 }
