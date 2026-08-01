@@ -327,8 +327,10 @@ passes and the failure surfaces much later, somewhere unhelpful.
 **`SHOPIFY_STORE_DOMAIN=qimti.myshopify.com` is correct.** "qimti", not "qimati" — confirmed
 at `admin.shopify.com/store/qimti`. It is the **test store**, and it is password-protected.
 The live store is a later cutover; nothing in this repo points at it yet. Do not "fix" the
-spelling. At cutover, the only changes are `SHOPIFY_STORE_DOMAIN`, a set of app credentials
-for the live store, and re-running `npm run seed:counters`.
+spelling. At cutover, the only Shopify configuration changes are `SHOPIFY_STORE_DOMAIN`, a
+set of app credentials for the live store, and re-running `npm run seed:counters`. That scan
+must report `NK7801`, `BK3367` and `AK0834` as the exact excluded catalogue typos from D69;
+they must never become counter maxima.
 
 `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_PASSWORD` are different credentials. The
 service-role key is a JWT for the PostgREST API; it cannot authenticate a Postgres wire

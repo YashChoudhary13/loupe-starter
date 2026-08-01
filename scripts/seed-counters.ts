@@ -30,14 +30,12 @@
  *   store that has been published to since. The worst a stale read can do is nothing.
  *
  * A prefix found in Shopify but absent from `categories` is REPORTED, never
- * created. Inventing a prefix starts a sequence nobody can reconcile, and the
- * eight unconfirmed categories (Watches, Hand Chains, …) are unconfirmed
- * precisely because nobody has read their real prefix off a live product.
+ * created. Inventing a prefix starts a sequence nobody can reconcile.
  *
- * SANITY CHECK AT CUTOVER — the live store's maxima, as of Phase 2, are
- * NK 970 · ER 453 · BK 317 · CB 352 · RS 224 · AK 087. They are written here as
- * prose on purpose: the script must derive its numbers, never carry them. Against
- * the `qimti` TEST store this run is expected to find almost nothing.
+ * Three confirmed catalogue typos are excluded before maxima are calculated:
+ * NK7801 (title Necklace 801), BK3367 (Bracelet Kada 337), and AK0834 (Anklets
+ * 084). They remain visible in the dry-run report and audit event; they are never
+ * silently dropped. See D69.
  */
 import { config } from 'dotenv'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
@@ -45,7 +43,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { ShopifyClient } from '../src/lib/shopify/client'
 import { shopifyConfig } from '../src/lib/shopify/config'
 import { ShopifyError } from '../src/lib/shopify/errors'
-import { parseSku } from '../src/lib/publish/identity'
+import {
+  scanSkuVariants,
+  type PrefixFinding,
+  type ShopifySkuVariant,
+} from './lib/sku-counter-scan'
 
 config({ path: '.env', quiet: true })
 config({ path: '.env.local', override: true, quiet: true })
@@ -77,14 +79,6 @@ interface VariantPage {
   }
 }
 
-interface PrefixFinding {
-  prefix: string
-  max: number
-  count: number
-  exampleSku: string
-  exampleTitle: string
-}
-
 function required(key: string): string {
   const v = process.env[key]?.trim()
   if (!v) throw new Error(`Missing ${key} in .env`)
@@ -104,13 +98,11 @@ async function collectSkus(shopify: ShopifyClient): Promise<{
   findings: Map<string, PrefixFinding>
   scanned: number
   blank: number
-  unparseable: { sku: string; title: string }[]
+  unparseable: readonly { sku: string; title: string }[]
+  excludedMalformed: readonly { sku: string; title: string; correctedSku: string }[]
 }> {
-  const findings = new Map<string, PrefixFinding>()
-  const unparseable: { sku: string; title: string }[] = []
+  const variants: ShopifySkuVariant[] = []
   let cursor: string | null = null
-  let scanned = 0
-  let blank = 0
   let page = 0
 
   for (;;) {
@@ -118,48 +110,17 @@ async function collectSkus(shopify: ShopifyClient): Promise<{
     page += 1
 
     for (const node of data.productVariants.nodes) {
-      scanned += 1
-      const sku = node.sku?.trim() ?? ''
-      if (sku === '') {
-        blank += 1
-        continue
-      }
-
-      const parsed = parseSku(sku)
-      if (!parsed) {
-        if (unparseable.length < 25) {
-          unparseable.push({ sku, title: node.product?.title ?? '(no product)' })
-        }
-        continue
-      }
-
-      const existing = findings.get(parsed.prefix)
-      if (!existing) {
-        findings.set(parsed.prefix, {
-          prefix: parsed.prefix,
-          max: parsed.number,
-          count: 1,
-          exampleSku: sku,
-          exampleTitle: node.product?.title ?? '',
-        })
-      } else {
-        existing.count += 1
-        if (parsed.number > existing.max) {
-          existing.max = parsed.number
-          existing.exampleSku = sku
-          existing.exampleTitle = node.product?.title ?? ''
-        }
-      }
+      variants.push({ sku: node.sku, title: node.product?.title ?? '(no product)' })
     }
 
-    process.stdout.write(`\r  page ${page} · ${scanned} variants scanned`)
+    process.stdout.write(`\r  page ${page} · ${variants.length} variants scanned`)
     if (!data.productVariants.pageInfo.hasNextPage) break
     cursor = data.productVariants.pageInfo.endCursor
     if (!cursor) break
   }
 
   process.stdout.write('\n')
-  return { findings, scanned, blank, unparseable }
+  return scanSkuVariants(variants)
 }
 
 async function main(): Promise<void> {
@@ -197,10 +158,12 @@ async function main(): Promise<void> {
   )
 
   console.log('Reading every variant from Shopify …')
-  const { findings, scanned, blank, unparseable } = await collectSkus(shopify)
+  const { findings, scanned, blank, unparseable, excludedMalformed } =
+    await collectSkus(shopify)
   console.log(
     `  ${scanned} variants · ${findings.size} distinct SKU prefix(es) · ` +
-      `${blank} blank SKU(s) · ${unparseable.length} unparseable`,
+      `${blank} blank SKU(s) · ${excludedMalformed.length} excluded malformed · ` +
+      `${unparseable.length} unparseable`,
   )
   console.log('')
 
@@ -255,6 +218,17 @@ async function main(): Promise<void> {
     console.log('  starts a sequence that has to be unpicked later.')
   }
   console.log('')
+
+  if (excludedMalformed.length > 0) {
+    console.log('EXCLUDED MALFORMED SKUs — ignored before calculating maxima')
+    console.log('─'.repeat(78))
+    for (const excluded of excludedMalformed) {
+      console.log(
+        `  ${pad(excluded.sku, 12)}→ ${pad(excluded.correctedSku, 10)} "${excluded.title}"`,
+      )
+    }
+    console.log('')
+  }
 
   if (unparseable.length > 0) {
     console.log('UNPARSEABLE SKUs — not <letters><digits>, so no prefix could be read')
@@ -321,6 +295,7 @@ async function main(): Promise<void> {
       raised: applied,
       unknown_prefixes: unknown.map((u) => ({ prefix: u.prefix, max: u.max, count: u.count })),
       blank_skus: blank,
+      excluded_malformed_skus: excludedMalformed,
       unparseable_skus: unparseable.length,
     },
     actor: 'script:seed-counters',

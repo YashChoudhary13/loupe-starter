@@ -12,8 +12,8 @@
 -- Seeding NK from the raw maximum would have started the next necklace at
 -- NK7802 — permanently, since the counter is monotone and D2 forbids lowering
 -- it. The numbers below are the true sequence maxima with those three excluded.
--- Anyone re-running `seed:counters` against the live store must apply the same
--- correction; the Shopify Admin API reports the typo'd values too.
+-- `seed:counters` excludes and reports these three exact values before deriving
+-- maxima; the Shopify Admin API reports the typo'd values too. See D69.
 --
 -- Counters are raised through public.raise_sku_counter(), which is monotone
 -- (greatest(last_number, p_to)). It can never lower a counter, so this is safe

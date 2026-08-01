@@ -1782,3 +1782,27 @@ stable across moves and the worker downloads by id, so Retry from Tracking still
 re-enqueued anything — `drive_file_id` is UNIQUE, so a file left in place is read and skipped
 (hard rule 3). It keeps the folder honest for the human looking at it, which is a smaller and
 different claim than preventing runaway spend.
+
+---
+
+### D69 — Three confirmed malformed live SKUs are excluded from counter seeding
+
+*Business decision, 2026-08-01, confirmed for the live-store cutover.*
+
+The live catalogue contains three numeric-looking SKU typos whose product titles prove the
+intended sequence numbers:
+
+- `NK7801` is Necklace 801 and means `NK801`;
+- `BK3367` is Bracelet Kada 337 and means `BK337`;
+- `AK0834` is Anklets 084 and means `AK084`.
+
+They are valid under the generic `<letters><digits>` parser, so merely taking the largest
+parsed number would permanently raise the monotone counters to 7801, 3367 and 834. They are
+therefore excluded **before** maxima are calculated. The dry-run report and the audit event
+still list every excluded row and its confirmed correction; discarding them from the counter
+calculation does not mean hiding them or deleting the products from Shopify.
+
+The exclusion is an exact allowlist of these three SKU strings, never a numeric heuristic.
+A future unusually large SKU may be genuine, and silently treating it as a typo would be the
+same class of irreversible catalogue error in the other direction. Adding another exclusion
+requires the product title or another business-owned source proving the intended number.

@@ -4,8 +4,6 @@ This file is the project's memory. Sessions have no recollection of each other �
 
 **Read this first, every session. Append to it last, every session.** Newest entry at the top, directly under this template block.
 
----
-
 ## Entry template — copy this, fill it, put it at the top
 
 ```markdown
@@ -28,6 +26,45 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 **Next session should start with:** one concrete action.
 ```
+
+---
+
+## 2026-08-01 — Live SKU cutover excludes three confirmed catalogue typos
+
+**Goal this session:** preserve all current work, make live counter seeding ignore the three
+confirmed malformed SKUs, and verify the database is ready to move to another Supabase
+account without losing drafts.
+
+**Built:**
+- `scripts/lib/sku-counter-scan.ts` → one pure, tested scan which removes only `NK7801`,
+  `BK3367` and `AK0834` before calculating prefix maxima. Every excluded row remains in the
+  report with its product title and confirmed correction.
+- `scripts/seed-counters.ts` → dry-run output and the `seed.sku_counters` audit event now
+  include the excluded malformed rows.
+- `tests/sku-counter-scan.test.ts` → proves the corrected maxima and proves blank,
+  unparseable and unknown-prefix SKUs are still reported.
+- D69 and the cutover notes record the exact, non-heuristic exclusion rule.
+
+**Verified:**
+- Public live-catalogue audit read 2,664 products / 3,475 variants. After excluding the
+  three confirmed typos, the relevant maxima are `NK 975`, `BK 362`, `AK 87`; the full scan
+  also agrees with the previously recorded maxima for every configured prefix.
+- `npm run db:push` reports all 52 migrations already applied. The source Supabase project
+  contains all four current drafts (three published, one assembling); there is no local
+  draft dataset waiting to be uploaded.
+- `470/470` tests passed across 44 files, including 100-way counter concurrency against the
+  deployed database. Counters were restored to their baselines by test cleanup.
+- Typecheck, lint, production build and the six-secret client-bundle isolation proof pass.
+
+**Not finished / known blocked:**
+- The Supabase ownership move needs the target account/organization. A project transfer is
+  preferred over logical restore because it preserves all rows, migration history, Vault
+  secrets and cron configuration without creating a second active scheduler.
+- Shopify remains pointed at `qimti.myshopify.com`; the live credentials have not been set.
+
+**Next session should start with:** have the destination Supabase account create the target
+organization and invite the current source owner, then transfer the existing project from
+Project Settings rather than rebuilding the database.
 
 ---
 
