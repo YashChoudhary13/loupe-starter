@@ -796,6 +796,13 @@ export function ConsoleScreen({
           </div>
         </div>
 
+        {queue.truncated ? (
+          <div className="rounded-pill bg-[#faf4e9] px-4 py-2 text-[12px] text-amber" role="status">
+            The queue is showing only part of the outstanding work. Publish or clear some of it
+            to see the rest.
+          </div>
+        ) : null}
+
         {pipelineBusy ? (
           <div
             className="flex items-center gap-2 rounded-pill bg-chip px-4 py-2 text-[12px] text-ink-soft"

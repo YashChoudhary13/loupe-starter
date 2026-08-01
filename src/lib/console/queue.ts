@@ -35,8 +35,22 @@ import type {
 /** CLAUDE.md hard rule 5: alert on AGE, not status. */
 export const STALE_UNGROUPED_HOURS = 24
 
-const PHOTO_LIMIT = 240
-const DRAFT_LIMIT = 120
+/**
+ * Queue caps, sized against the real operating volume (100-200 products/day)
+ * and the way the batch is actually worked: the operator builds 100-150 drafts
+ * and only then publishes them.
+ *
+ * DRAFT_LIMIT was 120 — BELOW that batch size. Drafts past the cap simply did
+ * not appear in the console, which for an operator is indistinguishable from
+ * having lost them. PHOTO_LIMIT was 240, barely one day of intake, so falling a
+ * day behind hid the oldest photographs.
+ *
+ * These are still caps, not "all rows" — an unbounded query is how one bad day
+ * takes the console down. `truncated` on the snapshot says so out loud rather
+ * than silently showing a subset.
+ */
+const PHOTO_LIMIT = 600
+const DRAFT_LIMIT = 500
 
 interface IntakeRow {
   id: string
@@ -412,6 +426,8 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     ungroupedCount: photoTiles.length,
     draftCount: draftTiles.length,
     publishedToday: publishedResult.count ?? 0,
+    // Silent truncation is the bug; a visible cap is a limitation.
+    truncated: photos.length >= PHOTO_LIMIT || drafts.length >= DRAFT_LIMIT,
     attentionCount: tiles.filter((t) => t.attention !== null).length,
     pipelineActivity: {
       uploading: uploadingResult.count ?? 0,

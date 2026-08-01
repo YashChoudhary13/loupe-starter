@@ -150,6 +150,8 @@ export interface QueueSnapshot {
   readonly publishedToday: number
   readonly attentionCount: number
   readonly pipelineActivity: PipelineActivity
+  /** True when the queue hit its cap and is showing only part of the work. */
+  readonly truncated: boolean
   /** Epoch ms at which the earliest presigned URL in this snapshot dies. */
   readonly signedUntil: number
   readonly generatedAt: string
