@@ -181,6 +181,14 @@ describe('server-only functions are not callable without the service role', () =
       p_description_missing: true,
       p_source: 'rls-probe',
     }],
+    ['finalize_manual_image_upload', {
+      p_upload_id: '00000000-0000-0000-0000-000000000000',
+      p_thumb_key: 'manual/anonymous/thumb.webp',
+      p_width: 1,
+      p_height: 1,
+      p_phash: '0000000000000000',
+      p_actor: 'anonymous',
+    }],
     ['validate_prompt_body', {
       p_kind: 'describe',
       p_body: 'anonymous',

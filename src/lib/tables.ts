@@ -11,6 +11,7 @@ export const TABLES = [
   'colour_usage',
   'product_drafts',
   'intake_files',
+  'manual_uploads',
   'image_versions',
   'image_redo_jobs',
   'duplicate_reviews',

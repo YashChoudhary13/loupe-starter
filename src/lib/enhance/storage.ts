@@ -227,4 +227,33 @@ export class R2ObjectStore implements ImmutableObjectStore {
       { expiresIn: expiresInSeconds },
     )
   }
+
+  /**
+   * Short-lived browser upload for a catalogue-ready image.
+   *
+   * The URL authorises exactly one object key and one content type. R2 remains
+   * private; no credential crosses the server boundary. Finalisation reads the
+   * object back and verifies its size, format and decodability before any
+   * intake/image-version row becomes visible in Loupe.
+   */
+  async presignPut(
+    key: string,
+    contentType: string,
+    expiresInSeconds: number,
+  ): Promise<string> {
+    if (!key.trim()) throw new Error('Presigned upload key must not be empty.')
+    if (!contentType.trim()) throw new Error('Presigned upload content type must not be empty.')
+    if (!Number.isInteger(expiresInSeconds) || expiresInSeconds <= 0 || expiresInSeconds > 3_600) {
+      throw new Error('Presigned upload expiry must be an integer from 1 to 3600 seconds.')
+    }
+    return getSignedUrl(
+      this.client,
+      new PutObjectCommand({
+        Bucket: this.config.bucket,
+        Key: key,
+        ContentType: contentType,
+      }),
+      { expiresIn: expiresInSeconds },
+    )
+  }
 }

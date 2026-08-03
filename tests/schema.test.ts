@@ -64,6 +64,7 @@ describe('indexes the system actually queries on', () => {
     'intake_files_expired_lease_idx',
     'intake_files_ready_queue_idx',
     'intake_files_phash_idx',
+    'manual_uploads_pending_created_at_idx',
     'image_redo_claim_idx',
     'image_redo_one_active_per_intake',
     'duplicate_reviews_duplicate_target_idx',
@@ -192,6 +193,10 @@ describe('conventions', () => {
     }
   })
 
+  it('has the manual ready-image completion function deployed', () => {
+    expect(report.functions).toContain('finalize_manual_image_upload')
+  })
+
   it('has the Phase 5 prompt and redo functions deployed', () => {
     for (const fn of [
       'validate_prompt_body',
@@ -249,6 +254,8 @@ describe('Phase 3A database capabilities', () => {
     )
     expect(report.columns['intake_files.presentation_fallback']).toBe('boolean')
     expect(report.columns['intake_files.presentation_fallback_reason']).toBe('text')
+    expect(report.columns['intake_files.source']).toBe('text')
+    expect(report.columns['manual_uploads.status']).toBe('text')
   })
 
   it('stores an opaque cursor and UUID lease on sync_state', () => {
@@ -300,6 +307,19 @@ describe('Phase 3A database capabilities', () => {
         service_role: true,
       })
     }
+  })
+
+  it('keeps manual ready-image completion service-role-only', () => {
+    const matches = Object.entries(report.function_execute).filter(([signature]) =>
+      signature.startsWith('finalize_manual_image_upload(') ||
+      signature.startsWith('public.finalize_manual_image_upload('),
+    )
+    expect(matches).toHaveLength(1)
+    expect(matches[0]?.[1]).toEqual({
+      anon: false,
+      authenticated: false,
+      service_role: true,
+    })
   })
 
   it('keeps every Phase 5 RPC service-role-only', () => {

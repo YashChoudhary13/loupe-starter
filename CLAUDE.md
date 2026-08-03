@@ -87,6 +87,13 @@ See D50, which supersedes D6.
 
 Product options. Free text, remembered, ranked by usage **per category** (Necklaces → Gold/Silver; Rings → Red/White/Green). Variants currently **share the parent SKU** (`AK011` on both Gold and Silver) — keep that convention.
 
+The console renders these names as **visual swatches**: category-ranked remembered colours
+first, followed by the stable jewellery palette. Gold, Silver and Rose Gold use distinct
+metallic treatments; split names such as `Red / White` use a split swatch. Keep the normalised
+name underneath for Shopify, accessibility and auditability—never replace the option value
+with an opaque hex code. Unknown custom vocabulary must look custom rather than being assigned
+a plausible but false colour.
+
 Stock may be set independently for every colour. `product_draft_variants.stock`
 is authoritative; the old parent `product_drafts.stock` value is only a
 compatibility mirror when options exist. Publish blocks when the **sum** of the

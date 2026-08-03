@@ -29,6 +29,110 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-03 — Manual ready-image intake and stable deleted-draft SKUs
+
+**Goal this session:** let photographers upload an already-finished image without either AI
+call, and make the SKU result safe and understandable when a Shopify draft is deleted.
+
+**Built:**
+- `src/lib/manual-upload/server.ts`, console actions and `ConsoleScreen.tsx` → an authenticated
+  **Upload ready image** control creates a durable upload ticket, sends JPEG/PNG/WebP directly
+  to private R2 with progress, verifies the stored bytes server-side, and adds the untouched
+  original to Pending with an explicit AI-bypassed label.
+- `20260803120000_manual_ready_image_uploads.sql` → deployed `manual_uploads`, the
+  `intake_files.source` boundary, and an idempotent service-role completion transaction that
+  creates exactly one selected pristine original plus an audit event without an AI model call.
+- queue, draft editor and Drive housekeeping → manual images participate in normal grouping,
+  drafting and publishing, but never enter `/RAW`/`/Processed` housekeeping and never offer an
+  AI redo.
+- deleted-Shopify-draft SKU contract → the UI now says when the category SKU is reserved and
+  explains that deletion retires rather than recycles it; the regression proves a recreated
+  Shopify product id replaces the stale id while the reserved SKU and handle stay unchanged.
+- `scripts/configure-r2-cors.ts` → idempotently installs and reads back one exact-origin
+  browser PUT/HEAD rule without making the R2 bucket public.
+- `docs/DECISIONS.md` D71–D72 → records the manual bypass boundary and why Shopify
+  `max(SKU) + 1` is not used as a concurrent allocator.
+
+**Verified:**
+- `npm run db:push`: `20260803120000_manual_ready_image_uploads.sql` applied to the live
+  database.
+- Manual-upload, Shopify-draft, RLS and Drive-housekeeping regression suites: `98/98` passed
+  against the deployed database. The completion test proves atomicity, idempotence, original
+  selection, AI-bypass audit data and wrong-operator refusal.
+- `npm run typecheck`, `npm run lint`, `npm run build`, and `git diff --check`: passed.
+- A real signed PUT wrote and read back a 68-byte PNG in the configured private R2 bucket; the
+  probe object was deleted afterwards.
+- The isolated SKU concurrency suite passed `5/5`: the 100-way race returned 94 distinct
+  values with no duplicates, only six transport drops, and the NK counter was restored to
+  `975` afterwards.
+- The complete suite reached `489/492`. Its three red assertions are pre-existing live-state
+  issues: two operator-managed prompt rows no longer match their pinned fixtures, and the first
+  100-way SKU run had 13 network drops (all 87 server successes were still distinct). The same
+  concurrency file passed on the immediate isolated rerun above.
+
+**Not finished / known broken:**
+- The production R2 bucket does not yet return CORS headers for the configured console origin,
+  so a real browser cannot use the new direct PUT until the narrow rule is applied. The existing
+  object-access credentials cannot edit bucket settings, `R2_API_TOKEN` is absent locally, and
+  the available Cloudflare browser session is waiting at sign-in. No public bucket access was
+  enabled as a workaround.
+
+**Surprises:** presigning itself worked and private object access was healthy, but presigned
+browser requests still require an explicit bucket CORS rule. The locally configured production
+origin is Railway while the example file names Vercel, so the origin must be confirmed from the
+actual production deployment rather than guessed.
+
+**Next session should start with:** sign in to the open Cloudflare tab (or provide a bucket-settings
+API token), run `npm run r2:cors -- --origin <actual-production-origin>`, then verify the preflight
+and upload one real catalogue-ready photograph from the console.
+
+---
+
+## 2026-08-03 — Visual colour palette and swatch preview
+
+**Goal this session:** replace text-first Gold/Silver controls with actual colour swatches
+while retaining readable Shopify option values and independent stock per colour.
+
+**Built:**
+- `src/lib/console/colour-swatch.ts` → a stable jewellery palette with distinct metallic
+  Gold, Silver and Rose Gold treatments, standard colours, split swatches for combined names,
+  aliases for remembered vocabulary, and an honest neutral marker for unknown custom names.
+- `DraftEditor.tsx` → By colour now presents circular palette choices instead of text chips,
+  shows selected swatches over the product image preview, and keeps the per-colour stock input
+  beside each selected swatch. Names remain available through labels and hover text.
+- D71 plus the Colours domain note → records that visual swatches are semantic product data,
+  while the normalised name remains the Shopify value and accessibility/audit label.
+- `tests/colour-swatch.test.ts` → covers jewellery metals, aliases/modifiers, split colours,
+  category ranking and duplicate removal.
+
+**Verified:**
+- `144/144` feature-focused tests passed across seven files, including deployed database
+  persistence/RLS and the Shopify per-variant payload; the focused swatch + Shopify run passed
+  `20/20`.
+- Lint, TypeScript checks, `git diff --check`, and the local production build passed.
+- A clean worktree containing only the swatch runtime change was deployed, deliberately
+  excluding unrelated manual-upload work present in the shared workspace. Vercel deployment
+  `dpl_3bh9S5be5DZW8QXguaqaWjbKLDXZ` is Ready, the production alias is
+  `https://qimati-loupe.vercel.app`, and `/health` returned HTTP 200.
+
+**Not finished / known broken:**
+- Loupe now shows actual swatches, but Shopify-native theme swatches are a separate store-wide
+  integration. Shopify requires linked product metafields, colour-pattern metaobjects and the
+  `write_metaobjects` scope; this session did not silently create those objects or widen app
+  permissions.
+- Unrelated manual-ready-upload work remains uncommitted in the shared workspace and was not
+  included in this production deployment.
+
+**Surprises:** the original console used text chips rather than persisted hex values. The
+visual layer therefore keeps names authoritative and resolves only known colours; inventing a
+random hue for unknown vocabulary was rejected as misleading.
+
+**Next session should start with:** open a real colour draft in the signed-in console and
+confirm the palette and image-overlay swatches at the operator's normal screen size; only then
+decide whether Shopify-native linked colour-pattern swatches are also required on the store.
+
+---
+
 ## 2026-08-03 — Shopify draft variant-stock contract pinned
 
 **Goal this session:** confirm that saving a Shopify draft sends the independent stock for

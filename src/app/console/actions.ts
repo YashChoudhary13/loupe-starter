@@ -23,6 +23,12 @@ import type {
   QueueSnapshot,
 } from '@/lib/console/types'
 import { PublishBlockedError, type PublishBlock } from '@/lib/publish/validate'
+import {
+  beginManualUpload,
+  finalizeManualUpload,
+  type BeginManualUploadInput,
+  type ManualUploadTicket,
+} from '@/lib/manual-upload/server'
 
 /**
  * Every mutation the console can make, and the only way the browser reaches the
@@ -109,6 +115,27 @@ async function withOperator<T>(run: (operator: Awaited<ReturnType<typeof require
 
 export async function refreshQueueAction(): Promise<ActionResult<QueueSnapshot>> {
   return withOperator(() => loadQueue())
+}
+
+/**
+ * Creates a short-lived, single-object R2 upload URL. The browser writes the
+ * ready image directly to the private bucket so Vercel's request-body ceiling
+ * cannot truncate a photographer's full-resolution file.
+ */
+export async function beginManualUploadAction(
+  input: BeginManualUploadInput,
+): Promise<ActionResult<ManualUploadTicket>> {
+  return withOperator((operator) => beginManualUpload(operator, input))
+}
+
+/** Verifies the bytes and atomically makes the ready image visible in Pending. */
+export async function finalizeManualUploadAction(
+  uploadId: string,
+): Promise<ActionResult<{ intakeFileId: string; queue: QueueSnapshot }>> {
+  return withOperator(async (operator) => {
+    const intakeFileId = await finalizeManualUpload(operator, uploadId)
+    return { intakeFileId, queue: await loadQueue() }
+  })
 }
 
 /**

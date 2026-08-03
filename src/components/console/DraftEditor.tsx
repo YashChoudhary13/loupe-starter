@@ -2,6 +2,10 @@
 
 import { useState, type RefObject } from 'react'
 
+import {
+  colourPaletteNames,
+  colourSwatchBackground,
+} from '@/lib/console/colour-swatch'
 import { formatPaise } from '@/lib/console/money'
 import type { PredictedIdentity } from '@/lib/console/preview'
 import type {
@@ -127,6 +131,7 @@ export function DraftEditor(props: DraftEditorProps) {
     return sum + (Number.isFinite(stock) && stock > 0 ? stock : 0)
   }, 0)
   const newColourStock = (form.variants[0]?.stock ?? form.stock) || '0'
+  const availableColourNames = colourPaletteNames(colourSuggestions)
 
   const setVariantKind = (kind: VariantKind) => {
     if (kind === form.variantKind) return
@@ -254,6 +259,17 @@ export function DraftEditor(props: DraftEditorProps) {
               no image selected
             </span>
           )}
+          {form.variantKind === 'colour' && form.variants.length > 0 ? (
+            <div
+              className="pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1.5 rounded-pill bg-white/90 p-1.5 shadow-sm backdrop-blur-sm"
+              role="img"
+              aria-label={`Selected colours: ${form.variants.map((variant) => variant.value).join(', ')}`}
+            >
+              {form.variants.map((variant) => (
+                <ColourSwatch key={variant.value} name={variant.value} className="size-6" />
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {/* Images: version choice per photograph, plus order. */}
@@ -305,6 +321,14 @@ export function DraftEditor(props: DraftEditorProps) {
                         no description
                       </span>
                     ) : null}
+                    {row.photo.source === 'manual' ? (
+                      <span
+                        className="rounded-pill bg-surface px-2 py-[7px] text-[10.5px] text-ink-soft"
+                        title="Uploaded as catalogue-ready. The original is selected and no AI enhancement was run."
+                      >
+                        ready upload · AI bypassed
+                      </span>
+                    ) : null}
                     {row.photo.possibleDuplicate ? (
                       <span
                         className="rounded-pill bg-[#faf2e4] px-2 py-[7px] text-[10.5px] text-amber"
@@ -329,14 +353,16 @@ export function DraftEditor(props: DraftEditorProps) {
                         redo failed
                       </span>
                     ) : null}
-                    <button
-                      type="button"
-                      disabled={readOnly || busy !== null}
-                      onClick={() => onRedo(row.image.intakeFileId, row.photo.filename)}
-                      className="rounded-pill bg-surface px-2.5 py-[7px] text-[10.5px] font-medium text-ink-soft transition-colors hover:bg-white disabled:opacity-40"
-                    >
-                      {busy === `redo:${row.image.intakeFileId}` ? 'Redoing…' : 'Redo image'}
-                    </button>
+                    {row.photo.source === 'drive' ? (
+                      <button
+                        type="button"
+                        disabled={readOnly || busy !== null}
+                        onClick={() => onRedo(row.image.intakeFileId, row.photo.filename)}
+                        className="rounded-pill bg-surface px-2.5 py-[7px] text-[10.5px] font-medium text-ink-soft transition-colors hover:bg-white disabled:opacity-40"
+                      >
+                        {busy === `redo:${row.image.intakeFileId}` ? 'Redoing…' : 'Redo image'}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -518,33 +544,45 @@ export function DraftEditor(props: DraftEditorProps) {
 
           {form.variantKind === 'colour' ? (
             <div className="mt-3">
-              <div className="flex flex-wrap gap-1.5">
-                {colourSuggestions
+              <div
+                className="flex flex-wrap gap-2"
+                role="group"
+                aria-label="Colour palette"
+              >
+                {availableColourNames
                   .filter(
-                    (suggestion) =>
+                    (name) =>
                       !form.variants.some(
-                        (variant) =>
-                          variant.value.toLowerCase() === suggestion.name.toLowerCase(),
+                        (variant) => variant.value.toLowerCase() === name.toLowerCase(),
                       ),
                   )
-                  .slice(0, 6)
-                  .map((suggestion) => (
-                    <Chip
-                      key={suggestion.name}
-                      disabled={readOnly}
-                      title={`Used ${suggestion.usageCount}× in ${category?.name ?? 'this category'}`}
-                      onClick={() =>
-                        onChange({
-                          variants: [
-                            ...form.variants,
-                            { value: suggestion.name, stock: newColourStock },
-                          ],
-                        })
-                      }
-                    >
-                      + {suggestion.name}
-                    </Chip>
-                  ))}
+                  .slice(0, 12)
+                  .map((name) => {
+                    const suggestion = colourSuggestions.find(
+                      (candidate) => candidate.name.toLowerCase() === name.toLowerCase(),
+                    )
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        disabled={readOnly}
+                        aria-label={`Add ${name}`}
+                        title={
+                          suggestion
+                            ? `${name} · used ${suggestion.usageCount}× in ${category?.name ?? 'this category'}`
+                            : `Add ${name}`
+                        }
+                        onClick={() =>
+                          onChange({
+                            variants: [...form.variants, { value: name, stock: newColourStock }],
+                          })
+                        }
+                        className="rounded-full outline-none transition-transform hover:scale-110 focus-visible:shadow-[0_0_0_2px_var(--ink)] disabled:opacity-40"
+                      >
+                        <ColourSwatch name={name} className="size-8" />
+                      </button>
+                    )
+                  })}
                 <input
                   value={colourDraft}
                   disabled={readOnly}
@@ -572,7 +610,7 @@ export function DraftEditor(props: DraftEditorProps) {
                       setColourDraft('')
                     }
                   }}
-                  placeholder="+ colour"
+                  placeholder="+ other"
                   aria-label="Add a colour"
                   className="w-[104px] rounded-pill border border-dashed border-[#d5d5d5] bg-transparent px-3 py-[7px] text-[11.5px] text-ink-soft outline-none placeholder:text-muted-foreground"
                 />
@@ -595,10 +633,12 @@ export function DraftEditor(props: DraftEditorProps) {
                         })
                       }
                       title={`Remove ${variant.value}`}
-                      className="min-w-0 flex-1 truncate text-left text-[11.5px] text-ink-soft disabled:cursor-default"
+                      aria-label={`Remove ${variant.value}`}
+                      className="shrink-0 rounded-full outline-none focus-visible:shadow-[0_0_0_2px_var(--ink)] disabled:cursor-default"
                     >
-                      {variant.value}
+                      <ColourSwatch name={variant.value} className="size-7" />
                     </button>
+                    <span className="sr-only">{variant.value}</span>
                     <input
                       value={variant.stock}
                       disabled={readOnly}
@@ -611,8 +651,8 @@ export function DraftEditor(props: DraftEditorProps) {
                 ))}
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Each colour becomes a Shopify variant with its own stock. All variants share
-                the product SKU; colour names are tidied on save.
+                Pick from the visual palette, then set stock beside each swatch. Shopify keeps
+                the colour name underneath so every variant stays identifiable.
               </p>
             </div>
           ) : null}
@@ -763,8 +803,8 @@ export function DraftEditor(props: DraftEditorProps) {
               meta={`/products/${identity.handle}`}
               footnote={
                 identity.predicted
-                  ? 'The number is allocated when you publish, so it can move if somebody publishes in this category first.'
-                  : 'Allocated. A retry reuses this exact SKU and handle.'
+                  ? 'The number is allocated when you first Save draft or Publish, so it can move if somebody uses this category first.'
+                  : `Reserved from the ${category?.name ?? 'category'} sequence. If its Shopify draft is deleted, Save draft recreates it with this same retired SKU; the number is never reused.`
               }
             />
           ) : (
@@ -806,7 +846,7 @@ export function DraftEditor(props: DraftEditorProps) {
               disabled={busy !== null}
               title={
                 dirty
-                  ? 'Save as draft — reserves no SKU and publishes nothing'
+                  ? 'Save as a Shopify draft — reserves the category SKU but does not publish it live'
                   : 'This draft is saved'
               }
               aria-live="polite"
@@ -828,6 +868,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <SectionLabel>{label}</SectionLabel>
       <div className="mt-2.5">{children}</div>
     </div>
+  )
+}
+
+function ColourSwatch({ name, className }: { name: string; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      title={name}
+      className={cn(
+        'block shrink-0 rounded-full border border-black/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.28)]',
+        className,
+      )}
+      style={{ background: colourSwatchBackground(name) }}
+    />
   )
 }
 

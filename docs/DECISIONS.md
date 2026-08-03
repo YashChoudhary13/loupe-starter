@@ -156,6 +156,10 @@ The interface is black / white / grey because the content is gold and silver jew
 
 **One** accent (amber) marks "needs attention", and nothing else. A second accent would erode the first. Density is deliberately higher than the visual reference the design came from — the reference is a portfolio piece showing eight data points; this tool shows twenty-plus thumbnails and is driven by keyboard.
 
+Product-option swatches are semantic catalogue data, not interface accents. D71 allows them
+inside the colour picker and product preview while all surrounding console chrome remains
+neutral.
+
 ---
 
 ### D10 — Closed vocabularies are Postgres enums, not text + CHECK
@@ -1850,3 +1854,72 @@ The migration keeps one defaulted `p_colours` compatibility input on
 continue saving during rollout, but new saves send `variant_kind` plus structured rows.
 Colour usage ranking ignores numbered rows because a number is not vocabulary to suggest on
 the next product.
+
+---
+
+### D71 — Catalogue-ready manual uploads bypass both AI calls
+
+*Business request, 2026-08-03.*
+
+A photographer may already have a finished JPEG, PNG or WebP that should enter the normal
+Pending/product-draft flow without first going through Drive `/RAW`, description generation,
+or image enhancement. The browser uploads that file directly to one private R2 object using a
+15-minute signed PUT URL. A durable `manual_uploads` row ties the URL to its authenticated
+operator and lets completion be safely retried.
+
+Completion does not trust the browser's metadata. The server reads the private object back,
+checks its exact byte count, decodes it, verifies the declared format, reads its oriented
+dimensions, and derives only a thumbnail and perceptual hash. One transaction then creates an
+`intake_files` row with `source = 'manual'` and status `enhanced`, plus one selected
+`image_versions` row whose storage key is the untouched uploaded original. No prompt, model,
+or AI cost is involved. Manual rows are excluded from Drive housekeeping and do not offer the
+image-redo action because their synthetic `manual:<uuid>` identity is not a Drive file id.
+
+Direct browser upload is deliberate: sending a full-resolution photograph through a server
+action would be subject to the deployment platform's request-body ceiling. The R2 bucket stays
+private. Its CORS configuration allows only `PUT`/`HEAD` from the exact console origin and
+still requires the signed URL; it is not public read or public write access.
+
+---
+
+### D72 — Deleting a Shopify draft retires its SKU; it never reallocates it
+
+*Business clarification, 2026-08-03; reinforces D2 and D60.*
+
+Once Save draft reserves an SKU and handle from the draft's category sequence, both remain
+frozen on that Loupe draft. If somebody deletes the corresponding Shopify DRAFT product,
+the next Save draft addresses `productSet` by the same handle, recreates the product with the
+same retired SKU, and replaces Loupe's stale Shopify product id with the newly returned id.
+The number is not put back into the category sequence. A gap is harmless; reusing a number can
+create two physical products with one SKU when requests overlap or a deleted item is restored.
+
+Loupe therefore does not query Shopify for `max(SKU) + 1` during Save draft or Publish.
+Shopify permits duplicate SKUs, multiple publishes can be in flight, and deleted/draft products
+make a catalogue maximum an unsafe allocator. Per-category accuracy comes from the category's
+confirmed prefix plus the atomic Postgres counter. If products are created outside Loupe, the
+explicit `seed:counters` reconciliation may raise each counter to Shopify's verified maximum
+during a quiet operational window; it never lowers a counter and is not part of the publish
+transaction.
+
+---
+
+### D71 — Colour choices are selected and previewed as swatches
+
+*Business request, 2026-08-03.*
+
+The customer choice remains a normalised human name (`Gold`, `Silver`, `Rose Gold`) because
+that is the stable Shopify option value and the only useful audit label. The console no
+longer presents those names as its primary visual control: it merges category-ranked
+remembered colours with a fixed jewellery palette and renders circular swatches in both the
+picker and the image preview. Each selected swatch keeps its independent stock input.
+
+Metal finishes use deliberately distinct treatments rather than flat yellow/grey/pink.
+Simple combined names such as `Red / White` render as split swatches. Unknown remembered
+vocabulary uses a neutral custom marker; hashing an unknown name into a random hue was
+rejected because it would look authoritative while potentially showing the wrong colour.
+
+The name is still exposed through labels and hover text for accessibility, and is still what
+publishes to Shopify. A true Shopify-native swatch is a separate integration: Shopify's
+structured swatches require a linked product metafield, colour-pattern metaobjects and the
+`write_metaobjects` scope. This console change does not silently create those store-wide
+objects or widen app permissions.

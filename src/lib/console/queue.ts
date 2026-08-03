@@ -55,6 +55,7 @@ const DRAFT_LIMIT = 500
 interface IntakeRow {
   id: string
   filename: string
+  source: 'drive' | 'manual'
   status: string
   discovered_at: string
   product_description: string | null
@@ -267,7 +268,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('intake_files')
       .select(
-        'id, filename, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
+        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
       )
       .eq('status', 'enhanced')
       .is('product_draft_id', null)
@@ -324,7 +325,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
   const { data: draftPhotoRows, error: draftPhotoError } = draftIds.length
     ? await db
         .from('intake_files')
-        .select('id, filename, status, discovered_at, product_draft_id')
+        .select('id, filename, source, status, discovered_at, product_draft_id')
         .in('product_draft_id', draftIds)
     : { data: [], error: null }
   if (draftPhotoError) throw new Error(`intake_files (grouped): ${draftPhotoError.message}`)
@@ -455,7 +456,7 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
     db
       .from('intake_files')
       .select(
-        'id, filename, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
+        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
       )
       .in('id', intakeFileIds),
     db
@@ -495,6 +496,7 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
     .map((file) => ({
       intakeFileId: file.id,
       filename: file.filename,
+      source: file.source,
       status: file.status,
       discoveredAt: file.discovered_at,
       description: file.product_description,
@@ -549,7 +551,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     db
       .from('intake_files')
       .select(
-        'id, filename, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
+        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
       )
       .eq('product_draft_id', draftId)
       .order('discovered_at', { ascending: true }),
@@ -610,6 +612,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
   const photoSummaries: PhotoSummary[] = photos.map((photo) => ({
     intakeFileId: photo.id,
     filename: photo.filename,
+    source: photo.source,
     status: photo.status,
     discoveredAt: photo.discovered_at,
     description: photo.product_description,

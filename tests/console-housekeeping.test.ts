@@ -16,6 +16,7 @@ interface Row {
   id: string
   filename: string
   drive_file_id: string
+  source: 'drive' | 'manual'
   status: string
   drive_processed_at: string | null
 }
@@ -76,9 +77,9 @@ function drive(behaviour: (fileId: string) => DriveMoveOutcome | Error): DriveHo
 }
 
 const rows: Row[] = [
-  { id: 'intake-1', filename: 'one.png', drive_file_id: 'drive-1', status: 'published', drive_processed_at: null },
-  { id: 'intake-2', filename: 'two.png', drive_file_id: 'drive-2', status: 'published', drive_processed_at: null },
-  { id: 'intake-3', filename: 'three.png', drive_file_id: 'drive-3', status: 'published', drive_processed_at: null },
+  { id: 'intake-1', filename: 'one.png', drive_file_id: 'drive-1', source: 'drive', status: 'published', drive_processed_at: null },
+  { id: 'intake-2', filename: 'two.png', drive_file_id: 'drive-2', source: 'drive', status: 'published', drive_processed_at: null },
+  { id: 'intake-3', filename: 'three.png', drive_file_id: 'drive-3', source: 'drive', status: 'published', drive_processed_at: null },
 ]
 
 const DEPS = { processedFolderId: 'processed-folder', actor: 'operator@example.com' }
@@ -92,7 +93,33 @@ describe('post-publish Drive housekeeping', () => {
       ...DEPS,
     })
     expect(filters.status).toBe('published')
+    expect(filters.source).toBe('drive')
     expect(filters.product_draft_id).toBe('draft-1')
+  })
+
+  it('never sends a manual ready-image identity to Google Drive', async () => {
+    const manual: Row = {
+      id: 'manual-intake',
+      filename: 'ready.jpg',
+      drive_file_id: 'manual:upload-id',
+      source: 'manual',
+      status: 'published',
+      drive_processed_at: null,
+    }
+    const { db, rpcCalls } = fakeDb([...rows, manual])
+    const moved: string[] = []
+    const outcomes = await tidyDriveForDraft('draft-1', {
+      db,
+      drive: drive((fileId) => {
+        moved.push(fileId)
+        return { fileId, moved: true, parents: ['processed-folder'] }
+      }),
+      ...DEPS,
+    })
+
+    expect(moved).toEqual(['drive-1', 'drive-2', 'drive-3'])
+    expect(outcomes).toHaveLength(3)
+    expect(rpcCalls).toHaveLength(3)
   })
 
   it('moves each file and records the success', async () => {

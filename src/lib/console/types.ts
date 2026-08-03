@@ -40,6 +40,8 @@ export interface RedoSummary {
 export interface PhotoSummary {
   readonly intakeFileId: string
   readonly filename: string
+  /** Manual images are already catalogue-ready and deliberately bypass AI. */
+  readonly source: 'drive' | 'manual'
   readonly status: string
   readonly discoveredAt: string
   /** Cached factual description. Becomes the Shopify image alt text. */

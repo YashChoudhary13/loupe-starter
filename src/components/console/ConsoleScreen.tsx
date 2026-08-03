@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   autosaveDraftAction,
+  beginManualUploadAction,
   colourSuggestionsAction,
   detachPhotoAction,
   groupPhotosAction,
@@ -15,6 +16,7 @@ import {
   redoPromptPreviewAction,
   refreshQueueAction,
   saveDraftAction,
+  finalizeManualUploadAction,
   type ActionError,
   type ActionResult,
   type DraftBundle,
@@ -75,6 +77,36 @@ const QUEUE_REFRESH_MS = 9 * 60 * 1000
 const ACTIVITY_POLL_MS = 5 * 1000
 /** How long a "new photograph" bubble stays on screen. */
 const TOAST_MS = 6 * 1000
+
+function putReadyImage(
+  url: string,
+  file: File,
+  contentType: string,
+  onProgress: (percent: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('PUT', url)
+    request.timeout = 10 * 60 * 1000
+    request.setRequestHeader('Content-Type', contentType)
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+      }
+    }
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(100)
+        resolve()
+      } else {
+        reject(new Error(`Private image storage returned HTTP ${request.status}.`))
+      }
+    }
+    request.onerror = () => reject(new Error('The browser could not reach private image storage.'))
+    request.ontimeout = () => reject(new Error('The image upload took longer than ten minutes.'))
+    request.send(file)
+  })
+}
 
 interface Toast {
   readonly id: number
@@ -212,8 +244,10 @@ export function ConsoleScreen({
   const [lastPublish, setLastPublish] = useState<PublishSummary | null>(null)
   const [focusIndex, setFocusIndex] = useState(0)
   const [queueView, setQueueView] = useState<QueueView>('pending')
+  const [manualUploadProgress, setManualUploadProgress] = useState<number | null>(null)
 
   const priceRef = useRef<HTMLInputElement>(null)
+  const manualUploadRef = useRef<HTMLInputElement>(null)
   const tileRefs = useRef(new Map<number, HTMLButtonElement>())
   const registerTile = useCallback((index: number, node: HTMLButtonElement | null) => {
     if (node) tileRefs.current.set(index, node)
@@ -592,6 +626,61 @@ export function ConsoleScreen({
     setFocusIndex(0)
   }, [])
 
+  const handleManualUpload = useCallback(
+    async (file: File) => {
+      setBusy('manual-upload')
+      setManualUploadProgress(0)
+      setLastPublish(null)
+      setError(null)
+      try {
+        const ticket = handleResult(
+          await beginManualUploadAction({
+            filename: file.name,
+            mimeType: file.type,
+            bytes: file.size,
+          }),
+        )
+        if (!ticket) return
+
+        await putReadyImage(
+          ticket.uploadUrl,
+          file,
+          ticket.contentType,
+          setManualUploadProgress,
+        )
+        const completed = handleResult(await finalizeManualUploadAction(ticket.uploadId))
+        if (!completed) return
+
+        setQueue(completed.queue)
+        setQueueView('pending')
+        setFocusIndex(0)
+        setBundle(null)
+        setSavedForm(null)
+        setForm(seededForm())
+        setSelectedPhotoIds([completed.intakeFileId])
+        setToasts((list) => [
+          ...list,
+          { id: Date.now(), text: 'Ready image uploaded · AI enhancement bypassed' },
+        ])
+        window.setTimeout(() => priceRef.current?.focus(), 0)
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause)
+        setError({
+          kind: 'error',
+          message: 'The ready image could not be uploaded. Nothing was added to Pending.',
+          detail,
+          retryable: true,
+          blocks: [],
+        })
+      } finally {
+        setBusy(null)
+        setManualUploadProgress(null)
+        if (manualUploadRef.current) manualUploadRef.current.value = ''
+      }
+    },
+    [handleResult, seededForm],
+  )
+
   const handlePublish = useCallback(async () => {
     setBusy('publish')
     setLastPublish(null)
@@ -859,13 +948,36 @@ export function ConsoleScreen({
                   {selectedPhotoIds.length} selected · Esc to clear
                 </span>
               ) : null}
+              <input
+                ref={manualUploadRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) void handleManualUpload(file)
+                }}
+              />
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => manualUploadRef.current?.click()}
+                title="Upload a catalogue-ready JPEG, PNG or WebP without running AI enhancement"
+                className="ml-auto rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#242428] disabled:opacity-60"
+              >
+                {busy === 'manual-upload'
+                  ? manualUploadProgress === null
+                    ? 'Preparing…'
+                    : `Uploading ${manualUploadProgress}%`
+                  : 'Upload ready image'}
+              </button>
               <button
                 type="button"
                 onClick={async () => {
                   const result = await refreshQueueAction()
                   if (result.ok) setQueue(result.data)
                 }}
-                className="ml-auto rounded-pill bg-chip px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-[#ebebeb]"
+                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-[#ebebeb]"
               >
                 Refresh
               </button>

@@ -44,10 +44,13 @@ export async function tidyDriveForDraft(
 ): Promise<readonly DriveHousekeepingOutcome[]> {
   const { data, error } = await deps.db
     .from('intake_files')
-    .select('id, filename, drive_file_id, status, drive_processed_at')
+    .select('id, filename, drive_file_id, source, status, drive_processed_at')
     .eq('product_draft_id', draftId)
     // Rule 1. Anything not yet published is not this function's business.
     .eq('status', 'published')
+    // Catalogue-ready uploads never entered Drive /RAW. Their synthetic
+    // `manual:<uuid>` identity is audit/idempotency data, not a Drive file id.
+    .eq('source', 'drive')
   if (error) throw new Error(`Could not read the draft's photographs: ${error.message}`)
 
   const rows = (data ?? []) as {

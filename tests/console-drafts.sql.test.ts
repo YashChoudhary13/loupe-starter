@@ -956,6 +956,36 @@ describe('the Shopify draft stage (D60)', () => {
     expect(data!.status).toBe('assembling')
   })
 
+  it('replaces a deleted Shopify draft id without changing its reserved category SKU', async () => {
+    const before = await db
+      .from('product_drafts')
+      .select('reserved_sku, reserved_handle')
+      .eq('id', draftId)
+      .single<{ reserved_sku: string; reserved_handle: string }>()
+
+    const { error } = await db.rpc('record_draft_shopify_product', {
+      p_draft_id: draftId,
+      p_shopify_product_id: 'gid://shopify/Product/D60-RECREATED',
+      p_actor: ACTOR,
+    })
+    expect(error).toBeNull()
+
+    const after = await db
+      .from('product_drafts')
+      .select('reserved_sku, reserved_handle, shopify_product_id')
+      .eq('id', draftId)
+      .single<{
+        reserved_sku: string
+        reserved_handle: string
+        shopify_product_id: string
+      }>()
+    expect(after.data).toEqual({
+      reserved_sku: before.data!.reserved_sku,
+      reserved_handle: before.data!.reserved_handle,
+      shopify_product_id: 'gid://shopify/Product/D60-RECREATED',
+    })
+  })
+
   it('refuses an empty product id rather than recording a meaningless one', async () => {
     const { error } = await db.rpc('record_draft_shopify_product', {
       p_draft_id: draftId,
