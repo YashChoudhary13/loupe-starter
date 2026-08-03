@@ -242,7 +242,8 @@ describe('the preview against the deployed reservation', () => {
         p_price_paise: price,
         p_weight_g: null,
         p_stock: 5,
-        p_colours: ['Gold'],
+        p_variant_kind: 'colour',
+        p_variants: [{ value: 'Gold', stock: 5 }],
         p_images: [],
         p_actor: 'test:console-preview',
       })

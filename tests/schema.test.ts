@@ -148,6 +148,13 @@ describe('conventions', () => {
     expect(report.columns['product_drafts.price_paise']).toBe('integer')
   })
 
+  it('stores option mode and per-choice stock in explicit typed columns', () => {
+    expect(report.columns['product_drafts.variant_kind']).toBe('text')
+    expect(report.columns['product_draft_variants.option_value']).toBe('text')
+    expect(report.columns['product_draft_variants.stock']).toBe('integer')
+    expect(report.functions).toContain('sync_product_draft_option_stock')
+  })
+
   it('every timestamp column is timestamptz', () => {
     const wrong = Object.entries(report.columns).filter(
       ([, type]) => type === 'timestamp without time zone',

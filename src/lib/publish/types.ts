@@ -10,6 +10,7 @@ export interface DraftRow {
   readonly price_paise: number | null
   readonly weight_g: number | null
   readonly stock: number
+  readonly variant_kind: 'none' | 'colour' | 'number'
   readonly status: 'assembling' | 'publishing' | 'published' | 'failed'
   readonly reserved_sku: string | null
   readonly reserved_handle: string | null
@@ -46,13 +47,18 @@ export interface PublishImage {
   readonly filename: string
 }
 
-/** A draft, its category, its material, its colour variants and its images. */
+export interface PublishVariant {
+  readonly value: string
+  readonly stock: number
+}
+
+/** A draft, its category, its option variants and its images. */
 export interface PublishInput {
   readonly draft: DraftRow
   readonly category: CategoryRow
   readonly materialName: string | null
-  /** Colour names in display order. Empty means a single default variant. */
-  readonly colours: readonly string[]
+  /** Customer choices in display order. Empty means a single default variant. */
+  readonly variants: readonly PublishVariant[]
   /** Ordered. Empty means the draft has no images selected. */
   readonly images: readonly PublishImage[]
 }
@@ -92,7 +98,8 @@ export interface PublishResult {
   readonly stock: number
   readonly material: string | null
   readonly descriptionHtml: string
-  readonly colours: readonly string[]
+  readonly variantKind: DraftRow['variant_kind']
+  readonly variants: readonly PublishVariant[]
   /** True when this call updated an existing product rather than creating one. */
   readonly reusedIdentity: boolean
   /** In published order. Empty when the caller published no images. */

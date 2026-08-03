@@ -55,8 +55,8 @@ import { Sidebar } from './Sidebar'
  *   operator grabbed first — the database wins and says so.
  *
  * STICKY DEFAULTS are the exception, and only in one direction: category,
- * material and stock carry to the NEXT new product because a batch is a hundred
- * necklaces in a row. Price, colours, suffix and images never carry — repeating
+ * material and one-stock quantity carry to the NEXT new product because a batch is a hundred
+ * necklaces in a row. Price, options, suffix and images never carry — repeating
  * the previous product's price is how the wrong price goes out. And a saved
  * draft's own values always win: a sticky default is a starting point for
  * something new, never an overwrite of something stored.
@@ -123,9 +123,10 @@ const EMPTY_FORM: EditorForm = {
   descriptionOverride: null,
   price: '',
   stock: '',
+  variantKind: 'none',
+  variants: [],
   weight: '',
   titleSuffix: '',
-  colours: [],
   images: [],
   allowZeroStock: false,
 }
@@ -147,11 +148,14 @@ function formFromBundle(bundle: DraftBundle): EditorForm {
     descriptionOverride: draft.descriptionOverride,
     price: draft.pricePaise === null ? '' : formatRupees(draft.pricePaise),
     stock: String(draft.stock),
+    variantKind: draft.variantKind,
+    variants: [...draft.variants]
+      .sort((a, b) => a.position - b.position)
+      .map((variant) => ({ value: variant.value, stock: String(variant.stock) })),
     // NULL is "nobody has said" and is NOT the same as 0 (D19), so an unset
     // weight stays an empty field rather than becoming a typed zero.
     weight: draft.weightG === null ? '' : String(draft.weightG),
     titleSuffix: draft.titleSuffix ?? '',
-    colours: [...draft.colours],
     images: [...draft.images]
       .sort((a, b) => a.position - b.position)
       .map((image) => ({ intakeFileId: image.intakeFileId, imageVersionId: image.imageVersionId })),
@@ -453,7 +457,15 @@ export function ConsoleScreen({
   const saveRequest = useCallback(
     (target: DraftBundle) => {
       const price = parseRupeesToPaise(form.price)
-      const stock = Number.parseInt(form.stock.trim() || '0', 10)
+      const singleStock = Number.parseInt(form.stock.trim() || '0', 10)
+      const variants = form.variants.map((variant) => {
+        const stock = Number.parseInt(variant.stock.trim() || '0', 10)
+        return { value: variant.value, stock: Number.isFinite(stock) ? stock : 0 }
+      })
+      const stock =
+        form.variantKind === 'none'
+          ? singleStock
+          : variants.reduce((total, variant) => total + Math.max(0, variant.stock), 0)
       const weight = form.weight.trim()
       return {
         draftId: target.draft.id,
@@ -468,7 +480,8 @@ export function ConsoleScreen({
         // different, deliberate one (D19). `??`-shaped, never `||`-shaped.
         weightG: weight === '' ? null : Number.parseInt(weight, 10),
         stock: Number.isFinite(stock) ? stock : 0,
-        colours: form.colours,
+        variantKind: form.variantKind,
+        variants,
         images: form.images.map((image, index) => ({
           imageVersionId: image.imageVersionId,
           position: index,
@@ -509,13 +522,22 @@ export function ConsoleScreen({
   }, [bundle, busy, dirty, listedReadOnly, saveRequest])
 
   const rememberSticky = useCallback(() => {
+    const previous = readSticky()
     writeSticky({
       categoryId: form.categoryId,
       materialId: form.materialId,
       customMaterial: form.customMaterial.trim(),
-      stock: form.stock,
+      // Per-choice totals are product-specific and should never seed the next
+      // simple product. Preserve the last one-stock quantity instead.
+      stock: form.variantKind === 'none' ? form.stock : previous.stock,
     })
-  }, [form.categoryId, form.customMaterial, form.materialId, form.stock])
+  }, [
+    form.categoryId,
+    form.customMaterial,
+    form.materialId,
+    form.stock,
+    form.variantKind,
+  ])
 
   const handleSaveDraft = useCallback(async () => {
     setBusy('save')
@@ -983,13 +1005,30 @@ function localBlocks(
   if (!price.ok) {
     blocks.push({ code: 'price_missing', field: 'price', message: price.reason })
   }
-  const stock = Number.parseInt(form.stock.trim() || '0', 10)
+  const stock =
+    form.variantKind === 'none'
+      ? Number.parseInt(form.stock.trim() || '0', 10)
+      : form.variants.reduce((total, variant) => {
+          const value = Number.parseInt(variant.stock.trim() || '0', 10)
+          return total + (Number.isFinite(value) && value > 0 ? value : 0)
+        }, 0)
   if ((!Number.isFinite(stock) || stock <= 0) && !form.allowZeroStock) {
     blocks.push({
       code: 'stock_zero',
       field: 'stock',
       message:
-        'Stock is zero. Tick "publish with zero stock" if that is deliberate — a live product nobody can buy is usually a mistake, not a decision.',
+        `${form.variantKind === 'none' ? 'Stock' : 'Total choice stock'} is zero. ` +
+        'Tick "publish with zero stock" if that is deliberate — a live product nobody can buy is usually a mistake, not a decision.',
+    })
+  }
+  if (form.variantKind !== 'none' && form.variants.length === 0) {
+    blocks.push({
+      code: 'variants_missing',
+      field: 'variants',
+      message:
+        form.variantKind === 'colour'
+          ? 'Stock is set to “By colour”, but no colours have been added.'
+          : 'Stock is set to “Numbered choices”, but no numbered pieces have been added.',
     })
   }
   if (!form.materialId && !form.customMaterial.trim()) {

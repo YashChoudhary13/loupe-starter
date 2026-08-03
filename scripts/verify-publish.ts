@@ -222,7 +222,8 @@ async function createDraft(
       custom_material: fields.customMaterial ?? null,
       description_override: fields.descriptionOverride ?? null,
       price_paise: fields.price_paise === undefined ? 75_000 : fields.price_paise,
-      stock: fields.stock ?? 12,
+      stock: fields.colours ? (fields.stock ?? 12) * 2 : (fields.stock ?? 12),
+      variant_kind: fields.colours ? 'colour' : 'none',
       weight_g: fields.weight_g === undefined ? 28 : fields.weight_g,
       title_suffix: fields.title_suffix ?? null,
       created_by: ACTOR,
@@ -234,8 +235,20 @@ async function createDraft(
 
   if (fields.colours) {
     const { error: variantError } = await db.from('product_draft_variants').insert([
-      { product_draft_id: data.id, colour_id: f.goldId, position: 0 },
-      { product_draft_id: data.id, colour_id: f.silverId, position: 1 },
+      {
+        product_draft_id: data.id,
+        colour_id: f.goldId,
+        option_value: 'Gold',
+        stock: fields.stock ?? 12,
+        position: 0,
+      },
+      {
+        product_draft_id: data.id,
+        colour_id: f.silverId,
+        option_value: 'Silver',
+        stock: fields.stock ?? 12,
+        position: 1,
+      },
     ])
     if (variantError) throw new Error(`could not add colours: ${variantError.message}`)
   }

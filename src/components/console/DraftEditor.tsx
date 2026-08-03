@@ -9,6 +9,7 @@ import type {
   ColourSuggestion,
   MaterialOption,
   PhotoSummary,
+  VariantKind,
 } from '@/lib/console/types'
 import {
   defaultDescriptionText,
@@ -48,13 +49,21 @@ export interface EditorForm {
   readonly descriptionOverride: string | null
   /** Raw text. Parsed to paise by a string parser, never by a float. */
   readonly price: string
+  /** Used only when variantKind is none. Option products derive total stock. */
   readonly stock: string
   /** Empty means "use the category default" — NOT "zero" (D19). */
   readonly weight: string
   readonly titleSuffix: string
-  readonly colours: readonly string[]
+  readonly variantKind: VariantKind
+  readonly variants: readonly EditorVariant[]
   readonly images: readonly EditorImage[]
   readonly allowZeroStock: boolean
+}
+
+export interface EditorVariant {
+  readonly value: string
+  /** Raw numeric input text; parsed without treating an empty field as valid stock. */
+  readonly stock: string
 }
 
 export interface DraftEditorProps {
@@ -113,6 +122,52 @@ export function DraftEditor(props: DraftEditorProps) {
   const selectedMaterial = materials.find((m) => m.id === form.materialId)?.name ?? null
   const materialName = form.customMaterial.trim() || selectedMaterial
   const defaultDescription = materialName ? defaultDescriptionText(materialName) : ''
+  const totalVariantStock = form.variants.reduce((sum, variant) => {
+    const stock = Number.parseInt(variant.stock.trim() || '0', 10)
+    return sum + (Number.isFinite(stock) && stock > 0 ? stock : 0)
+  }, 0)
+  const newColourStock = (form.variants[0]?.stock ?? form.stock) || '0'
+
+  const setVariantKind = (kind: VariantKind) => {
+    if (kind === form.variantKind) return
+    if (kind === 'none') {
+      onChange({
+        variantKind: kind,
+        variants: [],
+        stock: form.variantKind === 'none' ? form.stock : String(totalVariantStock),
+      })
+      return
+    }
+    if (kind === 'number') {
+      onChange({
+        variantKind: kind,
+        variants: Array.from({ length: 30 }, (_, index) => ({
+          value: String(index + 1),
+          stock: '0',
+        })),
+      })
+      return
+    }
+    onChange({ variantKind: kind, variants: [] })
+  }
+
+  const setNumberedChoiceCount = (count: number) => {
+    const bounded = Math.max(0, Math.min(100, count))
+    const stockByValue = new Map(form.variants.map((variant) => [variant.value, variant.stock]))
+    onChange({
+      variants: Array.from({ length: bounded }, (_, index) => {
+        const value = String(index + 1)
+        return { value, stock: stockByValue.get(value) ?? '0' }
+      }),
+    })
+  }
+
+  const setVariantStock = (value: string, stock: string) =>
+    onChange({
+      variants: form.variants.map((variant) =>
+        variant.value === value ? { ...variant, stock } : variant,
+      ),
+    })
 
   if (mode === 'empty') {
     return (
@@ -436,60 +491,178 @@ export function DraftEditor(props: DraftEditorProps) {
           </p>
         </Field>
 
-        <Field label="Colours">
+        <Field label="Stock method">
           <div className="flex flex-wrap gap-1.5">
-            {form.colours.map((colour) => (
-              <Chip
-                key={colour}
-                selected
-                disabled={readOnly}
-                title="Remove this colour"
-                onClick={() => onChange({ colours: form.colours.filter((c) => c !== colour) })}
-              >
-                {colour}
-              </Chip>
-            ))}
-            {colourSuggestions
-              .filter((s) => !form.colours.some((c) => c.toLowerCase() === s.name.toLowerCase()))
-              .slice(0, 6)
-              .map((suggestion) => (
-                <Chip
-                  key={suggestion.name}
-                  disabled={readOnly}
-                  title={`Used ${suggestion.usageCount}× in ${category?.name ?? 'this category'}`}
-                  onClick={() => onChange({ colours: [...form.colours, suggestion.name] })}
-                >
-                  {suggestion.name}
-                </Chip>
-              ))}
-            <input
-              value={colourDraft}
+            <Chip
+              selected={form.variantKind === 'none'}
               disabled={readOnly}
-              onChange={(event) => setColourDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  // Enter inside a form submits it. Here it means "add this
-                  // colour", so the submit — a publish — must be stopped.
-                  event.preventDefault()
-                  const name = colourDraft.trim()
-                  if (name && !form.colours.some((c) => c.toLowerCase() === name.toLowerCase())) {
-                    onChange({ colours: [...form.colours, name] })
-                  }
-                  setColourDraft('')
-                } else if (event.key === 'Escape' && colourDraft) {
-                  event.preventDefault()
-                  setColourDraft('')
-                }
-              }}
-              placeholder="+ add"
-              aria-label="Add a colour"
-              className="w-[86px] rounded-pill border border-dashed border-[#d5d5d5] bg-transparent px-3 py-[7px] text-[11.5px] text-ink-soft outline-none placeholder:text-muted-foreground"
-            />
+              onClick={() => setVariantKind('none')}
+            >
+              One stock
+            </Chip>
+            <Chip
+              selected={form.variantKind === 'colour'}
+              disabled={readOnly}
+              onClick={() => setVariantKind('colour')}
+            >
+              By colour
+            </Chip>
+            <Chip
+              selected={form.variantKind === 'number'}
+              disabled={readOnly}
+              onClick={() => setVariantKind('number')}
+            >
+              Numbered choices
+            </Chip>
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Colours become Shopify variants that share the product’s SKU. Names are tidied on
-            save, so “rose gold” and “Rose  Gold” are one colour.
-          </p>
+
+          {form.variantKind === 'colour' ? (
+            <div className="mt-3">
+              <div className="flex flex-wrap gap-1.5">
+                {colourSuggestions
+                  .filter(
+                    (suggestion) =>
+                      !form.variants.some(
+                        (variant) =>
+                          variant.value.toLowerCase() === suggestion.name.toLowerCase(),
+                      ),
+                  )
+                  .slice(0, 6)
+                  .map((suggestion) => (
+                    <Chip
+                      key={suggestion.name}
+                      disabled={readOnly}
+                      title={`Used ${suggestion.usageCount}× in ${category?.name ?? 'this category'}`}
+                      onClick={() =>
+                        onChange({
+                          variants: [
+                            ...form.variants,
+                            { value: suggestion.name, stock: newColourStock },
+                          ],
+                        })
+                      }
+                    >
+                      + {suggestion.name}
+                    </Chip>
+                  ))}
+                <input
+                  value={colourDraft}
+                  disabled={readOnly}
+                  onChange={(event) => setColourDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      const name = colourDraft.trim()
+                      if (
+                        name &&
+                        !form.variants.some(
+                          (variant) => variant.value.toLowerCase() === name.toLowerCase(),
+                        )
+                      ) {
+                        onChange({
+                          variants: [
+                            ...form.variants,
+                            { value: name, stock: newColourStock },
+                          ],
+                        })
+                      }
+                      setColourDraft('')
+                    } else if (event.key === 'Escape' && colourDraft) {
+                      event.preventDefault()
+                      setColourDraft('')
+                    }
+                  }}
+                  placeholder="+ colour"
+                  aria-label="Add a colour"
+                  className="w-[104px] rounded-pill border border-dashed border-[#d5d5d5] bg-transparent px-3 py-[7px] text-[11.5px] text-ink-soft outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                {form.variants.map((variant) => (
+                  <div
+                    key={variant.value}
+                    className="flex items-center gap-2 rounded-field bg-chip px-3 py-2"
+                  >
+                    <button
+                      type="button"
+                      disabled={readOnly}
+                      onClick={() =>
+                        onChange({
+                          variants: form.variants.filter(
+                            (candidate) => candidate.value !== variant.value,
+                          ),
+                        })
+                      }
+                      title={`Remove ${variant.value}`}
+                      className="min-w-0 flex-1 truncate text-left text-[11.5px] text-ink-soft disabled:cursor-default"
+                    >
+                      {variant.value}
+                    </button>
+                    <input
+                      value={variant.stock}
+                      disabled={readOnly}
+                      onChange={(event) => setVariantStock(variant.value, event.target.value)}
+                      inputMode="numeric"
+                      aria-label={`${variant.value} stock`}
+                      className="w-14 rounded bg-surface px-2 py-1 text-right text-[12px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Each colour becomes a Shopify variant with its own stock. All variants share
+                the product SKU; colour names are tidied on save.
+              </p>
+            </div>
+          ) : null}
+
+          {form.variantKind === 'number' ? (
+            <div className="mt-3">
+              <label className="flex items-center gap-2 text-[11.5px] text-ink-soft">
+                <span>Numbers 1 through</span>
+                <input
+                  value={form.variants.length || ''}
+                  disabled={readOnly}
+                  onChange={(event) =>
+                    setNumberedChoiceCount(Number.parseInt(event.target.value || '0', 10) || 0)
+                  }
+                  inputMode="numeric"
+                  aria-label="Number of numbered choices"
+                  className="w-16 rounded-field bg-chip px-3 py-2 text-center text-[12px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
+                />
+                <span className="text-muted-foreground">up to 100</span>
+              </label>
+              <div className="mt-2.5 grid grid-cols-3 gap-2">
+                {form.variants.map((variant) => (
+                  <label
+                    key={variant.value}
+                    className="flex items-center gap-2 rounded-field bg-chip px-2.5 py-2 text-[11.5px] text-ink-soft"
+                  >
+                    <span className="min-w-5 font-mono">#{variant.value}</span>
+                    <input
+                      value={variant.stock}
+                      disabled={readOnly}
+                      onChange={(event) => setVariantStock(variant.value, event.target.value)}
+                      inputMode="numeric"
+                      aria-label={`Number ${variant.value} stock`}
+                      className="min-w-0 flex-1 rounded bg-surface px-2 py-1 text-right text-[12px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Customers will choose the number shown in the tray photograph. Every number
+                is a separate Shopify variant with its own stock and the same product SKU.
+              </p>
+            </div>
+          ) : null}
+
+          {blockFor('variants') ? (
+            <p className="mt-2 text-[11.5px] leading-relaxed text-amber">
+              {blockFor('variants')!.message}
+            </p>
+          ) : null}
         </Field>
 
         <Field label="Price & stock">
@@ -508,15 +681,25 @@ export function DraftEditor(props: DraftEditorProps) {
               />
             </div>
             <div>
-              <input
-                value={form.stock}
-                disabled={readOnly}
-                onChange={(event) => onChange({ stock: event.target.value })}
-                inputMode="numeric"
-                autoComplete="off"
-                aria-label="Stock"
-                className="w-full rounded-field bg-chip px-3.5 py-2.5 text-[14px] font-medium text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
-              />
+              {form.variantKind === 'none' ? (
+                <input
+                  value={form.stock}
+                  disabled={readOnly}
+                  onChange={(event) => onChange({ stock: event.target.value })}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  aria-label="Stock"
+                  placeholder="Stock"
+                  className="w-full rounded-field bg-chip px-3.5 py-2.5 text-[14px] font-medium text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
+                />
+              ) : (
+                <output
+                  aria-label="Total stock"
+                  className="block w-full rounded-field bg-chip px-3.5 py-2.5 text-[14px] font-medium text-ink"
+                >
+                  {totalVariantStock} total
+                </output>
+              )}
             </div>
           </div>
           {blockFor('price') ? (

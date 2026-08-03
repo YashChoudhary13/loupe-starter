@@ -97,6 +97,7 @@ describe('server-only functions are not callable without the service role', () =
       p_draft_id: '00000000-0000-0000-0000-000000000000',
       p_error: 'anonymous',
     }],
+    ['sync_product_draft_option_stock', {}],
   ]
 
   for (const [fn, body] of phase2Functions) {

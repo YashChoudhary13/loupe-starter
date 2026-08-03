@@ -18,7 +18,11 @@ import {
   NEWEST_TAG,
 } from '@/lib/publish/publish-product'
 import type { PublishImage } from '@/lib/publish/types'
-import { ALT_TEXT_MAX_LENGTH, buildAltText } from '@/lib/shopify/product-set'
+import {
+  ALT_TEXT_MAX_LENGTH,
+  buildAltText,
+  buildInput,
+} from '@/lib/shopify/product-set'
 
 function image(overrides: Partial<PublishImage> = {}): PublishImage {
   return {
@@ -43,6 +47,65 @@ describe('product tags', () => {
       'earrings',
       'NEWEST',
       'loupe-test',
+    ])
+  })
+})
+
+describe('Shopify customer choices', () => {
+  it('saves numbered pieces as Shopify DRAFT variants with independent stock', () => {
+    const input = buildInput({
+      handle: 'rings-001',
+      title: 'Rings 001',
+      status: 'DRAFT',
+      productType: 'Jewellery',
+      tags: ['Rings', 'NEWEST'],
+      descriptionHtml: '<ul><li>316L</li></ul>',
+      material: '316L',
+      optionName: 'Number',
+      variants: [
+        {
+          sku: 'RS001',
+          price: '750.00',
+          weightG: 0,
+          stock: 2,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: '1',
+        },
+        {
+          sku: 'RS001',
+          price: '750.00',
+          weightG: 0,
+          stock: 7,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: '2',
+        },
+      ],
+    }) as {
+      status: string
+      productOptions: { name: string; values: { name: string }[] }[]
+      variants: {
+        sku: string
+        optionValues: { optionName: string; name: string }[]
+        inventoryQuantities: {
+          locationId: string
+          name: string
+          quantity: number
+        }[]
+      }[]
+    }
+
+    expect(input.status).toBe('DRAFT')
+    expect(input.productOptions).toEqual([
+      { name: 'Number', values: [{ name: '1' }, { name: '2' }] },
+    ])
+    expect(input.variants.map((variant) => variant.sku)).toEqual(['RS001', 'RS001'])
+    expect(input.variants.map((variant) => variant.optionValues[0])).toEqual([
+      { optionName: 'Number', name: '1' },
+      { optionName: 'Number', name: '2' },
+    ])
+    expect(input.variants.map((variant) => variant.inventoryQuantities[0])).toEqual([
+      { locationId: 'gid://shopify/Location/1', name: 'available', quantity: 2 },
+      { locationId: 'gid://shopify/Location/1', name: 'available', quantity: 7 },
     ])
   })
 })

@@ -16,6 +16,7 @@ import {
   PublishBlockedError,
   assertPublishable,
   resolveWeightG,
+  totalAvailableStock,
   validateDraftForPublish,
 } from '@/lib/publish/validate'
 import type { CategoryRow, DraftRow, PublishImage, PublishInput } from '@/lib/publish/types'
@@ -40,6 +41,7 @@ const DRAFT: DraftRow = {
   price_paise: 75_000,
   weight_g: null,
   stock: 5,
+  variant_kind: 'none',
   status: 'assembling',
   reserved_sku: null,
   reserved_handle: null,
@@ -59,7 +61,7 @@ const IMAGE: PublishImage = {
 function input(
   draft: Partial<DraftRow> = {},
   category: Partial<CategoryRow> = {},
-  rest: Partial<Pick<PublishInput, 'materialName' | 'colours' | 'images'>> = {},
+  rest: Partial<Pick<PublishInput, 'materialName' | 'variants' | 'images'>> = {},
 ): PublishInput {
   return {
     draft: { ...DRAFT, ...draft },
@@ -67,7 +69,7 @@ function input(
     // `in` rather than `??` — an explicit `materialName: null` is the case under
     // test, and `??` would quietly substitute the default and make it pass.
     materialName: 'materialName' in rest ? (rest.materialName ?? null) : '316L',
-    colours: rest.colours ?? [],
+    variants: rest.variants ?? [],
     images: rest.images ?? [IMAGE],
   }
 }
@@ -114,6 +116,38 @@ describe('publish validation', () => {
     expect(() =>
       assertPublishable(input({ stock: 0 }), { allowZeroStock: false }),
     ).toThrow(PublishBlockedError)
+  })
+
+  it('requires at least one row after choosing colour or numbered stock', () => {
+    expect(codes(input({ variant_kind: 'colour' }))).toContain('variants_missing')
+    expect(codes(input({ variant_kind: 'number' }))).toContain('variants_missing')
+    expect(
+      codes(
+        input(
+          { variant_kind: 'number', stock: 3 },
+          {},
+          { variants: [{ value: '1', stock: 3 }] },
+        ),
+      ),
+    ).not.toContain('variants_missing')
+  })
+
+  it('uses per-choice rows—not the legacy parent field—for option stock', () => {
+    const inStock = input(
+      { variant_kind: 'colour', stock: 0 },
+      {},
+      { variants: [{ value: 'Gold', stock: 3 }] },
+    )
+    expect(totalAvailableStock(inStock)).toBe(3)
+    expect(codes(inStock)).not.toContain('stock_zero')
+
+    const soldOut = input(
+      { variant_kind: 'number', stock: 99 },
+      {},
+      { variants: [{ value: '1', stock: 0 }] },
+    )
+    expect(totalAvailableStock(soldOut)).toBe(0)
+    expect(codes(soldOut)).toContain('stock_zero')
   })
 
   // ── the other three ──────────────────────────────────────────────────────

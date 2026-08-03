@@ -19,6 +19,7 @@ import type { PublishInput, PublishOptions } from './types'
 export type PublishBlockCode =
   | 'price_missing'
   | 'stock_zero'
+  | 'variants_missing'
   | 'material_missing'
   | 'weight_unknown'
   | 'tag_unconfirmed'
@@ -59,6 +60,17 @@ export function resolveWeightG(input: PublishInput): number | null {
   return input.draft.weight_g ?? input.category.default_weight_g ?? null
 }
 
+/**
+ * Option rows are the inventory source of truth. product_drafts.stock remains a
+ * compatibility field for the pre-feature console, so it must never decide
+ * whether a colour/number product is buyable.
+ */
+export function totalAvailableStock(input: PublishInput): number {
+  return input.draft.variant_kind === 'none'
+    ? input.draft.stock
+    : input.variants.reduce((total, variant) => total + variant.stock, 0)
+}
+
 export function validateDraftForPublish(
   input: PublishInput,
   options: PublishOptions = {},
@@ -77,13 +89,25 @@ export function validateDraftForPublish(
     })
   }
 
-  if (draft.stock <= 0 && options.allowZeroStock !== true) {
+  if (totalAvailableStock(input) <= 0 && options.allowZeroStock !== true) {
     blocks.push({
       code: 'stock_zero',
       field: 'stock',
       message:
-        'Stock is zero. Tick "publish with zero stock" if that is deliberate — ' +
+        `${draft.variant_kind === 'none' ? 'Stock' : 'Total choice stock'} is zero. ` +
+        'Tick "publish with zero stock" if that is deliberate — ' +
         'a live product nobody can buy is usually a mistake, not a decision.',
+    })
+  }
+
+  if (draft.variant_kind !== 'none' && input.variants.length === 0) {
+    blocks.push({
+      code: 'variants_missing',
+      field: 'variants',
+      message:
+        draft.variant_kind === 'colour'
+          ? 'Stock is set to “By colour”, but no colours have been added.'
+          : 'Stock is set to “Numbered choices”, but no numbered pieces have been added.',
     })
   }
 

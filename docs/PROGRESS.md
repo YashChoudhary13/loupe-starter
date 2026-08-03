@@ -29,6 +29,89 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-03 — Shopify draft variant-stock contract pinned
+
+**Goal this session:** confirm that saving a Shopify draft sends the independent stock for
+every colour or numbered choice, rather than only the legacy parent stock.
+
+**Built:**
+- `tests/shopify-product-images.test.ts` → the Shopify payload regression now explicitly
+  combines `status: DRAFT`, the `Number` product option, two distinct variants, inventory
+  tracking, the active location, and separate `available` quantities (`2` and `7`).
+
+**Verified:**
+- The manual Save draft action passes `shopifyStatus: 'DRAFT'` into the same publish pipeline
+  used by Active publish. That pipeline maps every persisted colour/number row into a Shopify
+  variant before adding the DRAFT status; status does not replace or collapse the variants.
+- Shopify's current Admin GraphQL contract documents `ProductSetInput.status`,
+  `ProductSetInput.variants`, and per-variant `inventoryQuantities` with location, quantity
+  name, and integer value.
+- `tests/shopify-product-images.test.ts`: `16/16` passed. TypeScript checks and
+  `git diff --check` passed.
+
+**Not finished / known broken:**
+- No product was created in the live Shopify catalogue solely for verification; the exact
+  outbound DRAFT payload is covered without adding test merchandise.
+
+**Surprises:** no runtime correction was needed—the deployed implementation already used the
+same variant-stock payload for Shopify Draft and Active products. The missing piece was an
+explicit regression assertion tying DRAFT status and per-variant quantities together.
+
+**Next session should start with:** save the first real multi-choice item as a Shopify draft
+and visually confirm its Variants inventory table before publishing it Active.
+
+---
+
+## 2026-08-03 — Per-choice stock and numbered tray options
+
+**Goal this session:** let console users track stock independently for each colour or each
+numbered item shown in a shared tray photo, and publish those choices correctly to Shopify.
+
+**Built:**
+- `DraftEditor.tsx` and the console data flow → the stock editor now offers `One stock`,
+  `By colour`, and `Numbered choices`. Numbered choices start at 30, can be adjusted up to
+  100, and every colour/number has its own stock field and contributes to a displayed total.
+- `20260803062416_per_variant_stock_and_numbered_choices.sql` → persists one option kind and
+  an independent stock value per colour/number, validates duplicate colours and canonical
+  positive numbers, and keeps the old save call compatible during rollout.
+- `20260803063733_keep_legacy_colour_stock_stable.sql` → keeps the parent compatibility stock
+  stable for the previously deployed console while option rows remain authoritative.
+- Shopify publish and reconciliation → creates either a `Colour` or `Number` product option,
+  sends inventory for each Shopify variant, preserves one SKU across the product's choices,
+  and validates active products from the per-choice stock total.
+- D70 and `CLAUDE.md` → record the single-option product model, 100-choice limit, stock
+  ownership, and rollout compatibility rules.
+
+**Verified:**
+- Both migrations were applied to the linked Supabase project; database security/performance
+  advisors returned no warnings.
+- Feature-focused verification passed `137/137` tests across console persistence, preview,
+  publish validation, Shopify input generation, reconciliation, and RLS. The dedicated
+  concurrency test also passed `5/5`, and all live SKU counters were read back at their
+  pre-test baselines.
+- Lint, TypeScript checks, and the production build passed. Vercel deployment
+  `dpl_7GF63hSNPc7WHN4nTCxcv7K8Giav` is Ready at `https://qimati-loupe.vercel.app`; `/health`
+  returned HTTP 200 and the protected console redirected an unauthenticated browser to login.
+- Shopify Admin GraphQL 2026-07 documentation confirms `productSet` variant inputs accept
+  named option values and per-variant inventory quantities. No verification product was
+  written to the live Shopify catalogue.
+
+**Not finished / known broken:**
+- The first real numbered product should be published as a Shopify draft and visually checked
+  in Shopify/storefront before using a full 30-ring tray.
+- The complete test suite still has two unrelated live-state failures: the operator-managed
+  describe prompt no longer matches the pinned accepted prompt hash used by schema/prompt
+  management tests. Feature-focused tests for this change are all green.
+
+**Surprises:** rolling deployment required a compatibility trigger so the old console could
+save a colour draft repeatedly without doubling its shared parent stock.
+
+**Next session should start with:** create one Shopify draft with three numbered choices and
+different stock values, confirm its Number selector and inventory in Shopify, then use the
+same flow for a real tray image.
+
+---
+
 ## 2026-08-01 — Live SKU cutover excludes three confirmed catalogue typos
 
 **Goal this session:** preserve all current work, make live counter seeding ignore the three

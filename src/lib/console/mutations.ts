@@ -3,6 +3,7 @@ import 'server-only'
 import type { PostgrestError } from '@supabase/supabase-js'
 
 import type { Operator } from '@/lib/auth/authorize'
+import type { VariantKind } from '@/lib/console/types'
 import { supabaseServer } from '@/lib/supabase/server'
 
 /**
@@ -93,7 +94,8 @@ export interface DraftSaveInput {
   readonly pricePaise: number | null
   readonly weightG: number | null
   readonly stock: number
-  readonly colours: readonly string[]
+  readonly variantKind: VariantKind
+  readonly variants: readonly { value: string; stock: number }[]
   readonly images: readonly { imageVersionId: string; position: number }[]
 }
 
@@ -110,7 +112,8 @@ export async function saveDraft(operator: Operator, input: DraftSaveInput): Prom
     p_price_paise: input.pricePaise,
     p_weight_g: input.weightG,
     p_stock: input.stock,
-    p_colours: input.colours,
+    p_variant_kind: input.variantKind,
+    p_variants: input.variants,
     p_images: input.images.map((image) => ({
       image_version_id: image.imageVersionId,
       position: image.position,

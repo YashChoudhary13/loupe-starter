@@ -87,7 +87,23 @@ See D50, which supersedes D6.
 
 Product options. Free text, remembered, ranked by usage **per category** (Necklaces → Gold/Silver; Rings → Red/White/Green). Variants currently **share the parent SKU** (`AK011` on both Gold and Silver) — keep that convention.
 
+Stock may be set independently for every colour. `product_draft_variants.stock`
+is authoritative; the old parent `product_drafts.stock` value is only a
+compatibility mirror when options exist. Publish blocks when the **sum** of the
+option rows is zero unless the operator explicitly allows zero stock.
+
 Normalise on save (trim, collapse spaces, Title Case) and fuzzy-match on entry, or the vocabulary rots into `Rose Gold` / `rose gold` / `Rosegold` within a month. An admin merge tool is required, not optional.
+
+### Numbered tray choices
+
+Some photographs show a tray/box of separately numbered pieces (often 30 rings).
+The customer chooses the visible number, so these publish as one Shopify option
+named exactly **`Number`**, with values `1` through the operator-selected count
+and independent stock per number. Numbered variants share the parent product SKU,
+just like colour variants. A product uses one option mode at a time: no option,
+`Colour`, or `Number`; a tray number already identifies the exact visible piece,
+so Loupe does not multiply it by a second colour dimension. The console supports
+up to 100 numbered choices on one product.
 
 ### Known damage in the live data
 

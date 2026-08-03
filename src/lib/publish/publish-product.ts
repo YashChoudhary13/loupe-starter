@@ -3,7 +3,7 @@
  *
  * The sequence, and why it is this order (CLAUDE.md hard rules 1, 2 and 8):
  *
- *   1. Load the draft, its category, its material and its colours.
+ *   1. Load the draft, its category, its material and its customer choices.
  *   2. Validate. Report EVERY reason it cannot go out, at once, before touching
  *      anything. A blocked publish must burn no SKU number.
  *   3. Reserve the SKU and the handle and move the draft to `publishing`, in ONE
@@ -27,6 +27,8 @@ import type { ShopifyClient } from '@/lib/shopify/client'
 import { ShopifyError } from '@/lib/shopify/errors'
 import {
   buildAltText,
+  COLOUR_OPTION_NAME,
+  NUMBER_OPTION_NAME,
   primaryLocationId,
   productSet,
   readProductMedia,
@@ -45,7 +47,7 @@ import type {
   PublishResult,
   ReservedIdentity,
 } from './types'
-import { assertPublishable, resolveWeightG } from './validate'
+import { assertPublishable, resolveWeightG, totalAvailableStock } from './validate'
 
 /** Written on every product. The live store has `jewelery` / `Jewelery` / blank. */
 export const PRODUCT_TYPE = 'Jewellery'
@@ -82,7 +84,7 @@ export function filenameForStorage(sourceFilename: string, storageKey: string): 
 }
 
 const DRAFT_COLUMNS =
-  'id, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, status, reserved_sku, reserved_handle, shopify_product_id'
+  'id, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, status, reserved_sku, reserved_handle, shopify_product_id'
 const CATEGORY_COLUMNS =
   'id, name, sku_prefix, title_pattern, shopify_tag, default_weight_g, default_stock'
 
@@ -124,25 +126,18 @@ export async function loadPublishInput(
 
   const { data: variantRows, error: variantError } = await db
     .from('product_draft_variants')
-    .select('position, colours ( name )')
+    .select('position, option_value, stock')
     .eq('product_draft_id', draftId)
     .order('position', { ascending: true })
   if (variantError) {
-    throw new Error(`Could not read colours for draft ${draftId}: ${variantError.message}`)
+    throw new Error(`Could not read variants for draft ${draftId}: ${variantError.message}`)
   }
 
-  // PostgREST returns an embedded many-to-one as an object, but supabase-js types
-  // it as an array. Accept both rather than casting through `unknown` and being
-  // wrong at runtime in whichever direction we did not expect.
-  const colours = (variantRows ?? [])
-    .map((row) => {
-      const embedded = (row as { colours?: unknown }).colours
-      const one = Array.isArray(embedded) ? embedded[0] : embedded
-      return (one as { name?: unknown } | null | undefined)?.name
-    })
-    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+  const variants = (
+    (variantRows ?? []) as { option_value: string; stock: number; position: number }[]
+  ).map((row) => ({ value: row.option_value, stock: row.stock }))
 
-  return { draft, category, materialName, colours, images: await loadPublishImages(db, draftId) }
+  return { draft, category, materialName, variants, images: await loadPublishImages(db, draftId) }
 }
 
 /**
@@ -363,15 +358,25 @@ export async function publishProduct(
       input.draft.description_override,
     )
 
+    const optionName =
+      input.draft.variant_kind === 'colour'
+        ? COLOUR_OPTION_NAME
+        : input.draft.variant_kind === 'number'
+          ? NUMBER_OPTION_NAME
+          : null
+    // An unfinished Shopify draft may have had its option mode selected before
+    // the first row was added. Keep that draft saveable as one default variant;
+    // ACTIVE validation blocks until the missing choices are supplied.
+    const hasOptionRows = optionName !== null && input.variants.length > 0
     const variants =
-      input.colours.length > 0
-        ? input.colours.map((colour) => ({
+      hasOptionRows
+        ? input.variants.map((variant) => ({
             sku: identity.sku,
             price,
             weightG,
-            stock: input.draft.stock,
+            stock: variant.stock,
             locationId,
-            colour,
+            optionValue: variant.value,
           }))
         : [{ sku: identity.sku, price, weightG, stock: input.draft.stock, locationId }]
 
@@ -401,7 +406,7 @@ export async function publishProduct(
       tags: buildProductTags(identity.shopifyTag, options.extraTags),
       descriptionHtml,
       material: input.materialName,
-      colours: input.colours,
+      optionName: hasOptionRows ? optionName : null,
       variants,
       ...(asDraft ? { status: 'DRAFT' as const } : {}),
       ...(files ? { files } : {}),
@@ -463,10 +468,11 @@ export async function publishProduct(
       productType: PRODUCT_TYPE,
       priceRupees: price,
       weightG,
-      stock: input.draft.stock,
+      stock: totalAvailableStock(input),
       material: input.materialName,
       descriptionHtml,
-      colours: input.colours,
+      variantKind: input.draft.variant_kind,
+      variants: input.variants,
       reusedIdentity: identity.reused,
       images: published,
     }

@@ -108,6 +108,7 @@ interface DraftRow {
   price_paise: number | null
   weight_g: number | null
   stock: number
+  variant_kind: 'none' | 'colour' | 'number'
   reserved_sku: string | null
   reserved_handle: string | null
   shopify_product_id: string | null
@@ -275,7 +276,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('product_drafts')
       .select(
-        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
       )
       .in('status', ['assembling', 'publishing', 'failed'])
       .order('updated_at', { ascending: false })
@@ -283,7 +284,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('product_drafts')
       .select(
-        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
         { count: 'exact' },
       )
       .eq('status', 'published')
@@ -537,7 +538,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
   const { data: draftRow, error: draftError } = await db
     .from('product_drafts')
     .select(
-      'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+      'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
     )
     .eq('id', draftId)
     .maybeSingle<DraftRow>()
@@ -559,7 +560,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
       .order('position', { ascending: true }),
     db
       .from('product_draft_variants')
-      .select('position, colours ( name )')
+      .select('position, option_value, stock')
       .eq('product_draft_id', draftId)
       .order('position', { ascending: true }),
   ])
@@ -640,13 +641,13 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     shopifyMediaId: row.shopify_media_id,
   }))
 
-  const colours = (variantsResult.data ?? [])
-    .map((row) => {
-      const embedded = (row as { colours?: unknown }).colours
-      const one = Array.isArray(embedded) ? embedded[0] : embedded
-      return (one as { name?: unknown } | null | undefined)?.name
-    })
-    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+  const variants = (
+    (variantsResult.data ?? []) as {
+      position: number
+      option_value: string
+      stock: number
+    }[]
+  ).map((row) => ({ value: row.option_value, stock: row.stock, position: row.position }))
 
   return {
     id: draftRow.id,
@@ -659,6 +660,8 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     titleSuffix: draftRow.title_suffix,
     pricePaise: draftRow.price_paise,
     weightG: draftRow.weight_g,
+    variantKind: draftRow.variant_kind,
+    variants,
     stock: draftRow.stock,
     reservedSku: draftRow.reserved_sku,
     reservedHandle: draftRow.reserved_handle,
@@ -667,7 +670,6 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     publishInFlight:
       draftRow.publish_lease_expires_at !== null &&
       new Date(draftRow.publish_lease_expires_at).getTime() > Date.now(),
-    colours,
     photos: photoSummaries,
     images,
   }

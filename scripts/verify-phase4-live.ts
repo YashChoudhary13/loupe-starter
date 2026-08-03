@@ -454,7 +454,8 @@ async function accept(): Promise<void> {
     p_price_paise: null,
     p_weight_g: null,
     p_stock: 0,
-    p_colours: [],
+    p_variant_kind: 'none',
+    p_variants: [],
     p_images: [],
     p_actor: ACTOR,
   })
@@ -494,7 +495,8 @@ async function accept(): Promise<void> {
     p_price_paise: 7_550,
     p_weight_g: null,
     p_stock: 12,
-    p_colours: ['Gold'],
+    p_variant_kind: 'colour',
+    p_variants: [{ value: 'Gold', stock: 12 }],
     p_images: [{ image_version_id: await generatedVersion(supabase, realIntakeIds[0]), position: 0 }],
     p_actor: ACTOR,
   })
@@ -529,7 +531,11 @@ async function accept(): Promise<void> {
     p_price_paise: 75_000,
     p_weight_g: null,
     p_stock: 12,
-    p_colours: ['Gold', 'Silver'],
+    p_variant_kind: 'colour',
+    p_variants: [
+      { value: 'Gold', stock: 12 },
+      { value: 'Silver', stock: 12 },
+    ],
     p_images: orderedImages,
     p_actor: ACTOR,
   })
@@ -746,7 +752,8 @@ async function accept(): Promise<void> {
     p_price_paise: 12_500,
     p_weight_g: null,
     p_stock: 8,
-    p_colours: [],
+    p_variant_kind: 'none',
+    p_variants: [],
     p_images: [{ image_version_id: await generatedVersion(supabase, raceIds[0]), position: 0 }],
     p_actor: ACTOR,
   })

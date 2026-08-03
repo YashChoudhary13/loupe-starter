@@ -26,6 +26,7 @@ interface PublishedDraftRow {
   title_suffix: string | null
   price_paise: number
   weight_g: number | null
+  variant_kind: 'none' | 'colour' | 'number'
   reserved_sku: string
   reserved_handle: string
   shopify_product_id: string | null
@@ -63,7 +64,7 @@ async function publishedDraftRows(db: SupabaseClient): Promise<PublishedDraftRow
     const { data, error } = await db
       .from('product_drafts')
       .select(
-        'id, custom_material, description_override, title_suffix, price_paise, weight_g, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, colours ( name ) ), product_draft_images ( position, shopify_media_id )',
+        'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value ), product_draft_images ( position, shopify_media_id )',
       )
       .eq('status', 'published')
       .order('id', { ascending: true })
@@ -91,20 +92,23 @@ function expectedProduct(row: PublishedDraftRow): {
     category && parsed
       ? renderTitle(category.title_pattern, parsed.number, row.title_suffix)
       : row.reserved_sku
-  const colours = many<{ position: number; colours?: unknown }>(row.product_draft_variants)
+  const optionValues = many<{ position: number; option_value: string }>(row.product_draft_variants)
     .sort((a, b) => a.position - b.position)
-    .map((variant) => one<{ name: string }>(variant.colours)?.name)
-    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+    .map((variant) => variant.option_value)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
   const media = many<{ position: number; shopify_media_id: string | null }>(
     row.product_draft_images,
   ).sort((a, b) => a.position - b.position)
   const materialName = row.custom_material?.trim() || material?.name || null
   const weightG = row.weight_g ?? category?.default_weight_g ?? 0
-  const variants = (colours.length > 0 ? colours : [null]).map((colour) => ({
+  const optionName: 'Colour' | 'Number' | null =
+    row.variant_kind === 'colour' ? 'Colour' : row.variant_kind === 'number' ? 'Number' : null
+  const variants = (optionValues.length > 0 ? optionValues : [null]).map((optionValue) => ({
     sku: row.reserved_sku,
     price: paiseToShopifyPrice(row.price_paise),
     weightG,
-    colour,
+    optionName,
+    optionValue,
   }))
   const requiredTags = category?.shopify_tag
     ? buildProductTags(category.shopify_tag)

@@ -15,7 +15,15 @@ const expected: ExpectedReconciliationProduct = {
   requiredTags: ['Necklace', 'NEWEST'],
   descriptionHtml: '<ul><li>Clean</li></ul>',
   material: '316L',
-  variants: [{ sku: 'NK001', price: '100.00', weightG: 0, colour: null }],
+  variants: [
+    {
+      sku: 'NK001',
+      price: '100.00',
+      weightG: 0,
+      optionName: null,
+      optionValue: null,
+    },
+  ],
   mediaIds: ['gid://shopify/MediaImage/1'],
   missingRecordedMedia: false,
 }
@@ -92,5 +100,33 @@ describe('Shopify reconciliation comparison', () => {
       },
     } as unknown as ActualReconciliationProduct
     expect(comparePublishedProduct(expected, withUnrelatedInventoryField)).toEqual([])
+  })
+
+  it('compares numbered choices as Shopify Number options', () => {
+    const numberedExpected = {
+      ...expected,
+      variants: [
+        {
+          sku: 'NK001',
+          price: '100.00',
+          weightG: 0,
+          optionName: 'Number' as const,
+          optionValue: '17',
+        },
+      ],
+    }
+    const numberedActual = {
+      ...actual,
+      variants: {
+        nodes: [
+          {
+            ...actual.variants.nodes[0]!,
+            selectedOptions: [{ name: 'Number', value: '17' }],
+          },
+        ],
+      },
+    }
+
+    expect(comparePublishedProduct(numberedExpected, numberedActual)).toEqual([])
   })
 })

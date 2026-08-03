@@ -99,6 +99,16 @@ export interface DraftImageRef {
   readonly shopifyMediaId: string | null
 }
 
+export type VariantKind = 'none' | 'colour' | 'number'
+
+export interface DraftVariant {
+  /** Customer-facing Shopify option value: e.g. Gold or 17. */
+  readonly value: string
+  /** Inventory for this exact choice at the primary Shopify location. */
+  readonly stock: number
+  readonly position: number
+}
+
 export interface DraftDetail {
   readonly id: string
   readonly status: 'assembling' | 'publishing' | 'published' | 'failed'
@@ -113,13 +123,16 @@ export interface DraftDetail {
   readonly titleSuffix: string | null
   readonly pricePaise: number | null
   readonly weightG: number | null
+  readonly variantKind: VariantKind
+  /** Empty for a one-stock product; ordered for Colour or Number options. */
+  readonly variants: readonly DraftVariant[]
+  /** Simple stock, or a legacy compatibility mirror when variants exist. */
   readonly stock: number
   readonly reservedSku: string | null
   readonly reservedHandle: string | null
   readonly shopifyProductId: string | null
   readonly error: string | null
   readonly publishInFlight: boolean
-  readonly colours: readonly string[]
   readonly photos: readonly PhotoSummary[]
   readonly images: readonly DraftImageRef[]
 }

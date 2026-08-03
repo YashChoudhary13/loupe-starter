@@ -13,7 +13,8 @@ export interface ExpectedReconciliationProduct {
     readonly sku: string
     readonly price: string
     readonly weightG: number
-    readonly colour: string | null
+    readonly optionName: 'Colour' | 'Number' | null
+    readonly optionValue: string | null
   }[]
   readonly mediaIds: readonly string[]
   readonly missingRecordedMedia: boolean
@@ -191,8 +192,8 @@ export function comparePublishedProduct(
       `${expected.title} variant ${index + 1} has a different price.`,
     )
     const option = observed.selectedOptions[0] ?? null
-    const expectedOption = variant.colour
-      ? { name: 'Colour', value: variant.colour }
+    const expectedOption = variant.optionName && variant.optionValue
+      ? { name: variant.optionName, value: variant.optionValue }
       : { name: DEFAULT_OPTION_NAME, value: DEFAULT_OPTION_VALUE }
     exact(
       `variants.${index}.option`,

@@ -27,6 +27,8 @@ export const MATERIAL_METAFIELD = {
 
 /** Colour is a product OPTION; the variants under it share the parent SKU. */
 export const COLOUR_OPTION_NAME = 'Colour'
+/** Number is used for tray photographs where customers pick the labelled piece. */
+export const NUMBER_OPTION_NAME = 'Number'
 
 /**
  * What Shopify calls the single option of a product that has no real options.
@@ -53,7 +55,7 @@ export interface ProductSetVariant {
   readonly weightG: number
   readonly stock: number
   readonly locationId: string
-  readonly colour?: string
+  readonly optionValue?: string
 }
 
 /**
@@ -87,7 +89,8 @@ export interface ProductSetArgs {
   readonly tags: readonly string[]
   readonly descriptionHtml: string
   readonly material: string | null
-  readonly colours: readonly string[]
+  /** Null means Shopify's own Title / Default Title single variant. */
+  readonly optionName: typeof COLOUR_OPTION_NAME | typeof NUMBER_OPTION_NAME | null
   readonly variants: readonly ProductSetVariant[]
   /**
    * Omitted entirely when the caller has no opinion about images — `productSet`
@@ -231,19 +234,18 @@ export function primaryLocationId(client: ShopifyClient): Promise<string> {
   return pending
 }
 
-function buildInput(args: ProductSetArgs): Record<string, unknown> {
-  const hasColours = args.colours.length > 0
+export function buildInput(args: ProductSetArgs): Record<string, unknown> {
+  const hasOptions = args.optionName !== null
 
   const variants = args.variants.map((variant, index) => ({
-    // Every colour variant carries the SAME SKU. That is the live store's
-    // convention (AK011 sits on both Gold and Silver) and CLAUDE.md says to keep
-    // it — Shopify does not enforce SKU uniqueness, so it is allowed.
+    // Every option variant carries the SAME parent SKU. That is the live store's
+    // convention for colours and remains the convention for numbered trays.
     sku: variant.sku,
     price: variant.price,
     position: index + 1,
     taxable: true,
-    optionValues: variant.colour
-      ? [{ optionName: COLOUR_OPTION_NAME, name: variant.colour }]
+    optionValues: variant.optionValue && args.optionName
+      ? [{ optionName: args.optionName, name: variant.optionValue }]
       : [{ optionName: DEFAULT_OPTION_NAME, name: DEFAULT_OPTION_VALUE }],
     inventoryItem: {
       sku: variant.sku,
@@ -295,8 +297,8 @@ function buildInput(args: ProductSetArgs): Record<string, unknown> {
     // ALWAYS present. productSet rejects `variants` without `productOptions`, so a
     // colourless product declares Shopify's own Title/Default Title pair rather
     // than omitting the field.
-    productOptions: hasColours
-      ? [{ name: COLOUR_OPTION_NAME, values: args.colours.map((name) => ({ name })) }]
+    productOptions: hasOptions
+      ? [{ name: args.optionName, values: args.variants.map((variant) => ({ name: variant.optionValue! })) }]
       : [{ name: DEFAULT_OPTION_NAME, values: [{ name: DEFAULT_OPTION_VALUE }] }],
     variants,
   }

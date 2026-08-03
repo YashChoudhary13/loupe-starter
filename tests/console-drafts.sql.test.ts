@@ -114,7 +114,7 @@ async function createDraft(intakeFileIds: readonly string[], category = category
 async function draftRow(id: string) {
   const { data } = await db
     .from('product_drafts')
-    .select('id, status, category_id, material_id, custom_material, description_override, price_paise, stock, weight_g, title_suffix, reserved_sku, updated_at, publish_lease_token, publish_lease_expires_at')
+    .select('id, status, category_id, material_id, custom_material, description_override, price_paise, stock, variant_kind, weight_g, title_suffix, reserved_sku, updated_at, publish_lease_token, publish_lease_expires_at')
     .eq('id', id)
     .single()
   return data as Record<string, unknown>
@@ -320,7 +320,11 @@ describe('saving', () => {
       p_price_paise: 7_550,
       p_weight_g: null,
       p_stock: 12,
-      p_colours: ['gold', 'Rose  gold'],
+      p_variant_kind: 'colour',
+      p_variants: [
+        { value: 'gold', stock: 12 },
+        { value: 'Rose  gold', stock: 4 },
+      ],
       p_images: fixtures.slice(7, 10).map((f, index) => ({
         image_version_id: f.generatedVersionId,
         position: index,
@@ -336,26 +340,116 @@ describe('saving', () => {
 
     const draft = await draftRow(draftId)
     expect(draft.price_paise).toBe(7_550)
+    // Parent stock stays compatible with the old shared-stock console; the
+    // authoritative per-colour quantities are on the rows below.
     expect(draft.stock).toBe(12)
+    expect(draft.variant_kind).toBe('colour')
     expect(draft.title_suffix).toBe('(Adjustable)')
     // NULL weight is preserved as NULL — "nobody has said" is a real state (D19).
     expect(draft.weight_g).toBeNull()
 
     const { data: variants } = await db
       .from('product_draft_variants')
-      .select('position, colours ( name )')
+      .select('position, option_value, stock')
       .eq('product_draft_id', draftId)
       .order('position', { ascending: true })
-    const names = (variants ?? []).map((row) => {
-      const embedded = (row as { colours?: unknown }).colours
-      const one = Array.isArray(embedded) ? embedded[0] : embedded
-      return (one as { name: string }).name
-    })
+    const names = (variants ?? []).map((row) => row.option_value)
     // The database trigger normalises: "gold" and "Rose  gold" become
     // "Gold" and "Rose Gold" (D17). The console never does this itself.
     expect(names).toEqual(['Gold', 'Rose Gold'])
+    expect((variants ?? []).map((row) => row.stock)).toEqual([12, 4])
 
     expect((await draftImages(draftId)).map((i) => i.position)).toEqual([0, 1, 2])
+  })
+
+  it('persists numbered choices with independent stock and derives the total', async () => {
+    const { error } = await save({
+      p_stock: 999,
+      p_variant_kind: 'number',
+      p_variants: [
+        { value: '1', stock: 2 },
+        { value: '2', stock: 0 },
+        { value: '3', stock: 4 },
+      ],
+    })
+    expect(error?.message).toBeUndefined()
+
+    const draft = await draftRow(draftId)
+    expect(draft.variant_kind).toBe('number')
+    expect(draft.stock).toBe(4)
+
+    const { data: variants } = await db
+      .from('product_draft_variants')
+      .select('position, option_value, stock, colour_id')
+      .eq('product_draft_id', draftId)
+      .order('position', { ascending: true })
+    expect(variants).toEqual([
+      { position: 0, option_value: '1', stock: 2, colour_id: null },
+      { position: 1, option_value: '2', stock: 0, colour_id: null },
+      { position: 2, option_value: '3', stock: 4, colour_id: null },
+    ])
+  })
+
+  it('keeps the deployed colour-only save contract working during rollout', async () => {
+    const current = await draftRow(draftId)
+    const { error } = await db.rpc('save_product_draft', {
+      p_draft_id: draftId,
+      p_expected_updated_at: current.updated_at,
+      p_category_id: categoryId,
+      p_material_id: materialId,
+      p_title_suffix: null,
+      p_price_paise: 7_550,
+      p_weight_g: 0,
+      p_stock: 9,
+      // Deliberately the pre-feature payload: no p_variant_kind/p_variants.
+      p_colours: ['silver'],
+      p_images: [],
+      p_actor: ACTOR,
+    })
+    expect(error?.message).toBeUndefined()
+
+    const draft = await draftRow(draftId)
+    expect(draft.variant_kind).toBe('colour')
+    expect(draft.stock).toBe(9)
+    const repeated = await db.rpc('save_product_draft', {
+      p_draft_id: draftId,
+      p_expected_updated_at: draft.updated_at,
+      p_category_id: categoryId,
+      p_material_id: materialId,
+      p_title_suffix: null,
+      p_price_paise: 7_550,
+      p_weight_g: 0,
+      p_stock: draft.stock,
+      p_colours: ['Silver'],
+      p_images: [],
+      p_actor: ACTOR,
+    })
+    expect(repeated.error?.message).toBeUndefined()
+    expect((await draftRow(draftId)).stock).toBe(9)
+    const { data: variants } = await db
+      .from('product_draft_variants')
+      .select('option_value, stock')
+      .eq('product_draft_id', draftId)
+    expect(variants).toEqual([{ option_value: 'Silver', stock: 9 }])
+  })
+
+  it('rejects ambiguous duplicate colours and invalid tray numbers', async () => {
+    const duplicate = await save({
+      p_variant_kind: 'colour',
+      p_variants: [
+        { value: 'rose gold', stock: 1 },
+        { value: 'Rose  Gold', stock: 2 },
+      ],
+    })
+    expect(duplicate.error?.code).toBe('22023')
+    expect(duplicate.error?.hint).toMatch(/Each colour should appear once/)
+
+    const invalidNumber = await save({
+      p_variant_kind: 'number',
+      p_variants: [{ value: '01', stock: 1 }],
+    })
+    expect(invalidNumber.error?.code).toBe('22023')
+    expect(invalidNumber.error?.hint).toMatch(/numbered-choice count/)
   })
 
   it('stores a one-off material and plain-text description without changing suggestions', async () => {
@@ -537,7 +631,8 @@ describe('the invariants the console must not be able to route around', () => {
       p_price_paise: 50_000,
       p_weight_g: 0,
       p_stock: 5,
-      p_colours: [],
+      p_variant_kind: 'none',
+      p_variants: [],
       p_images: [{ image_version_id: photo.generatedVersionId, position: 0 }],
       p_actor: ACTOR,
     })
@@ -552,7 +647,8 @@ describe('the invariants the console must not be able to route around', () => {
       p_price_paise: 50_000,
       p_weight_g: 0,
       p_stock: 5,
-      p_colours: [],
+      p_variant_kind: 'none',
+      p_variants: [],
       p_images: [{ image_version_id: photo.generatedVersionId, position: 0 }],
       p_actor: ACTOR,
     })
@@ -569,7 +665,8 @@ describe('the invariants the console must not be able to route around', () => {
       p_price_paise: 50_000,
       p_weight_g: 0,
       p_stock: 5,
-      p_colours: [],
+      p_variant_kind: 'none',
+      p_variants: [],
       p_images: [{ image_version_id: photo.generatedVersionId, position: 0 }],
       p_actor: ACTOR,
     })
@@ -590,7 +687,8 @@ describe('the invariants the console must not be able to route around', () => {
       p_price_paise: 50_000,
       p_weight_g: 0,
       p_stock: 5,
-      p_colours: [],
+      p_variant_kind: 'none',
+      p_variants: [],
       p_images: [{ image_version_id: photo.generatedVersionId, position: 0 }],
       p_actor: ACTOR,
     })
@@ -632,7 +730,8 @@ describe('the invariants the console must not be able to route around', () => {
       p_price_paise: 50_000,
       p_weight_g: 0,
       p_stock: 5,
-      p_colours: ['Gold'],
+      p_variant_kind: 'colour',
+      p_variants: [{ value: 'Gold', stock: 5 }],
       p_images: [{ image_version_id: photo.generatedVersionId, position: 0 }],
       p_actor: ACTOR,
     })
@@ -692,7 +791,8 @@ describe('the invariants the console must not be able to route around', () => {
       p_price_paise: 50_000,
       p_weight_g: 0,
       p_stock: 5,
-      p_colours: [],
+      p_variant_kind: 'none',
+      p_variants: [],
       p_images: [{ image_version_id: photo.generatedVersionId, position: 0 }],
       p_actor: ACTOR,
     })

@@ -1806,3 +1806,47 @@ The exclusion is an exact allowlist of these three SKU strings, never a numeric 
 A future unusually large SKU may be genuine, and silently treating it as a typo would be the
 same class of irreversible catalogue error in the other direction. Adding another exclusion
 requires the product title or another business-owned source proving the intended number.
+
+---
+
+### D70 — Stock belongs to the customer choice; trays use a `Number` option
+
+*Business request, 2026-08-03.*
+
+The old draft had one `stock` integer and copied it onto every colour variant. That cannot
+represent either of the two real catalogue cases: Gold and Silver having different
+quantities, or one tray photograph containing thirty labelled rings with different
+quantities. `product_draft_variants` now stores the customer-facing option value and its
+own non-negative stock.
+
+A product has exactly one option mode:
+
+| mode | Shopify option | inventory source |
+|---|---|---|
+| `none` | `Title / Default Title` | `product_drafts.stock` |
+| `colour` | `Colour` | one row per normalised colour |
+| `number` | `Number` | canonical values `1..N`, one row per photographed label |
+
+Colour and Number are alternatives, not a cross-product. A tray number identifies the exact
+piece visible in the photograph; adding a second colour dimension would invent combinations
+that are not physically present. If the business later photographs genuine colour × number
+combinations, that is a separate two-option design rather than something this schema should
+guess today. Numbered trays are capped at 100 choices in Loupe (the reported case is 30).
+
+Every option variant keeps the parent SKU. That preserves the verified live-store convention
+(`AK011` on Gold and Silver) and extends it to numbered choices; Shopify permits shared SKUs.
+Publishing and the zero-stock guard sum the authoritative option rows, while the actual
+Shopify mutation sends each row's exact stock to the primary location. Reconciliation still
+does not compare live inventory because sales legitimately change it (D54).
+
+`product_drafts.stock` deliberately remains for simple products and for rolling-deploy
+compatibility with the old console. When options exist it mirrors the largest row, not the
+sum: the old screen interprets that field as “stock per colour,” so storing the sum would
+double it on every save. A trigger keeps the mirror stable; new code never uses it to publish
+option inventory.
+
+The migration keeps one defaulted `p_colours` compatibility input on
+`save_product_draft()` rather than leaving a second overload. The old deployed bundle can
+continue saving during rollout, but new saves send `variant_kind` plus structured rows.
+Colour usage ranking ignores numbered rows because a number is not vocabulary to suggest on
+the next product.
