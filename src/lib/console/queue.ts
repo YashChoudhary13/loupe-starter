@@ -557,7 +557,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
       .order('discovered_at', { ascending: true }),
     db
       .from('product_draft_images')
-      .select('image_version_id, position, shopify_media_id')
+      .select('image_version_id, position, shopify_media_id, colours ( name )')
       .eq('product_draft_id', draftId)
       .order('position', { ascending: true }),
     db
@@ -636,13 +636,19 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
       image_version_id: string
       position: number
       shopify_media_id: string | null
+      colours?: unknown
     }[]
-  ).map((row) => ({
-    imageVersionId: row.image_version_id,
-    intakeFileId: intakeByVersion.get(row.image_version_id) ?? '',
-    position: row.position,
-    shopifyMediaId: row.shopify_media_id,
-  }))
+  ).map((row) => {
+    const embedded = Array.isArray(row.colours) ? row.colours[0] : row.colours
+    const colour = embedded as { name?: unknown } | null | undefined
+    return {
+      imageVersionId: row.image_version_id,
+      intakeFileId: intakeByVersion.get(row.image_version_id) ?? '',
+      position: row.position,
+      shopifyMediaId: row.shopify_media_id,
+      colourValue: typeof colour?.name === 'string' ? colour.name : null,
+    }
+  })
 
   const variants = (
     (variantsResult.data ?? []) as {

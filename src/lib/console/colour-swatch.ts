@@ -1,9 +1,10 @@
 /**
  * The small, stable palette used by the listing console.
  *
- * Shopify still needs a human-readable option value ("Gold", "Rose Gold", …)
- * to identify a variant. The console turns that value into a swatch for the
- * operator; the name remains the accessibility label and the Shopify value.
+ * Shopify still needs a human-readable label ("Gold", "Rose Gold", …) to
+ * identify a saved colour. The console turns that label into a swatch for the
+ * operator; publishing then links the variant to Shopify's native saved-colour
+ * metaobject while retaining the name for accessibility and auditability.
  */
 export interface JewelleryColour {
   readonly name: string
@@ -107,6 +108,20 @@ export function colourSwatchBackground(name: string): string {
   // Unknown remembered vocabulary stays visibly "custom" rather than being
   // assigned a plausible but false hue.
   return UNKNOWN_SWATCH
+}
+
+/**
+ * Representative solid for Shopify's native saved-colour entry.
+ *
+ * Split and multi-colour swatches deliberately return null: compressing a
+ * pattern into one plausible-looking solid would publish false structured
+ * data. Those values must already exist as a richer saved colour in Shopify.
+ */
+export function colourSwatchHex(name: string): string | null {
+  const parts = name.split(/\s*(?:\/|&|\+|,|\band\b)\s*/i)
+  if (parts.length > 1) return null
+  const colour = knownColour(name)
+  return colour && colour.name !== 'Multi Colour' ? colour.colour : null
 }
 
 /**

@@ -101,9 +101,9 @@ function expectedProduct(row: PublishedDraftRow): {
   ).sort((a, b) => a.position - b.position)
   const materialName = row.custom_material?.trim() || material?.name || null
   const weightG = row.weight_g ?? category?.default_weight_g ?? 0
-  const optionName: 'Colour' | 'Number' | 'Size' | null =
+  const optionName: 'Color' | 'Number' | 'Size' | null =
     row.variant_kind === 'colour'
-      ? 'Colour'
+      ? 'Color'
       : row.variant_kind === 'number'
         ? 'Number'
         : row.variant_kind === 'size'

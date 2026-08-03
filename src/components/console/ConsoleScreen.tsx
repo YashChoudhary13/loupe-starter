@@ -191,7 +191,11 @@ function formFromBundle(bundle: DraftBundle): EditorForm {
     titleSuffix: draft.titleSuffix ?? '',
     images: [...draft.images]
       .sort((a, b) => a.position - b.position)
-      .map((image) => ({ intakeFileId: image.intakeFileId, imageVersionId: image.imageVersionId })),
+      .map((image) => ({
+        intakeFileId: image.intakeFileId,
+        imageVersionId: image.imageVersionId,
+        colourValue: image.colourValue,
+      })),
     allowZeroStock: false,
   }
 }
@@ -340,6 +344,7 @@ export function ConsoleScreen({
           .map((photo) => ({
             intakeFileId: photo.intakeFileId,
             imageVersionId: defaultVersionId(photo) ?? '',
+            colourValue: null,
           }))
           .filter((image) => image.imageVersionId !== ''),
       }))
@@ -520,6 +525,7 @@ export function ConsoleScreen({
         images: form.images.map((image, index) => ({
           imageVersionId: image.imageVersionId,
           position: index,
+          colourValue: form.variantKind === 'colour' ? image.colourValue : null,
         })),
         allowZeroStock: form.allowZeroStock,
       }

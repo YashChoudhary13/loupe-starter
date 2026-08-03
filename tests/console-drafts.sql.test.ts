@@ -132,10 +132,16 @@ async function intakeRow(id: string) {
 async function draftImages(draftId: string) {
   const { data } = await db
     .from('product_draft_images')
-    .select('image_version_id, position, shopify_media_id')
+    .select('image_version_id, position, shopify_media_id, colour_id, colours ( name )')
     .eq('product_draft_id', draftId)
     .order('position', { ascending: true })
-  return (data ?? []) as { image_version_id: string; position: number; shopify_media_id: string | null }[]
+  return (data ?? []) as {
+    image_version_id: string
+    position: number
+    shopify_media_id: string | null
+    colour_id: string | null
+    colours: { name: string } | { name: string }[] | null
+  }[]
 }
 
 async function eventNames(entityId: string): Promise<string[]> {
@@ -360,6 +366,61 @@ describe('saving', () => {
     expect((variants ?? []).map((row) => row.stock)).toEqual([12, 4])
 
     expect((await draftImages(draftId)).map((i) => i.position)).toEqual([0, 1, 2])
+  })
+
+  it('persists one optional Shopify variant image per selected colour', async () => {
+    const { error } = await save({
+      p_images: [
+        {
+          image_version_id: fixtures[7].generatedVersionId,
+          position: 0,
+          colour: 'gold',
+        },
+        {
+          image_version_id: fixtures[8].generatedVersionId,
+          position: 1,
+          colour: 'Rose  gold',
+        },
+        { image_version_id: fixtures[9].generatedVersionId, position: 2, colour: null },
+      ],
+    })
+    expect(error?.message).toBeUndefined()
+
+    const images = await draftImages(draftId)
+    const colourName = (image: (typeof images)[number]) => {
+      const colour = Array.isArray(image.colours) ? image.colours[0] : image.colours
+      return colour?.name ?? null
+    }
+    expect(images.map(colourName)).toEqual(['Gold', 'Rose Gold', null])
+
+    const duplicate = await save({
+      p_images: [
+        {
+          image_version_id: fixtures[7].generatedVersionId,
+          position: 0,
+          colour: 'Gold',
+        },
+        {
+          image_version_id: fixtures[8].generatedVersionId,
+          position: 1,
+          colour: 'gold',
+        },
+      ],
+    })
+    expect(duplicate.error?.code).toBe('22023')
+    expect(duplicate.error?.hint).toMatch(/one featured image per variant/i)
+
+    const unknown = await save({
+      p_images: [
+        {
+          image_version_id: fixtures[7].generatedVersionId,
+          position: 0,
+          colour: 'Blue',
+        },
+      ],
+    })
+    expect(unknown.error?.code).toBe('22023')
+    expect(unknown.error?.hint).toMatch(/colour variants/i)
   })
 
   it('persists numbered choices with independent stock and derives the total', async () => {

@@ -294,7 +294,7 @@ function variantSummary(product: ProductReadback) {
   return product.variants.nodes.map((v) => ({
     sku: v.sku,
     price: v.price,
-    colour: v.selectedOptions.find((o) => o.name === 'Colour')?.value ?? null,
+    colour: v.selectedOptions.find((o) => o.name === 'Color')?.value ?? null,
     stock: v.inventoryQuantity,
     weight: v.inventoryItem?.measurement?.weight
       ? `${v.inventoryItem.measurement.weight.value} ${v.inventoryItem.measurement.weight.unit}`

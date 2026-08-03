@@ -24,6 +24,8 @@ export interface CategoryRow {
   readonly title_pattern: string
   /** NULL means "not confirmed against the live store". Publish refuses it. */
   readonly shopify_tag: string | null
+  /** Shopify Standard Product Taxonomy GID used by native category attributes. */
+  readonly shopify_taxonomy_category_id: string | null
   readonly default_weight_g: number | null
   readonly default_stock: number
 }
@@ -44,6 +46,8 @@ export interface PublishImage {
   readonly description: string | null
   /** Set once this image has been published; makes a retry reuse the file. */
   readonly shopifyMediaId: string | null
+  /** Customer-facing colour option this image represents; null is a general image. */
+  readonly colourValue: string | null
   readonly filename: string
 }
 

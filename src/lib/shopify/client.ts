@@ -136,7 +136,8 @@ export class ShopifyClient {
           hint:
             'The token is new, so this is not expiry. Check that the app is still installed on ' +
             `${this.config.storeDomain} and that it has the scopes this call needs (write_products, ` +
-            'read_locations, write_inventory).',
+            'read_locations, write_inventory, read_metaobjects, write_metaobjects, ' +
+            'and the matching read scopes).',
         },
       )
     }

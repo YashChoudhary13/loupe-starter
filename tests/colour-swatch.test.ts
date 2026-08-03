@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   colourPaletteNames,
   colourSwatchBackground,
+  colourSwatchHex,
   JEWELLERY_COLOUR_PALETTE,
 } from '@/lib/console/colour-swatch'
 
@@ -25,6 +26,12 @@ describe('console colour swatches', () => {
     expect(swatch).toContain('conic-gradient')
     expect(swatch).toContain('#c9363e')
     expect(swatch).toContain('#f7f7f5')
+  })
+
+  it('only exports honest solids for Shopify saved-colour entries', () => {
+    expect(colourSwatchHex('Gold')).toBe('#d4af37')
+    expect(colourSwatchHex('Red / White')).toBeNull()
+    expect(colourSwatchHex('Multi Colour')).toBeNull()
   })
 
   it('puts category-ranked colours before the stable palette without duplicates', () => {

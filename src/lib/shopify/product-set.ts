@@ -16,6 +16,7 @@
  * gain by not waiting.
  */
 import type { ShopifyClient } from './client'
+import { SHOPIFY_COLOUR_METAFIELD } from './colour-options'
 import { ShopifyError } from './errors'
 
 /** Namespace/key the theme reads the material from. See docs/DECISIONS.md D6. */
@@ -25,8 +26,8 @@ export const MATERIAL_METAFIELD = {
   type: 'single_line_text_field',
 } as const
 
-/** Colour is a product OPTION; the variants under it share the parent SKU. */
-export const COLOUR_OPTION_NAME = 'Colour'
+/** Shopify's native category attribute uses the American-spelled option name. */
+export const COLOUR_OPTION_NAME = 'Color'
 /** Number is used for tray photographs where customers pick the labelled piece. */
 export const NUMBER_OPTION_NAME = 'Number'
 /** Ring size is a customer choice with independent inventory per size. */
@@ -58,6 +59,10 @@ export interface ProductSetVariant {
   readonly stock: number
   readonly locationId: string
   readonly optionValue?: string
+  /** Native saved-colour metaobject ID; present only for Color variants. */
+  readonly linkedMetafieldValue?: string
+  /** One product file to feature when this exact variant is selected. */
+  readonly file?: ProductSetFile
 }
 
 /**
@@ -91,6 +96,8 @@ export interface ProductSetArgs {
   readonly tags: readonly string[]
   readonly descriptionHtml: string
   readonly material: string | null
+  /** Required for native Shopify category-linked Color options. */
+  readonly categoryId?: string | null
   /** Null means Shopify's own Title / Default Title single variant. */
   readonly optionName:
     | typeof COLOUR_OPTION_NAME
@@ -242,6 +249,27 @@ export function primaryLocationId(client: ShopifyClient): Promise<string> {
 
 export function buildInput(args: ProductSetArgs): Record<string, unknown> {
   const hasOptions = args.optionName !== null
+  const nativeColour = args.optionName === COLOUR_OPTION_NAME
+  const nativeColourValues = nativeColour
+    ? args.variants.map((variant) => variant.linkedMetafieldValue!)
+    : []
+
+  if (nativeColour && !args.categoryId) {
+    throw new Error('A native Shopify Color option requires a taxonomy category id.')
+  }
+  if (nativeColour && args.variants.some((variant) => !variant.linkedMetafieldValue)) {
+    throw new Error('Every native Shopify Color variant requires a saved-colour metaobject id.')
+  }
+
+  const fileInput = (file: ProductSetFile) =>
+    file.mediaId
+      ? { id: file.mediaId, alt: file.alt }
+      : {
+          originalSource: file.originalSource,
+          filename: file.filename,
+          contentType: 'IMAGE',
+          alt: file.alt,
+        }
 
   const variants = args.variants.map((variant, index) => ({
     // Every option variant carries the SAME parent SKU. That is the live store's
@@ -250,9 +278,18 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
     price: variant.price,
     position: index + 1,
     taxable: true,
-    optionValues: variant.optionValue && args.optionName
-      ? [{ optionName: args.optionName, name: variant.optionValue }]
-      : [{ optionName: DEFAULT_OPTION_NAME, name: DEFAULT_OPTION_VALUE }],
+    optionValues:
+      variant.optionValue && args.optionName
+        ? [
+            nativeColour
+              ? {
+                  optionName: args.optionName,
+                  linkedMetafieldValue: variant.linkedMetafieldValue,
+                }
+              : { optionName: args.optionName, name: variant.optionValue },
+          ]
+        : [{ optionName: DEFAULT_OPTION_NAME, name: DEFAULT_OPTION_VALUE }],
+    ...(variant.file ? { file: fileInput(variant.file) } : {}),
     inventoryItem: {
       sku: variant.sku,
       tracked: true,
@@ -279,8 +316,26 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
     // it before it reaches this boundary, so pasted storefront markup cannot
     // leak into a product.
     descriptionHtml: args.descriptionHtml,
-    ...(args.material
-      ? { metafields: [{ ...MATERIAL_METAFIELD, value: args.material }] }
+    ...(args.categoryId ? { category: args.categoryId } : {}),
+    ...(args.material || nativeColour
+      ? {
+          metafields: [
+            ...(args.material ? [{ ...MATERIAL_METAFIELD, value: args.material }] : []),
+            // Shopify currently requires the category metafield values to be
+            // repeated here when productSet updates a linked option alongside
+            // any other product metafield. Omitting this entry works on create
+            // but returns CAPABILITY_VIOLATION on the first retry/update.
+            ...(nativeColour
+              ? [
+                  {
+                    ...SHOPIFY_COLOUR_METAFIELD,
+                    type: 'list.metaobject_reference',
+                    value: JSON.stringify(nativeColourValues),
+                  },
+                ]
+              : []),
+          ],
+        }
       : {}),
     // Present only when the caller supplied images. `files` is declarative like
     // everything else in productSet, so listing them in draft order IS the
@@ -288,23 +343,30 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
     // while an empty array is "remove all of it".
     ...(args.files
       ? {
-          files: args.files.map((file) =>
-            file.mediaId
-              ? { id: file.mediaId, alt: file.alt }
-              : {
-                  originalSource: file.originalSource,
-                  filename: file.filename,
-                  contentType: 'IMAGE',
-                  alt: file.alt,
-                },
-          ),
+          files: args.files.map(fileInput),
         }
       : {}),
     // ALWAYS present. productSet rejects `variants` without `productOptions`, so a
     // colourless product declares Shopify's own Title/Default Title pair rather
     // than omitting the field.
     productOptions: hasOptions
-      ? [{ name: args.optionName, values: args.variants.map((variant) => ({ name: variant.optionValue! })) }]
+      ? [
+          nativeColour
+            ? {
+                name: args.optionName,
+                // OptionSetInput.values accepts only ordinary named values.
+                // Native Color metaobject IDs belong on the linked metafield;
+                // each variant then selects one via linkedMetafieldValue.
+                linkedMetafield: {
+                  ...SHOPIFY_COLOUR_METAFIELD,
+                  values: nativeColourValues,
+                },
+              }
+            : {
+                name: args.optionName,
+                values: args.variants.map((variant) => ({ name: variant.optionValue! })),
+              },
+        ]
       : [{ name: DEFAULT_OPTION_NAME, values: [{ name: DEFAULT_OPTION_VALUE }] }],
     variants,
   }

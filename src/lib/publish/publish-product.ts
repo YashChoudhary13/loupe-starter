@@ -24,6 +24,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { ShopifyClient } from '@/lib/shopify/client'
+import { syncShopifySavedColours } from '@/lib/shopify/colour-options'
 import { ShopifyError } from '@/lib/shopify/errors'
 import {
   buildAltText,
@@ -34,6 +35,7 @@ import {
   productSet,
   readProductMedia,
   type ProductSetFile,
+  type ProductSetVariant,
 } from '@/lib/shopify/product-set'
 
 import { buildDescriptionHtml } from './description'
@@ -87,7 +89,7 @@ export function filenameForStorage(sourceFilename: string, storageKey: string): 
 const DRAFT_COLUMNS =
   'id, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, status, reserved_sku, reserved_handle, shopify_product_id'
 const CATEGORY_COLUMNS =
-  'id, name, sku_prefix, title_pattern, shopify_tag, default_weight_g, default_stock'
+  'id, name, sku_prefix, title_pattern, shopify_tag, shopify_taxonomy_category_id, default_weight_g, default_stock'
 
 export async function loadPublishInput(
   db: SupabaseClient,
@@ -156,7 +158,7 @@ export async function loadPublishImages(
   const { data, error } = await db
     .from('product_draft_images')
     .select(
-      'image_version_id, position, shopify_media_id, image_versions ( id, storage_key, intake_file_id, intake_files ( id, filename, product_description ) )',
+      'image_version_id, position, shopify_media_id, colours ( name ), image_versions ( id, storage_key, intake_file_id, intake_files ( id, filename, product_description ) )',
     )
     .eq('product_draft_id', draftId)
     .order('position', { ascending: true })
@@ -171,6 +173,7 @@ export async function loadPublishImages(
         image_version_id: string
         position: number
         shopify_media_id: string | null
+        colours?: unknown
         image_versions?: unknown
       }
       const version = one<{ id: string; storage_key: string; intake_file_id: string; intake_files?: unknown }>(
@@ -180,6 +183,7 @@ export async function loadPublishImages(
       const file = one<{ id: string; filename: string; product_description: string | null }>(
         version.intake_files,
       )
+      const colour = one<{ name: string }>(record.colours)
 
       return {
         imageVersionId: record.image_version_id,
@@ -188,6 +192,7 @@ export async function loadPublishImages(
         storageKey: version.storage_key,
         description: file?.product_description ?? null,
         shopifyMediaId: record.shopify_media_id,
+        colourValue: colour?.name ?? null,
         filename: filenameForStorage(
           file?.filename ?? version.intake_file_id,
           version.storage_key,
@@ -220,14 +225,20 @@ export async function loadPublishImages(
  */
 export async function buildProductFiles(
   images: readonly PublishImage[],
-  existingMedia: readonly { id: string }[] | null,
+  existingMedia: readonly { id: string; status?: string }[] | null,
   productTitle: string,
   signImageUrl: (storageKey: string) => Promise<string>,
 ): Promise<{ files: readonly ProductSetFile[]; published: readonly PublishedImage[] }> {
-  const known = new Set((existingMedia ?? []).map((m) => m.id))
+  // Shopify keeps a MediaImage row when fetching its originalSource fails. Its
+  // id is still returned by the product media query, but productSet rejects that
+  // id if we try to associate it again. Treat FAILED media as absent so the
+  // original object is uploaded again; PROCESSING media remain reusable because
+  // that is the normal state immediately after a successful productSet call.
+  const reusableMedia = (existingMedia ?? []).filter((media) => media.status !== 'FAILED')
+  const known = new Set(reusableMedia.map((media) => media.id))
   const repairable =
     existingMedia !== null &&
-    existingMedia.length === images.length &&
+    reusableMedia.length === images.length &&
     images.every((image) => image.shopifyMediaId === null)
 
   const files: ProductSetFile[] = []
@@ -240,7 +251,7 @@ export async function buildProductFiles(
     if (image.shopifyMediaId && known.has(image.shopifyMediaId)) {
       mediaId = image.shopifyMediaId
     } else if (repairable) {
-      mediaId = (existingMedia ?? [])[index]?.id ?? null
+      mediaId = reusableMedia[index]?.id ?? null
     }
 
     files.push({
@@ -371,7 +382,7 @@ export async function publishProduct(
     // the first row was added. Keep that draft saveable as one default variant;
     // ACTIVE validation blocks until the missing choices are supplied.
     const hasOptionRows = optionName !== null && input.variants.length > 0
-    const variants =
+    let variants: ProductSetVariant[] =
       hasOptionRows
         ? input.variants.map((variant) => ({
             sku: identity.sku,
@@ -402,6 +413,37 @@ export async function publishProduct(
       published = built.published
     }
 
+    if (hasOptionRows && optionName === COLOUR_OPTION_NAME) {
+      if (!input.category.shopify_taxonomy_category_id) {
+        throw new Error(
+          `${input.category.name} has no Shopify taxonomy category, so its Color option cannot use native saved swatches.`,
+        )
+      }
+
+      const savedColours = await syncShopifySavedColours(
+        shopify,
+        input.variants.map((variant) => variant.value),
+      )
+      const metaobjectByName = new Map(
+        savedColours.map((colour) => [colour.name.toLowerCase(), colour.metaobjectId]),
+      )
+      const fileByColour = new Map<string, ProductSetFile>()
+      input.images.forEach((image, index) => {
+        if (image.colourValue && files?.[index]) {
+          fileByColour.set(image.colourValue.toLowerCase(), files[index])
+        }
+      })
+
+      variants = variants.map((variant) => {
+        const key = variant.optionValue?.toLowerCase() ?? ''
+        return {
+          ...variant,
+          linkedMetafieldValue: metaobjectByName.get(key),
+          ...(fileByColour.has(key) ? { file: fileByColour.get(key) } : {}),
+        }
+      })
+    }
+
     const product = await productSet(shopify, {
       handle: identity.handle,
       title: identity.title,
@@ -409,6 +451,7 @@ export async function publishProduct(
       tags: buildProductTags(identity.shopifyTag, options.extraTags),
       descriptionHtml,
       material: input.materialName,
+      categoryId: input.category.shopify_taxonomy_category_id,
       optionName: hasOptionRows ? optionName : null,
       variants,
       ...(asDraft ? { status: 'DRAFT' as const } : {}),
@@ -419,7 +462,9 @@ export async function publishProduct(
     // the mutation did what it was told is exactly how duplicate media survives
     // a green test run.
     if (input.images.length > 0) {
-      const finalMedia = (await readProductMedia(shopify, identity.handle)) ?? []
+      const finalMedia = ((await readProductMedia(shopify, identity.handle)) ?? []).filter(
+        (media) => media.status !== 'FAILED',
+      )
       published = published.map((image, index) => ({
         ...image,
         shopifyMediaId: finalMedia[index]?.id ?? image.shopifyMediaId,

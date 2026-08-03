@@ -46,6 +46,8 @@ const RING_SIZE_SUGGESTIONS = Array.from({ length: 27 }, (_, index) => String(in
 export interface EditorImage {
   readonly intakeFileId: string
   readonly imageVersionId: string
+  /** Null means a general gallery image; otherwise this is the matching colour variant. */
+  readonly colourValue: string | null
 }
 
 export interface EditorForm {
@@ -147,6 +149,7 @@ export function DraftEditor(props: DraftEditorProps) {
         variantKind: kind,
         variants: [],
         stock: form.variantKind === 'none' ? form.stock : String(totalVariantStock),
+        images: form.images.map((image) => ({ ...image, colourValue: null })),
       })
       return
     }
@@ -157,10 +160,33 @@ export function DraftEditor(props: DraftEditorProps) {
           value: String(index + 1),
           stock: '0',
         })),
+        images: form.images.map((image) => ({ ...image, colourValue: null })),
       })
       return
     }
-    onChange({ variantKind: kind, variants: [] })
+    onChange({
+      variantKind: kind,
+      variants: [],
+      ...(kind === 'colour'
+        ? {}
+        : { images: form.images.map((image) => ({ ...image, colourValue: null })) }),
+    })
+  }
+
+  const assignImageColour = (intakeFileId: string, colourValue: string | null) => {
+    const key = colourValue?.toLowerCase() ?? null
+    onChange({
+      images: form.images.map((image) => {
+        if (image.intakeFileId === intakeFileId) return { ...image, colourValue }
+        // Shopify gives each variant one featured image. Reassigning a colour
+        // therefore releases it from the previous photograph instead of
+        // creating an ambiguous two-images-for-one-variant state.
+        if (key && image.colourValue?.toLowerCase() === key) {
+          return { ...image, colourValue: null }
+        }
+        return image
+      }),
+    })
   }
 
   const setNumberedChoiceCount = (count: number) => {
@@ -437,6 +463,50 @@ export function DraftEditor(props: DraftEditorProps) {
                           : 'Redo image'}
                     </button>
                   </div>
+                  {form.variantKind === 'colour' && form.variants.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-1" role="group" aria-label={`Colour shown in ${row.photo.filename}`}>
+                      <span className="mr-1 text-[10.5px] text-muted-foreground">Image for</span>
+                      <button
+                        type="button"
+                        disabled={readOnly}
+                        aria-pressed={row.image.colourValue === null}
+                        onClick={() => assignImageColour(row.image.intakeFileId, null)}
+                        className={cn(
+                          'rounded-pill px-2 py-1 text-[10px] font-medium transition-colors disabled:opacity-40',
+                          row.image.colourValue === null
+                            ? 'bg-ink text-white'
+                            : 'bg-surface text-ink-soft hover:bg-white',
+                        )}
+                      >
+                        All colours
+                      </button>
+                      {form.variants.map((variant) => {
+                        const selected =
+                          row.image.colourValue?.toLowerCase() === variant.value.toLowerCase()
+                        return (
+                          <button
+                            key={variant.value}
+                            type="button"
+                            disabled={readOnly}
+                            aria-label={`Use ${row.photo.filename} for ${variant.value}`}
+                            aria-pressed={selected}
+                            title={variant.value}
+                            onClick={() =>
+                              assignImageColour(row.image.intakeFileId, variant.value)
+                            }
+                            className={cn(
+                              'rounded-full p-0.5 outline-none transition-transform hover:scale-110 disabled:opacity-40',
+                              selected
+                                ? 'shadow-[0_0_0_2px_var(--ink)]'
+                                : 'shadow-[0_0_0_1px_#d5d5d5]',
+                            )}
+                          >
+                            <ColourSwatch name={variant.value} className="size-5" />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">
@@ -720,6 +790,11 @@ export function DraftEditor(props: DraftEditorProps) {
                           variants: form.variants.filter(
                             (candidate) => candidate.value !== variant.value,
                           ),
+                          images: form.images.map((image) =>
+                            image.colourValue?.toLowerCase() === variant.value.toLowerCase()
+                              ? { ...image, colourValue: null }
+                              : image,
+                          ),
                         })
                       }
                       title={`Remove ${variant.value}`}
@@ -741,8 +816,9 @@ export function DraftEditor(props: DraftEditorProps) {
                 ))}
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Pick from the visual palette, then set stock beside each swatch. Shopify keeps
-                the colour name underneath so every variant stays identifiable.
+                Pick from the visual palette, then set stock beside each swatch. Under Images,
+                optionally point one photograph to each colour; Shopify will use it as that
+                variant’s featured image.
               </p>
             </div>
           ) : null}

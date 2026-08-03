@@ -96,7 +96,11 @@ export interface DraftSaveInput {
   readonly stock: number
   readonly variantKind: VariantKind
   readonly variants: readonly { value: string; stock: number }[]
-  readonly images: readonly { imageVersionId: string; position: number }[]
+  readonly images: readonly {
+    imageVersionId: string
+    position: number
+    colourValue: string | null
+  }[]
 }
 
 /** Returns the draft's new `updated_at`, which the editor keeps for the next save. */
@@ -117,6 +121,7 @@ export async function saveDraft(operator: Operator, input: DraftSaveInput): Prom
     p_images: input.images.map((image) => ({
       image_version_id: image.imageVersionId,
       position: image.position,
+      colour: image.colourValue,
     })),
     p_actor: operator.email,
   })

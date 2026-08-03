@@ -32,6 +32,7 @@ function image(overrides: Partial<PublishImage> = {}): PublishImage {
     storageKey: 'versions/file-1/v1.png',
     description: 'A single necklace in polished gold-tone metal.',
     shopifyMediaId: null,
+    colourValue: null,
     filename: 'necklace.png',
     ...overrides,
   }
@@ -52,6 +53,108 @@ describe('product tags', () => {
 })
 
 describe('Shopify customer choices', () => {
+  it('links native Color swatches and assigns the matching file to each variant', () => {
+    const redFile = {
+      mediaId: 'gid://shopify/MediaImage/red',
+      originalSource: null,
+      filename: 'red.png',
+      alt: 'Red bracelet.',
+    }
+    const greenFile = {
+      mediaId: null,
+      originalSource: 'https://r2.example.com/green.png?sig=x',
+      filename: 'green.png',
+      alt: 'Green bracelet.',
+    }
+    const input = buildInput({
+      handle: 'bracelet-033',
+      title: 'Bracelet 033',
+      status: 'DRAFT',
+      productType: 'Jewellery',
+      categoryId: 'gid://shopify/TaxonomyCategory/aa-6-3',
+      tags: ['cb', 'NEWEST'],
+      descriptionHtml: '<ul><li>316L</li></ul>',
+      material: '316L',
+      optionName: 'Color',
+      files: [redFile, greenFile],
+      variants: [
+        {
+          sku: 'CB033',
+          price: '715.00',
+          weightG: 0,
+          stock: 2,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: 'Red',
+          linkedMetafieldValue: 'gid://shopify/Metaobject/red',
+          file: redFile,
+        },
+        {
+          sku: 'CB033',
+          price: '715.00',
+          weightG: 0,
+          stock: 4,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: 'Green',
+          linkedMetafieldValue: 'gid://shopify/Metaobject/green',
+          file: greenFile,
+        },
+      ],
+    }) as {
+      category: string
+      metafields: { namespace: string; key: string; type: string; value: string }[]
+      productOptions: {
+        name: string
+        linkedMetafield: { namespace: string; key: string; values: string[] }
+      }[]
+      files: Record<string, unknown>[]
+      variants: {
+        optionValues: { optionName: string; linkedMetafieldValue: string }[]
+        file: Record<string, unknown>
+      }[]
+    }
+
+    expect(input.category).toBe('gid://shopify/TaxonomyCategory/aa-6-3')
+    expect(input.metafields).toEqual([
+      {
+        namespace: 'custom',
+        key: 'material',
+        type: 'single_line_text_field',
+        value: '316L',
+      },
+      {
+        namespace: 'shopify',
+        key: 'color-pattern',
+        type: 'list.metaobject_reference',
+        value: JSON.stringify([
+          'gid://shopify/Metaobject/red',
+          'gid://shopify/Metaobject/green',
+        ]),
+      },
+    ])
+    expect(input.productOptions).toEqual([
+      {
+        name: 'Color',
+        linkedMetafield: {
+          namespace: 'shopify',
+          key: 'color-pattern',
+          values: [
+            'gid://shopify/Metaobject/red',
+            'gid://shopify/Metaobject/green',
+          ],
+        },
+      },
+    ])
+    expect(input.variants.map((variant) => variant.optionValues[0])).toEqual([
+      { optionName: 'Color', linkedMetafieldValue: 'gid://shopify/Metaobject/red' },
+      { optionName: 'Color', linkedMetafieldValue: 'gid://shopify/Metaobject/green' },
+    ])
+    expect(input.variants[0]?.file).toEqual({
+      id: 'gid://shopify/MediaImage/red',
+      alt: 'Red bracelet.',
+    })
+    expect(input.variants[1]?.file).toEqual(input.files[1])
+  })
+
   it('saves numbered pieces as Shopify DRAFT variants with independent stock', () => {
     const input = buildInput({
       handle: 'rings-001',
@@ -276,6 +379,31 @@ describe('building the file list', () => {
 
     expect(files.map((f) => f.mediaId)).toEqual(['gid://m/1', 'gid://m/2', 'gid://m/3'])
     expect(published.every((p) => p.reused)).toBe(true)
+  })
+
+  it('never reuses FAILED Shopify media during crash repair', async () => {
+    const images = [
+      image({ imageVersionId: 'ver-1', intakeFileId: 'file-1' }),
+      image({ imageVersionId: 'ver-2', intakeFileId: 'file-2' }),
+    ]
+    const existing = [
+      { id: 'gid://m/failed-1', status: 'FAILED' },
+      { id: 'gid://m/failed-2', status: 'FAILED' },
+    ]
+
+    const { files, published } = await buildProductFiles(images, existing, 'Necklace 005', sign)
+
+    expect(files.every((file) => file.mediaId === null)).toBe(true)
+    expect(files.every((file) => file.originalSource !== null)).toBe(true)
+    expect(published.every((image) => image.reused === false)).toBe(true)
+  })
+
+  it('continues to reuse PROCESSING media during crash repair', async () => {
+    const processing = [{ id: 'gid://m/processing', status: 'PROCESSING' }]
+    const { files } = await buildProductFiles([image()], processing, 'Necklace 005', sign)
+
+    expect(files[0].mediaId).toBe('gid://m/processing')
+    expect(files[0].originalSource).toBeNull()
   })
 
   it('does NOT guess when the counts disagree — it uploads instead', async () => {

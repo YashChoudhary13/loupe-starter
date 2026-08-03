@@ -27,6 +27,7 @@ const CATEGORY: CategoryRow = {
   sku_prefix: 'NK',
   title_pattern: 'Necklace {n}',
   shopify_tag: 'Necklace',
+  shopify_taxonomy_category_id: 'gid://shopify/TaxonomyCategory/aa-6-8',
   default_weight_g: 25,
   default_stock: 10,
 }
@@ -55,6 +56,7 @@ const IMAGE: PublishImage = {
   storageKey: 'versions/file-1/v1.png',
   description: 'A single necklace in polished gold-tone metal.',
   shopifyMediaId: null,
+  colourValue: null,
   filename: 'necklace.png',
 }
 

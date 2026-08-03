@@ -90,9 +90,22 @@ Product options. Free text, remembered, ranked by usage **per category** (Neckla
 The console renders these names as **visual swatches**: category-ranked remembered colours
 first, followed by the stable jewellery palette. Gold, Silver and Rose Gold use distinct
 metallic treatments; split names such as `Red / White` use a split swatch. Keep the normalised
-name underneath for Shopify, accessibility and auditability—never replace the option value
-with an opaque hex code. Unknown custom vocabulary must look custom rather than being assigned
-a plausible but false colour.
+name as the accessibility and audit label—never replace it with an opaque hex code. Unknown
+custom vocabulary must look custom rather than being assigned a plausible but false colour.
+
+Publish the option with Shopify's exact native name **`Color`**. Link every value to the
+`shopify.color-pattern` category metafield and the `shopify--color-pattern` metaobject Shopify
+materialises when a merchant selects one of the Color menu's **Default entries**. Reuse an
+existing merchant entry before creating one. Loupe may create only known solid palette colours
+because flattening a split, patterned, or unknown colour would silently misrepresent the product.
+The app therefore requires `read_metaobjects` and `write_metaobjects` in addition to its product
+and inventory scopes. Shopify exposes no public standard-definition template for this category
+type, so a new store must activate it once in Admin: on any categorized draft product, add Color,
+select one Default entry, and save. Each category must carry its official Shopify taxonomy id.
+
+Each selected product image may optionally be assigned to one colour. A colour can own at most
+one image because Shopify variants have one featured media reference, while unassigned images
+remain shared product media. Assigning a second image to the same colour moves that assignment.
 
 Stock may be set independently for every colour. `product_draft_variants.stock`
 is authoritative; the old parent `product_drafts.stock` value is only a
@@ -108,7 +121,7 @@ The customer chooses the visible number, so these publish as one Shopify option
 named exactly **`Number`**, with values `1` through the operator-selected count
 and independent stock per number. Numbered variants share the parent product SKU,
 just like colour variants. A product uses one option mode at a time: no option,
-`Colour`, `Number`, or `Size`; a tray number already identifies the exact visible piece,
+`Color`, `Number`, or `Size`; a tray number already identifies the exact visible piece,
 so Loupe does not multiply it by a second colour dimension. The console supports
 up to 100 numbered choices on one product.
 

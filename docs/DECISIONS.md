@@ -1920,11 +1920,8 @@ Simple combined names such as `Red / White` render as split swatches. Unknown re
 vocabulary uses a neutral custom marker; hashing an unknown name into a random hue was
 rejected because it would look authoritative while potentially showing the wrong colour.
 
-The name is still exposed through labels and hover text for accessibility, and is still what
-publishes to Shopify. A true Shopify-native swatch is a separate integration: Shopify's
-structured swatches require a linked product metafield, colour-pattern metaobjects and the
-`write_metaobjects` scope. This console change does not silently create those store-wide
-objects or widen app permissions.
+The name is still exposed through labels and hover text for accessibility. D75 supersedes the
+original publish boundary by adding Shopify-native saved colours and explicit permissions.
 
 ---
 
@@ -1975,3 +1972,49 @@ rows, and any photograph ever attached to a draft already sent to Shopify are re
 database, even if a stale browser tries to call the action. From that point onward, deletion is a
 Shopify catalogue operation. A completed manual-upload handshake cascades only when its intake is
 intentionally deleted; the durable event audit remains.
+
+---
+
+### D75 — Colour variants use Shopify Color default entries and may own one image
+
+*Business request, 2026-08-03; supersedes the Shopify publishing boundary in D71.*
+
+Loupe publishes the option with Shopify's exact native name `Color`, not the British `Colour`
+label used internally. Each selected value links through the standard `shopify.color-pattern`
+category metafield to the `shopify--color-pattern` metaobject Shopify materialises when a merchant
+selects a Color **Default entry** in Admin. Existing merchant entries win; Loupe creates a missing
+record only for a known solid palette colour with a deterministic handle, hex swatch, and standard
+taxonomy colour id. It refuses to invent a native record for an unknown, split, patterned, or
+multi-colour label because that would turn a visual guess into durable store-wide data. The app
+must have `read_metaobjects` and `write_metaobjects` as well as its existing product and inventory
+scopes. Shopify does not expose this category-owned definition through
+`standardMetaobjectDefinitionEnable`; a new store activates it once by adding Color to any
+categorized draft product, selecting one value under Default entries, and saving. Loupe reports
+that exact one-time setup instead of trying an unrelated standard-definition mutation.
+
+Every selected image remains ordinary product media unless the operator optionally assigns it to
+a colour. The draft stores that relationship, publishing includes the same file in product media
+and as the matching variant's featured file, and at most one image may target each colour because
+Shopify exposes one featured media reference per variant. Moving the assignment is preferable to
+silently accepting two competing featured images. Switching the draft away from colour mode or
+removing a selected colour clears the now-invalid image relationship.
+
+---
+
+### D76 — Shopify Color retries repeat the linked metafield and never reuse failed media
+
+*Production acceptance finding, 2026-08-03; operational detail for D47 and D75.*
+
+Shopify accepts a new `productSet` with a native Color option, but its update path returns a
+`CAPABILITY_VIOLATION` when the same request also writes another product metafield unless the
+`shopify.color-pattern` list is repeated in `input.metafields`. Loupe therefore sends the same
+ordered metaobject ids both in the option's `linkedMetafield.values` and as a
+`list.metaobject_reference` product metafield. Each variant still selects one id through
+`linkedMetafieldValue`. This duplication mirrors Shopify's current Admin API contract; removing
+it makes the first Save-draft retry fail even though product creation works.
+
+Shopify also retains a MediaImage id when fetching `originalSource` ends in HTTP 404. That id is
+queryable but cannot be associated with a product again. Crash recovery may reuse media in
+`PROCESSING`, `UPLOADED`, or `READY`, but must treat `FAILED` as absent and send a fresh source.
+The post-write readback similarly records only non-failed ids. This preserves D47's no-duplicate
+retry behavior without trapping a draft on an unusable Shopify file.

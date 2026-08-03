@@ -99,6 +99,8 @@ export interface DraftImageRef {
   readonly intakeFileId: string
   readonly position: number
   readonly shopifyMediaId: string | null
+  /** Colour this photograph represents. Null keeps it as a general product image. */
+  readonly colourValue: string | null
 }
 
 export type VariantKind = 'none' | 'colour' | 'number' | 'size'

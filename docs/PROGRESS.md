@@ -29,6 +29,164 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-03 — Production native-Color acceptance and deployment
+
+**Goal this session:** switch the approved v1.1 app to the real `qimati.in` Shopify store and
+prove native colour swatches, per-variant stock, and colour-specific images on a safe Shopify
+DRAFT.
+
+**Built:**
+- Vercel production configuration → now targets the real Shopify Admin store
+  `961b9d-2.myshopify.com` with its approved client-credentials app rather than the `qimti` test
+  store. Deployment `dpl_BFuJVUeo6dvSnjrwu4roPohaEjKj` is READY at
+  `https://qimati-loupe.vercel.app`.
+- `product-set.ts` → sends Shopify's current native-Color update contract: the ordered
+  `shopify.color-pattern` values are present on both the linked option and the corresponding
+  `list.metaobject_reference` product metafield, while each variant selects its exact saved
+  colour entry.
+- `publish-product.ts` → excludes Shopify media in `FAILED` state from crash recovery and
+  post-write recording. Failed fetch rows are replaced from a new source; PROCESSING/READY rows
+  remain reusable so retries still cannot grow duplicate images.
+- image/Color regression coverage and D76 → lock the two production-discovered Shopify retry
+  requirements into tests and operating documentation.
+
+**Verified:**
+- The production installation reports `read_products`, `write_products`, `read_locations`,
+  `write_locations`, `read_metaobjects`, and `write_metaobjects`. Production exposes 27 native
+  `shopify--color-pattern` Default entries, including Red and Green.
+- Controlled product `RS229` / `gid://shopify/Product/10142719901993` exists exactly once at
+  `/products/rings-229-loupe-production-color-acceptance-test` and is **DRAFT**, not live. Its
+  option is native `Color` linked to `shopify.color-pattern`: Red uses saved metaobject
+  `196805591337`; Green uses `196805493033`.
+- Shopify readback after a second Loupe **Save draft** reports exactly two READY media images.
+  Red has inventory `3` and media `45731417751849`; Green has inventory `5` and media
+  `45731417719081`. `productsCount(handle)` remained `1`, proving the retry updated the same
+  product without duplicate products or images.
+- Console bookkeeping was restored after acceptance: the controlled row is `assembling`, both
+  source rows are `grouped`, `published_at` is null, its error is null, and the console shows
+  `0 listed today` / `3 drafts`. The two test-only colour-usage increments were removed and an
+  audit event records the restoration.
+- Focused Color/image/publish coverage passed `46/46`; TypeScript, ESLint, `git diff --check`, and
+  both production builds passed. The full suite reached `511/513`; its only failures are the
+  existing live prompt-preset/body drift (`satin` is not active and the Describe hash changed),
+  unrelated to Shopify variants, inventory, Color, or media.
+
+**Not finished / known broken:**
+- RS229 remains deliberately in Shopify DRAFT for merchant inspection; delete it manually only
+  when it is no longer useful. No acceptance product is active or visible to customers.
+- The two live prompt-fixture tests remain out of sync with the operator's current prompt setup;
+  this session did not overwrite prompt content to make unrelated tests pass.
+
+**Surprises:** Shopify currently accepts creation of a linked Color option but rejects the first
+update when another product metafield is present unless the same color-pattern list is repeated
+in `input.metafields`. It also returns ids for failed media fetches even though those ids cannot be
+re-associated. Both behaviors now have explicit regression tests.
+
+**Next session should start with:** inspect RS229 in the production Shopify Admin, then create one
+ordinary operator draft using the desired real product photographs; remove RS229 after inspection
+if the acceptance fixture is no longer needed.
+
+---
+
+## 2026-08-03 — Correct production-store and Shopify Color-default-entry audit
+
+**Goal this session:** verify the colour/image work against the real `qimati.in` Shopify store
+and match the native Color values the merchant identified in Shopify Admin.
+
+**Built:**
+- `colour-options.ts` → treats Shopify's Color menu **Default entries** as the native source of
+  truth, reuses existing `shopify--color-pattern` entries, and still creates only known solid
+  colours with official taxonomy references after Shopify has activated the category-owned type.
+- Shopify error handling and tests → removes the invalid
+  `standardMetaobjectDefinitionEnable("shopify--color-pattern")` fallback. Shopify does not expose
+  that category-owned type as a public standard template; a new store now receives the exact
+  one-time Admin setup instruction instead of the misleading `Record not found` failure.
+- `.env`, the environment template, `CLAUDE.md`, and D75 → distinguish the production admin domain
+  `961b9d-2.myshopify.com` from the public `qimati.in` domain and document that only
+  `read_metaobjects`/`write_metaobjects` are needed for Color entries.
+
+**Verified:**
+- `qimati.in/admin` resolves to Shopify store handle `961b9d-2`; the browser account used for the
+  earlier check had access only to `qimti`, proving RS228 was a test-store draft rather than a
+  production draft.
+- A read-only client-credentials query against the production installation succeeded and reported
+  only `read_products`, `write_products`, `read_locations`, and `write_locations`; it returned zero
+  `shopify--color-pattern` entries. The claimed v1.1 metaobject access is therefore not approved on
+  the production installation yet.
+- Focused colour/image/publish tests passed `44/44`. TypeScript, ESLint, the production build, and
+  `git diff --check` passed.
+
+**Not finished / known broken:**
+- The deployed Loupe environment still targets the `qimti` test installation. Do not switch it to
+  production until the production app update is approved with `read_metaobjects`,
+  `write_metaobjects`, and the inventory scopes; switching sooner would make variant draft saves
+  fail in the live workflow.
+- Shopify's native Color type is not active in production. On one categorized production draft,
+  add the `Color` option, select any value under **Default entries**, and save once. Loupe can then
+  reuse/create Gold, Silver, Red, Green, and the other known solid defaults through the API.
+- RS228 and its two controlled acceptance images remain DRAFT/test data in `qimti`; nothing from
+  this acceptance test was published live.
+
+**Surprises:** Shopify's visible Default entries are taxonomy-backed choices that Admin
+materialises into `shopify--color-pattern` metaobjects only after a merchant selects one. They are
+not a standard metaobject definition that an app can enable with
+`standardMetaobjectDefinitionEnable`.
+
+**Next session should start with:** approve the v1.1 scope update on the production app, activate
+one Color Default entry on a categorized production draft, then switch Vercel's Shopify domain and
+credentials to `961b9d-2.myshopify.com` and repeat the two-colour/two-image DRAFT acceptance there.
+
+---
+
+## 2026-08-03 — Shopify-native colour swatches and colour-specific variant images
+
+**Goal this session:** publish visual colour selections as Shopify saved-colour variants and let
+each selected product image optionally become one colour variant's featured image.
+
+**Built:**
+- `DraftEditor.tsx`, console read/write models and the deployed save RPC → each image now offers
+  **All colours** plus the draft's actual colour swatches; assignments persist, invalid choices are
+  refused, and moving a colour to another image releases its earlier assignment.
+- `colour-options.ts` and `product-set.ts` → Shopify receives the exact native `Color` option,
+  linked `shopify.color-pattern` values, the official product taxonomy category, and one optional
+  featured file per matching variant. Existing merchant saved colours are reused; only known solid
+  palette colours may be created automatically.
+- `20260803102646_shopify_native_colour_swatches_and_variant_images.sql` → activates the dormant
+  image-to-colour relationship and maps all 11 Loupe categories to Shopify's 2026-08 taxonomy.
+- D75 and the colour operating notes → document native saved-colour behavior, the one-image limit,
+  and required `read_metaobjects`/`write_metaobjects` app permissions.
+
+**Verified:**
+- The migration was applied to linked Supabase project `xaszahrthoggulikdour`; all 11 categories
+  have a taxonomy id. Post-DDL security and performance advisors reported no warning or error.
+- Focused integration/unit coverage passed `78/78`, including saved-colour reuse/upsert, native
+  linked option payloads, variant files, persistence, duplicate-image refusal, stock, and draft
+  compatibility. TypeScript, ESLint, `git diff --check`, and the production build passed.
+- The full suite reached `508/510`; its only failures are the two pre-existing live describe-prompt
+  fixture drifts (`preset_slug` and body/hash), unrelated to colour, inventory, images, or Shopify.
+- Browser acceptance at 1440×1000 selected Red and Green, assigned the chosen photo to Green, and
+  showed the correct pressed visual swatch without saving or mutating the test draft.
+
+**Not finished / known broken:**
+- The application is deliberately not deployed yet. The current Shopify custom-app permissions
+  could not be confirmed from this machine; native saved colours require `read_metaobjects` and
+  `write_metaobjects`. Deploying first could break colour draft saves instead of producing swatches.
+- No disposable Shopify product was created, so live DRAFT acceptance remains pending after the
+  permissions are enabled. Custom/split/multi-colour values must already have an accurate saved
+  colour in Shopify; Loupe refuses to flatten them into a guessed solid swatch.
+- The two unrelated live prompt fixture failures remain unchanged.
+
+**Surprises:** Shopify's native customer swatches are not ordinary option text plus a hex value.
+They require the American-spelled `Color` option linked to a category metafield, saved-colour
+metaobjects, and an official taxonomy category. A variant's featured file must also be included in
+the parent product's file set.
+
+**Next session should start with:** enable `read_metaobjects` and `write_metaobjects` on the Shopify
+custom app, deploy, then Save draft with one disposable two-colour/two-image product and confirm
+the native swatches, image switching, and per-variant inventory in Shopify.
+
+---
+
 ## 2026-08-03 — Scrollable multi-image review, optional manual AI, and protected deletion
 
 **Goal this session:** let operators inspect every selected photo at full review size, optionally
