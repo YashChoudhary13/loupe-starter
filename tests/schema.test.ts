@@ -194,7 +194,13 @@ describe('conventions', () => {
   })
 
   it('has the manual ready-image completion function deployed', () => {
-    expect(report.functions).toContain('finalize_manual_image_upload')
+    for (const fn of [
+      'finalize_manual_image_upload',
+      'prepare_manual_image_redo',
+      'prepare_console_photo_delete',
+    ]) {
+      expect(report.functions).toContain(fn)
+    }
   })
 
   it('has the Phase 5 prompt and redo functions deployed', () => {
@@ -310,16 +316,22 @@ describe('Phase 3A database capabilities', () => {
   })
 
   it('keeps manual ready-image completion service-role-only', () => {
-    const matches = Object.entries(report.function_execute).filter(([signature]) =>
-      signature.startsWith('finalize_manual_image_upload(') ||
-      signature.startsWith('public.finalize_manual_image_upload('),
-    )
-    expect(matches).toHaveLength(1)
-    expect(matches[0]?.[1]).toEqual({
-      anon: false,
-      authenticated: false,
-      service_role: true,
-    })
+    for (const fn of [
+      'finalize_manual_image_upload',
+      'prepare_manual_image_redo',
+      'prepare_console_photo_delete',
+    ]) {
+      const matches = Object.entries(report.function_execute).filter(
+        ([signature]) =>
+          signature.startsWith(`${fn}(`) || signature.startsWith(`public.${fn}(`),
+      )
+      expect(matches).toHaveLength(1)
+      expect(matches[0]?.[1]).toEqual({
+        anon: false,
+        authenticated: false,
+        service_role: true,
+      })
+    }
   })
 
   it('keeps every Phase 5 RPC service-role-only', () => {

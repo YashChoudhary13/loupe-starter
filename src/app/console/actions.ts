@@ -173,9 +173,48 @@ export interface RedoImageResult {
 export async function redoPromptPreviewAction(
   intakeFileId: string,
 ): Promise<ActionResult<{ promptText: string; model: string }>> {
-  return withOperator(async () => {
-    const { previewRedoPrompt } = await import('@/lib/enhance/redo-server')
+  return withOperator(async (operator) => {
+    const { prepareManualImageRedo, previewRedoPrompt } = await import(
+      '@/lib/enhance/redo-server'
+    )
+    await prepareManualImageRedo(intakeFileId, operator.email)
     return previewRedoPrompt(intakeFileId)
+  })
+}
+
+/**
+ * Permanently removes only an ungrouped queue photograph. The database claim
+ * runs first and wins the grouping race; grouped, published, or historically
+ * Shopify-sent photographs are refused before Drive or R2 is touched.
+ */
+export async function deleteUngroupedPhotoAction(
+  intakeFileId: string,
+): Promise<ActionResult<QueueSnapshot>> {
+  return withOperator(async (operator) => {
+    const db = (await import('@/lib/supabase/server')).supabaseServer()
+    const { error } = await db.rpc('prepare_console_photo_delete', {
+      p_intake_file_id: intakeFileId,
+      p_actor: operator.email,
+    })
+    if (error) {
+      throw new ConsoleError(
+        error.hint || 'That photograph cannot be deleted from the console.',
+        [error.code, error.message].filter(Boolean).join(' · '),
+        error.code === '55000',
+      )
+    }
+
+    const { discardHeldIntake } = await import('@/lib/tracking/discard')
+    try {
+      await discardHeldIntake(intakeFileId, operator.email)
+    } catch (cause) {
+      throw new ConsoleError(
+        'The photograph could not be fully deleted. Open Tracking and press Discard to finish it.',
+        cause instanceof Error ? cause.message : String(cause),
+        true,
+      )
+    }
+    return loadQueue()
   })
 }
 

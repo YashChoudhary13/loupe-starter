@@ -54,6 +54,24 @@ export async function previewRedoPrompt(
   return { promptText, model }
 }
 
+/**
+ * Manual ready uploads start with no descriptor or presentation cache because
+ * bypassing both calls is their purpose. If the operator later asks for AI,
+ * settle that row onto the existing durable image-only redo path before the
+ * prompt is previewed. Drive photographs are an intentional no-op.
+ */
+export async function prepareManualImageRedo(
+  intakeFileId: string,
+  actor: string,
+): Promise<boolean> {
+  const { data, error } = await supabaseServer().rpc('prepare_manual_image_redo', {
+    p_intake_file_id: intakeFileId,
+    p_actor: actor,
+  })
+  if (error) throw new Error(error.hint || error.message)
+  return data === true
+}
+
 async function resolveRedo(intakeFileId: string) {
   const db = supabaseServer()
   const [fileResult, promptResult] = await Promise.all([

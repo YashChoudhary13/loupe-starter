@@ -10,14 +10,15 @@ import { supabaseServer } from '@/lib/supabase/server'
  *
  * The ORDER is the whole design, and both other orders are wrong:
  *
- *   1. move the Drive file out of RAW
+ *   1. move a Drive source out of RAW (manual sources skip this step)
  *   2. delete its R2 objects
  *   3. delete the database row
  *
- * Deleting the row first would strand a file in RAW that Loupe no longer knows
- * about — the watcher rediscovers it within a minute and it reappears in the
- * queue, which is exactly the confusion this feature exists to end. Deleting R2
- * before Drive would leave a queue row pointing at images that no longer load.
+ * For Drive, deleting the row first would strand a file in RAW that Loupe no
+ * longer knows about — the watcher rediscovers it within a minute and it
+ * reappears in the queue, which is exactly the confusion this feature exists to
+ * end. For both sources, deleting R2 before the claim would leave a queue row
+ * pointing at images that no longer load.
  *
  * Every step before the last is idempotent, so a failure part-way leaves the row
  * intact and the operator simply presses Discard again.
@@ -25,18 +26,19 @@ import { supabaseServer } from '@/lib/supabase/server'
 export async function discardHeldIntake(
   intakeFileId: string,
   actor: string,
-): Promise<{ movedTo: string; objectsDeleted: number }> {
+): Promise<{ movedTo: string | null; objectsDeleted: number }> {
   const db = supabaseServer()
 
   const { data: file, error: fileError } = await db
     .from('intake_files')
-    .select('id, status, drive_file_id, filename, product_draft_id')
+    .select('id, status, drive_file_id, filename, source, product_draft_id')
     .eq('id', intakeFileId)
     .maybeSingle<{
       id: string
       status: string
       drive_file_id: string
       filename: string
+      source: 'drive' | 'manual'
       product_draft_id: string | null
     }>()
   if (fileError) throw new Error(`intake_files: ${fileError.message}`)
@@ -54,9 +56,11 @@ export async function discardHeldIntake(
     .eq('intake_file_id', intakeFileId)
   if (versionError) throw new Error(`image_versions: ${versionError.message}`)
 
-  // 1. Out of RAW first.
-  const folderId = serverEnv.driveDiscardedFolderId
-  await googleDriveClient().moveToFolder(file.drive_file_id, folderId)
+  // 1. A Drive source must leave RAW first or its watcher would rediscover the
+  // row after deletion. A manual upload never entered Drive: its
+  // `manual:<uuid>` identity is deliberately not sent to the Drive API.
+  const folderId = file.source === 'drive' ? serverEnv.driveDiscardedFolderId : null
+  if (folderId) await googleDriveClient().moveToFolder(file.drive_file_id, folderId)
 
   // 2. Then the bytes. Already-purged rows have nothing left to delete.
   const store = consoleObjectStore()
@@ -80,8 +84,11 @@ export async function discardHeldIntake(
     p_actor: actor,
   })
   if (discardError) {
+    const completedCleanup = folderId
+      ? `${file.filename} was moved out of RAW and its images deleted`
+      : `${file.filename}'s stored images were deleted`
     throw new Error(
-      `${file.filename} was moved out of RAW and its images deleted, but the record could not be ` +
+      `${completedCleanup}, but the record could not be ` +
         `removed: ${discardError.hint || discardError.message}. Press Discard again.`,
     )
   }

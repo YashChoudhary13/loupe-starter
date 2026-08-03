@@ -94,6 +94,8 @@ export interface DraftEditorProps {
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
   readonly onRedo: (intakeFileId: string, filename: string) => void
+  /** Present only while the photograph is ungrouped and deletable from Loupe. */
+  readonly onDeletePhoto: ((intakeFileId: string, filename: string) => void) | null
   readonly children?: React.ReactNode
 }
 
@@ -119,6 +121,7 @@ export function DraftEditor(props: DraftEditorProps) {
     onMoveImage,
     onChooseVersion,
     onRedo,
+    onDeletePhoto,
     children,
   } = props
 
@@ -209,8 +212,6 @@ export function DraftEditor(props: DraftEditorProps) {
     .map((image) => ({ image, photo: photoByIntake.get(image.intakeFileId) }))
     .filter((row): row is { image: EditorImage; photo: PhotoSummary } => row.photo !== undefined)
 
-  const hero = orderedImages[0]
-  const heroVersion = hero?.photo.versions.find((v) => v.id === hero.image.imageVersionId)
   const blockFor = (field: string) => blocks.find((b) => b.field === field)
 
   /**
@@ -249,61 +250,93 @@ export function DraftEditor(props: DraftEditorProps) {
       />
 
       <div className="loupe-scroll min-h-0 flex-1 overflow-y-auto pr-1">
-        {/* Hero — the "larger review" case. Thumbnails are for the grid. */}
-        <div className="relative aspect-[4/3] overflow-hidden rounded-panel bg-chip">
-          {heroVersion?.full ? (
-            <button
-              // This sits inside the editor's <form>, whose submit publishes the
-              // product — an implicit type="submit" here would publish on click.
-              type="button"
-              onClick={() => openLightbox(0)}
-              aria-label="View this photograph full size"
-              title="View full size"
-              className="group absolute inset-0 cursor-zoom-in focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--ink)_inset]"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL. */}
-              <img
-                src={heroVersion.full.url}
-                alt={hero.photo.description ?? hero.photo.filename}
-                className="absolute inset-0 size-full object-contain"
-              />
-              <span className="pointer-events-none absolute bottom-2 right-2 rounded-pill bg-ink/75 px-2.5 py-1 text-[10.5px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                Full size
-              </span>
-            </button>
-          ) : (
-            <span className="absolute inset-0 grid place-items-center text-[11px] text-muted-foreground">
-              no image selected
-            </span>
-          )}
-          {form.variantKind === 'colour' && form.variants.length > 0 ? (
-            <div
-              className="pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1.5 rounded-pill bg-white/90 p-1.5 shadow-sm backdrop-blur-sm"
-              role="img"
-              aria-label={`Selected colours: ${form.variants.map((variant) => variant.value).join(', ')}`}
-            >
-              {form.variants.map((variant) => (
-                <ColourSwatch key={variant.value} name={variant.value} className="size-6" />
-              ))}
-            </div>
-          ) : null}
-          {form.variantKind === 'size' && form.variants.length > 0 ? (
-            <div
-              className="pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1.5 rounded-pill bg-white/90 p-1.5 shadow-sm backdrop-blur-sm"
-              role="img"
-              aria-label={`Selected sizes: ${form.variants.map((variant) => variant.value).join(', ')}`}
-            >
-              {form.variants.map((variant) => (
-                <span
-                  key={variant.value}
-                  className="grid min-w-6 place-items-center rounded-pill bg-ink px-2 py-1 text-[10px] font-medium text-white"
+        {/* Full review in publish order. The editor scrolls vertically, so a
+            multi-photo product shows every selected photograph at review size. */}
+        <div className="flex flex-col gap-3">
+          {orderedImages.length > 0 ? (
+            orderedImages.map((row, index) => {
+              const version = row.photo.versions.find(
+                (candidate) => candidate.id === row.image.imageVersionId,
+              )
+              const fullSizeIndex = version?.full
+                ? lightboxImages.findIndex((image) => image.url === version.full!.url)
+                : -1
+              return (
+                <div
+                  key={`preview:${row.image.intakeFileId}`}
+                  className="relative aspect-[4/3] shrink-0 overflow-hidden rounded-panel bg-chip"
                 >
-                  {variant.value}
-                </span>
-              ))}
+                  {version?.full ? (
+                    <button
+                      // This sits inside the editor's <form>, whose submit publishes the
+                      // product — an implicit type="submit" here would publish on click.
+                      type="button"
+                      onClick={() => fullSizeIndex >= 0 && openLightbox(fullSizeIndex)}
+                      aria-label={`View ${row.photo.filename} full size`}
+                      title="View full size"
+                      className="group absolute inset-0 cursor-zoom-in focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--ink)_inset]"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL. */}
+                      <img
+                        src={version.full.url}
+                        alt={row.photo.description ?? row.photo.filename}
+                        className="absolute inset-0 size-full object-contain"
+                      />
+                      <span className="pointer-events-none absolute bottom-2 right-2 rounded-pill bg-ink/75 px-2.5 py-1 text-[10.5px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                        Full size
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="absolute inset-0 grid place-items-center text-[11px] text-muted-foreground">
+                      no image selected
+                    </span>
+                  )}
+                  <span className="pointer-events-none absolute left-2 top-2 z-10 rounded-pill bg-white/90 px-2 py-1 text-[10px] font-medium text-ink shadow-sm backdrop-blur-sm">
+                    {index + 1} of {orderedImages.length}
+                  </span>
+                  {index === 0 && form.variantKind === 'colour' && form.variants.length > 0 ? (
+                    <div
+                      className="pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1.5 rounded-pill bg-white/90 p-1.5 shadow-sm backdrop-blur-sm"
+                      role="img"
+                      aria-label={`Selected colours: ${form.variants.map((variant) => variant.value).join(', ')}`}
+                    >
+                      {form.variants.map((variant) => (
+                        <ColourSwatch key={variant.value} name={variant.value} className="size-6" />
+                      ))}
+                    </div>
+                  ) : null}
+                  {index === 0 && form.variantKind === 'size' && form.variants.length > 0 ? (
+                    <div
+                      className="pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1.5 rounded-pill bg-white/90 p-1.5 shadow-sm backdrop-blur-sm"
+                      role="img"
+                      aria-label={`Selected sizes: ${form.variants.map((variant) => variant.value).join(', ')}`}
+                    >
+                      {form.variants.map((variant) => (
+                        <span
+                          key={variant.value}
+                          className="grid min-w-6 place-items-center rounded-pill bg-ink px-2 py-1 text-[10px] font-medium text-white"
+                        >
+                          {variant.value}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })
+          ) : (
+            <div className="relative aspect-[4/3] rounded-panel bg-chip">
+              <span className="absolute inset-0 grid place-items-center text-[11px] text-muted-foreground">
+                no image selected
+              </span>
             </div>
-          ) : null}
+          )}
         </div>
+        {orderedImages.length > 1 ? (
+          <p className="mt-2 text-[10.5px] text-muted-foreground">
+            Scroll down to review all {orderedImages.length} photographs in Shopify order.
+          </p>
+        ) : null}
 
         {/* Images: version choice per photograph, plus order. */}
         <div className="mt-4">
@@ -386,16 +419,23 @@ export function DraftEditor(props: DraftEditorProps) {
                         redo failed
                       </span>
                     ) : null}
-                    {row.photo.source === 'drive' ? (
-                      <button
-                        type="button"
-                        disabled={readOnly || busy !== null}
-                        onClick={() => onRedo(row.image.intakeFileId, row.photo.filename)}
-                        className="rounded-pill bg-surface px-2.5 py-[7px] text-[10.5px] font-medium text-ink-soft transition-colors hover:bg-white disabled:opacity-40"
-                      >
-                        {busy === `redo:${row.image.intakeFileId}` ? 'Redoing…' : 'Redo image'}
-                      </button>
-                    ) : null}
+                    <button
+                      type="button"
+                      disabled={readOnly || busy !== null}
+                      onClick={() => onRedo(row.image.intakeFileId, row.photo.filename)}
+                      title={
+                        row.photo.source === 'manual'
+                          ? 'Run this ready upload through the image-enhancement model'
+                          : 'Create another AI-enhanced version from the untouched original'
+                      }
+                      className="rounded-pill bg-surface px-2.5 py-[7px] text-[10.5px] font-medium text-ink-soft transition-colors hover:bg-white disabled:opacity-40"
+                    >
+                      {busy === `redo:${row.image.intakeFileId}`
+                        ? 'Running AI…'
+                        : row.photo.source === 'manual'
+                          ? 'Run AI enhancement'
+                          : 'Redo image'}
+                    </button>
                   </div>
                 </div>
 
@@ -421,6 +461,16 @@ export function DraftEditor(props: DraftEditorProps) {
                     >
                       ×
                     </IconButton>
+                  ) : null}
+                  {onDeletePhoto ? (
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => onDeletePhoto(row.image.intakeFileId, row.photo.filename)}
+                      className="rounded-pill px-2 py-1 text-[10px] font-medium text-amber transition-colors hover:bg-white disabled:opacity-40"
+                    >
+                      {busy === `delete:${row.image.intakeFileId}` ? 'Deleting…' : 'Delete'}
+                    </button>
                   ) : null}
                 </div>
               </li>

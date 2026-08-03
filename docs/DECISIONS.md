@@ -1873,8 +1873,9 @@ checks its exact byte count, decodes it, verifies the declared format, reads its
 dimensions, and derives only a thumbnail and perceptual hash. One transaction then creates an
 `intake_files` row with `source = 'manual'` and status `enhanced`, plus one selected
 `image_versions` row whose storage key is the untouched uploaded original. No prompt, model,
-or AI cost is involved. Manual rows are excluded from Drive housekeeping and do not offer the
-image-redo action because their synthetic `manual:<uuid>` identity is not a Drive file id.
+or AI cost is involved. Manual rows are excluded from Drive housekeeping. D74 later permits a
+deliberate image-only AI redo from the immutable R2 original; its synthetic `manual:<uuid>`
+identity is never sent to Drive.
 
 Direct browser upload is deliberate: sending a full-resolution photograph through a server
 action would be subject to the deployment platform's request-body ceiling. The R2 bucket stays
@@ -1946,3 +1947,31 @@ The deployed save RPC keeps its existing signature for rolling compatibility. Th
 check and guarded function definition now accept/persist size rows; the legacy parent stock
 continues mirroring the largest option row, while publishing and validation use the
 authoritative per-size rows.
+
+---
+
+### D74 — Every selected image is reviewable; manual AI is opt-in; console deletion stops at Shopify
+
+*Business request, 2026-08-03; extends D52, D64 and D71.*
+
+The product editor renders every selected photograph at review size in Shopify publish order,
+one below the next in its existing vertical scroll. The compact image list still controls
+selection, version choice and ordering; it is no longer the only way to inspect images beyond
+the first one.
+
+A catalogue-ready manual upload still bypasses both AI calls on intake. The operator may later
+choose **Run AI enhancement**, which uses the existing durable image-only redo, including prompt
+review and an unselected generated version that must be accepted deliberately. It does not call
+the descriptor retroactively: missing description is settled and the existing flat-curve
+presentation fallback is recorded so the image job can run from the immutable R2 original.
+Re-queuing the ordinary intake worker was rejected because that worker downloads by Drive id and
+manual uploads deliberately have only a synthetic `manual:<uuid>` identity.
+
+Delete is available only while a photograph is ungrouped in the Pending console. A database claim
+atomically moves it to hold before external cleanup, so grouping and deletion cannot both win. A
+Drive source moves to `/Discarded`, then its R2 objects and database row are removed; a manual
+source skips Drive and removes R2 before its database row. Current product members, published
+rows, and any photograph ever attached to a draft already sent to Shopify are refused in the
+database, even if a stale browser tries to call the action. From that point onward, deletion is a
+Shopify catalogue operation. A completed manual-upload handshake cascades only when its intake is
+intentionally deleted; the durable event audit remains.

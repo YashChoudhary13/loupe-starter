@@ -6,6 +6,7 @@ import {
   autosaveDraftAction,
   beginManualUploadAction,
   colourSuggestionsAction,
+  deleteUngroupedPhotoAction,
   detachPhotoAction,
   groupPhotosAction,
   openDraftAction,
@@ -727,6 +728,38 @@ export function ConsoleScreen({
     [applyBundle, bundle, handleResult],
   )
 
+  const handleDeletePhoto = useCallback(
+    async (intakeFileId: string, filename: string) => {
+      const confirmed = window.confirm(
+        `Delete ${filename}?\n\nThis permanently removes its stored images from Loupe. ` +
+          'If it came from RAW, the source file is moved to /Discarded. ' +
+          'Photographs already attached to a draft or sent to Shopify are refused.',
+      )
+      if (!confirmed) return
+
+      setBusy(`delete:${intakeFileId}`)
+      setLastPublish(null)
+      const data = handleResult(await deleteUngroupedPhotoAction(intakeFileId))
+      if (data) {
+        setQueue(data)
+        setSelectedPhotoIds((current) => current.filter((id) => id !== intakeFileId))
+        setForm((current) => ({
+          ...current,
+          images: current.images.filter((image) => image.intakeFileId !== intakeFileId),
+        }))
+        setFocusIndex((current) => Math.max(0, current - 1))
+      } else {
+        // The delete path claims the row before external cleanup. If cleanup
+        // stopped part-way, a fresh snapshot honestly removes it from Pending
+        // and Tracking exposes the retryable Discard action.
+        const refreshed = await refreshQueueAction()
+        if (refreshed.ok) setQueue(refreshed.data)
+      }
+      setBusy(null)
+    },
+    [handleResult],
+  )
+
   const moveImage = useCallback((imageVersionId: string, delta: number) => {
     setForm((current) => {
       const index = current.images.findIndex((i) => i.imageVersionId === imageVersionId)
@@ -1029,6 +1062,12 @@ export function ConsoleScreen({
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
               onRedo={(intakeFileId, filename) => void openRedoReview(intakeFileId, filename)}
+              onDeletePhoto={
+                mode === 'new'
+                  ? (intakeFileId, filename) =>
+                      void handleDeletePhoto(intakeFileId, filename)
+                  : null
+              }
             >
               <div className="mt-3 flex flex-col gap-2">
                 {error ? (

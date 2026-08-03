@@ -189,6 +189,14 @@ describe('server-only functions are not callable without the service role', () =
       p_phash: '0000000000000000',
       p_actor: 'anonymous',
     }],
+    ['prepare_manual_image_redo', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_actor: 'anonymous',
+    }],
+    ['prepare_console_photo_delete', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_actor: 'anonymous',
+    }],
     ['validate_prompt_body', {
       p_kind: 'describe',
       p_body: 'anonymous',

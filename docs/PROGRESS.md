@@ -29,6 +29,53 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-03 — Scrollable multi-image review, optional manual AI, and protected deletion
+
+**Goal this session:** let operators inspect every selected photo at full review size, optionally
+enhance a catalogue-ready manual upload, and delete only photos that have not entered Shopify work.
+
+**Built:**
+- `DraftEditor.tsx` and `ConsoleScreen.tsx` → every selected photograph now appears at review size
+  in Shopify order inside the editor scroll; manual ready uploads expose **Run AI enhancement**;
+  ungrouped selections expose a confirmed **Delete** action only in the new-product console.
+- `redo-server.ts` and console actions → a manual AI request deliberately joins the existing
+  durable, prompt-reviewable image-only redo path without retroactively calling the descriptor.
+- `20260803150000_console_image_review_controls.sql` → service-role-only RPCs settle optional
+  manual AI and atomically claim console deletion before external cleanup. Current product members
+  and anything historically associated with a Shopify-sent draft are refused in the database.
+- `discard.ts` → Drive photos move to `/Discarded` before R2/database cleanup; manual uploads skip
+  Drive and remove R2 before their intake row. Completed manual-upload handshakes cascade only on
+  intentional intake deletion while the durable event audit remains.
+- D74 and D71 → record the review, opt-in AI and Shopify deletion boundary.
+
+**Verified:**
+- The migration was applied to the linked live database. Its two new functions revoke execution
+  from `public`, `anon`, and `authenticated`, grant only `service_role`, and use invoker security.
+- `tests/manual-upload.sql.test.ts` passed `5/5`, including idempotent manual-AI settlement,
+  completed-handshake deletion, refusal while grouped, and refusal after a Shopify-sent draft is
+  detached. RLS coverage also refuses anonymous calls to both new RPCs.
+- TypeScript, ESLint, production build and `git diff --check` passed. The full suite passed
+  `502/504`; its only failures are the two pre-existing live describe-prompt fixture drifts
+  (`preset_slug` and body/hash), unrelated to this change.
+
+**Not finished / known broken:**
+- Application code is local and has not been deployed; only the migration is live.
+- No paid AI request or destructive production-photo deletion was performed. Use a disposable
+  manual photo for the first production acceptance test.
+- The production R2 CORS policy still needs to be configured in the signed-in Cloudflare dashboard
+  before manual browser upload can stop reporting that it cannot reach private image storage.
+- Supabase database advisors could not be rerun because this machine has no CLI access token;
+  exact SQL behavior and function privileges were verified by the live integration tests instead.
+
+**Surprises:** the old `manual_uploads.intake_file_id ON DELETE SET NULL` behavior conflicted with
+its completed-row consistency check, so intentional deletion could never finish. The FK now
+cascades the operational handshake while preserving the separate event audit.
+
+**Next session should start with:** deploy the application, configure production R2 CORS while
+signed in, then test scrolling, optional AI and delete with one disposable manual upload.
+
+---
+
 ## 2026-08-03 — Ring-size variants with independent stock
 
 **Goal this session:** add By size beside colour and numbered stock so each ring size persists

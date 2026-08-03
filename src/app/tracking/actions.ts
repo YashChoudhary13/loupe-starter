@@ -81,17 +81,18 @@ export async function resumeIntakeAction(
 /**
  * Discards a held photograph for good.
  *
- * Order matters and is deliberate: the Drive file leaves RAW first, then the R2
- * objects, and only then the database row. Every step before the last is
- * idempotent, so a failure part-way leaves the row intact and the operator can
- * simply press Discard again. The reverse order would delete the row first and
- * strand a file in RAW that Loupe no longer knows about — the watcher would
- * rediscover it minutes later and it would reappear in the queue.
+ * Order matters and is deliberate: a Drive source leaves RAW first (a manual
+ * source has no Drive object), then the R2 objects are removed, and only then is
+ * the database row deleted. Every step before the last is idempotent, so a
+ * failure part-way leaves the row intact and the operator can simply press
+ * Discard again. Reversing the Drive order would strand a file in RAW that Loupe
+ * no longer knows about — the watcher would rediscover it minutes later and it
+ * would reappear in the queue.
  *
- * The Drive file is MOVED to /Discarded rather than trashed: Phase 4 proved the
+ * A Drive file is MOVED to /Discarded rather than trashed: Phase 4 proved the
  * service account cannot trash files owned by the operator's own Drive. Moving
  * it out of RAW is what actually matters — it stops being rescanned — and the
- * owner can empty /Discarded themselves.
+ * owner can empty /Discarded themselves. Manual uploads skip Drive completely.
  */
 export async function discardIntakeAction(
   intakeFileId: string,
