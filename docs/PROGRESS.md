@@ -29,6 +29,56 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-03 — Ring-size variants with independent stock
+
+**Goal this session:** add By size beside colour and numbered stock so each ring size persists
+and publishes as its own Shopify variant with independent inventory.
+
+**Built:**
+- `DraftEditor.tsx` → a fourth **By size** stock method with quick numeric choices 4–30,
+  custom labels such as `4.5`, `US 7`, or `Adjustable`, per-size stock inputs, removal controls,
+  and selected-size pills over the product-image preview.
+- `20260803084237_add_size_variants.sql` → extends the deployed `variant_kind` check and the
+  existing save RPC without changing its signature; size labels are whitespace-normalised,
+  duplicates are rejected case-insensitively, and ordered size rows keep `colour_id` null.
+- publish and reconciliation → Shopify Draft and Active paths now emit the option name `Size`,
+  one variant and exact primary-location inventory quantity per selected size, and the same
+  parent SKU on every size.
+- D73 and `CLAUDE.md` → record flexible cross-system size labels, independent stock and the
+  one-option-dimension boundary.
+
+**Verified:**
+- The migration first succeeded inside a transaction that was rolled back, then was applied
+  alone from a clean worktree. Live readback confirms migration `20260803084237` and the
+  `none|colour|number|size` database constraint.
+- Live persistence proves `6`, `7.5`, and whitespace-heavy `US 8` save in order with stocks
+  `2`, `5`, and `1`; the stored custom label is `US 8`, the parent compatibility stock is `5`,
+  and duplicate `US 7` / `us   7` is refused.
+- Feature verification passed `143/143` tests across six files. The earlier focused Shopify,
+  validation and reconciliation run passed `46/46`; lint, TypeScript, production build and
+  `git diff --check` passed.
+- Supabase security and performance advisors reported INFO-only existing notices, with no
+  WARN or ERROR findings from this schema change.
+- Vercel deployment `dpl_BvzQBPyV1HdCkf1EoeEWQnb7USW6` is Ready and aliased to
+  `https://qimati-loupe.vercel.app`; `/health` returned HTTP 200. The first upload attempt had
+  a transient `fetch failed` before promotion, and the identical retry succeeded.
+
+**Not finished / known broken:**
+- No test merchandise was written to the live Shopify catalogue. The exact DRAFT Size payload
+  is regression-tested, but the first real multi-size ring should still be visually confirmed
+  in Shopify Admin before it is made Active.
+- Size is intentionally an alternative to Colour or Number. Genuine colour × size products
+  would require a separate two-option design rather than silently multiplying variants here.
+
+**Surprises:** the database migration timestamp is earlier than the already-applied manual
+upload migration, so it was deployed with the project's per-file migration runner from a
+clean worktree; the runner correctly applied only the missing version and skipped all others.
+
+**Next session should start with:** save one real ring as a Shopify draft with two sizes and
+different stock, then confirm the Size variants and inventory table in Shopify Admin.
+
+---
+
 ## 2026-08-03 — Manual ready-image intake and stable deleted-draft SKUs
 
 **Goal this session:** let photographers upload an already-finished image without either AI

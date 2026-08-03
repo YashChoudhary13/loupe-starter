@@ -1830,15 +1830,16 @@ A product has exactly one option mode:
 | `none` | `Title / Default Title` | `product_drafts.stock` |
 | `colour` | `Colour` | one row per normalised colour |
 | `number` | `Number` | canonical values `1..N`, one row per photographed label |
+| `size` | `Size` | one row per trimmed ring-size label |
 
-Colour and Number are alternatives, not a cross-product. A tray number identifies the exact
+Colour, Number, and Size are alternatives, not a cross-product. A tray number identifies the exact
 piece visible in the photograph; adding a second colour dimension would invent combinations
 that are not physically present. If the business later photographs genuine colour × number
 combinations, that is a separate two-option design rather than something this schema should
 guess today. Numbered trays are capped at 100 choices in Loupe (the reported case is 30).
 
 Every option variant keeps the parent SKU. That preserves the verified live-store convention
-(`AK011` on Gold and Silver) and extends it to numbered choices; Shopify permits shared SKUs.
+(`AK011` on Gold and Silver) and extends it to numbered and size choices; Shopify permits shared SKUs.
 Publishing and the zero-stock guard sum the authoritative option rows, while the actual
 Shopify mutation sends each row's exact stock to the primary location. Reconciliation still
 does not compare live inventory because sales legitimately change it (D54).
@@ -1852,8 +1853,8 @@ option inventory.
 The migration keeps one defaulted `p_colours` compatibility input on
 `save_product_draft()` rather than leaving a second overload. The old deployed bundle can
 continue saving during rollout, but new saves send `variant_kind` plus structured rows.
-Colour usage ranking ignores numbered rows because a number is not vocabulary to suggest on
-the next product.
+Colour usage ranking ignores every non-colour row because numbers and sizes are not colour
+vocabulary to suggest on the next product.
 
 ---
 
@@ -1923,3 +1924,25 @@ publishes to Shopify. A true Shopify-native swatch is a separate integration: Sh
 structured swatches require a linked product metafield, colour-pattern metaobjects and the
 `write_metaobjects` scope. This console change does not silently create those store-wide
 objects or widen app permissions.
+
+---
+
+### D73 — Ring size is a fourth single-option stock mode
+
+*Business request, 2026-08-03.*
+
+Some rings are one design sold in multiple sizes, and inventory belongs to the exact size.
+Loupe therefore adds `size` beside `none`, `colour`, and `number`. It publishes one Shopify
+option named exactly `Size`; every option value is a separate tracked Shopify variant with
+its own stock at the primary location and the same parent SKU.
+
+The console offers numeric sizes 4 through 30 for quick entry, but storage is deliberately
+not a numeric-only column. Ring sizing systems differ, half sizes are real, and the catalogue
+may use labels such as `US 7` or `Adjustable`. Values are trimmed, internal whitespace is
+collapsed, and duplicates are refused case-insensitively. A product still chooses exactly
+one option dimension: this change does not create colour × size combinations.
+
+The deployed save RPC keeps its existing signature for rolling compatibility. The database
+check and guarded function definition now accept/persist size rows; the legacy parent stock
+continues mirroring the largest option row, while publishing and validation use the
+authoritative per-size rows.

@@ -390,6 +390,34 @@ describe('saving', () => {
     ])
   })
 
+  it('persists ring sizes with independent stock and normalises custom labels', async () => {
+    const { error } = await save({
+      p_stock: 999,
+      p_variant_kind: 'size',
+      p_variants: [
+        { value: '6', stock: 2 },
+        { value: '7.5', stock: 5 },
+        { value: ' US   8 ', stock: 1 },
+      ],
+    })
+    expect(error?.message).toBeUndefined()
+
+    const draft = await draftRow(draftId)
+    expect(draft.variant_kind).toBe('size')
+    expect(draft.stock).toBe(5)
+
+    const { data: variants } = await db
+      .from('product_draft_variants')
+      .select('position, option_value, stock, colour_id')
+      .eq('product_draft_id', draftId)
+      .order('position', { ascending: true })
+    expect(variants).toEqual([
+      { position: 0, option_value: '6', stock: 2, colour_id: null },
+      { position: 1, option_value: '7.5', stock: 5, colour_id: null },
+      { position: 2, option_value: 'US 8', stock: 1, colour_id: null },
+    ])
+  })
+
   it('keeps the deployed colour-only save contract working during rollout', async () => {
     const current = await draftRow(draftId)
     const { error } = await db.rpc('save_product_draft', {
@@ -433,7 +461,7 @@ describe('saving', () => {
     expect(variants).toEqual([{ option_value: 'Silver', stock: 9 }])
   })
 
-  it('rejects ambiguous duplicate colours and invalid tray numbers', async () => {
+  it('rejects ambiguous duplicate colours and sizes, and invalid tray numbers', async () => {
     const duplicate = await save({
       p_variant_kind: 'colour',
       p_variants: [
@@ -443,6 +471,16 @@ describe('saving', () => {
     })
     expect(duplicate.error?.code).toBe('22023')
     expect(duplicate.error?.hint).toMatch(/Each colour should appear once/)
+
+    const duplicateSize = await save({
+      p_variant_kind: 'size',
+      p_variants: [
+        { value: 'US 7', stock: 1 },
+        { value: 'us   7', stock: 2 },
+      ],
+    })
+    expect(duplicateSize.error?.code).toBe('22023')
+    expect(duplicateSize.error?.hint).toMatch(/Each size should appear once/)
 
     const invalidNumber = await save({
       p_variant_kind: 'number',

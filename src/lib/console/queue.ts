@@ -109,7 +109,7 @@ interface DraftRow {
   price_paise: number | null
   weight_g: number | null
   stock: number
-  variant_kind: 'none' | 'colour' | 'number'
+  variant_kind: 'none' | 'colour' | 'number' | 'size'
   reserved_sku: string | null
   reserved_handle: string | null
   shopify_product_id: string | null

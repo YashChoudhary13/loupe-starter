@@ -1140,7 +1140,9 @@ function localBlocks(
       message:
         form.variantKind === 'colour'
           ? 'Stock is set to “By colour”, but no colours have been added.'
-          : 'Stock is set to “Numbered choices”, but no numbered pieces have been added.',
+          : form.variantKind === 'size'
+            ? 'Stock is set to “By size”, but no ring sizes have been added.'
+            : 'Stock is set to “Numbered choices”, but no numbered pieces have been added.',
     })
   }
   if (!form.materialId && !form.customMaterial.trim()) {

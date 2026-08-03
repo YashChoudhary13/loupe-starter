@@ -26,7 +26,7 @@ interface PublishedDraftRow {
   title_suffix: string | null
   price_paise: number
   weight_g: number | null
-  variant_kind: 'none' | 'colour' | 'number'
+  variant_kind: 'none' | 'colour' | 'number' | 'size'
   reserved_sku: string
   reserved_handle: string
   shopify_product_id: string | null
@@ -101,8 +101,14 @@ function expectedProduct(row: PublishedDraftRow): {
   ).sort((a, b) => a.position - b.position)
   const materialName = row.custom_material?.trim() || material?.name || null
   const weightG = row.weight_g ?? category?.default_weight_g ?? 0
-  const optionName: 'Colour' | 'Number' | null =
-    row.variant_kind === 'colour' ? 'Colour' : row.variant_kind === 'number' ? 'Number' : null
+  const optionName: 'Colour' | 'Number' | 'Size' | null =
+    row.variant_kind === 'colour'
+      ? 'Colour'
+      : row.variant_kind === 'number'
+        ? 'Number'
+        : row.variant_kind === 'size'
+          ? 'Size'
+          : null
   const variants = (optionValues.length > 0 ? optionValues : [null]).map((optionValue) => ({
     sku: row.reserved_sku,
     price: paiseToShopifyPrice(row.price_paise),

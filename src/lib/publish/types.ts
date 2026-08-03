@@ -10,7 +10,7 @@ export interface DraftRow {
   readonly price_paise: number | null
   readonly weight_g: number | null
   readonly stock: number
-  readonly variant_kind: 'none' | 'colour' | 'number'
+  readonly variant_kind: 'none' | 'colour' | 'number' | 'size'
   readonly status: 'assembling' | 'publishing' | 'published' | 'failed'
   readonly reserved_sku: string | null
   readonly reserved_handle: string | null

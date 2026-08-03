@@ -129,4 +129,32 @@ describe('Shopify reconciliation comparison', () => {
 
     expect(comparePublishedProduct(numberedExpected, numberedActual)).toEqual([])
   })
+
+  it('compares ring sizes as Shopify Size options', () => {
+    const sizedExpected = {
+      ...expected,
+      variants: [
+        {
+          sku: 'NK001',
+          price: '100.00',
+          weightG: 0,
+          optionName: 'Size' as const,
+          optionValue: '7.5',
+        },
+      ],
+    }
+    const sizedActual = {
+      ...actual,
+      variants: {
+        nodes: [
+          {
+            ...actual.variants.nodes[0]!,
+            selectedOptions: [{ name: 'Size', value: '7.5' }],
+          },
+        ],
+      },
+    }
+
+    expect(comparePublishedProduct(sizedExpected, sizedActual)).toEqual([])
+  })
 })

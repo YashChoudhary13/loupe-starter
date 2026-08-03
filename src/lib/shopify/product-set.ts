@@ -29,6 +29,8 @@ export const MATERIAL_METAFIELD = {
 export const COLOUR_OPTION_NAME = 'Colour'
 /** Number is used for tray photographs where customers pick the labelled piece. */
 export const NUMBER_OPTION_NAME = 'Number'
+/** Ring size is a customer choice with independent inventory per size. */
+export const SIZE_OPTION_NAME = 'Size'
 
 /**
  * What Shopify calls the single option of a product that has no real options.
@@ -90,7 +92,11 @@ export interface ProductSetArgs {
   readonly descriptionHtml: string
   readonly material: string | null
   /** Null means Shopify's own Title / Default Title single variant. */
-  readonly optionName: typeof COLOUR_OPTION_NAME | typeof NUMBER_OPTION_NAME | null
+  readonly optionName:
+    | typeof COLOUR_OPTION_NAME
+    | typeof NUMBER_OPTION_NAME
+    | typeof SIZE_OPTION_NAME
+    | null
   readonly variants: readonly ProductSetVariant[]
   /**
    * Omitted entirely when the caller has no opinion about images — `productSet`

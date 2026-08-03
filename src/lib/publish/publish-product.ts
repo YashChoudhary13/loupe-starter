@@ -29,6 +29,7 @@ import {
   buildAltText,
   COLOUR_OPTION_NAME,
   NUMBER_OPTION_NAME,
+  SIZE_OPTION_NAME,
   primaryLocationId,
   productSet,
   readProductMedia,
@@ -363,7 +364,9 @@ export async function publishProduct(
         ? COLOUR_OPTION_NAME
         : input.draft.variant_kind === 'number'
           ? NUMBER_OPTION_NAME
-          : null
+          : input.draft.variant_kind === 'size'
+            ? SIZE_OPTION_NAME
+            : null
     // An unfinished Shopify draft may have had its option mode selected before
     // the first row was added. Keep that draft saveable as one default variant;
     // ACTIVE validation blocks until the missing choices are supplied.

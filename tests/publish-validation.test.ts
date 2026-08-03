@@ -118,15 +118,25 @@ describe('publish validation', () => {
     ).toThrow(PublishBlockedError)
   })
 
-  it('requires at least one row after choosing colour or numbered stock', () => {
+  it('requires at least one row after choosing colour, size, or numbered stock', () => {
     expect(codes(input({ variant_kind: 'colour' }))).toContain('variants_missing')
     expect(codes(input({ variant_kind: 'number' }))).toContain('variants_missing')
+    expect(codes(input({ variant_kind: 'size' }))).toContain('variants_missing')
     expect(
       codes(
         input(
           { variant_kind: 'number', stock: 3 },
           {},
           { variants: [{ value: '1', stock: 3 }] },
+        ),
+      ),
+    ).not.toContain('variants_missing')
+    expect(
+      codes(
+        input(
+          { variant_kind: 'size', stock: 3 },
+          {},
+          { variants: [{ value: '7', stock: 3 }] },
         ),
       ),
     ).not.toContain('variants_missing')

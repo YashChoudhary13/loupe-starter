@@ -101,7 +101,7 @@ export interface DraftImageRef {
   readonly shopifyMediaId: string | null
 }
 
-export type VariantKind = 'none' | 'colour' | 'number'
+export type VariantKind = 'none' | 'colour' | 'number' | 'size'
 
 export interface DraftVariant {
   /** Customer-facing Shopify option value: e.g. Gold or 17. */
@@ -126,7 +126,7 @@ export interface DraftDetail {
   readonly pricePaise: number | null
   readonly weightG: number | null
   readonly variantKind: VariantKind
-  /** Empty for a one-stock product; ordered for Colour or Number options. */
+  /** Empty for a one-stock product; ordered for Colour, Number, or Size options. */
   readonly variants: readonly DraftVariant[]
   /** Simple stock, or a legacy compatibility mirror when variants exist. */
   readonly stock: number

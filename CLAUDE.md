@@ -108,9 +108,17 @@ The customer chooses the visible number, so these publish as one Shopify option
 named exactly **`Number`**, with values `1` through the operator-selected count
 and independent stock per number. Numbered variants share the parent product SKU,
 just like colour variants. A product uses one option mode at a time: no option,
-`Colour`, or `Number`; a tray number already identifies the exact visible piece,
+`Colour`, `Number`, or `Size`; a tray number already identifies the exact visible piece,
 so Loupe does not multiply it by a second colour dimension. The console supports
 up to 100 numbered choices on one product.
+
+### Ring sizes
+
+Ring sizes publish as one Shopify option named exactly **`Size`**, with independent stock
+per selected size and the same parent SKU on every variant. The console offers numeric sizes
+4 through 30 as quick choices but also accepts trimmed custom values such as `4.5`, `US 7`,
+or `Adjustable`; it must not force one country's sizing system. Size labels are compared
+case-insensitively after collapsing whitespace so the same size cannot appear twice.
 
 ### Known damage in the live data
 

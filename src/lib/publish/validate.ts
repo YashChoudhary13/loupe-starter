@@ -107,7 +107,9 @@ export function validateDraftForPublish(
       message:
         draft.variant_kind === 'colour'
           ? 'Stock is set to “By colour”, but no colours have been added.'
-          : 'Stock is set to “Numbered choices”, but no numbered pieces have been added.',
+          : draft.variant_kind === 'size'
+            ? 'Stock is set to “By size”, but no ring sizes have been added.'
+            : 'Stock is set to “Numbered choices”, but no numbered pieces have been added.',
     })
   }
 

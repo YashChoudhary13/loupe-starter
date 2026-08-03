@@ -108,6 +108,56 @@ describe('Shopify customer choices', () => {
       { locationId: 'gid://shopify/Location/1', name: 'available', quantity: 7 },
     ])
   })
+
+  it('saves ring sizes as Shopify DRAFT Size variants with independent stock', () => {
+    const input = buildInput({
+      handle: 'ring-002',
+      title: 'Ring 002',
+      status: 'DRAFT',
+      productType: 'Jewellery',
+      tags: ['Rings', 'NEWEST'],
+      descriptionHtml: '<ul><li>316L</li></ul>',
+      material: '316L',
+      optionName: 'Size',
+      variants: [
+        {
+          sku: 'RS002',
+          price: '850.00',
+          weightG: 0,
+          stock: 3,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: '6',
+        },
+        {
+          sku: 'RS002',
+          price: '850.00',
+          weightG: 0,
+          stock: 8,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: '7.5',
+        },
+      ],
+    }) as {
+      status: string
+      productOptions: { name: string; values: { name: string }[] }[]
+      variants: {
+        optionValues: { optionName: string; name: string }[]
+        inventoryQuantities: { name: string; quantity: number }[]
+      }[]
+    }
+
+    expect(input.status).toBe('DRAFT')
+    expect(input.productOptions).toEqual([
+      { name: 'Size', values: [{ name: '6' }, { name: '7.5' }] },
+    ])
+    expect(input.variants.map((variant) => variant.optionValues[0])).toEqual([
+      { optionName: 'Size', name: '6' },
+      { optionName: 'Size', name: '7.5' },
+    ])
+    expect(
+      input.variants.map((variant) => variant.inventoryQuantities[0]?.quantity),
+    ).toEqual([3, 8])
+  })
 })
 
 describe('Shopify filenames', () => {

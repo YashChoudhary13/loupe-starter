@@ -25,6 +25,9 @@ import { cn } from '@/lib/utils'
 import { ImageLightbox, type LightboxImage } from './ImageLightbox'
 import { Chip, FeatureCard, SectionLabel } from './primitives'
 
+/** Quick ring-size choices; custom labels remain available beside them. */
+const RING_SIZE_SUGGESTIONS = Array.from({ length: 27 }, (_, index) => String(index + 4))
+
 /**
  * The product editor.
  *
@@ -36,8 +39,8 @@ import { Chip, FeatureCard, SectionLabel } from './primitives'
  * would have had to reimplement them and would fire while the operator typed
  * into something unrelated.
  *
- * The one place that needs help is the colour entry field, which is an input
- * inside the same form: Enter there adds the colour and stops the submit.
+ * The colour and size entry fields need help because they are inputs inside the
+ * same form: Enter there adds the choice and stops the publish submit.
  */
 
 export interface EditorImage {
@@ -120,6 +123,7 @@ export function DraftEditor(props: DraftEditorProps) {
   } = props
 
   const [colourDraft, setColourDraft] = useState('')
+  const [sizeDraft, setSizeDraft] = useState('')
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const openLightbox = (index: number) => setLightboxIndex(index)
   const category = categories.find((c) => c.id === form.categoryId) ?? null
@@ -130,7 +134,7 @@ export function DraftEditor(props: DraftEditorProps) {
     const stock = Number.parseInt(variant.stock.trim() || '0', 10)
     return sum + (Number.isFinite(stock) && stock > 0 ? stock : 0)
   }, 0)
-  const newColourStock = (form.variants[0]?.stock ?? form.stock) || '0'
+  const newOptionStock = (form.variants[0]?.stock ?? form.stock) || '0'
   const availableColourNames = colourPaletteNames(colourSuggestions)
 
   const setVariantKind = (kind: VariantKind) => {
@@ -165,6 +169,19 @@ export function DraftEditor(props: DraftEditorProps) {
         return { value, stock: stockByValue.get(value) ?? '0' }
       }),
     })
+  }
+
+  const addSize = (rawValue: string) => {
+    const value = rawValue.trim().replace(/\s+/g, ' ')
+    if (
+      !value ||
+      form.variants.some(
+        (variant) => variant.value.toLowerCase() === value.toLowerCase(),
+      )
+    ) {
+      return
+    }
+    onChange({ variants: [...form.variants, { value, stock: newOptionStock }] })
   }
 
   const setVariantStock = (value: string, stock: string) =>
@@ -267,6 +284,22 @@ export function DraftEditor(props: DraftEditorProps) {
             >
               {form.variants.map((variant) => (
                 <ColourSwatch key={variant.value} name={variant.value} className="size-6" />
+              ))}
+            </div>
+          ) : null}
+          {form.variantKind === 'size' && form.variants.length > 0 ? (
+            <div
+              className="pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1.5 rounded-pill bg-white/90 p-1.5 shadow-sm backdrop-blur-sm"
+              role="img"
+              aria-label={`Selected sizes: ${form.variants.map((variant) => variant.value).join(', ')}`}
+            >
+              {form.variants.map((variant) => (
+                <span
+                  key={variant.value}
+                  className="grid min-w-6 place-items-center rounded-pill bg-ink px-2 py-1 text-[10px] font-medium text-white"
+                >
+                  {variant.value}
+                </span>
               ))}
             </div>
           ) : null}
@@ -534,6 +567,13 @@ export function DraftEditor(props: DraftEditorProps) {
               By colour
             </Chip>
             <Chip
+              selected={form.variantKind === 'size'}
+              disabled={readOnly}
+              onClick={() => setVariantKind('size')}
+            >
+              By size
+            </Chip>
+            <Chip
               selected={form.variantKind === 'number'}
               disabled={readOnly}
               onClick={() => setVariantKind('number')}
@@ -574,7 +614,7 @@ export function DraftEditor(props: DraftEditorProps) {
                         }
                         onClick={() =>
                           onChange({
-                            variants: [...form.variants, { value: name, stock: newColourStock }],
+                            variants: [...form.variants, { value: name, stock: newOptionStock }],
                           })
                         }
                         className="rounded-full outline-none transition-transform hover:scale-110 focus-visible:shadow-[0_0_0_2px_var(--ink)] disabled:opacity-40"
@@ -600,7 +640,7 @@ export function DraftEditor(props: DraftEditorProps) {
                         onChange({
                           variants: [
                             ...form.variants,
-                            { value: name, stock: newColourStock },
+                            { value: name, stock: newOptionStock },
                           ],
                         })
                       }
@@ -653,6 +693,86 @@ export function DraftEditor(props: DraftEditorProps) {
               <p className="mt-2 text-[11px] text-muted-foreground">
                 Pick from the visual palette, then set stock beside each swatch. Shopify keeps
                 the colour name underneath so every variant stays identifiable.
+              </p>
+            </div>
+          ) : null}
+
+          {form.variantKind === 'size' ? (
+            <div className="mt-3">
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Ring sizes">
+                {RING_SIZE_SUGGESTIONS.filter(
+                  (size) => !form.variants.some((variant) => variant.value === size),
+                ).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    disabled={readOnly}
+                    aria-label={`Add ring size ${size}`}
+                    title={`Add size ${size}`}
+                    onClick={() => addSize(size)}
+                    className="grid min-w-8 place-items-center rounded-pill bg-chip px-2.5 py-2 text-[11px] font-medium text-ink-soft outline-none transition-colors hover:bg-[#ebebeb] focus-visible:shadow-[0_0_0_2px_var(--ink)] disabled:opacity-40"
+                  >
+                    {size}
+                  </button>
+                ))}
+                <input
+                  value={sizeDraft}
+                  disabled={readOnly}
+                  maxLength={100}
+                  onChange={(event) => setSizeDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      addSize(sizeDraft)
+                      setSizeDraft('')
+                    } else if (event.key === 'Escape' && sizeDraft) {
+                      event.preventDefault()
+                      setSizeDraft('')
+                    }
+                  }}
+                  placeholder="+ custom"
+                  aria-label="Add a custom ring size"
+                  className="w-[104px] rounded-pill border border-dashed border-[#d5d5d5] bg-transparent px-3 py-[7px] text-[11.5px] text-ink-soft outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-3 gap-2">
+                {form.variants.map((variant) => (
+                  <div
+                    key={variant.value}
+                    className="flex items-center gap-2 rounded-field bg-chip px-2.5 py-2 text-[11.5px] text-ink-soft"
+                  >
+                    <button
+                      type="button"
+                      disabled={readOnly}
+                      onClick={() =>
+                        onChange({
+                          variants: form.variants.filter(
+                            (candidate) => candidate.value !== variant.value,
+                          ),
+                        })
+                      }
+                      aria-label={`Remove ring size ${variant.value}`}
+                      title={`Remove size ${variant.value}`}
+                      className="min-w-7 rounded-pill bg-ink px-2 py-1 font-medium text-white outline-none focus-visible:shadow-[0_0_0_2px_var(--ink)] disabled:cursor-default"
+                    >
+                      {variant.value}
+                    </button>
+                    <input
+                      value={variant.stock}
+                      disabled={readOnly}
+                      onChange={(event) => setVariantStock(variant.value, event.target.value)}
+                      inputMode="numeric"
+                      aria-label={`Ring size ${variant.value} stock`}
+                      className="min-w-0 flex-1 rounded bg-surface px-2 py-1 text-right text-[12px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Pick the available ring sizes and enter stock for each one. Custom values such
+                as 4.5, US 7, or Adjustable are supported. Shopify receives a Size variant for
+                every selected value.
               </p>
             </div>
           ) : null}

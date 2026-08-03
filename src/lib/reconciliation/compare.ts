@@ -13,7 +13,7 @@ export interface ExpectedReconciliationProduct {
     readonly sku: string
     readonly price: string
     readonly weightG: number
-    readonly optionName: 'Colour' | 'Number' | null
+    readonly optionName: 'Colour' | 'Number' | 'Size' | null
     readonly optionValue: string | null
   }[]
   readonly mediaIds: readonly string[]
