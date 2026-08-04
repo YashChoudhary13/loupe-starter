@@ -32,6 +32,29 @@ describe('Shopify native Color default entries', () => {
     expect(graphql).toHaveBeenCalledTimes(1)
   })
 
+  it('reuses Shopify Multicolor for Loupe’s Multi Colour label', async () => {
+    const graphql = vi.fn().mockResolvedValueOnce({
+      metaobjects: {
+        nodes: [
+          {
+            id: 'gid://shopify/Metaobject/multicolor',
+            handle: 'multicolor',
+            displayName: 'Multicolor',
+            fields: [
+              { key: 'label', value: 'Multicolor' },
+              { key: 'image', value: 'gid://shopify/MediaImage/multicolor-swatch' },
+            ],
+          },
+        ],
+      },
+    })
+
+    await expect(syncShopifySavedColours(client(graphql), ['Multi Colour'])).resolves.toEqual([
+      { name: 'Multi Colour', metaobjectId: 'gid://shopify/Metaobject/multicolor' },
+    ])
+    expect(graphql).toHaveBeenCalledTimes(1)
+  })
+
   it('creates a missing simple colour with Shopify taxonomy references', async () => {
     const graphql = vi
       .fn()
