@@ -56,7 +56,7 @@ export function ImageLightbox({ images, index, onClose, onIndexChange }: ImageLi
     if (!open) return
 
     returnFocusTo.current = document.activeElement
-    closeRef.current?.focus()
+    closeRef.current?.focus({ preventScroll: true })
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -85,7 +85,9 @@ export function ImageLightbox({ images, index, onClose, onIndexChange }: ImageLi
       window.removeEventListener('keydown', onKeyDown, true)
       document.body.style.overflow = previousOverflow
       const target = returnFocusTo.current
-      if (target instanceof HTMLElement && target.isConnected) target.focus()
+      if (target instanceof HTMLElement && target.isConnected) {
+        target.focus({ preventScroll: true })
+      }
     }
   }, [onClose, open, step])
 

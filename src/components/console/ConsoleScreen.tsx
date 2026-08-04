@@ -869,7 +869,7 @@ export function ConsoleScreen({
   })
 
   return (
-    <div className="grid h-dvh grid-cols-[216px_1fr] gap-[18px] p-[18px]">
+    <div className="grid h-dvh overflow-hidden grid-cols-[216px_1fr] gap-[18px] p-[18px]">
       {/*
         Drive arrivals announce themselves. Deliberately NOT amber: amber means
         "a human is needed" and nothing else (D9). A photograph arriving is

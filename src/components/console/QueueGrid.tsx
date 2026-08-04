@@ -77,7 +77,7 @@ export function QueueGrid({
       role="listbox"
       aria-multiselectable
       aria-label={ariaLabel}
-      className="loupe-scroll grid max-h-[calc(100%-46px)] grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2.5 overflow-y-auto pr-1"
+      className="loupe-scroll grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2.5 overflow-y-auto pr-1"
       onKeyDown={(event) => {
         const columns = columnCount()
         if (event.key === 'ArrowRight') {

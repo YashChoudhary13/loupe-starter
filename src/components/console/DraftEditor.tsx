@@ -262,7 +262,7 @@ export function DraftEditor(props: DraftEditorProps) {
 
   return (
     <form
-      className="flex h-full flex-col"
+      className="flex h-full min-h-0 flex-col overflow-hidden"
       onSubmit={(event) => {
         event.preventDefault()
         if (!busy && !readOnly) onPublish()

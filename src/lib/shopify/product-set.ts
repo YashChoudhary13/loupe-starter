@@ -220,6 +220,107 @@ interface ProductSetResponse {
   } | null
 }
 
+const MATERIAL_METAFIELDS_SET_MUTATION = /* GraphQL */ `
+  mutation LoupeMaterialMetafieldSet($metafields: [MetafieldsSetInput!]!) {
+    metafieldsSet(metafields: $metafields) {
+      metafields {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`
+
+const MATERIAL_METAFIELDS_DELETE_MUTATION = /* GraphQL */ `
+  mutation LoupeMaterialMetafieldDelete($metafields: [MetafieldIdentifierInput!]!) {
+    metafieldsDelete(metafields: $metafields) {
+      deletedMetafields {
+        ownerId
+        namespace
+        key
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`
+
+interface MaterialMetafieldSetResponse {
+  metafieldsSet: {
+    metafields: readonly { id: string }[] | null
+    userErrors: readonly { field?: readonly string[] | null; message: string; code?: string | null }[]
+  } | null
+}
+
+interface MaterialMetafieldDeleteResponse {
+  metafieldsDelete: {
+    deletedMetafields: readonly {
+      ownerId: string
+      namespace: string
+      key: string
+    }[] | null
+    userErrors: readonly { field?: readonly string[] | null; message: string }[]
+  } | null
+}
+
+function materialError(action: 'save' | 'clear', errors: readonly { field?: readonly string[] | null; message: string }[]): ShopifyError {
+  return new ShopifyError(
+    `Shopify could not ${action} the product material: ` +
+      errors.map((error) => `${(error.field ?? []).join('.') || '(no field)'}: ${error.message}`).join('; '),
+    { kind: 'user_error', retryable: false, detail: errors },
+  )
+}
+
+/**
+ * Native Color owns `shopify.color-pattern`, so `productSet.metafields` cannot
+ * be used on the same product: Shopify treats that list as declarative and
+ * either tries to edit or delete the connected metafield. Both are rejected
+ * with "To make changes, edit the option." Keep Color in `productOptions` and
+ * synchronize the unrelated material metafield through its dedicated mutation.
+ */
+export async function syncMaterialMetafield(
+  client: ShopifyClient,
+  productId: string,
+  material: string | null,
+): Promise<void> {
+  if (material) {
+    const response = await client.graphql<MaterialMetafieldSetResponse>(
+      MATERIAL_METAFIELDS_SET_MUTATION,
+      {
+        metafields: [{ ownerId: productId, ...MATERIAL_METAFIELD, value: material }],
+      },
+    )
+    const result = response.metafieldsSet
+    if (!result || result.userErrors.length > 0 || !result.metafields?.[0]?.id) {
+      throw materialError('save', result?.userErrors ?? [{ message: 'No metafield was returned.' }])
+    }
+    return
+  }
+
+  const response = await client.graphql<MaterialMetafieldDeleteResponse>(
+    MATERIAL_METAFIELDS_DELETE_MUTATION,
+    {
+      metafields: [
+        {
+          ownerId: productId,
+          namespace: MATERIAL_METAFIELD.namespace,
+          key: MATERIAL_METAFIELD.key,
+        },
+      ],
+    },
+  )
+  const result = response.metafieldsDelete
+  if (!result || result.userErrors.length > 0) {
+    throw materialError('clear', result?.userErrors ?? [{ message: 'No delete result was returned.' }])
+  }
+}
+
 /**
  * The location inventory is counted against. Cached per client: it does not change,
  * and asking for it on every publish would double the request count of a 20-way
@@ -317,25 +418,13 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
     // leak into a product.
     descriptionHtml: args.descriptionHtml,
     ...(args.categoryId ? { category: args.categoryId } : {}),
-    ...(args.material || nativeColour
-      ? {
-          metafields: [
-            ...(args.material ? [{ ...MATERIAL_METAFIELD, value: args.material }] : []),
-            // Shopify currently requires the category metafield values to be
-            // repeated here when productSet updates a linked option alongside
-            // any other product metafield. Omitting this entry works on create
-            // but returns CAPABILITY_VIOLATION on the first retry/update.
-            ...(nativeColour
-              ? [
-                  {
-                    ...SHOPIFY_COLOUR_METAFIELD,
-                    type: 'list.metaobject_reference',
-                    value: JSON.stringify(nativeColourValues),
-                  },
-                ]
-              : []),
-          ],
-        }
+    // A product with native Color cannot carry ANY productSet metafields. The
+    // field is a declarative list, so including only material tries to delete
+    // the connected color-pattern metafield, while including color-pattern
+    // tries to edit it directly. Shopify rejects both. productSet() syncs the
+    // independent material in a second, dedicated mutation after this succeeds.
+    ...(!nativeColour && args.material
+      ? { metafields: [{ ...MATERIAL_METAFIELD, value: args.material }] }
       : {}),
     // Present only when the caller supplied images. `files` is declarative like
     // everything else in productSet, so listing them in draft order IS the
@@ -410,6 +499,10 @@ export async function productSet(
       retryable: false,
       detail: result,
     })
+  }
+
+  if (args.optionName === COLOUR_OPTION_NAME) {
+    await syncMaterialMetafield(client, result.product.id, args.material)
   }
 
   return result.product

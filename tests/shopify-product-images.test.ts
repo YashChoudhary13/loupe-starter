@@ -9,7 +9,7 @@
  * media is `product_draft_images.shopify_media_id` (D47). That is what these
  * assertions are about.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   buildProductFiles,
@@ -22,7 +22,9 @@ import {
   ALT_TEXT_MAX_LENGTH,
   buildAltText,
   buildInput,
+  productSet,
 } from '@/lib/shopify/product-set'
+import type { ShopifyClient } from '@/lib/shopify/client'
 
 function image(overrides: Partial<PublishImage> = {}): PublishImage {
   return {
@@ -101,7 +103,7 @@ describe('Shopify customer choices', () => {
       ],
     }) as {
       category: string
-      metafields: { namespace: string; key: string; type: string; value: string }[]
+      metafields?: { namespace: string; key: string; type: string; value: string }[]
       productOptions: {
         name: string
         linkedMetafield: { namespace: string; key: string; values: string[] }
@@ -114,23 +116,9 @@ describe('Shopify customer choices', () => {
     }
 
     expect(input.category).toBe('gid://shopify/TaxonomyCategory/aa-6-3')
-    expect(input.metafields).toEqual([
-      {
-        namespace: 'custom',
-        key: 'material',
-        type: 'single_line_text_field',
-        value: '316L',
-      },
-      {
-        namespace: 'shopify',
-        key: 'color-pattern',
-        type: 'list.metaobject_reference',
-        value: JSON.stringify([
-          'gid://shopify/Metaobject/red',
-          'gid://shopify/Metaobject/green',
-        ]),
-      },
-    ])
+    // Shopify rejects productSet.metafields on a product with a linked Color
+    // option. Material is synchronized separately after productSet succeeds.
+    expect(input.metafields).toBeUndefined()
     expect(input.productOptions).toEqual([
       {
         name: 'Color',
@@ -153,6 +141,105 @@ describe('Shopify customer choices', () => {
       alt: 'Red bracelet.',
     })
     expect(input.variants[1]?.file).toEqual(input.files[1])
+  })
+
+  it('updates native Color choices first, then saves material separately', async () => {
+    const graphql = vi
+      .fn()
+      .mockResolvedValueOnce({
+        productSet: {
+          product: {
+            id: 'gid://shopify/Product/364',
+            handle: 'bracelet-kada-364',
+            title: 'Bracelet Kada 364',
+            status: 'DRAFT',
+            productType: 'Jewellery',
+            tags: ['kada', 'NEWEST'],
+          },
+          userErrors: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        metafieldsSet: {
+          metafields: [{ id: 'gid://shopify/Metafield/material' }],
+          userErrors: [],
+        },
+      })
+    const client = { graphql } as unknown as ShopifyClient
+
+    await productSet(client, {
+      handle: 'bracelet-kada-364',
+      title: 'Bracelet Kada 364',
+      status: 'DRAFT',
+      productType: 'Jewellery',
+      categoryId: 'gid://shopify/TaxonomyCategory/aa-6-3',
+      tags: ['kada', 'NEWEST'],
+      descriptionHtml: '<ul><li>316L</li></ul>',
+      material: '316L',
+      optionName: 'Color',
+      variants: [
+        {
+          sku: 'BK364',
+          price: '100.00',
+          weightG: 0,
+          stock: 1,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: 'Silver',
+          linkedMetafieldValue: 'gid://shopify/Metaobject/silver',
+        },
+        {
+          sku: 'BK364',
+          price: '100.00',
+          weightG: 0,
+          stock: 1,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: 'Gold',
+          linkedMetafieldValue: 'gid://shopify/Metaobject/gold',
+        },
+        {
+          sku: 'BK364',
+          price: '100.00',
+          weightG: 0,
+          stock: 1,
+          locationId: 'gid://shopify/Location/1',
+          optionValue: 'Yellow',
+          linkedMetafieldValue: 'gid://shopify/Metaobject/yellow',
+        },
+      ],
+    })
+
+    expect(graphql).toHaveBeenCalledTimes(2)
+    expect(graphql.mock.calls[0]?.[1]?.input).not.toHaveProperty('metafields')
+    expect(graphql.mock.calls[0]?.[1]).toMatchObject({
+      identifier: { handle: 'bracelet-kada-364' },
+      input: {
+        productOptions: [
+          {
+            name: 'Color',
+            linkedMetafield: {
+              namespace: 'shopify',
+              key: 'color-pattern',
+              values: [
+                'gid://shopify/Metaobject/silver',
+                'gid://shopify/Metaobject/gold',
+                'gid://shopify/Metaobject/yellow',
+              ],
+            },
+          },
+        ],
+      },
+    })
+    expect(graphql.mock.calls[1]?.[1]).toEqual({
+      metafields: [
+        {
+          ownerId: 'gid://shopify/Product/364',
+          namespace: 'custom',
+          key: 'material',
+          type: 'single_line_text_field',
+          value: '316L',
+        },
+      ],
+    })
   })
 
   it('saves numbered pieces as Shopify DRAFT variants with independent stock', () => {

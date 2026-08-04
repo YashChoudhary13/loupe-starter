@@ -2018,3 +2018,29 @@ queryable but cannot be associated with a product again. Crash recovery may reus
 `PROCESSING`, `UPLOADED`, or `READY`, but must treat `FAILED` as absent and send a fresh source.
 The post-write readback similarly records only non-failed ids. This preserves D47's no-duplicate
 retry behavior without trapping a draft on an unusable Shopify file.
+
+---
+
+### D77 — Manual full reconciliation may raise future SKU counters, never renumber history
+
+*Business request, 2026-08-04; extends D2, D54 and D72.*
+
+Tracking exposes one prominent, authenticated **Full reconciliation** control. After an explicit
+confirmation it performs the operational checks an owner expects from a manual full run:
+
+1. Shopify-backed Loupe drafts are checked by their reserved handle. A Shopify `ACTIVE` product
+   promotes the Loupe draft through the normal publish transaction. A missing Shopify draft is
+   reported, but the Loupe draft and its SKU remain reserved; saving that draft recreates the same
+   handle and identity.
+2. Every published Loupe product is compared with Shopify through the existing durable,
+   single-leased reconciliation. Catalogue drift—including SKU differences and deleted published
+   products—is reported and never silently overwritten.
+3. Every Shopify variant SKU is scanned for known category prefixes. The three confirmed malformed
+   live SKUs from D69 are excluded exactly, unknown prefixes and unparseable values are reported,
+   and `raise_sku_counter()` is called only where Shopify's maximum exceeds Loupe's counter.
+
+The third step corrects **future allocation**, not existing product history. The database write is
+`greatest(current, observed_max)`, so overlapping runs are safe and a deleted product, stale scan,
+or lower Shopify maximum can never move a counter backward or make an old SKU reusable. Existing
+wrong SKUs remain visible reconciliation issues requiring a deliberate product-specific repair.
+The control states this boundary before it runs and records the counter scan in the event audit.

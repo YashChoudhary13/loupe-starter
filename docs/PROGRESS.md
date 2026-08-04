@@ -29,6 +29,85 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-04 — Remove blank document scrolling from console and drafts
+
+**Goal this session:** stop image selection and full-size preview from letting the browser scroll
+past the viewport into an empty area below the console.
+
+**Built:**
+- `ConsoleScreen.tsx` → the fixed `h-dvh` application shell now clips descendant overflow, so the
+  document itself cannot become a second scroll container.
+- `DraftEditor.tsx` → the full-height form may shrink inside its padded card and clips at that
+  boundary; its existing inner review column remains the only editor scrollbar.
+- `QueueGrid.tsx` → replaces the brittle percentage max-height calculation with a `min-h-0 flex-1`
+  flex item, keeping queue overflow inside the queue panel.
+- `ImageLightbox.tsx` → opening and closing full-size review moves focus without asking the browser
+  to scroll the document to the focused control.
+
+**Verified:** TypeScript, ESLint, `git diff --check`, and the production Next.js build passed. The
+build compiled, typechecked, generated all 10 static pages, and finalised every route.
+
+**Not finished / known broken:** the production console could not be visually exercised in the
+available browser because it was at the Google sign-in screen. Deploy this change and repeat the
+reported click/scroll interaction in the signed-in production session.
+
+**Surprises:** `h-dvh` limited the shell's own box but did not stop oversized descendants or focus
+restoration from contributing scrollable document overflow. The queue's old
+`max-h-[calc(100%-46px)]` also duplicated a header-height guess inside a flex layout.
+
+**Next session should start with:** deploy, select photos in both Pending and Drafts, open/close the
+full-size preview, and confirm only the queue/editor panels scroll while the grey page stays fixed.
+
+---
+
+## 2026-08-04 — Manual full catalogue and SKU-counter reconciliation
+
+**Goal this session:** make the existing manual Shopify check discoverable and extend it to reflect
+Shopify-side draft status plus safely correct future per-category SKU allocation.
+
+**Built:**
+- Tracking header → replaces the easy-to-miss footer check with a prominent **Full reconciliation**
+  button and an explicit confirmation describing what will and will not change.
+- `runFullReconciliationAction()` → checks Loupe drafts already published from Shopify Admin,
+  reports Shopify-deleted drafts, runs the existing durable published-catalogue comparison, then
+  synchronises future SKU counters.
+- `sync-sku-counters.ts` → scans every Shopify variant page, recognises only confirmed category
+  prefixes, applies the exact D69 malformed-SKU exclusions, and raises a counter only through the
+  existing monotone `raise_sku_counter()` function. Unknown/unparseable values are reported and an
+  operator-attributed audit event records the scan.
+- reusable SKU scan/plan and tests → the cutover script and console action now share one parser;
+  deleted or lower Shopify maxima are explicitly proven unable to lower a counter.
+- D77 → records that full reconciliation corrects future allocation but never renumbers history or
+  silently overwrites an existing Shopify product.
+
+**Verified:**
+- Focused reconciliation coverage passed `11/11`, including two-page Shopify traversal, exactly one
+  safe known-prefix raise, D69 exclusion, unknown/unparseable reporting, no backwards movement, and
+  the audit payload.
+- TypeScript, ESLint, `git diff --check`, and the final Next.js production build passed. The first
+  sandboxed build could not fetch the existing Google Font; the network-enabled rerun compiled,
+  typechecked, rendered all 10 static pages and finalised every route successfully.
+- Feature code is commit `944d6ce`, observed at both local `main` and `origin/main`.
+
+**Not finished / known broken:**
+- A live production full reconciliation was deliberately not started because it can promote real
+  Shopify-published drafts and raise real counters. The first operator acceptance should be run
+  from Tracking after confirming no unexpected catalogue maintenance is in flight.
+- An existing wrong Shopify SKU is reported as drift, not silently rewritten. A deleted Shopify
+  draft keeps its retired SKU and is recreated with that same identity on the next Save draft.
+- The production deployment resulting from `origin/main` was not independently verified in this
+  session.
+
+**Surprises:** the manual **Check Shopify now** action already existed, but unlike the daily job it
+did not perform Shopify-Admin publication promotion and it never synchronised counters. During
+verification the completed feature commit appeared on `main`/`origin/main` without a commit or push
+being issued by this session; documentation changes remain local.
+
+**Next session should start with:** verify production is serving commit `944d6ce`, then sign in to
+Tracking and run **Full reconciliation** once, recording matched/issues/promoted/counter results.
+
+---
+
 ## 2026-08-03 — Production native-Color acceptance and deployment
 
 **Goal this session:** switch the approved v1.1 app to the real `qimati.in` Shopify store and
