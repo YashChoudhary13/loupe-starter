@@ -4,6 +4,7 @@ import type { Client } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { pgClient } from '../scripts/lib/pg'
+import { TEST_DESCRIPTION } from './helpers/enhancement'
 
 describe('manual ready-image intake', () => {
   let db: Client
@@ -173,6 +174,58 @@ describe('manual ready-image intake', () => {
     const audit = await db.query<{ count: string }>(
       `select count(*) from public.events
         where entity_id = $1 and event = 'intake.manual_ai_enabled'`,
+      [intakeId],
+    )
+    expect(audit.rows[0]?.count).toBe('1')
+  })
+
+  it('recovers a missing redo description and replaces the generic pose fallback', async () => {
+    const { intakeId } = await finalizedUpload()
+    await db.query(`select public.prepare_manual_image_redo($1, $2)`, [intakeId, actor])
+
+    const stored = await db.query<{ stored: boolean }>(
+      `select public.store_redo_description(
+         $1, $2, 'necklace-pendant'::public.presentation_class,
+         'openai/gpt-5.6-sol', 0.03125, $3
+       ) as stored`,
+      [intakeId, TEST_DESCRIPTION, actor],
+    )
+    expect(stored.rows[0]?.stored).toBe(true)
+
+    const state = await db.query<{
+      product_description: string | null
+      description_missing_at: Date | null
+      presentation_class: string | null
+      presentation_fallback: boolean
+      description_model: string | null
+      description_cost_usd: string | null
+    }>(
+      `select product_description, description_missing_at, presentation_class,
+              presentation_fallback, description_model, description_cost_usd
+         from public.intake_files where id = $1`,
+      [intakeId],
+    )
+    expect(state.rows[0]).toMatchObject({
+      product_description: TEST_DESCRIPTION,
+      description_missing_at: null,
+      presentation_class: 'necklace-pendant',
+      presentation_fallback: false,
+      description_model: 'openai/gpt-5.6-sol',
+      description_cost_usd: '0.031250',
+    })
+
+    const second = await db.query<{ stored: boolean }>(
+      `select public.store_redo_description(
+         $1, $2, 'necklace-station'::public.presentation_class,
+         'openai/gpt-5.6-sol', 0.02, $3
+       ) as stored`,
+      [intakeId, TEST_DESCRIPTION, actor],
+    )
+    expect(second.rows[0]?.stored).toBe(false)
+
+    const audit = await db.query<{ count: string }>(
+      `select count(*) from public.events
+        where entity_id = $1 and event = 'description.recovered_for_redo'`,
       [intakeId],
     )
     expect(audit.rows[0]?.count).toBe('1')

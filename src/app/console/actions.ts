@@ -1,6 +1,10 @@
 'use server'
 
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
+import {
+  validateCategoryInput,
+  type CategoryDraftInput,
+} from '@/lib/categories/validation'
 import { ConsoleError, createDraftFromPhotos, detachPhoto, saveDraft, type DraftSaveInput } from '@/lib/console/mutations'
 import {
   describeBlocks,
@@ -10,6 +14,7 @@ import {
 } from '@/lib/console/publish'
 import {
   loadColourSuggestions,
+  loadCatalog,
   loadDraft,
   loadPhotos,
   loadPipelineActivity,
@@ -17,6 +22,7 @@ import {
 } from '@/lib/console/queue'
 import type {
   ColourSuggestion,
+  CategoryOption,
   DraftDetail,
   PhotoSummary,
   PipelineActivity,
@@ -29,6 +35,8 @@ import {
   type BeginManualUploadInput,
   type ManualUploadTicket,
 } from '@/lib/manual-upload/server'
+import { ShopifyClient } from '@/lib/shopify/client'
+import { supabaseServer } from '@/lib/supabase/server'
 
 /**
  * Every mutation the console can make, and the only way the browser reaches the
@@ -117,6 +125,108 @@ export async function refreshQueueAction(): Promise<ActionResult<QueueSnapshot>>
   return withOperator(() => loadQueue())
 }
 
+export interface ShopifyTaxonomyOption {
+  readonly id: string
+  readonly name: string
+  readonly fullName: string
+}
+
+interface TaxonomyCategoryNode extends ShopifyTaxonomyOption {
+  readonly isLeaf: boolean
+}
+
+/**
+ * Searches Shopify's own current taxonomy rather than making the operator type
+ * or Loupe guess an opaque category id. Results are read-only and limited to
+ * leaf categories that Shopify permits on a product.
+ */
+export async function searchShopifyTaxonomyAction(
+  rawSearch: string,
+): Promise<ActionResult<readonly ShopifyTaxonomyOption[]>> {
+  return withOperator(async () => {
+    const search = rawSearch.trim().replace(/\s+/gu, ' ')
+    if (search.length < 2 || search.length > 80) {
+      throw new ConsoleError(
+        'Enter at least two characters to search Shopify product categories.',
+        null,
+        false,
+      )
+    }
+
+    const client = new ShopifyClient()
+    const data = await client.graphql<{
+      taxonomy: { categories: { nodes: readonly TaxonomyCategoryNode[] } }
+    }>(
+      `query ConsoleTaxonomySearch($search: String!) {
+        taxonomy {
+          categories(first: 20, search: $search) {
+            nodes { id name fullName isLeaf }
+          }
+        }
+      }`,
+      { search },
+    )
+
+    return data.taxonomy.categories.nodes
+      .filter((category) => category.isLeaf)
+      .slice(0, 12)
+      .map(({ id, name, fullName }) => ({ id, name, fullName }))
+  })
+}
+
+/** Creates the category and its independent SKU sequence as one transaction. */
+export async function createCategoryAction(
+  input: CategoryDraftInput,
+): Promise<ActionResult<CategoryOption>> {
+  return withOperator(async (operator) => {
+    const parsed = validateCategoryInput(input)
+    if (!parsed.ok) throw new ConsoleError(parsed.message, null, false)
+
+    // The browser selected this id from search results, but the browser is not
+    // an authority. Re-read it from Shopify and require a product-assignable
+    // leaf category before storing it.
+    const client = new ShopifyClient()
+    const taxonomy = await client.graphql<{ node: TaxonomyCategoryNode | null }>(
+      `query ConsoleTaxonomyCategory($id: ID!) {
+        node(id: $id) {
+          ... on TaxonomyCategory { id name fullName isLeaf }
+        }
+      }`,
+      { id: parsed.value.shopifyTaxonomyCategoryId },
+    )
+    if (!taxonomy.node?.isLeaf || taxonomy.node.id !== parsed.value.shopifyTaxonomyCategoryId) {
+      throw new ConsoleError(
+        'That Shopify product category is no longer available. Search and choose another one.',
+        null,
+        true,
+      )
+    }
+
+    const { data: categoryId, error } = await supabaseServer().rpc('create_console_category', {
+      p_name: parsed.value.name,
+      p_sku_prefix: parsed.value.skuPrefix,
+      p_title_pattern: parsed.value.titlePattern,
+      p_shopify_tag: parsed.value.shopifyTag,
+      p_shopify_taxonomy_category_id: parsed.value.shopifyTaxonomyCategoryId,
+      p_actor: operator.email,
+    })
+    if (error) {
+      throw new ConsoleError(
+        error.hint?.trim() || 'The new category could not be created.',
+        [error.code, error.message].filter(Boolean).join(' · '),
+        false,
+      )
+    }
+
+    const catalog = await loadCatalog()
+    const category = catalog.categories.find((option) => option.id === categoryId)
+    if (!category) {
+      throw new Error(`create_console_category returned ${String(categoryId)}, but it was not readable`)
+    }
+    return category
+  })
+}
+
 /**
  * Creates a short-lived, single-object R2 upload URL. The browser writes the
  * ready image directly to the private bucket so Vercel's request-body ceiling
@@ -174,10 +284,10 @@ export async function redoPromptPreviewAction(
   intakeFileId: string,
 ): Promise<ActionResult<{ promptText: string; model: string }>> {
   return withOperator(async (operator) => {
-    const { prepareManualImageRedo, previewRedoPrompt } = await import(
+    const { prepareImageRedo, previewRedoPrompt } = await import(
       '@/lib/enhance/redo-server'
     )
-    await prepareManualImageRedo(intakeFileId, operator.email)
+    await prepareImageRedo(intakeFileId, operator.email)
     return previewRedoPrompt(intakeFileId)
   })
 }

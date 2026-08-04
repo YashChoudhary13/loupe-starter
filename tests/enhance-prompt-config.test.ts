@@ -59,7 +59,9 @@ describe('Phase 3B two-call configuration', () => {
     )
     expect(resolved.descriptionInjected).toBe(false)
     expect(resolved.descriptionMissing).toBe(false)
-    expect(resolved.text).toContain('Lay the same continuous piece in a loose open curve')
+    expect(resolved.text).toContain(
+      'This is the legacy fallback for a flexible necklace or long chain',
+    )
     expect(resolved.text).not.toMatch(/^PRODUCT\s*$/m)
     expect(resolved.text).not.toContain(PRODUCT_DESCRIPTION_TOKEN)
   })
@@ -74,6 +76,8 @@ describe('Phase 3B two-call configuration', () => {
     )
     expect(resolved.descriptionInjected).toBe(false)
     expect(resolved.descriptionMissing).toBe(true)
-    expect(resolved.text).toContain('Lay the same continuous piece in a loose open curve')
+    expect(resolved.text).toContain(
+      'This is the legacy fallback for a flexible necklace or long chain',
+    )
   })
 })

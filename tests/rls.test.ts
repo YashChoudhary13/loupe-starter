@@ -193,6 +193,14 @@ describe('server-only functions are not callable without the service role', () =
       p_intake_file_id: '00000000-0000-0000-0000-000000000000',
       p_actor: 'anonymous',
     }],
+    ['store_redo_description', {
+      p_intake_file_id: '00000000-0000-0000-0000-000000000000',
+      p_description: Array.from({ length: 80 }, () => 'detail').join(' '),
+      p_presentation_class: 'necklace-pendant',
+      p_model: 'openai/gpt-5.6-sol',
+      p_cost_usd: 0,
+      p_actor: 'anonymous',
+    }],
     ['prepare_console_photo_delete', {
       p_intake_file_id: '00000000-0000-0000-0000-000000000000',
       p_actor: 'anonymous',

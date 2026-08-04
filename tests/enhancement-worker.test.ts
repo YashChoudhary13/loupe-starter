@@ -277,7 +277,7 @@ describe('Phase 3B enhancement worker', () => {
       }),
     ])
     expect(repository.completions[0]?.promptText).toContain(
-      'Lay the same continuous piece in a loose open curve',
+      'This is the legacy fallback for a flexible necklace or long chain',
     )
   })
 

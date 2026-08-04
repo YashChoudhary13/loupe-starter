@@ -8,24 +8,24 @@
  */
 const PRESETS: Record<string, { label: string; note: string }> = {
   satin: {
-    label: 'Ivory satin — the catalogue default',
-    note: 'Ivory-champagne satin with soft folds. The prompt every published product so far was built on.',
+    label: 'Pearl-ivory satin — premium default',
+    note: 'Neutral pearl-ivory satin with edge folds, strong product separation and construction-aware retail posing.',
   },
   marble: {
-    label: 'Marble surface',
-    note: 'White-and-cream marble with warm veining. The describer picks the pose.',
+    label: 'Pale marble — premium retail',
+    note: 'Quiet white-and-cream marble with restrained veining and the same faithful, construction-aware hero crop.',
   },
   yellow: {
-    label: 'Plain yellow backdrop',
-    note: 'Flat sand-yellow backdrop, no texture. The describer picks the pose.',
+    label: 'Muted sand backdrop',
+    note: 'Smooth desaturated sand yellow with deliberate contrast from gold and the same faithful retail posing.',
   },
   'hand-chain': {
     label: 'Hand chain — worn',
-    note: 'Worn on a hand against ivory silk. The describer records how the piece connects.',
+    note: 'Close, low-distortion worn view with exact wrist, branch, junction and finger-loop connections preserved.',
   },
   bag: {
-    label: 'Bags — standing',
-    note: 'Standing upright on marble, sleek. The describer transcribes printed lettering exactly.',
+    label: 'Bags — truthful premium hero',
+    note: 'The most flattering supported angle without inflating or reshaping the bag; artwork and lettering stay exact.',
   },
 }
 

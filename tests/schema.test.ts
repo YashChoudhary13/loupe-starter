@@ -122,6 +122,10 @@ describe('closed vocabularies', () => {
       'angled-band',
       'flat-arc',
       'tray-grid',
+      'necklace-pendant',
+      'necklace-station',
+      'necklace-multistrand',
+      'necklace-lariat',
     ])
   })
 
@@ -210,6 +214,7 @@ describe('conventions', () => {
       'promote_prompt_version',
       'promote_prompt_preset',
       'select_prompt_model',
+      'store_redo_description',
       'enqueue_image_redo',
       'claim_image_redo',
       'assert_image_redo_lease',
@@ -342,6 +347,7 @@ describe('Phase 3A database capabilities', () => {
       'promote_prompt_version',
       'promote_prompt_preset',
       'select_prompt_model',
+      'store_redo_description',
       'enqueue_image_redo',
       'claim_image_redo',
       'assert_image_redo_lease',
@@ -528,22 +534,28 @@ describe('seed data', () => {
     ).toEqual([
       {
         kind: 'describe',
-        chars: 2500,
-        sha256: '5665727272496e57bfd7930a38fa21c45186d4c3443581af27237de27e981c1e',
+        chars: 2955,
+        sha256: '51483a75fe1245c2395dfc429a58746b1f491464b1d061f97bcac77eac820e53',
       },
       {
         kind: 'image',
-        chars: 3121,
-        sha256: '2b537548bd4ed098851d90dacc7c6f4299a74277b079b703f28b4fceb8ef7583',
+        chars: 4701,
+        sha256: '9f6a61ded2860421c29cb6ff135061a1fd955971505e2a2efc64bf07e2a2731e',
       },
     ])
     expect(prompts[0]?.body).toContain('source photograph is the sole authority')
     expect(prompts[0]?.body).toContain('Exact counts are mandatory')
     expect(prompts[0]?.body).toContain('Return ONLY raw JSON')
-    expect(prompts[0]?.body).toContain('"presentation":"<pair-upright|flat-curve|')
+    expect(prompts[0]?.body).toContain(
+      '"presentation":"<pair-upright|necklace-pendant|necklace-station|',
+    )
     expect(prompts[0]?.body).not.toContain('{{PRODUCT_DESCRIPTION}}')
-    expect(prompts[1]?.body).toContain('PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nBACKGROUND')
-    expect(prompts[1]?.body).toContain('REFERENCE AUTHORITY — highest priority')
+    expect(prompts[1]?.body).toContain(
+      'PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nSCENE AND BACKGROUND',
+    )
+    expect(prompts[1]?.body).toContain('SOURCE AUTHORITY — NON-NEGOTIABLE')
+    expect(prompts[1]?.body).toContain('FORM AND SCALE LOCK')
+    expect(prompts[1]?.body).toContain('82-92%')
     expect(prompts[1]?.body).toContain('jump-ring-mounted charm')
     expect(prompts[1]?.body).toContain('{{COMPOSITION_DETAIL}}')
     expect(prompts[1]?.body).not.toContain(
