@@ -28,6 +28,7 @@ import { supabaseServer } from '@/lib/supabase/server'
 export interface PromotionResult {
   readonly checked: number
   readonly promoted: readonly { readonly draftId: string; readonly sku: string | null }[]
+  readonly missing: readonly { readonly draftId: string; readonly sku: string | null }[]
   readonly failures: readonly { readonly draftId: string; readonly reason: string }[]
 }
 
@@ -55,20 +56,21 @@ export async function promotePublishedInShopify(
   if (error) throw new Error(`Could not load Loupe drafts: ${error.message}`)
 
   const drafts = (data ?? []) as DraftRow[]
-  if (drafts.length === 0) return { checked: 0, promoted: [], failures: [] }
+  if (drafts.length === 0) return { checked: 0, promoted: [], missing: [], failures: [] }
 
   const shopify = new ShopifyClient({ config: shopifyConfig() })
   const promoted: { draftId: string; sku: string | null }[] = []
+  const missing: { draftId: string; sku: string | null }[] = []
   const failures: { draftId: string; reason: string }[] = []
 
   for (const draft of drafts) {
     try {
       const product = await readProductByHandle(shopify, draft.reserved_handle!)
       if (!product) {
-        // The product is gone from Shopify. That is a real discrepancy, but it
-        // is not this job's to interpret — reconciliation reports drift, and
-        // silently deleting or demoting a draft here would destroy the
-        // operator's work on a single failed read.
+        // The product is gone from Shopify. Report it to the manual full
+        // reconciliation, but preserve the Loupe draft and its retired SKU.
+        // Saving that draft again deliberately recreates the same handle (D72).
+        missing.push({ draftId: draft.id, sku: draft.reserved_sku })
         continue
       }
       if (product.status !== 'ACTIVE') continue
@@ -91,5 +93,5 @@ export async function promotePublishedInShopify(
     }
   }
 
-  return { checked: drafts.length, promoted, failures }
+  return { checked: drafts.length, promoted, missing, failures }
 }

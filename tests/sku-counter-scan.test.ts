@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   EXCLUDED_MALFORMED_SKUS,
+  planSkuCounterSync,
   scanSkuVariants,
-} from '../scripts/lib/sku-counter-scan'
+} from '@/lib/reconciliation/sku-counter-scan'
 
 describe('live Shopify SKU counter scan', () => {
   it('ignores only the three confirmed catalogue typos before taking each maximum', () => {
@@ -49,5 +50,30 @@ describe('live Shopify SKU counter scan', () => {
       { sku: 'NOT-A-SEQUENCE', title: 'Manual SKU' },
     ])
     expect(result.findings.get('ZZ')).toMatchObject({ max: 42, count: 1 })
+  })
+
+  it('raises only counters Shopify has moved ahead and never reuses deleted numbers', () => {
+    const scan = scanSkuVariants([
+      { sku: 'NK981', title: 'Necklace 981' },
+      { sku: 'ER450', title: 'Earrings 450' },
+      { sku: 'RS210', title: 'Rings 210' },
+    ])
+
+    expect(
+      planSkuCounterSync(
+        [
+          { prefix: 'NK', current: 980 },
+          { prefix: 'ER', current: 450 },
+          { prefix: 'RS', current: 221 },
+          { prefix: 'AK', current: 87 },
+        ],
+        scan.findings,
+      ),
+    ).toEqual([
+      { prefix: 'NK', from: 980, shopifyMax: 981, action: 'raise' },
+      { prefix: 'ER', from: 450, shopifyMax: 450, action: 'already-current' },
+      { prefix: 'RS', from: 221, shopifyMax: 210, action: 'counter-ahead' },
+      { prefix: 'AK', from: 87, shopifyMax: null, action: 'absent-in-shopify' },
+    ])
   })
 })

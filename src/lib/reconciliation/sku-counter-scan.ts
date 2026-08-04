@@ -1,4 +1,4 @@
-import { parseSku } from '../../src/lib/publish/identity'
+import { parseSku } from '@/lib/publish/identity'
 
 export interface ShopifySkuVariant {
   readonly sku: string | null
@@ -25,6 +25,18 @@ export interface SkuCounterScan {
   readonly blank: number
   readonly unparseable: readonly { sku: string; title: string }[]
   readonly excludedMalformed: readonly ExcludedMalformedSku[]
+}
+
+export interface SkuCounterState {
+  readonly prefix: string
+  readonly current: number
+}
+
+export interface SkuCounterPlanRow {
+  readonly prefix: string
+  readonly from: number
+  readonly shopifyMax: number | null
+  readonly action: 'raise' | 'already-current' | 'counter-ahead' | 'absent-in-shopify'
 }
 
 /**
@@ -98,4 +110,41 @@ export function scanSkuVariants(variants: readonly ShopifySkuVariant[]): SkuCoun
     unparseable,
     excludedMalformed,
   }
+}
+
+/**
+ * Plans the only safe automatic SKU correction: raising a known per-category
+ * counter to a higher observed Shopify maximum. A missing or lower Shopify
+ * maximum never walks the counter backwards and therefore never reuses a
+ * deleted or already-reserved identity.
+ */
+export function planSkuCounterSync(
+  counters: readonly SkuCounterState[],
+  findings: ReadonlyMap<string, PrefixFinding>,
+): readonly SkuCounterPlanRow[] {
+  return counters.map((counter) => {
+    const finding = findings.get(counter.prefix)
+    if (!finding) {
+      return {
+        prefix: counter.prefix,
+        from: counter.current,
+        shopifyMax: null,
+        action: 'absent-in-shopify' as const,
+      }
+    }
+    if (finding.max > counter.current) {
+      return {
+        prefix: counter.prefix,
+        from: counter.current,
+        shopifyMax: finding.max,
+        action: 'raise' as const,
+      }
+    }
+    return {
+      prefix: counter.prefix,
+      from: counter.current,
+      shopifyMax: finding.max,
+      action: finding.max === counter.current ? ('already-current' as const) : ('counter-ahead' as const),
+    }
+  })
 }

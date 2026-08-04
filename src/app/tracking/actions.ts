@@ -136,16 +136,66 @@ export async function reviewDuplicateAction(input: {
   })
 }
 
-export async function runReconciliationAction(): Promise<
-  TrackingActionResult<{ snapshot: TrackingSnapshot; started: boolean; runId: string }>
+export async function runFullReconciliationAction(): Promise<
+  TrackingActionResult<{
+    snapshot: TrackingSnapshot
+    started: boolean
+    runId: string
+    totalProducts: number
+    matchedProducts: number
+    issueCount: number
+    promotedProducts: number
+    missingShopifyDrafts: number
+    promotionFailures: number
+    promotionError: string | null
+    skuCounters: {
+      variantsScanned: number
+      countersChecked: number
+      raised: readonly { prefix: string; from: number; to: number }[]
+      blankSkus: number
+      unparseableSkus: number
+      excludedMalformedSkus: number
+      unknownPrefixes: readonly { prefix: string; max: number; count: number }[]
+    }
+  }>
 > {
   return withOperator(async (email) => {
-    const { runShopifyReconciliation } = await import('@/lib/reconciliation/server')
-    const result = await runShopifyReconciliation(email)
+    const [{ promotePublishedInShopify }, { runShopifyReconciliation }, { syncSkuCountersFromShopify }] =
+      await Promise.all([
+        import('@/lib/reconciliation/promote'),
+        import('@/lib/reconciliation/server'),
+        import('@/lib/reconciliation/sync-sku-counters'),
+      ])
+
+    let promotedProducts = 0
+    let missingShopifyDrafts = 0
+    let promotionFailures = 0
+    let promotionError: string | null = null
+    try {
+      const promotion = await promotePublishedInShopify(email)
+      promotedProducts = promotion.promoted.length
+      missingShopifyDrafts = promotion.missing.length
+      promotionFailures = promotion.failures.length
+    } catch (cause) {
+      // Match the daily job: promotion is useful, but a transient failure must
+      // not suppress the catalogue drift report or the safe counter scan.
+      promotionError = cause instanceof Error ? cause.message : String(cause)
+    }
+
+    const reconciliation = await runShopifyReconciliation(email)
+    const skuCounters = await syncSkuCountersFromShopify(email)
     return {
       snapshot: await loadTracking(),
-      started: result.started,
-      runId: result.runId,
+      started: reconciliation.started,
+      runId: reconciliation.runId,
+      totalProducts: reconciliation.totalProducts,
+      matchedProducts: reconciliation.matchedProducts,
+      issueCount: reconciliation.issueCount,
+      promotedProducts,
+      missingShopifyDrafts,
+      promotionFailures,
+      promotionError,
+      skuCounters,
     }
   })
 }

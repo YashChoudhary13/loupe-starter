@@ -47,7 +47,7 @@ import {
   scanSkuVariants,
   type PrefixFinding,
   type ShopifySkuVariant,
-} from './lib/sku-counter-scan'
+} from '../src/lib/reconciliation/sku-counter-scan'
 
 config({ path: '.env', quiet: true })
 config({ path: '.env.local', override: true, quiet: true })

@@ -9,7 +9,7 @@ import {
   resumeIntakeAction,
   retryIntakeAction,
   reviewDuplicateAction,
-  runReconciliationAction,
+  runFullReconciliationAction,
   skipIntakeAction,
 } from '@/app/tracking/actions'
 import type { Operator } from '@/lib/auth/authorize'
@@ -83,18 +83,54 @@ export function TrackingScreen({
   }
 
   const reconcile = async () => {
+    const confirmed = window.confirm(
+      'Run full Shopify reconciliation now?\n\n' +
+        'This checks product status and catalogue differences, reflects drafts published from Shopify, ' +
+        'and raises future per-category SKU counters if Shopify is ahead.\n\n' +
+        'It never lowers a counter, reuses a deleted SKU, or silently rewrites an existing product.',
+    )
+    if (!confirmed) return
+
     setBusy('reconcile')
     setFeedback(null)
     setDetail(null)
-    const result = await runReconciliationAction()
+    const result = await runFullReconciliationAction()
     setBusy(null)
     if (result.ok) {
       setSnapshot(result.data.snapshot)
-      setFeedback(
-        result.data.started
-          ? 'Shopify check completed.'
-          : 'A Shopify check was already running; no second check was started.',
-      )
+      const raised = result.data.skuCounters.raised
+      const counterResult =
+        raised.length > 0
+          ? `${raised.length} SKU counter${raised.length === 1 ? '' : 's'} raised (${raised
+              .map((row) => `${row.prefix} ${row.from}→${row.to}`)
+              .join(', ')}).`
+          : 'SKU counters were already safe; none were lowered.'
+      setFeedback(result.data.started
+        ? `Full reconciliation completed: ${result.data.matchedProducts}/${result.data.totalProducts} products matched, ${result.data.issueCount} issues, ${result.data.promotedProducts} Shopify-published drafts reflected. ${counterResult}`
+        : `A catalogue check was already running; no duplicate check was started. ${counterResult}`)
+
+      const warnings = [
+        result.data.promotionError
+          ? `Draft-status check failed: ${result.data.promotionError}`
+          : null,
+        result.data.promotionFailures > 0
+          ? `${result.data.promotionFailures} Shopify-published drafts could not be reflected.`
+          : null,
+        result.data.missingShopifyDrafts > 0
+          ? result.data.missingShopifyDrafts === 1
+            ? '1 Loupe draft is missing from Shopify. Its SKU remains reserved; open and Save the draft to recreate it with the same identity.'
+            : `${result.data.missingShopifyDrafts} Loupe drafts are missing from Shopify. Their SKUs remain reserved; open and Save each draft to recreate it with the same identity.`
+          : null,
+        result.data.skuCounters.unknownPrefixes.length > 0
+          ? `Unknown Shopify SKU prefixes were not created: ${result.data.skuCounters.unknownPrefixes
+              .map((row) => row.prefix)
+              .join(', ')}.`
+          : null,
+        result.data.skuCounters.unparseableSkus > 0
+          ? `${result.data.skuCounters.unparseableSkus} Shopify SKUs could not be parsed and were ignored.`
+          : null,
+      ].filter((warning): warning is string => warning !== null)
+      setDetail(warnings.length > 0 ? warnings.join('\n') : null)
     } else {
       setFeedback(result.error)
       setDetail(result.detail)
@@ -122,7 +158,16 @@ export function TrackingScreen({
               })}
             </p>
           </div>
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void reconcile()}
+              title="Checks Shopify product drift and safely raises future per-category SKU counters"
+              className="rounded-pill bg-ink px-4 py-2 text-[11px] font-medium text-white disabled:opacity-40"
+            >
+              {busy === 'reconcile' ? 'Reconciling…' : 'Full reconciliation'}
+            </button>
             <Stat value={snapshot.uploadedToday} label="photos uploaded" />
             <Stat value={snapshot.listedToday} label="products listed" />
             <Stat value={snapshot.attentionCount} label="need attention" attention />
@@ -315,14 +360,6 @@ export function TrackingScreen({
                   : `Shopify check ${snapshot.latestReconciliation.status}`
                 : 'Shopify has not been checked yet'}
             </span>
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void reconcile()}
-              className="rounded-pill bg-ink px-3 py-1.5 font-medium text-white disabled:opacity-40"
-            >
-              {busy === 'reconcile' ? 'Checking…' : 'Check Shopify now'}
-            </button>
             <button
               type="button"
               disabled={busy !== null}
