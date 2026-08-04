@@ -43,10 +43,18 @@ Category drives the SKU prefix, the title, the tag and therefore the collection.
 | Chain Bracelets | `CB` | `Chain Bracelet {n}` | `cb` |
 | Rings | `RS` | `Rings {n}` | `Rings` |
 | Anklets | `AK` | `Anklets {n} (Single Piece)` | `anklets` |
-| Nose Pins | `NP` | `Nose Pin {n}` | **unconfirmed — publish is blocked** |
-| Watches, Hand Chains, Jewellery Box, Bags, Hair Accessories, Indian Jewellery, Brass | **TBD — ask before inventing** | | |
+| Nose Pins | `NP` | `Nose Pin {n}` | `NP` |
+| Watches | `WH` | `Watch {n}` | `watch` |
+| Hand Chains | `HC` | `Hand Chain {n}` | `Hand Chain` |
+| Indian Jewellery | `INJ` | `Indian Pendant Sets {n}` | `INJ` |
+| Hair Accessories | `HA` | `Hairband {n}` | `HA` |
+| Waist Chains | `WC` | `Waist Chain {n}` | `Waist Chain` |
+| Jewellery Box, Bags, Brass | **TBD — ask before inventing** | | |
 
-`NP` was added in Phase 2 with `shopify_tag` **NULL**: the prefix and title pattern are confirmed against the live store, the tag is not. Publish refuses any category whose tag is null rather than guessing one — an invented tag drops the product out of its collection silently, which is worse than a blocked publish. Fill the tag in and the category works with no code change.
+`NP` was added in Phase 2 with `shopify_tag` **NULL**, then confirmed from all 20 live Nose Pin
+products as exact tag `NP` on 2026-08-01. Publish still refuses any future category whose tag is
+null rather than guessing one — an invented tag drops the product out of its collection silently,
+which is worse than a blocked publish.
 
 **`{n}` is zero-padded to a MINIMUM of three digits, in the SKU *and* in the title.** Confirmed against live data:
 

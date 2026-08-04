@@ -29,6 +29,57 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-04 — Console category creation and Waist Chains WC sequence
+
+**Goal this session:** let an operator add a genuinely new category from the console and establish
+Waist Chains with a safe independent SKU sequence.
+
+**Built:**
+- `NewCategoryDialog.tsx` + Console/DraftEditor wiring → a `+ New category` chip opens a guided
+  flow for category name, permanent 2–4 letter SKU prefix, numbered title wording, exact Shopify
+  collection tag and official Shopify product taxonomy. It previews the first SKU and selects the
+  new category immediately after creation.
+- Console category actions + validation → suggest initials/title wording without silently accepting
+  them, search Shopify's live taxonomy, re-validate the selected leaf category server-side, and
+  return the newly readable category to the current editor.
+- `20260804200000_console_category_creation.sql` → atomically creates the category, zeroed counter
+  and audit event; direct browser execution is revoked. It also establishes Waist Chains as `WC`,
+  title `Waist Chain {n}`, tag `Waist Chain`, Shopify `Body Jewelry`, with counter 0.
+- D85 and domain documentation → category creation never allocates a number or reuses an existing
+  prefix; the first Waist Chain Save draft/Publish will receive `WC001`.
+
+**Verified:**
+- Production readback returned active Waist Chains id `7e5cf9ec-0d9f-4dbf-8464-3a92bb1ecece`,
+  exact prefix/title/tag/taxonomy values, and `sku_counters.last_number = 0`.
+- A signed real-browser run selected Waist Chains and rendered `WC001 · Waist Chain 001` with
+  handle `/products/waist-chain-001`; the add-category dialog auto-filled `BC`, `Belly Chain`,
+  searched Shopify for `Body Jewelry`, and displayed the first-SKU preview without creating the
+  throwaway category.
+- Category/security/schema coverage passed 127/127; TypeScript, ESLint, `git diff --check`, local
+  production build and Vercel production build passed. Migration `20260804200000` is applied.
+- Deployment `dpl_DSMz72x61ZoQifWJ26dpUcxmXoi6` is READY and aliased to
+  `https://qimati-loupe.vercel.app`; `/health` returned HTTP 200.
+- The existing monotonic catalogue reconciliation finished after verification with `NK980`,
+  `CB375` and `WC0`; no counter was lowered.
+
+**Not finished / known broken:** Shopify currently has no Waist Chain collection. Loupe will attach
+the exact `Waist Chain` tag, but a tag-driven storefront collection still has to be created in
+Shopify if the products should appear on a dedicated collection page. Also, the complete live-DB
+test suite is no longer safe while operators are saving products: it finished 550/554 because four
+legacy counter tests overlapped real Necklace drafts. The focused category suite passed, and the
+affected live counters were immediately repaired through monotonic reconciliation.
+
+**Surprises:** while the full suite ran, a live operator created NK977–NK980. Legacy tests restore
+production counters to their starting value, which can race real Save draft activity. No duplicate
+was created, and reconciliation restored the counters to Shopify's maxima, but future write-heavy
+database verification needs a quiet window or a separate test database.
+
+**Next session should start with:** sign in to production, select one real Waist Chain photo, confirm
+the `WC001 · Waist Chain 001` preview, and create the Shopify automated collection for exact tag
+`Waist Chain` if a dedicated storefront collection is wanted.
+
+---
+
 ## 2026-08-04 — Reference-faithful image defaults and all presets revised
 
 **Goal this session:** replace the inaccurate jewellery redraw workflow with the highest-reliability

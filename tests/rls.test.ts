@@ -88,6 +88,14 @@ describe('server-only functions are not callable without the service role', () =
 
   const phase2Functions: [string, Record<string, unknown>][] = [
     ['raise_sku_counter', { p_prefix: 'NK', p_to: 999_999 }],
+    ['create_console_category', {
+      p_name: 'Anonymous Category',
+      p_sku_prefix: 'ZZ',
+      p_title_pattern: 'Anonymous {n}',
+      p_shopify_tag: 'Anonymous',
+      p_shopify_taxonomy_category_id: 'gid://shopify/TaxonomyCategory/aa-6-2',
+      p_actor: 'anonymous',
+    }],
     ['reserve_draft_identity', { p_draft_id: '00000000-0000-0000-0000-000000000000' }],
     ['mark_draft_published', {
       p_draft_id: '00000000-0000-0000-0000-000000000000',

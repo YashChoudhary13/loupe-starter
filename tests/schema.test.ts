@@ -169,6 +169,7 @@ describe('conventions', () => {
 
   it('next_sku is present', () => {
     expect(report.functions).toContain('next_sku')
+    expect(report.functions).toContain('create_console_category')
   })
 
   it('has the Phase 3A queue and cursor functions deployed', () => {
@@ -340,6 +341,20 @@ describe('Phase 3A database capabilities', () => {
     }
   })
 
+  it('keeps category and SKU-sequence creation service-role-only', () => {
+    const matches = Object.entries(report.function_execute).filter(
+      ([signature]) =>
+        signature.startsWith('create_console_category(') ||
+        signature.startsWith('public.create_console_category('),
+    )
+    expect(matches).toHaveLength(1)
+    expect(matches[0]?.[1]).toEqual({
+      anon: false,
+      authenticated: false,
+      service_role: true,
+    })
+  })
+
   it('keeps every Phase 5 RPC service-role-only', () => {
     for (const fn of [
       'validate_prompt_body',
@@ -392,7 +407,7 @@ describe('Phase 3A database capabilities', () => {
 })
 
 describe('seed data', () => {
-  it('has the confirmed categories with the live store’s exact tags', async () => {
+  it('has the confirmed and business-established categories with exact tags', async () => {
     const { data, error } = await serviceClient()
       .from('categories')
       .select('name, sku_prefix, title_pattern, shopify_tag')
@@ -408,6 +423,8 @@ describe('seed data', () => {
     // Watches, Hand Chains, Indian Jewellery and Hair Accessories were added
     // the same day from the live catalogue, each with a tag that is unanimous
     // across every live product of that prefix.
+    // Waist Chains was established as a new sequence by the owner before any
+    // live product existed, so WC starts at 001 with the deliberately chosen tag.
     expect(data).toEqual([
       { name: 'Necklaces', sku_prefix: 'NK', title_pattern: 'Necklace {n}', shopify_tag: 'Necklace' },
       { name: 'Earrings', sku_prefix: 'ER', title_pattern: 'Earrings {n}', shopify_tag: 'earrings' },
@@ -420,6 +437,7 @@ describe('seed data', () => {
       { name: 'Hand Chains', sku_prefix: 'HC', title_pattern: 'Hand Chain {n}', shopify_tag: 'Hand Chain' },
       { name: 'Indian Jewellery', sku_prefix: 'INJ', title_pattern: 'Indian Pendant Sets {n}', shopify_tag: 'INJ' },
       { name: 'Hair Accessories', sku_prefix: 'HA', title_pattern: 'Hairband {n}', shopify_tag: 'HA' },
+      { name: 'Waist Chains', sku_prefix: 'WC', title_pattern: 'Waist Chain {n}', shopify_tag: 'Waist Chain' },
     ])
   })
 
@@ -428,10 +446,11 @@ describe('seed data', () => {
     // tags are NOT unanimous (Tote Bag tagged "AS", Clutcher tagged "HA") or
     // the sample is a handful of products, so none is added. An invented tag
     // publishes successfully and drops the product out of its collection
-    // silently (D23) — the worst failure this system has.
+    // silently (D23) — the worst failure this system has. WC is not an
+    // inference from those unresolved prefixes; it was a new owner-requested sequence.
     const { data } = await serviceClient().from('categories').select('sku_prefix')
     expect((data as { sku_prefix: string }[]).map((c) => c.sku_prefix).sort()).toEqual([
-      'AK', 'BK', 'CB', 'ER', 'HA', 'HC', 'INJ', 'NK', 'NP', 'RS', 'WH',
+      'AK', 'BK', 'CB', 'ER', 'HA', 'HC', 'INJ', 'NK', 'NP', 'RS', 'WC', 'WH',
     ])
   })
 

@@ -2223,3 +2223,27 @@ counts and topology. `MAX_COST_USD_PER_DESCRIPTION` is therefore $0.05; leaving 
 discard the good Sol response and silently send the image stage no PRODUCT record. All five saved
 presets use the same model pair and maintained identity contract, and preset promotion selects the
 newest reviewed revision rather than the oldest historical body.
+
+---
+
+### D85 — Console category creation establishes a complete, immutable SKU sequence
+
+*Business request, 2026-08-04; extends D1, D2, D23 and D75.*
+
+An authenticated console operator may create a new product category from the category picker. The
+flow requires the customer-facing name, 2–4 permanent SKU letters, title wording, exact Shopify
+collection tag and a leaf Shopify product-taxonomy category. Taxonomy choices come from Shopify's
+live taxonomy search and the chosen id is read back from Shopify on the server before it is stored.
+Loupe may suggest initials and singular title wording for convenience, but the operator explicitly
+confirms every naming field; the database never guesses or silently creates a tag.
+
+`create_console_category()` inserts the active category, a zeroed `sku_counters` row and the audit
+event in one database transaction. Creating a category allocates no product number. The first Save
+draft or Publish still calls the existing atomic counter and receives 001; an existing category
+name or prefix is refused because an SKU sequence cannot be repurposed.
+
+Waist Chains is the first business-established category with no historical Shopify products or
+collection to reconcile: prefix `WC`, title pattern `Waist Chain {n}`, exact tag `Waist Chain`, and
+Shopify taxonomy `Body Jewelry`. Its counter starts at 0, so the first product preview is `WC001 ·
+Waist Chain 001`. Reading Shopify's maximum at publish time, automatically accepting the first
+taxonomy search result, and creating category/counter rows in separate requests were rejected.
