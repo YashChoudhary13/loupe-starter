@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   discardIntakeAction,
@@ -13,6 +13,11 @@ import {
   skipIntakeAction,
 } from '@/app/tracking/actions'
 import type { Operator } from '@/lib/auth/authorize'
+import {
+  LIVE_ACTIVITY_EVENT,
+  shouldRefreshTracking,
+  type LiveActivityUpdate,
+} from '@/lib/live/types'
 import { filterTrackingRows, type TrackingFilters } from '@/lib/tracking/filters'
 import type { TrackingRow, TrackingSnapshot } from '@/lib/tracking/types'
 import { cn } from '@/lib/utils'
@@ -25,6 +30,35 @@ const DEFAULT_FILTERS: TrackingFilters = {
   error: '',
   age: 'any',
   search: '',
+}
+
+const TRACKING_URL_REFRESH_MS = 9 * 60 * 1000
+
+/** Keep valid signed thumbnails when only the row state changed. */
+function preserveTrackingThumbs(
+  previous: TrackingSnapshot,
+  next: TrackingSnapshot,
+  now = Date.now(),
+): TrackingSnapshot {
+  const previousThumbs = new Map(
+    previous.rows
+      .filter((row) => row.thumb && row.thumb.expiresAt > now + 60_000)
+      .map((row) => [row.rowId, row.thumb] as const),
+  )
+  if (previousThumbs.size === 0) return next
+
+  let preserved = false
+  const rows = next.rows.map((row) => {
+    const thumb = previousThumbs.get(row.rowId)
+    if (!thumb || !row.thumb) return row
+    preserved = true
+    return { ...row, thumb }
+  })
+  return {
+    ...next,
+    rows,
+    signedUntil: preserved ? Math.min(previous.signedUntil, next.signedUntil) : next.signedUntil,
+  }
 }
 
 function relativeAge(iso: string, now: number): string {
@@ -48,6 +82,7 @@ export function TrackingScreen({
   const [busy, setBusy] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
+  const liveRefreshInFlight = useRef(false)
   const now = new Date(snapshot.generatedAt).getTime()
   const rows = useMemo(
     () => filterTrackingRows(snapshot.rows, filters, now),
@@ -59,6 +94,50 @@ export function TrackingScreen({
         .sort(),
     [snapshot.rows],
   )
+
+  const refreshFromLiveActivity = useCallback(async (preserveThumbs: boolean) => {
+    if (liveRefreshInFlight.current) return
+    liveRefreshInFlight.current = true
+    try {
+      const result = await refreshTrackingAction()
+      if (!result.ok) return
+      setSnapshot((current) =>
+        preserveThumbs ? preserveTrackingThumbs(current, result.data) : result.data,
+      )
+    } finally {
+      liveRefreshInFlight.current = false
+    }
+  }, [])
+
+  /**
+   * Tracking used to be a static server snapshot. Follow the shared audit
+   * heartbeat so Queued -> Enhancing -> Enhanced/Failed changes appear while
+   * the operator is looking at the page, without refreshing the browser.
+   */
+  useEffect(() => {
+    const onLiveActivity = (rawEvent: Event) => {
+      const update = (rawEvent as CustomEvent<LiveActivityUpdate>).detail
+      if (
+        update?.initial ||
+        busy !== null ||
+        !shouldRefreshTracking(update?.snapshot.events ?? [])
+      ) {
+        return
+      }
+      void refreshFromLiveActivity(true)
+    }
+    window.addEventListener(LIVE_ACTIVITY_EVENT, onLiveActivity)
+    return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLiveActivity)
+  }, [busy, refreshFromLiveActivity])
+
+  /** Signed thumbnails refresh even during a quiet session. */
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => void refreshFromLiveActivity(false),
+      TRACKING_URL_REFRESH_MS,
+    )
+    return () => window.clearInterval(timer)
+  }, [refreshFromLiveActivity])
 
   const update = async (
     key: string,

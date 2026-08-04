@@ -384,6 +384,14 @@ connection, which is what `db:push` and the direct-connection tests need.
 
 `docs/DESIGN.md` holds the design tokens and component rules. `design/console-mockup.html` and `design/tracking-mockup.html` are the visual reference — open them before building any screen. Build with **shadcn/ui + Tailwind**, themed to those tokens.
 
+Authenticated screens stay current through the shared event-cursor heartbeat in
+`src/components/live/LiveActivity.tsx`: one server-authorised, image-free check every four seconds
+while visible, plus an immediate catch-up on focus. Do not replace it with current-total comparison
+(a complete start→finish cycle can occur between polls), full queue polling (it re-signs and
+re-downloads every thumbnail), browser-side Supabase access (RLS deliberately denies it), or a
+blanket `router.refresh()` that can overwrite client editor state. The global capsule shows queued
+and enhancing work; ready/failure notifications link to Console or Tracking. See D83.
+
 ## Verifying
 
 Don't report a phase done on "it ran". Each phase has explicit success criteria in `docs/phases/`. Meet those, and paste the evidence into `docs/PROGRESS.md`. For anything touching SKU allocation, prove it **under concurrency** — parallel publishes must never collide — not just on a single happy-path call.

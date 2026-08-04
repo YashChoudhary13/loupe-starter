@@ -235,11 +235,10 @@ export async function loadColourSuggestions(categoryId: string): Promise<readonl
  * changed every `img src` on the page and made the browser re-download the whole
  * grid — which is what made the console feel stuck and swallow clicks.
  *
- * `uploading` deliberately counts only `attempts = 0`. A row in retry backoff is
- * also `discovered`, but it is waiting on a bounded retry (D29), not uploading:
- * counting it held the console in fast-poll mode for up to an hour and told the
- * operator a photograph was in progress when nothing was happening to it. That
- * state belongs to Tracking, which alerts on age and failure (hard rule 5).
+ * `uploading` is the historical field name; the interface now labels every
+ * `discovered` row as queued, including a bounded retry wait. The global live
+ * bubble distinguishes queued from enhancing, so retry backoff no longer
+ * disappears from the operator's current-process count.
  */
 export async function loadPipelineActivity(): Promise<PipelineActivity> {
   const db = supabaseServer()
@@ -247,8 +246,7 @@ export async function loadPipelineActivity(): Promise<PipelineActivity> {
     db
       .from('intake_files')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'discovered')
-      .eq('attempts', 0),
+      .eq('status', 'discovered'),
     db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
   ])
   if (uploadingResult.error) throw new Error(`intake_files (discovered): ${uploadingResult.error.message}`)
@@ -296,8 +294,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('intake_files')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'discovered')
-      .eq('attempts', 0),
+      .eq('status', 'discovered'),
     db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
   ])
 

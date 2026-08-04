@@ -10,7 +10,6 @@ import {
   detachPhotoAction,
   groupPhotosAction,
   openDraftAction,
-  pipelineActivityAction,
   previewPhotosAction,
   publishDraftAction,
   redoImageAction,
@@ -38,6 +37,11 @@ import type {
   PhotoSummary,
   QueueSnapshot,
 } from '@/lib/console/types'
+import {
+  LIVE_ACTIVITY_EVENT,
+  shouldRefreshConsole,
+  type LiveActivityUpdate,
+} from '@/lib/live/types'
 import type { PublishBlock } from '@/lib/publish/validate'
 
 import { DraftEditor, type EditorForm } from './DraftEditor'
@@ -68,16 +72,6 @@ import { Sidebar } from './Sidebar'
 const STICKY_KEY = 'loupe.sticky.v1'
 /** Presigned URLs live 15 minutes; refresh well inside that. */
 const QUEUE_REFRESH_MS = 9 * 60 * 1000
-/**
- * The cheap counter poll. This is NOT a full queue refresh — see
- * `loadPipelineActivity()`. A full snapshot re-signs every thumbnail, and a
- * presigned URL differs on every call, so polling it at this rate replaced every
- * `img src` on the page every few seconds and the browser re-downloaded the
- * whole grid. That is what made the console feel laggy and drop clicks.
- */
-const ACTIVITY_POLL_MS = 5 * 1000
-/** How long a "new photograph" bubble stays on screen. */
-const TOAST_MS = 6 * 1000
 
 function putReadyImage(
   url: string,
@@ -107,11 +101,6 @@ function putReadyImage(
     request.ontimeout = () => reject(new Error('The image upload took longer than ten minutes.'))
     request.send(file)
   })
-}
-
-interface Toast {
-  readonly id: number
-  readonly text: string
 }
 
 interface Sticky {
@@ -223,7 +212,6 @@ export function ConsoleScreen({
 }: ConsoleScreenProps) {
   const [queue, setQueue] = useState(initialQueue)
   const [activity, setActivity] = useState(initialQueue.pipelineActivity)
-  const [toasts, setToasts] = useState<readonly Toast[]>([])
   /** The redo awaiting prompt review. Null when no dialog is open. */
   const [redoReview, setRedoReview] = useState<{
     intakeFileId: string
@@ -285,51 +273,23 @@ export function ConsoleScreen({
   }, [refreshQueue])
 
   /**
-   * The live progress loop. Cheap by design: it polls two counters, and only
-   * pays for a full queue refresh when the counters show work has actually
-   * FINISHED (in-flight total fell) — which is exactly when a new photograph is
-   * ready to appear in the grid. A rising count only raises the bubble.
+   * The shared sidebar owns the one cheap site-wide heartbeat. Audit-event ids
+   * cannot miss a complete enhancement between polls; this screen pays for a
+   * full, image-signed queue read only when a transition changes the grid.
    */
   useEffect(() => {
-    let cancelled = false
-    const timer = window.setInterval(async () => {
-      const result = await pipelineActivityAction()
-      if (cancelled || !result.ok) return
-      const next = result.data
-
-      setActivity((current) => {
-        const inFlightBefore = current.uploading + current.processing
-        const inFlightNow = next.uploading + next.processing
-
-        if (next.uploading > current.uploading) {
-          const arrived = next.uploading - current.uploading
-          setToasts((list) => [
-            ...list,
-            {
-              id: Date.now(),
-              text:
-                arrived === 1
-                  ? 'New photograph from Drive — enhancing now'
-                  : `${arrived} new photographs from Drive — enhancing now`,
-            },
-          ])
-        }
-        if (inFlightNow < inFlightBefore) void refreshQueue()
-        return next
+    const onLiveActivity = (rawEvent: Event) => {
+      const update = (rawEvent as CustomEvent<LiveActivityUpdate>).detail
+      if (!update?.snapshot) return
+      setActivity({
+        uploading: update.snapshot.queued,
+        processing: update.snapshot.enhancing,
       })
-    }, ACTIVITY_POLL_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
+      if (shouldRefreshConsole(update.snapshot.events)) void refreshQueue()
     }
+    window.addEventListener(LIVE_ACTIVITY_EVENT, onLiveActivity)
+    return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLiveActivity)
   }, [refreshQueue])
-
-  /** Bubbles clear themselves; they are information, never a decision point. */
-  useEffect(() => {
-    if (toasts.length === 0) return
-    const timer = window.setTimeout(() => setToasts((list) => list.slice(1)), TOAST_MS)
-    return () => window.clearTimeout(timer)
-  }, [toasts])
 
   /** Versions and full images for photographs that are selected but not grouped. */
   useEffect(() => {
@@ -665,10 +625,6 @@ export function ConsoleScreen({
         setSavedForm(null)
         setForm(seededForm())
         setSelectedPhotoIds([completed.intakeFileId])
-        setToasts((list) => [
-          ...list,
-          { id: Date.now(), text: 'Ready image uploaded · AI enhancement bypassed' },
-        ])
         window.setTimeout(() => priceRef.current?.focus(), 0)
       } catch (cause) {
         const detail = cause instanceof Error ? cause.message : String(cause)
@@ -870,29 +826,6 @@ export function ConsoleScreen({
 
   return (
     <div className="grid h-dvh overflow-hidden grid-cols-[216px_1fr] gap-[18px] p-[18px]">
-      {/*
-        Drive arrivals announce themselves. Deliberately NOT amber: amber means
-        "a human is needed" and nothing else (D9). A photograph arriving is
-        normal, so this is the plain monochrome chrome.
-      */}
-      {toasts.length > 0 ? (
-        <div
-          className="pointer-events-none fixed left-1/2 top-5 z-50 flex -translate-x-1/2 flex-col items-center gap-2"
-          role="status"
-          aria-live="polite"
-        >
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className="flex items-center gap-2.5 rounded-pill bg-ink/95 px-4 py-2.5 text-[12.5px] text-white shadow-lg backdrop-blur-sm"
-            >
-              <span className="size-1.5 animate-pulse rounded-full bg-white/80" aria-hidden />
-              {toast.text}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
       {redoReview ? (
         <RedoPromptDialog
           filename={redoReview.filename}
@@ -962,14 +895,14 @@ export function ConsoleScreen({
             {uploading > 0 ? (
               <span>
                 <b className="font-semibold text-ink">{uploading}</b>{' '}
-                {uploading === 1 ? 'photo' : 'photos'} uploaded
+                {uploading === 1 ? 'photo' : 'photos'} queued
               </span>
             ) : null}
             {uploading > 0 && processing > 0 ? <span className="text-muted-foreground">·</span> : null}
             {processing > 0 ? (
               <span>
                 <b className="font-semibold text-ink">{processing}</b>{' '}
-                {processing === 1 ? 'photo' : 'photos'} processing
+                {processing === 1 ? 'photo' : 'photos'} enhancing
               </span>
             ) : null}
           </div>

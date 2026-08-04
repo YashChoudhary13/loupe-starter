@@ -148,9 +148,9 @@ export interface ColourSuggestion {
 
 /**
  * Drive files the pipeline has not yet finished with — no tile exists for these
- * yet, so the grid alone cannot show them. `uploading` is Loupe's own word for
- * `discovered`: the file has landed in Drive and Loupe has noticed it, before the
- * two-call enhancement starts.
+ * yet, so the grid alone cannot show them. `uploading` is the legacy property
+ * name for queued/discovered work, including retry backoff; the UI calls it
+ * queued. `processing` is actively leased enhancement work.
  */
 export interface PipelineActivity {
   readonly uploading: number

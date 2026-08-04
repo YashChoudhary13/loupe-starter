@@ -4,6 +4,8 @@ import Link from 'next/link'
 
 import type { Operator } from '@/lib/auth/authorize'
 
+import { LiveActivity } from '@/components/live/LiveActivity'
+
 /**
  * Shared authenticated navigation for the operator workspace.
  */
@@ -73,6 +75,8 @@ export function Sidebar({
           Prompts
         </Link>
       </nav>
+
+      <LiveActivity />
 
       <form action="/api/auth/signout" method="post" className="mt-auto">
         <div className="flex items-center gap-2.5 rounded-pill bg-surface p-2.5">
