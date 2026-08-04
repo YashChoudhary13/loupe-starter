@@ -96,6 +96,8 @@ export interface DraftEditorProps {
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
   readonly onRedo: (intakeFileId: string, filename: string) => void
+  /** Opens the complete category + SKU-sequence creation flow. */
+  readonly onAddCategory: () => void
   /** Present only while the photograph is ungrouped and deletable from Loupe. */
   readonly onDeletePhoto: ((intakeFileId: string, filename: string) => void) | null
   readonly children?: React.ReactNode
@@ -123,6 +125,7 @@ export function DraftEditor(props: DraftEditorProps) {
     onMoveImage,
     onChooseVersion,
     onRedo,
+    onAddCategory,
     onDeletePhoto,
     children,
   } = props
@@ -572,6 +575,11 @@ export function DraftEditor(props: DraftEditorProps) {
                 {option.shopifyTag === null ? ' ·' : ''}
               </Chip>
             ))}
+            {!readOnly && !identityLocked ? (
+              <Chip ghost title="Create a category and its own SKU sequence" onClick={onAddCategory}>
+                + New category
+              </Chip>
+            ) : null}
           </div>
           {identityLocked ? (
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
