@@ -158,7 +158,7 @@ Reserve SKU + handle → record `publishing` → call `productSet` identified by
 Insert the DB row **before** any work is attempted. A file's presence in RAW never means "unprocessed" — the DB says what's true. `drive_file_id` is UNIQUE, so re-scanning the whole folder is always safe. Moving files to `/Processed/` is housekeeping; if it fails, nothing breaks.
 
 **4. Retries are bounded, then a human looks.**
-5 attempts with backoff (0, 1m, 5m, 20m, 1h), then `failed`. Never infinite — one corrupt HEIC would retry forever and burn credit. Classify errors as *retryable* (429, 5xx, timeout, network) or *permanent* (corrupt file, unsupported format, too large, model refusal, malformed response, cost ceiling exceeded). Permanent errors skip retries entirely.
+One initial attempt plus exactly three retries after 1m, 2m and 5m; a failed fourth total attempt becomes `failed` and shows its error for a human. Never infinite — one corrupt file would retry forever and burn credit. Classify errors as *retryable* (429, 5xx, timeout, network) or *permanent* (corrupt file, unsupported format, too large, model refusal). Permanent errors skip retries entirely. A response that exceeds a configured cost ceiling is not retried; the completed paid result follows its stage-specific review/fallback rule.
 
 **5. Alert on age, not status.**
 300 images is not 300 products. A file that is `enhanced` but ungrouped is normal — it's waiting for an operator. The same file ungrouped after 24 hours is a problem. Status-based alerting cries wolf and people stop reading it.
@@ -227,12 +227,12 @@ One key and billing account keep model swaps out of provider-specific SDKs.
    `image_versions.prompt_text`, together with `description_injected` and
    `description_missing`.
 
-Describe attempts use the same bounded retry schedule as intake. On the fifth describe
-failure the row deliberately stays claimed, records `description_missing_at`, removes the
-PRODUCT block, assigns the deterministic `flat-curve` fallback, records a queryable
-fallback reason and continues to image generation. Malformed JSON and invented classes
-follow the same bounded path; free-form model composition never reaches the image prompt.
-A describer outage degrades the image; it does not stop the pipeline.
+Describe attempts use the same bounded retry schedule as intake: one initial attempt and
+three retries after 1m, 2m and 5m. If the fourth total attempt fails, the row becomes
+`failed`, releases its lease and shows the provider/validation error in Tracking. Malformed
+JSON and invented classes follow the same bounded path; free-form model composition never
+reaches the image prompt. A describer outage therefore stops that file after its retry
+budget instead of silently producing an image without a description.
 `MAX_COST_USD_PER_DESCRIPTION=0.02` guards accidental reasoning spend independently of the
 image ceiling. A successful describe response above that limit does **not** retry the same
 expensive configuration: it records the missing description and continues to the image call

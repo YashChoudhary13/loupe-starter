@@ -207,9 +207,9 @@ describe('Phase 3B enhancement worker', () => {
     })
   })
 
-  it('degrades after the fifth describe failure and still produces an enhanced image', async () => {
+  it('shows a terminal error when the third description retry fails', async () => {
     const repository = new MemoryEnhancementRepository()
-    repository.enqueue(claim('describe-fallback', { attempts: 4 }))
+    repository.enqueue(claim('describe-fallback', { attempts: 3 }))
     const failedDescriber: JewelleryDescriber = {
       describe: vi.fn(async () => {
         throw new EnhancementError('describer unavailable', {
@@ -232,21 +232,15 @@ describe('Phase 3B enhancement worker', () => {
       { maxItems: 1 },
     )
 
-    expect(result).toMatchObject({ enhanced: 1, descriptionCalls: 1 })
-    expect(repository.descriptionFailures).toEqual(['description_provider_failed'])
-    expect(repository.presentationFallbacks).toEqual([
-      {
-        intakeFileId: 'describe-fallback',
-        reason: 'description_provider_failed',
-      },
-    ])
-    expect(repository.completions[0]).toMatchObject({
-      promptText: expect.stringContaining(
-        'Lay the piece flat in a soft open curve',
-      ),
-      descriptionInjected: false,
-      descriptionMissing: true,
+    expect(result).toMatchObject({
+      enhanced: 0,
+      retryScheduled: 0,
+      failed: 1,
+      descriptionCalls: 1,
     })
+    expect(repository.descriptionFailures).toEqual(['description_provider_failed'])
+    expect(repository.presentationFallbacks).toEqual([])
+    expect(repository.completions).toEqual([])
   })
 
   it('uses a queryable flat-curve fallback for a legacy cached description without another describe call', async () => {

@@ -53,7 +53,7 @@ export interface DescriptionCache {
 }
 
 export interface DescriptionFailureResult {
-  readonly status: 'discovered' | 'enhancing'
+  readonly status: 'discovered' | 'enhancing' | 'failed'
   readonly attempts: number
   readonly nextAttemptAt: string
   readonly proceedWithoutDescription: boolean

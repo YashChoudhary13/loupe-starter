@@ -11,7 +11,7 @@
  *   3. On 429 / 5xx / a `THROTTLED` GraphQL extension, retries with bounded
  *      backoff. Bounded — CLAUDE.md hard rule 4. This is the short, interactive
  *      backoff for a request a person is waiting on, NOT the enhancement worker's
- *      0/1m/5m/20m/1h schedule, which is for a background job.
+ *      initial attempt plus 1m/2m/5m retry schedule, which is for background work.
  *
  * GraphQL's habit of returning HTTP 200 with an `errors` array means checking
  * `res.ok` is not enough; both layers are checked here so no caller has to remember.

@@ -170,9 +170,10 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
     const active = this.validLeases.has(input.leaseToken)
     if (!active) throw new Error('stale')
     const attempts = this.attemptsById.get(input.intakeFileId) ?? 0
-    const proceed =
-      input.code === 'description_cost_ceiling_exceeded' || attempts >= 4
-    this.attemptsById.set(input.intakeFileId, Math.min(5, attempts + 1))
+    const completedAttempts = Math.min(4, attempts + 1)
+    const proceed = input.code === 'description_cost_ceiling_exceeded'
+    const terminal = !proceed && completedAttempts >= 4
+    this.attemptsById.set(input.intakeFileId, completedAttempts)
     if (!proceed) this.validLeases.delete(input.leaseToken)
     if (proceed) {
       this.presentationFallbacks.push({
@@ -181,8 +182,12 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
       })
     }
     return {
-      status: proceed ? ('enhancing' as const) : ('discovered' as const),
-      attempts: Math.min(5, attempts + 1),
+      status: terminal
+        ? ('failed' as const)
+        : proceed
+          ? ('enhancing' as const)
+          : ('discovered' as const),
+      attempts: completedAttempts,
       nextAttemptAt: '2026-07-29T12:01:00.000Z',
       proceedWithoutDescription: proceed,
       presentationClass: proceed ? ('flat-curve' as const) : null,

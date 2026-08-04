@@ -185,8 +185,9 @@ describe('Phase 3A intake queue SQL state machine', () => {
     )
     let activeLeaseToken = claimed.rows[0]!.lease_token
 
-    const delaysSeconds = [60, 300, 1200, 3600]
-    for (let completedAttempt = 1; completedAttempt <= 5; completedAttempt += 1) {
+    // One initial attempt plus exactly three retries: 1m, 2m and 5m.
+    const delaysSeconds = [60, 120, 300]
+    for (let completedAttempt = 1; completedAttempt <= 4; completedAttempt += 1) {
       const failure = await db.query<QueueState>(
         `select * from public.record_intake_failure(
            $1, $2, $3, $4, 'retryable'::public.error_class, $5, $6
@@ -203,7 +204,7 @@ describe('Phase 3A intake queue SQL state machine', () => {
       const row = failure.rows[0]!
       expect(row.attempts).toBe(completedAttempt)
 
-      if (completedAttempt === 5) {
+      if (completedAttempt === 4) {
         expect(row.status).toBe('failed')
         break
       }
@@ -247,7 +248,7 @@ describe('Phase 3A intake queue SQL state machine', () => {
     )
     expect(terminal.rows[0]).toEqual({
       status: 'failed',
-      attempts: 5,
+      attempts: 4,
       error_class: 'retryable',
     })
 

@@ -361,7 +361,7 @@ describe('Phase 3B enhancement SQL state machine', () => {
     })
   })
 
-  it('records malformed and invented structured output as queryable flat-curve fallbacks', async () => {
+  it('shows malformed and invented structured output as terminal errors after three retries', async () => {
     const cases = [
       {
         filename: 'malformed-json.jpg',
@@ -379,7 +379,7 @@ describe('Phase 3B enhancement SQL state machine', () => {
       const claim = await discoverAndClaim(testCase.filename)
       await db.query(
         `update public.intake_files
-            set attempts = 4
+            set attempts = 3
           where id = $1`,
         [claim.id],
       )
@@ -387,13 +387,13 @@ describe('Phase 3B enhancement SQL state machine', () => {
         parse_reason: testCase.code.replace('description_', ''),
         raw_result: testCase.raw,
       })
-      const fallback = await db.query<{
+      const failure = await db.query<{
         status: string
         attempts: number
         proceed_without_description: boolean
-        presentation_class: string
+        presentation_class: string | null
         presentation_fallback: boolean
-        presentation_fallback_reason: string
+        presentation_fallback_reason: string | null
       }>(
         `select status, attempts, proceed_without_description, presentation_class,
                 presentation_fallback, presentation_fallback_reason
@@ -407,31 +407,40 @@ describe('Phase 3B enhancement SQL state machine', () => {
           source,
         ],
       )
-      expect(fallback.rows[0]).toEqual({
-        status: 'enhancing',
-        attempts: 5,
-        proceed_without_description: true,
-        presentation_class: 'flat-curve',
-        presentation_fallback: true,
-        presentation_fallback_reason: testCase.code,
+      expect(failure.rows[0]).toEqual({
+        status: 'failed',
+        attempts: 4,
+        proceed_without_description: false,
+        presentation_class: null,
+        presentation_fallback: false,
+        presentation_fallback_reason: null,
       })
 
       const state = await db.query<{
-        presentation_class: string
+        status: string
+        presentation_class: string | null
         presentation_fallback: boolean
-        presentation_fallback_reason: string
+        presentation_fallback_reason: string | null
+        last_error_code: string
+        error_class: string
+        lease_token: string | null
         description_error_detail: string
       }>(
-        `select presentation_class, presentation_fallback,
-                presentation_fallback_reason, description_error_detail
+        `select status, presentation_class, presentation_fallback,
+                presentation_fallback_reason, last_error_code, error_class,
+                lease_token, description_error_detail
            from public.intake_files
           where id = $1`,
         [claim.id],
       )
       expect(state.rows[0]).toEqual({
-        presentation_class: 'flat-curve',
-        presentation_fallback: true,
-        presentation_fallback_reason: testCase.code,
+        status: 'failed',
+        presentation_class: null,
+        presentation_fallback: false,
+        presentation_fallback_reason: null,
+        last_error_code: testCase.code,
+        error_class: 'retryable',
+        lease_token: null,
         description_error_detail: detail,
       })
       expect(
@@ -443,11 +452,11 @@ describe('Phase 3B enhancement SQL state machine', () => {
     }
   })
 
-  it('keeps the fifth describe failure leased and completes without a description', async () => {
+  it('fails the fourth describe attempt visibly after three retries', async () => {
     const claim = await discoverAndClaim('description-fallback.jpg')
     await db.query(
       `update public.intake_files
-          set attempts = 4
+          set attempts = 3
         where id = $1`,
       [claim.id],
     )
@@ -469,32 +478,29 @@ describe('Phase 3B enhancement SQL state machine', () => {
       ],
     )
     expect(failure.rows[0]).toEqual({
-      status: 'enhancing',
-      attempts: 5,
-      proceed_without_description: true,
+      status: 'failed',
+      attempts: 4,
+      proceed_without_description: false,
     })
 
     const afterFailure = await db.query<{
       description_missing: boolean
-      lease_token: string
+      lease_token: string | null
+      last_error: string
+      error_class: string
     }>(
-      `select description_missing_at is not null as description_missing, lease_token
+      `select description_missing_at is not null as description_missing, lease_token,
+              last_error, error_class
          from public.intake_files
         where id = $1`,
       [claim.id],
     )
     expect(afterFailure.rows[0]).toEqual({
-      description_missing: true,
-      lease_token: claim.lease_token,
+      description_missing: false,
+      lease_token: null,
+      last_error: 'Description provider unavailable.',
+      error_class: 'retryable',
     })
-
-    const completion = await complete(claim, {
-      descriptionInjected: false,
-      descriptionMissing: true,
-    })
-    expect(completion).toEqual(
-      expect.objectContaining({ status: 'enhanced', attempts: 5 }),
-    )
   })
 
   it('degrades immediately after a description cost ceiling breach', async () => {

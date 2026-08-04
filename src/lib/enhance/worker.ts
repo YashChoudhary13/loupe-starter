@@ -353,7 +353,7 @@ async function processClaim(
           return {
             intakeFileId: claim.id,
             driveFileId: claim.driveFileId,
-            status: 'retry_scheduled',
+            status: recorded.status === 'failed' ? 'failed' : 'retry_scheduled',
             attempts: recorded.attempts,
             descriptionCalled,
             descriptionInjected: false,

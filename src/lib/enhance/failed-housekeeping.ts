@@ -14,8 +14,8 @@ import type { EnhancementOutcome } from './worker'
  *
  * **Only terminal outcomes move.** `retry_scheduled` means the photograph is
  * coming back — moving it would suggest to whoever is watching the folder that
- * Loupe had given up on work that is still queued. `failed` means the five
- * bounded attempts are spent or the error was permanent; `cost_ceiling_failed`
+ * Loupe had given up on work that is still queued. `failed` means the initial
+ * attempt plus three bounded retries are spent or the error was permanent; `cost_ceiling_failed`
  * means the image cost more than the ceiling allowed. Both are over.
  *
  * Moving a file does NOT break Retry from Tracking. Drive file ids are stable
