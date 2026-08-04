@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type Ref } from 'react'
 
 import {
   createCategoryAction,
@@ -128,7 +128,7 @@ export function NewCategoryDialog({ onCancel, onCreated }: NewCategoryDialogProp
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <TextField
-            ref={nameRef}
+            inputRef={nameRef}
             label="Category name"
             value={name}
             maxLength={80}
@@ -276,17 +276,26 @@ interface TextFieldProps {
   readonly help?: string
   readonly mono?: boolean
   readonly className?: string
+  readonly inputRef?: Ref<HTMLInputElement>
 }
 
-const TextField = function TextField(
-  props: TextFieldProps & { readonly ref?: React.Ref<HTMLInputElement> },
-) {
-  const { label, value, maxLength, placeholder, onChange, help, mono, className, ref } = props
+const TextField = function TextField(props: TextFieldProps) {
+  const {
+    label,
+    value,
+    maxLength,
+    placeholder,
+    onChange,
+    help,
+    mono,
+    className,
+    inputRef,
+  } = props
   return (
     <label className={className}>
       <span className="block text-[11px] font-medium text-ink-soft">{label}</span>
       <input
-        ref={ref}
+        ref={inputRef}
         value={value}
         maxLength={maxLength}
         placeholder={placeholder}

@@ -32,6 +32,7 @@ import {
   type QueueView,
 } from '@/lib/console/queue-view'
 import type {
+  CategoryOption,
   ColourSuggestion,
   ConsoleCatalog,
   PhotoSummary,
@@ -45,6 +46,7 @@ import {
 import type { PublishBlock } from '@/lib/publish/validate'
 
 import { DraftEditor, type EditorForm } from './DraftEditor'
+import { NewCategoryDialog } from './NewCategoryDialog'
 import { Card, Notice, StatPill } from './primitives'
 import { QueueGrid } from './QueueGrid'
 import { RedoPromptDialog } from './RedoPromptDialog'
@@ -220,6 +222,8 @@ export function ConsoleScreen({
     model: string | null
   } | null>(null)
   const [bundle, setBundle] = useState<DraftBundle | null>(initialBundle)
+  const [categories, setCategories] = useState<readonly CategoryOption[]>(catalog.categories)
+  const [addingCategory, setAddingCategory] = useState(false)
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<readonly string[]>([])
   // Keyed by the selection it belongs to, so a stale preview is never rendered
   // and no effect has to synchronously clear it.
@@ -326,7 +330,7 @@ export function ConsoleScreen({
     }
   }, [form.categoryId, mode])
 
-  const category = catalog.categories.find((c) => c.id === form.categoryId) ?? null
+  const category = categories.find((c) => c.id === form.categoryId) ?? null
 
   const identity: PredictedIdentity | null = useMemo(() => {
     if (!category) return null
@@ -389,7 +393,7 @@ export function ConsoleScreen({
    */
   const seededForm = useCallback((): EditorForm => {
     const sticky = readSticky()
-    const stickyCategory = catalog.categories.find((c) => c.id === sticky.categoryId) ?? null
+    const stickyCategory = categories.find((c) => c.id === sticky.categoryId) ?? null
     return {
       ...EMPTY_FORM,
       categoryId: stickyCategory?.id ?? null,
@@ -397,7 +401,7 @@ export function ConsoleScreen({
       customMaterial: sticky.customMaterial,
       stock: sticky.stock || String(stickyCategory?.defaultStock ?? 0),
     }
-  }, [catalog.categories])
+  }, [categories])
 
   const togglePhoto = useCallback(
     (intakeFileId: string) => {
@@ -826,6 +830,21 @@ export function ConsoleScreen({
 
   return (
     <div className="grid h-dvh overflow-hidden grid-cols-[216px_1fr] gap-[18px] p-[18px]">
+      {addingCategory ? (
+        <NewCategoryDialog
+          onCancel={() => setAddingCategory(false)}
+          onCreated={(created) => {
+            setCategories((current) => [...current, created])
+            updateForm({
+              categoryId: created.id,
+              stock: String(created.defaultStock),
+              weight: '',
+            })
+            setAddingCategory(false)
+          }}
+        />
+      ) : null}
+
       {redoReview ? (
         <RedoPromptDialog
           filename={redoReview.filename}
@@ -985,7 +1004,7 @@ export function ConsoleScreen({
               photos={photos}
               form={form}
               onChange={updateForm}
-              categories={catalog.categories}
+              categories={categories}
               materials={catalog.materials}
               colourSuggestions={colours}
               identity={identity}
@@ -1001,6 +1020,7 @@ export function ConsoleScreen({
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
               onRedo={(intakeFileId, filename) => void openRedoReview(intakeFileId, filename)}
+              onAddCategory={() => setAddingCategory(true)}
               onDeletePhoto={
                 mode === 'new'
                   ? (intakeFileId, filename) =>
