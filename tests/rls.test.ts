@@ -304,6 +304,11 @@ describe('server-only functions are not callable without the service role', () =
       p_error: 'anonymous',
       p_source: 'anonymous',
     }],
+    ['delete_shopify_missing_draft', {
+      p_draft_id: '00000000-0000-0000-0000-000000000000',
+      p_expected_shopify_product_id: 'gid://shopify/Product/1',
+      p_actor: 'anonymous',
+    }],
   ]
 
   for (const [fn, body] of phase3Functions) {

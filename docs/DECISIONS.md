@@ -1888,6 +1888,9 @@ still requires the signed URL; it is not public read or public write access.
 
 *Business clarification, 2026-08-03; reinforces D2 and D60.*
 
+> **Superseded by D81 (2026-08-04).** The SKU still remains retired, but full and daily
+> reconciliation now delete the Loupe draft instead of allowing Save draft to recreate it.
+
 Once Save draft reserves an SKU and handle from the draft's category sequence, both remain
 frozen on that Loupe draft. If somebody deletes the corresponding Shopify DRAFT product,
 the next Save draft addresses `productSet` by the same handle, recreates the product with the
@@ -2087,3 +2090,136 @@ the source of truth.
 This is identity matching, not swatch generation. Loupe reuses the merchant's existing metaobject,
 including its richer image/pattern data, and continues to refuse an unknown multi-colour value
 rather than manufacture a misleading solid swatch.
+
+### D80 — Enhancement gets exactly three short retries, then shows the error
+
+*Operator decision, 2026-08-04; supersedes the retry counts/delays in D29 and D39.*
+
+An initial description or image attempt receives exactly three automatic retries: after 1 minute,
+2 minutes and 5 minutes. If the fourth total attempt fails, the intake row becomes `failed`, its
+lease is released, and the last provider/validation error remains visible in Tracking for a human
+decision. Manual image-redo jobs use the same retry budget. Permanent errors still fail on their
+first attempt, and a redo whose paid generation may already have started still fails rather than
+risk charging for a duplicate request.
+
+Description exhaustion no longer silently assigns `flat-curve` and proceeds to image generation.
+That behavior hid the real outage and made queued work look inexplicable. A completed description
+response that exceeds its configured cost ceiling remains the narrow exception: it already
+incurred the cost, so Loupe records the deliberate no-description fallback and moves to the image
+stage instead of paying for the same over-budget call again.
+
+When this policy was deployed, existing queued attempt-2 and attempt-3 deadlines were shortened to
+their new failure-relative deadlines. Waiting rows at attempt 4 or later were made visibly failed.
+No deadline was extended, and every automatic reschedule/failure was written to the event audit.
+
+---
+
+### D81 — Shopify deletion removes the corresponding Loupe draft
+
+*Business direction, 2026-08-04; supersedes D72's recreation behavior and D77 point 1's
+missing-draft warning.*
+
+Once a Loupe draft has been saved to Shopify, Shopify is authoritative for whether that product
+draft still exists. The daily and manual full reconciliation read the reserved handle. If Shopify
+returns no product, Loupe deletes the matching unpublished `product_drafts` row instead of keeping
+an editor that can recreate it. Its grouped source photographs are preserved and returned to
+Pending; deleting a Shopify product is not permission to destroy the source files or generated
+versions.
+
+The SKU remains permanently retired. Deleting the row never lowers the per-category counter, so a
+new product receives the next number rather than reusing the deleted identity.
+
+Deletion is a fenced database operation. It compares the exact recorded Shopify product id and
+refuses a draft with a live Save/Publish lease, a changed id, or `published` status. This prevents
+a stale reconciliation read from deleting a draft that was concurrently recreated or from
+orphaning an in-flight Shopify write. Published products continue through normal catalogue drift
+reporting and are never silently deleted from Loupe.
+
+---
+
+### D82 — Prompt drafts preserve edits; model copies preserve preset identity
+
+*Operator-reported prompt failure, 2026-08-04; extends D51, D65 and D66.*
+
+Creating an image-prompt version remains structurally guarded because an unusable live template
+would stop every enhancement. The form no longer redirects after submission: validation feedback
+stays beside the editor and the operator's name, prompt body and model remain intact. A normal
+pasted image prompt with no `{{PRODUCT_DESCRIPTION}}` token is not refused; Loupe prepends its
+canonical PRODUCT block and says that it did so. Duplicate or ambiguous template tokens are still
+rejected rather than silently rewritten.
+
+Model selection is an immutable prompt copy, so it must carry all behavior-defining fields—not
+only name/body/kind. `select_prompt_model()` now copies `uses_composition` and `preset_slug`.
+Without the former, changing the model of the hand-chain or bag preset makes the live body and
+composition flag contradict each other; without the latter, the picker says “Use this preset” for
+the preset that is already active. The production pair lost its D66 `satin` tags through the old
+copy path; the migration restores them only because both live bodies match the same complete
+preset.
+
+---
+
+### D83 — Authenticated screens follow the event audit for live updates
+
+*Operator experience decision, 2026-08-04; supersedes D61's assumption that a Console-only
+counter poll is sufficient to keep cached screens current.*
+
+Every authenticated screen mounts one compact server-authorised heartbeat. It reads the latest
+monotonic `events.id` plus queued and actively enhancing counts every four seconds while the tab is
+visible, and immediately when a hidden tab becomes visible again. The per-tab cursor is retained
+across Loupe navigation, so Console, Drafts, Tracking and Prompts share the same stream rather than
+each creating an unrelated poll.
+
+The event cursor is the change signal. Current totals alone are not: a photograph can be claimed
+and enhanced between two polls and leave the same total at both ends. A meaningful audit event
+refreshes the affected screen; intermediate description/image-storage events do not trigger a
+costly image-signed read. Existing valid thumbnail URLs are preserved across those state refreshes
+to avoid a download storm.
+
+Queued or enhancing work stays visible in a global activity capsule below the shared navigation.
+New arrivals, ready photographs and failures produce short global notifications; only failures use
+amber because amber still means a human is needed. Tracking now refreshes its rows automatically,
+and Console refreshes its grid when a transition can add, remove or change a tile.
+
+The browser does not subscribe to Supabase directly. RLS intentionally gives it zero table access
+(D11), and weakening that boundary for convenience would make the publishable key a second data
+API. The heartbeat is a server action that re-authorises every call and returns counts plus safe
+event names/ids only—no event detail, image keys or secrets.
+
+---
+
+### D84 — Enhancement is a source-authoritative edit, never an aspirational redesign
+
+*Six-product failure review and production probe, 2026-08-04; supersedes D56's 60–100-word
+descriptor contract and D51's accepted prompt/model pair.*
+
+The default descriptor is `openai/gpt-5.6-sol`; the default image editor is
+`openai/gpt-image-2`. GPT Image 2 is the production default recommended by OpenAI for
+identity-sensitive edits and workflows where fewer retries matter. The image prompt follows its
+surgical-edit pattern: say exactly what may change, enumerate what must remain invariant, and make
+the supplied reference the final authority if text and pixels ever disagree.
+
+Product identity is not adequately represented by generic catalogue prose. The descriptor must
+record exact visible counts for discrete design elements, strands and fittings; chain topology;
+side-specific component order; attachment and setting type; hardware count; silhouette, relief,
+spacing and asymmetry. Ordinary chain links and continuous pavé are not fabricated counts. An
+unclear detail stays explicitly unclear. This replaces the old instruction that prohibited exact
+component counts—the instruction directly responsible for losing information before generation.
+
+Catalogue styling is subordinate. Satin, marble, yellow, hand-chain and bag prompts may change the
+surroundings, permitted pose, lighting and light cleanup, but may not "upgrade" the product. A loose
+jump-ring charm cannot become a prong-set stone; a solid motif cannot become a gem or disappear;
+chains cannot thicken or change construction; extenders cannot duplicate; asymmetric spacing cannot
+be regularised; engraved or sculptural pendants cannot be simplified. The PRODUCT record aids
+inspection; the source image wins every conflict.
+
+The common 1200×1600 raw photo is no longer downscaled to 768×1024 before either model sees it.
+Model inputs retain their original resolution up to a 2048px long edge and use high-quality 4:4:4
+JPEG encoding. GPT Image 2 already applies high input fidelity by default, so Loupe sends no obsolete
+`input_fidelity` parameter. Output remains 1280×1280 at medium quality under the independent $0.20
+image ceiling.
+
+Six live descriptor probes cost $0.0300–$0.0366 each and recovered all six reported products'
+counts and topology. `MAX_COST_USD_PER_DESCRIPTION` is therefore $0.05; leaving it at $0.02 would
+discard the good Sol response and silently send the image stage no PRODUCT record. All five saved
+presets use the same model pair and maintained identity contract, and preset promotion selects the
+newest reviewed revision rather than the oldest historical body.

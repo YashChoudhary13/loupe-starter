@@ -145,7 +145,7 @@ export async function runFullReconciliationAction(): Promise<
     matchedProducts: number
     issueCount: number
     promotedProducts: number
-    missingShopifyDrafts: number
+    deletedShopifyDrafts: number
     promotionFailures: number
     promotionError: string | null
     skuCounters: {
@@ -168,13 +168,13 @@ export async function runFullReconciliationAction(): Promise<
       ])
 
     let promotedProducts = 0
-    let missingShopifyDrafts = 0
+    let deletedShopifyDrafts = 0
     let promotionFailures = 0
     let promotionError: string | null = null
     try {
       const promotion = await promotePublishedInShopify(email)
       promotedProducts = promotion.promoted.length
-      missingShopifyDrafts = promotion.missing.length
+      deletedShopifyDrafts = promotion.deleted.length
       promotionFailures = promotion.failures.length
     } catch (cause) {
       // Match the daily job: promotion is useful, but a transient failure must
@@ -192,7 +192,7 @@ export async function runFullReconciliationAction(): Promise<
       matchedProducts: reconciliation.matchedProducts,
       issueCount: reconciliation.issueCount,
       promotedProducts,
-      missingShopifyDrafts,
+      deletedShopifyDrafts,
       promotionFailures,
       promotionError,
       skuCounters,

@@ -231,6 +231,7 @@ describe('conventions', () => {
       'assert_shopify_reconciliation_lease',
       'complete_shopify_reconciliation',
       'fail_shopify_reconciliation',
+      'delete_shopify_missing_draft',
     ]) {
       expect(report.functions, `${fn} is missing from the deployed schema`).toContain(fn)
     }
@@ -527,24 +528,23 @@ describe('seed data', () => {
     ).toEqual([
       {
         kind: 'describe',
-        chars: 1887,
-        sha256: 'dc6b538b7dcecdcb445ac7d47a316be196b05d965fd7a75c9ff871ba5f545245',
+        chars: 2500,
+        sha256: '5665727272496e57bfd7930a38fa21c45186d4c3443581af27237de27e981c1e',
       },
       {
         kind: 'image',
-        chars: 3399,
-        sha256: '01db8d7404d9fffb630859dcc014687759ed6178838b43f524df7e233b951cf0',
+        chars: 3121,
+        sha256: '2b537548bd4ed098851d90dacc7c6f4299a74277b079b703f28b4fceb8ef7583',
       },
     ])
-    expect(prompts[0]?.body).toContain('Describe ONLY the jewellery in this photograph.')
-    expect(prompts[0]?.body).toContain(
-      'Return ONLY a JSON object, nothing else:',
-    )
-    expect(prompts[0]?.body).toContain(
-      '"presentation": "<one class from the list>"',
-    )
+    expect(prompts[0]?.body).toContain('source photograph is the sole authority')
+    expect(prompts[0]?.body).toContain('Exact counts are mandatory')
+    expect(prompts[0]?.body).toContain('Return ONLY raw JSON')
+    expect(prompts[0]?.body).toContain('"presentation":"<pair-upright|flat-curve|')
     expect(prompts[0]?.body).not.toContain('{{PRODUCT_DESCRIPTION}}')
-    expect(prompts[1]?.body).toContain('PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nSUBJECT')
+    expect(prompts[1]?.body).toContain('PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nBACKGROUND')
+    expect(prompts[1]?.body).toContain('REFERENCE AUTHORITY — highest priority')
+    expect(prompts[1]?.body).toContain('jump-ring-mounted charm')
     expect(prompts[1]?.body).toContain('{{COMPOSITION_DETAIL}}')
     expect(prompts[1]?.body).not.toContain(
       'Preserve the angle and orientation of the piece as photographed',

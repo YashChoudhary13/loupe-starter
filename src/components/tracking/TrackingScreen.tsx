@@ -164,7 +164,8 @@ export function TrackingScreen({
   const reconcile = async () => {
     const confirmed = window.confirm(
       'Run full Shopify reconciliation now?\n\n' +
-        'This checks product status and catalogue differences, reflects drafts published from Shopify, ' +
+        'This checks product status and catalogue differences, removes Loupe drafts deleted from Shopify ' +
+        '(their photos return to Pending), reflects drafts published from Shopify, ' +
         'and raises future per-category SKU counters if Shopify is ahead.\n\n' +
         'It never lowers a counter, reuses a deleted SKU, or silently rewrites an existing product.',
     )
@@ -185,7 +186,7 @@ export function TrackingScreen({
               .join(', ')}).`
           : 'SKU counters were already safe; none were lowered.'
       setFeedback(result.data.started
-        ? `Full reconciliation completed: ${result.data.matchedProducts}/${result.data.totalProducts} products matched, ${result.data.issueCount} issues, ${result.data.promotedProducts} Shopify-published drafts reflected. ${counterResult}`
+        ? `Full reconciliation completed: ${result.data.deletedShopifyDrafts} Shopify-deleted draft${result.data.deletedShopifyDrafts === 1 ? '' : 's'} removed from Loupe; ${result.data.matchedProducts}/${result.data.totalProducts} published products matched, ${result.data.issueCount} published-product issues, ${result.data.promotedProducts} Shopify-published drafts reflected. ${counterResult}`
         : `A catalogue check was already running; no duplicate check was started. ${counterResult}`)
 
       const warnings = [
@@ -193,12 +194,7 @@ export function TrackingScreen({
           ? `Draft-status check failed: ${result.data.promotionError}`
           : null,
         result.data.promotionFailures > 0
-          ? `${result.data.promotionFailures} Shopify-published drafts could not be reflected.`
-          : null,
-        result.data.missingShopifyDrafts > 0
-          ? result.data.missingShopifyDrafts === 1
-            ? '1 Loupe draft is missing from Shopify. Its SKU remains reserved; open and Save the draft to recreate it with the same identity.'
-            : `${result.data.missingShopifyDrafts} Loupe drafts are missing from Shopify. Their SKUs remain reserved; open and Save each draft to recreate it with the same identity.`
+          ? `${result.data.promotionFailures} Shopify draft changes could not be reflected.`
           : null,
         result.data.skuCounters.unknownPrefixes.length > 0
           ? `Unknown Shopify SKU prefixes were not created: ${result.data.skuCounters.unknownPrefixes

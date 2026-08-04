@@ -22,7 +22,7 @@ describe('Phase 3B two-call configuration', () => {
       imageSize: '1280x1280',
       imageQuality: 'medium',
       maxCostUsdPerImage: 0.2,
-      maxCostUsdPerDescription: 0.02,
+      maxCostUsdPerDescription: 0.05,
     })
     expect(resolveOpenRouterModel('anthropic/example')).toBe('anthropic/example')
   })
@@ -44,7 +44,7 @@ describe('Phase 3B two-call configuration', () => {
     expect(resolved.descriptionInjected).toBe(true)
     expect(resolved.descriptionMissing).toBe(false)
     expect(resolved.text).toContain(`PRODUCT\n${TEST_DESCRIPTION}\n\nCOMPOSITION`)
-    expect(resolved.text).toContain('Show both pieces upright and front-facing')
+    expect(resolved.text).toContain('Show the exact source pieces upright and front-facing')
     expect(resolved.text).not.toContain(PRODUCT_DESCRIPTION_TOKEN)
     expect(resolved.text).not.toContain('{{COMPOSITION_DETAIL}}')
   })
@@ -59,7 +59,7 @@ describe('Phase 3B two-call configuration', () => {
     )
     expect(resolved.descriptionInjected).toBe(false)
     expect(resolved.descriptionMissing).toBe(false)
-    expect(resolved.text).toContain('Lay the piece flat in a soft open curve')
+    expect(resolved.text).toContain('Lay the same continuous piece in a loose open curve')
     expect(resolved.text).not.toMatch(/^PRODUCT\s*$/m)
     expect(resolved.text).not.toContain(PRODUCT_DESCRIPTION_TOKEN)
   })
@@ -74,6 +74,6 @@ describe('Phase 3B two-call configuration', () => {
     )
     expect(resolved.descriptionInjected).toBe(false)
     expect(resolved.descriptionMissing).toBe(true)
-    expect(resolved.text).toContain('Lay the piece flat in a soft open curve')
+    expect(resolved.text).toContain('Lay the same continuous piece in a loose open curve')
   })
 })

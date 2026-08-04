@@ -86,7 +86,7 @@ export const DESCRIBE_MODELS: readonly CuratedModel[] = [
     label: 'GPT-5.6 Sol',
     tier: 'Premium',
     priceHint: '$5 / $30 per 1M tokens',
-    note: 'Current Qimati default; already acceptance-tested.',
+    note: 'Highest-reliability visual inspection default.',
   },
 ] as const
 
@@ -144,8 +144,8 @@ export const IMAGE_MODELS: readonly CuratedModel[] = [
     id: 'google/gemini-3.1-flash-image',
     label: 'Nano Banana 2',
     tier: 'Strong',
-    priceHint: 'provider-priced image tokens',
-    note: 'Fast, capable multi-image editing.',
+    priceHint: '$0.50 / $3 per 1M tokens',
+    note: 'Fast lower-cost editing; generated-image tokens still dominate each bill.',
   },
   {
     id: 'google/gemini-3-pro-image',
@@ -158,8 +158,8 @@ export const IMAGE_MODELS: readonly CuratedModel[] = [
     id: 'openai/gpt-image-2',
     label: 'GPT Image 2',
     tier: 'Premium',
-    priceHint: 'premium OpenAI image tokens',
-    note: 'Current Qimati default; already acceptance-tested.',
+    priceHint: '$8 / $8 per 1M tokens',
+    note: 'Highest-fidelity default for identity-sensitive product edits.',
   },
 ] as const
 

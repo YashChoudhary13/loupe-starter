@@ -16,7 +16,7 @@ import type {
 import type { PresentationClass } from '@/lib/enhance/presentation'
 
 export const TEST_DESCRIPTION =
-  'A matching pair of drop earrings in polished yellow-gold metal. Each earring has a compact oval upper form with densely arranged clear round stones, joined to a smooth oval cabochon-style lower element in a slim bezel. The pair has a balanced vertical silhouette with matching proportions. Small hinged fittings connect the upper and lower sections, and the visible surfaces are smooth without engraving or added texture.'
+  'A matching pair of two drop earrings in polished yellow-gold metal. Each earring has one compact oval upper form with a continuous field of clear round stones, joined by one small hinged fitting to one smooth oval cabochon-style lower element in a slim bezel. Both pieces have the same vertical silhouette and proportions, with no extra pendant or side charm. The visible metal surfaces are smooth without engraving or texture, and the source shows two separate fittings rather than one piece duplicated or mirrored during presentation.'
 
 export const TEST_PROMPTS: LivePrompts = {
   describe: {

@@ -253,11 +253,9 @@ export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
                 },
               }
             : {}),
-          // Measured: 60-100 words of clean JSON costs ~120-160 completion
-          // tokens across curated models (google/gemini-3.1-pro-preview
-          // included — real probe, 2026-07-31, see D56). The margin above that
-          // is for reasoning-capable models whose actual (suppressed but still
-          // billed) reasoning spend OpenRouter documents as opaque/provider-
+          // The maintained identity record is 80-200 words of clean JSON. The
+          // margin above that is for reasoning-capable models whose actual
+          // (suppressed but still billed) reasoning spend OpenRouter documents as opaque/provider-
           // controlled, not a fixed per-effort-level budget — so an occasional
           // heavy call gets room to finish instead of truncating mid-JSON.
           // MAX_COST_USD_PER_DESCRIPTION still bounds actual spend regardless.

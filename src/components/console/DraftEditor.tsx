@@ -1050,7 +1050,7 @@ export function DraftEditor(props: DraftEditorProps) {
               footnote={
                 identity.predicted
                   ? 'The number is allocated when you first Save draft or Publish, so it can move if somebody uses this category first.'
-                  : `Reserved from the ${category?.name ?? 'category'} sequence. If its Shopify draft is deleted, Save draft recreates it with this same retired SKU; the number is never reused.`
+                  : `Reserved from the ${category?.name ?? 'category'} sequence. If its Shopify draft is deleted, reconciliation removes this Loupe draft and returns its photos to Pending; this retired number is never reused.`
               }
             />
           ) : (

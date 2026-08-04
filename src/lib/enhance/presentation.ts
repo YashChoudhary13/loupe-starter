@@ -14,18 +14,24 @@ export const FALLBACK_PRESENTATION_CLASS: PresentationClass = 'flat-curve'
 const PRESENTATION_CLASS_SET = new Set<string>(PRESENTATION_CLASSES)
 
 const COMPOSITION_DETAILS = {
-  'pair-upright': `Show both pieces upright and front-facing, evenly spaced and symmetrically arranged
-side by side at identical scale and height. Balanced, not mechanically duplicated.`,
-  'flat-curve': `Lay the piece flat in a soft open curve, the pendant or centre feature toward the
-lower centre of the frame and the chain sweeping naturally above it. Clasp visible.`,
-  'standing-three-quarter': `Stand the piece on its band, tilted to a gentle three-quarter angle so both the face
-and the profile of the band are readable. Do not lay it flat.`,
-  'angled-band': `Rest the piece at a slight angle with its opening turned toward the camera, so the
-width and inner face of the band are both visible.`,
-  'flat-arc': `Lay the piece flat in a relaxed open arc, clasp and extender chain visible and
-naturally placed rather than tucked away.`,
-  'tray-grid': `Keep every item visible and evenly spaced in aligned rows at consistent scale, the
-whole set square to the frame. Do not crop any item. Do not restage into a scene.`,
+  'pair-upright': `Show the exact source pieces upright and front-facing, side by side at their original
+relative scale. Preserve the source item count and all pair differences; never create one piece by
+duplicating or mirroring the other.`,
+  'flat-curve': `Lay the same continuous piece in a loose open curve. Preserve its exact strand count,
+chain topology, component order, side placement, spacing and exact source hardware set while bending
+only the flexible chain. Do not make an asymmetric design symmetrical or add another extender.`,
+  'standing-three-quarter': `Stand the same piece on its band at a gentle three-quarter angle only as
+far as the source supports. Preserve the exact face, profile, setting, band thickness and proportions;
+do not invent an unseen side or lay it flat.`,
+  'angled-band': `Rest the same piece at a slight angle with its opening toward the camera. Preserve the
+exact width, inner face, closures, terminals, component count and proportions; do not complete,
+mirror or regularise details that are unclear in the source.`,
+  'flat-arc': `Lay the same flexible piece in a relaxed open arc. Preserve its exact strand count,
+chain topology, component sequence, spacing, clasp count, extender count and terminal tags; do not
+add, remove, duplicate or redistribute any component.`,
+  'tray-grid': `Keep the exact source item count visible in aligned rows at their original relative
+scale and in the same sequence. Do not crop, duplicate, mirror, omit or redesign any item, and do not
+restage the set into a scene.`,
 } as const satisfies Record<PresentationClass, string>
 
 export type StructuredDescriptionFailureReason =
@@ -123,7 +129,7 @@ export function parseStructuredDescription(rawResult: string): StructuredDescrip
     return fail('description_not_one_paragraph', rawResult)
   }
   const words = wordCount(description)
-  if (words < 60 || words > 100) {
+  if (words < 80 || words > 200) {
     return fail('description_word_count', rawResult)
   }
 

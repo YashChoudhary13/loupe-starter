@@ -199,7 +199,7 @@ describe('Phase 3B enhancement worker', () => {
     expect(descriptionClient.describe).not.toHaveBeenCalled()
     expect(repository.storedDescriptions).toHaveLength(0)
     expect(repository.completions[0]?.promptText).toContain(
-      'Show both pieces upright and front-facing',
+      'Show the exact source pieces upright and front-facing',
     )
     expect(repository.completions[0]).toMatchObject({
       descriptionInjected: false,
@@ -277,7 +277,7 @@ describe('Phase 3B enhancement worker', () => {
       }),
     ])
     expect(repository.completions[0]?.promptText).toContain(
-      'Lay the piece flat in a soft open curve',
+      'Lay the same continuous piece in a loose open curve',
     )
   })
 

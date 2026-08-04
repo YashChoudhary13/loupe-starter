@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { requireOperatorForAction } from '@/lib/auth/authorize'
 import type { PromptKind } from '@/lib/enhance/repository'
 import { isCuratedModel } from '@/lib/prompts/models'
+import { prepareImagePromptBody } from '@/lib/prompts/prepare-version'
 import { supabaseServer } from '@/lib/supabase/server'
 
 function returnToPrompts(
@@ -40,36 +41,61 @@ export async function selectPromptModelAction(formData: FormData): Promise<void>
   returnToPrompts('updated', kind)
 }
 
-export async function createPromptVersionAction(formData: FormData): Promise<void> {
-  const operator = await requireOperatorForAction()
+export interface PromptVersionFormState {
+  readonly status: 'idle' | 'success' | 'error'
+  readonly message: string | null
+}
+
+export async function createPromptVersionAction(
+  _previousState: PromptVersionFormState,
+  formData: FormData,
+): Promise<PromptVersionFormState> {
+  let operator: Awaited<ReturnType<typeof requireOperatorForAction>>
+  try {
+    operator = await requireOperatorForAction()
+  } catch {
+    return { status: 'error', message: 'Your session expired. Sign in again, then save.' }
+  }
   const kind = String(formData.get('kind') ?? '') as PromptKind
   const name = String(formData.get('name') ?? '').trim()
-  const body = String(formData.get('body') ?? '')
+  const submittedBody = String(formData.get('body') ?? '')
   const model = String(formData.get('model') ?? '').trim()
 
   if (!['describe', 'image'].includes(kind) || !isCuratedModel(kind, model)) {
-    returnToPrompts('error', 'Choose a model from Loupe’s curated list.')
+    return { status: 'error', message: 'Choose a model from Loupe’s curated list.' }
   }
   if (!name || name.length > 160) {
-    returnToPrompts('error', 'Give this prompt version a name of 160 characters or fewer.')
+    return {
+      status: 'error',
+      message: 'Give this prompt version a name of 160 characters or fewer.',
+    }
   }
-  if (!body.trim() || body.length > 20_000) {
-    returnToPrompts('error', 'The prompt must contain 1–20,000 characters.')
+  if (!submittedBody.trim()) {
+    return { status: 'error', message: 'The prompt cannot be empty.' }
+  }
+
+  const prepared =
+    kind === 'image'
+      ? prepareImagePromptBody(submittedBody)
+      : { body: submittedBody.replace(/\r\n?/gu, '\n'), productBlockRepaired: false }
+  if (prepared.body.length > 20_000) {
+    return { status: 'error', message: 'The prompt must contain at most 20,000 characters.' }
   }
 
   const db = supabaseServer()
   const { data, error } = await db.rpc('create_prompt_version', {
     p_kind: kind,
     p_name: name,
-    p_body: body,
+    p_body: prepared.body,
     p_model: model,
     p_actor: operator.email,
   })
   if (error) {
-    returnToPrompts(
-      'error',
-      error.hint?.trim() || error.message || 'The prompt version could not be saved.',
-    )
+    return {
+      status: 'error',
+      message:
+        error.hint?.trim() || error.message || 'The prompt version could not be saved.',
+    }
   }
 
   // Whether an image prompt lets the describer choose the pose is DERIVED from
@@ -87,7 +113,19 @@ export async function createPromptVersionAction(formData: FormData): Promise<voi
   }
 
   revalidatePath('/prompts')
-  returnToPrompts('created', staging ? `${kind}:${staging}` : kind)
+  const stagingNote =
+    staging === 'self'
+      ? ' It stages the product itself.'
+      : staging === 'composed'
+        ? ' The describer chooses the pose.'
+        : ''
+  const repairNote = prepared.productBlockRepaired
+    ? ' Loupe added the required product-description block.'
+    : ''
+  return {
+    status: 'success',
+    message: `New ${kind === 'describe' ? 'descriptor' : 'image'} prompt version saved. The current prompt did not change.${repairNote}${stagingNote}`,
+  }
 }
 
 /**

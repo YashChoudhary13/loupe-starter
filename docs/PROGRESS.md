@@ -29,6 +29,263 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-04 — Reference-faithful image defaults and all presets revised
+
+**Goal this session:** replace the inaccurate jewellery redraw workflow with the highest-reliability
+descriptor/image pair and make product identity outrank catalogue styling.
+
+**Built:**
+- Live default pair → `openai/gpt-5.6-sol` inspects the source and `openai/gpt-image-2` performs the
+  edit. The satin pair is current in production.
+- Exact identity record → descriptor output is now 80–200 words and records exact visible counts,
+  topology, strand count, side-specific component order, mounting method, hardware and proportions.
+- Surgical image contract → the reference image is the sole authority; explicit locks cover the six
+  observed failures: changed charm settings, chain construction, duplicate extenders, missing solid
+  motifs, simplified pendant relief and altered heart topology.
+- Higher-detail model input → ordinary 1200×1600 source photographs are retained instead of reduced
+  to 768×1024; unusually large inputs are bounded at a 2048px long edge.
+- Preset audit → satin, marble, yellow, hand-chain and bag each have a new reviewed describe/image
+  pair on the same two models. Preset promotion now selects the newest maintained revision.
+- Sol cost guard → the description ceiling is $0.05 after real calls measured $0.0300–$0.0366; the
+  separate $0.20 image ceiling is unchanged.
+
+**Verified:**
+- Six descriptor-only probes against the six reported raw necklaces correctly returned: seven
+  coloured drops and their mounting styles; eight chain strands; four metal charms plus three bezel
+  stones; eight solid hearts; the rose and exactly three leaves; and the asymmetric four-heart drop.
+  Total probe cost was $0.1951725. No image-generation probe was charged.
+- Production readback shows the live satin pair on GPT-5.6 Sol / GPT Image 2 and all ten latest
+  preset halves carrying the new exact-count/reference-authority contracts.
+- 535/535 tests, TypeScript, ESLint and the production build passed. Migrations
+  `20260804180000` and `20260804181000` are applied with no pending prompt migrations.
+- Vercel deployment `dpl_4ogGDi4Gj9HmGeFC1bwnKjUZKWSa` is READY and aliased to
+  `https://qimati-loupe.vercel.app`; `/health` reports all 19 tables readable.
+
+**Not finished / known broken:** GPT Image 2 substantially improves editing reliability but remains a
+generative model, so the operator must still compare the first real regenerated batch against the
+source. This session deliberately did not spend on six image-generation probes.
+
+**Next session should start with:** redo the six reported necklaces through the deployed satin preset,
+compare exact component counts/settings against the originals, and retain the outputs as a visual
+regression set.
+
+---
+
+## 2026-08-04 — Prompt-version saves retain edits and active presets stay visible
+
+**Goal this session:** fix image-prompt version saves that failed without retaining the operator's
+work, and show when a preset is already active.
+
+**Built:**
+- Retained prompt-version form state → Create a new version now reports validation beside the
+  editor without navigating away or discarding the edited name, prompt or selected model.
+- Safe image-prompt preparation → a pasted image prompt that omits Loupe's required PRODUCT block
+  receives the canonical block automatically; duplicate or ambiguous template tokens are still
+  refused instead of being silently rewritten.
+- Preset-aware model selection → immutable model copies now preserve both `preset_slug` and the
+  prompt's derived composition behavior. The active preset badge reads “Being used.”
+- Production preset repair → restored the current image/description pair's `satin` identity only
+  after both live bodies uniquely matched that complete preset.
+- Prompt regressions and D82 → cover missing/valid/whitespace/duplicate PRODUCT blocks and prove
+  that model changes retain a self-staging preset's identity and behavior.
+
+**Verified:**
+- Production readback reports both live prompts with `preset_slug = satin`; the image prompt still
+  uses composition and both selected models are unchanged.
+- Prompt preparation and database prompt-management coverage passed 15/15. TypeScript, ESLint and
+  the complete local production build passed.
+- Production migration `20260804160000_preserve_prompt_preset_on_model_change.sql` applied
+  successfully. Vercel deployment `dpl_GgJpCdbB5N71rLUMdFhBWeRqgaNH` is READY and aliased to
+  `https://qimati-loupe.vercel.app`; `/health` reports the database reachable and all 19 tables
+  readable.
+
+**Not finished / known broken:** the isolated browser was not signed into Loupe, so the final
+authenticated click-through was not performed there. The save path, validation behavior, preset
+readback and production build were verified independently without creating a throwaway live prompt.
+
+**Surprises:** the database save function itself accepted a rollback-only copy of the current image
+prompt. The reported failure therefore came from structural validation of the edited body, while
+the redirecting form made that recoverable error destructive by losing the edit. Separately, model
+selection had copied only the old core fields and silently dropped the preset identity.
+
+**Next session should start with:** create one real image-prompt version from the deployed Prompts
+screen, confirm the inline success message appears, then promote it only if its wording is intended
+to become live.
+
+---
+
+## 2026-08-04 — Live updates and global process notifications
+
+**Goal this session:** make enhancement and queue changes appear throughout Loupe without manually
+refreshing the browser, with a global indication of new and active work.
+
+**Built:**
+- Global live heartbeat → one authenticated four-second, image-free poll follows monotonic audit
+  event ids plus queued/enhancing totals across Console, Drafts, Tracking and Prompts. It pauses in
+  hidden tabs, catches up on focus, and retains its cursor across in-app navigation.
+- Global activity UI → a persistent sidebar capsule shows queued/enhancing totals; short
+  top-centre notices announce new arrivals, completed photos and failures. Ready notices link to
+  Console, failures to Tracking, and only attention notices use amber.
+- Console and Tracking integration → meaningful audit transitions refresh the queue grid or
+  Tracking rows automatically. Intermediate provider/storage events do not trigger heavy reads,
+  valid signed thumbnails are preserved, and quiet Tracking sessions renew URLs after nine minutes.
+- Live-activity regressions and D83 → prove that a complete discover→claim→enhance cycle between
+  polls collapses into one ready notice and cannot be missed by unchanged totals.
+
+**Verified:**
+- `tests/live-activity.test.ts` plus queue-view coverage passed 13/13; TypeScript and ESLint passed;
+  local and Vercel production builds completed successfully.
+- A read-only configured-database heartbeat returned an audit revision plus queue/enhancement
+  counts with no image reads. Production health then reported the database reachable and all 19
+  tables readable.
+- Isolated live-update deployment `dpl_Hwq2HxozGCjMfuEJVddnMfGStctb` reached READY. The production
+  alias subsequently advanced to the integrated workspace deployment
+  `dpl_GgJpCdbB5N71rLUMdFhBWeRqgaNH`, also READY at `https://qimati-loupe.vercel.app`; a fresh
+  health check against that current alias reported all 19 tables readable.
+
+**Not finished / known broken:** the isolated acceptance browser is not signed into Loupe and no
+connected signed-in Chrome session was available, so it could verify the deployment and login
+boundary but not visually inspect the authenticated Console/Tracking pages. No production row was
+mutated merely to manufacture a notification.
+
+**Surprises:** the old Console already polled two current totals every five seconds, but that signal
+could miss a full start-and-finish cycle and existed nowhere outside Console; Tracking was a static
+snapshot until its manual Refresh button was pressed.
+
+**Next session should start with:** while signed into Loupe, leave Tracking open during one real
+upload and confirm the global sequence shows queued/enhancing, then the row and Console tile become
+Enhanced without a browser refresh.
+
+---
+
+## 2026-08-04 — Enhancement retries reduced to 1m/2m/5m
+
+**Goal this session:** replace the long enhancement backoff with exactly three short retries and
+show an error when they are exhausted.
+
+**Built:**
+- `20260804100500_three_short_enhancement_retries.sql` → the initial description/image attempt now
+  gets only three automatic retries after 1, 2 and 5 minutes; failed attempt 4 becomes a visible
+  `failed` row. The same budget applies to manual image-redo jobs. Existing queued deadlines were
+  shortened without extending any row, and already-exhausted work is made visibly failed.
+- Queue state-machine tests → prove the three exact delays, terminal fourth attempt, cleared lease,
+  preserved raw error details, and no silent flat-curve fallback after retry exhaustion.
+- `CLAUDE.md` and D80 → make the operator-selected retry policy the current contract. A completed
+  description call that only breaches its cost ceiling still takes the existing immediate
+  no-description fallback because repeating a successful over-budget call would waste money.
+
+**Verified:**
+- A rollback-only production SQL check confirmed all three replaced database functions contain
+  the 2-minute interval and no 20-minute interval; the migration then applied successfully as
+  version `20260804100500`.
+- BK364's three waiting uploads were rescheduled from 15:43 IST to their already-passed five-minute
+  deadline. The normal cron claimed all three at 15:37 IST, stored their descriptions, and
+  completed each enhancement with two image versions, no error and status `enhanced`.
+- The broad focused database/security run passed `127/128`; its only failure is the pre-existing
+  live describe-prompt body/hash drift, unrelated to retry timing. After aligning the worker's
+  terminal outcome with the database, the retry/worker regression run passed `33/33`. TypeScript,
+  ESLint, local production build and Vercel production build passed.
+- The final isolated deployment `dpl_Bt1Yged8p1oKpkCktnXDfLxvZ3yE` is READY and aliased to
+  `https://qimati-loupe.vercel.app`; unrelated concurrent Shopify-reconciliation edits were not
+  included in that release.
+
+**Not finished / known broken:** the live describe-prompt fixture remains out of sync with the
+operator's current prompt body. It was not overwritten to make an unrelated test pass.
+
+**Surprises:** the scheduler claimed the three due rows at the same moment as a manual verification
+tick, so the manual tick correctly reported zero claims while the scheduled worker completed them.
+
+**Next session should start with:** verify Tracking presents a deliberately exhausted retryable
+fixture as Failed with its provider error and a human Retry action.
+
+---
+
+## 2026-08-04 — Shopify-deleted drafts now disappear from Loupe
+
+**Goal this session:** make Shopify authoritative for deletion of product drafts so a draft
+deleted in Shopify is also removed from the Loupe console.
+
+**Built:**
+- `delete_shopify_missing_draft()` migration → atomically deletes only an unpublished Loupe draft
+  whose exact recorded Shopify product is confirmed missing, refuses a changed id or active
+  Save/Publish lease, returns its source photographs to Pending, preserves the audit trail, and
+  never lowers the category SKU counter.
+- Shopify draft reconciliation → checks both assembling and failed Shopify-backed drafts; ACTIVE
+  products still promote normally, while missing products now invoke the fenced deletion instead
+  of leaving a recreatable Loupe editor. Daily reconciliation and manual Full reconciliation share
+  this path.
+- Tracking and draft copy → Full reconciliation now states that Shopify-deleted drafts are removed,
+  reports the removal count in the main success message, and explains that preserved photographs
+  return to Pending.
+- Reconciliation coverage → proves missing-product deletion, stale-id refusal, active-lease refusal,
+  idempotency, photo preservation, permanent SKU retirement, service-role isolation, and surfaced
+  database failures.
+- D81 → records the owner-directed Shopify-authoritative deletion behavior, superseding D72's
+  recreation rule and D77's missing-draft warning.
+
+**Verified:**
+- Production migration `20260804123000_delete_shopify_missing_drafts.sql` applied successfully.
+- Focused production-database coverage passed: `console-drafts.sql.test.ts` 33/33,
+  `rls.test.ts` 64/64, and `shopify-draft-sync.test.ts` 2/2. The relevant schema/RPC assertions
+  also passed.
+- Production reconciliation checked three Shopify-backed drafts and removed BK363 and BK364 with
+  zero failures. Independent readback found no remaining product-draft rows for either id, found
+  both deletion audit events, and found both source photographs at `enhanced` with no draft id.
+  NK976 remains in Loupe because its Shopify DRAFT still exists.
+- TypeScript, ESLint, and the local production build passed. Vercel deployment
+  `dpl_A1wZ75xXNbPZWHGSipUn3DJ25Xbx` is READY and aliased to
+  `https://qimati-loupe.vercel.app`; `/health` reports the database reachable and all 19 tables
+  readable.
+
+**Not finished / known broken:** one unrelated existing schema assertion still expects the former
+default description-prompt fingerprint (`1887` characters / old SHA) while production holds the
+current `1730`-character prompt. It was the only failure among 152 assertions in the combined
+focused run and is outside this deletion change.
+
+**Surprises:** the old Full reconciliation did detect missing Shopify drafts, but hid them outside
+the durable issue count under a collapsed Details disclosure; its headline therefore said zero
+issues while stale drafts remained visible.
+
+**Next session should start with:** delete a disposable Shopify DRAFT, run Full reconciliation from
+Tracking, and confirm the deployed success banner reports one removal while its photo returns to
+Pending.
+
+---
+
+## 2026-08-04 — Seven-upload enhancement queue diagnosis
+
+**Goal this session:** explain why four of seven new Drive uploads enhanced while three remained
+queued.
+
+**Built:** no runtime change; this was a production-state diagnosis.
+
+**Verified:**
+- All seven files were discovered together at approximately 15:14 IST. The enhancement worker's
+  intentional batch size is four, so four were claimed first and completed normally with two image
+  versions each.
+- The remaining three were claimed on the next worker tick and retried twice. Every failure came
+  from the description provider as HTTP 403 `Key limit exceeded (total limit)`; none was lost,
+  duplicated, or left under a stale lease.
+- OpenRouter's authenticated key readback reported a total limit of `$3.00`, usage of `$3.2910094`,
+  and `$0` remaining. The three rows remain `discovered`/retryable and have no generated version
+  yet.
+- After the owner raised the limit, provider readback reported a `$5.00` cap and `$1.7089906`
+  remaining. The three rows had already completed attempt 3, so their normal 20-minute backoff
+  keeps them visibly queued until approximately 15:43 IST; each is due then with no active lease.
+
+**Not finished / known broken:** the provider limit is now sufficient, but the three rows are
+waiting for their already-scheduled retry at approximately 15:43 IST. No queue mutation was made
+to bypass the durable backoff.
+
+**Surprises:** four concurrent calls were accepted before the provider enforced the aggregate
+limit, so usage reached `$3.2910094` against a `$3.00` key cap; the following batch then received
+the 403 responses.
+
+**Next session should start with:** verify the three existing rows resume on their scheduled retry
+and reach `enhanced`; do not upload them again.
+
+---
+
 ## 2026-08-04 — Shopify Multicolor spelling compatibility
 
 **Goal this session:** make the eight-colour BK364 draft update Shopify after the operator added

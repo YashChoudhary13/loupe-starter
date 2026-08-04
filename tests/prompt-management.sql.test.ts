@@ -219,6 +219,35 @@ describe('deployed style presets', () => {
     expect(after.rows[0]!.count).toBe(before.rows[0]!.count)
   })
 
+  it('keeps preset identity and self-staging behavior when either model changes', async () => {
+    await db.query(`select * from public.promote_prompt_preset('bag', 'test:presets')`)
+    await db.query(
+      `select public.select_prompt_model('image', 'google/gemini-3.1-flash-image', 'test:presets')`,
+    )
+    await db.query(
+      `select public.select_prompt_model('describe', 'google/gemini-3.1-pro-preview', 'test:presets')`,
+    )
+
+    expect(await liveSlugs()).toEqual({ describe: 'bag', image: 'bag' })
+    const image = await db.query<{
+      uses_composition: boolean
+      preset_slug: string
+      tokens: number
+    }>(
+      `select uses_composition,
+              preset_slug,
+              (length(body) - length(replace(body, '{{COMPOSITION_DETAIL}}', '')))
+                / length('{{COMPOSITION_DETAIL}}') as tokens
+         from public.prompts
+        where kind = 'image' and is_default and archived_at is null`,
+    )
+    expect(image.rows[0]).toEqual({
+      uses_composition: false,
+      preset_slug: 'bag',
+      tokens: 0,
+    })
+  })
+
   it('refuses a preset that has only one half', async () => {
     await db.query(
       `update public.prompts set preset_slug = null
@@ -245,6 +274,61 @@ describe('deployed style presets', () => {
       'yellow',
     ])
     expect(halves.rows.every((row) => row.kinds === 2)).toBe(true)
+  })
+
+  it('uses the reference-faithful models and newest reviewed contract for every preset', async () => {
+    const latest = await db.query<{
+      preset_slug: string
+      kind: 'describe' | 'image'
+      model: string
+      body: string
+    }>(
+      `select distinct on (preset_slug, kind)
+              preset_slug, kind, model, body
+         from public.prompts
+        where preset_slug is not null
+        order by preset_slug, kind, created_at desc, id desc`,
+    )
+
+    expect(latest.rows).toHaveLength(10)
+    for (const row of latest.rows) {
+      if (row.kind === 'describe') {
+        expect(row.model).toBe('openai/gpt-5.6-sol')
+        expect(row.body).toContain('Exact counts are mandatory')
+        expect(row.body).not.toContain('Do NOT state exact counts')
+        expect(row.body).toContain('80 to 200 words')
+      } else {
+        expect(row.model).toBe('openai/gpt-image-2')
+        expect(row.body).toContain('REFERENCE AUTHORITY')
+        expect(row.body).toContain('sole visual authority')
+        expect(row.body).not.toContain('warm luxury studio lighting')
+      }
+    }
+  })
+
+  it('makes the live satin pair the highest-reliability model pair', async () => {
+    const live = await db.query<{
+      kind: 'describe' | 'image'
+      model: string
+      preset_slug: string
+      body: string
+    }>(
+      `select kind, model, preset_slug, body
+         from public.prompts
+        where is_default and archived_at is null
+        order by kind`,
+    )
+
+    expect(live.rows.map(({ kind, model, preset_slug }) => ({ kind, model, preset_slug }))).toEqual([
+      { kind: 'describe', model: 'openai/gpt-5.6-sol', preset_slug: 'satin' },
+      { kind: 'image', model: 'openai/gpt-image-2', preset_slug: 'satin' },
+    ])
+    expect(live.rows.find((row) => row.kind === 'describe')!.body).toContain(
+      'component ledger',
+    )
+    expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
+      'jump-ring-mounted charm',
+    )
   })
 
   it('offers the accepted catalogue prompt as a preset, so there is a way back', async () => {

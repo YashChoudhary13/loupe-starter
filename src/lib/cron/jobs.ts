@@ -109,9 +109,9 @@ export async function runEnhanceCron() {
 }
 
 export async function runShopifyReconciliationCron() {
-  // Promotion runs FIRST. A draft the operator published from Shopify's own
-  // admin should be compared as a published product in the very same run,
-  // rather than waiting another day to be noticed.
+  // Draft sync runs FIRST. A draft published from Shopify's own admin should be
+  // compared as a published product in this same run; a draft deleted there
+  // should disappear from Loupe before the tracking snapshot is rebuilt.
   const { promotePublishedInShopify } = await import('@/lib/reconciliation/promote')
   const { runShopifyReconciliation } = await import('@/lib/reconciliation/server')
 

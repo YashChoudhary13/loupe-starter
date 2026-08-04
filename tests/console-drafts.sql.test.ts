@@ -1055,7 +1055,7 @@ describe('the Shopify draft stage (D60)', () => {
     expect(data!.status).toBe('assembling')
   })
 
-  it('replaces a deleted Shopify draft id without changing its reserved category SKU', async () => {
+  it('can replace the recorded Shopify id before reconciliation without changing the reserved category SKU', async () => {
     const before = await db
       .from('product_drafts')
       .select('reserved_sku, reserved_handle')
@@ -1092,5 +1092,73 @@ describe('the Shopify draft stage (D60)', () => {
       p_actor: ACTOR,
     })
     expect(error?.code).toBe('22023')
+  })
+
+  it('does not delete a draft when the recorded Shopify id changed after the remote check', async () => {
+    const { data, error } = await db.rpc('delete_shopify_missing_draft', {
+      p_draft_id: draftId,
+      p_expected_shopify_product_id: 'gid://shopify/Product/STALE',
+      p_actor: ACTOR,
+    })
+    expect(error).toBeNull()
+    expect(data).toBe(false)
+    expect((await draftRow(draftId)).id).toBe(draftId)
+  })
+
+  it('does not delete a draft while Save draft or Publish holds the lease', async () => {
+    const lease = await db.rpc('begin_draft_publish', {
+      p_draft_id: draftId,
+      p_lease_seconds: 120,
+      p_actor: ACTOR,
+    })
+    expect(lease.error).toBeNull()
+
+    const removal = await db.rpc('delete_shopify_missing_draft', {
+      p_draft_id: draftId,
+      p_expected_shopify_product_id: 'gid://shopify/Product/D60-RECREATED',
+      p_actor: ACTOR,
+    })
+    expect(removal.error).toBeNull()
+    expect(removal.data).toBe(false)
+
+    await db.rpc('end_draft_publish', {
+      p_draft_id: draftId,
+      p_lease_token: lease.data as string,
+    })
+  })
+
+  it('deletes a Shopify-missing draft, preserves its retired SKU, and returns its photo to Pending', async () => {
+    const counterBeforeRemoval = await readCounter('NK')
+    const { data, error } = await db.rpc('delete_shopify_missing_draft', {
+      p_draft_id: draftId,
+      p_expected_shopify_product_id: 'gid://shopify/Product/D60-RECREATED',
+      p_actor: ACTOR,
+    })
+    expect(error).toBeNull()
+    expect(data).toBe(true)
+
+    const removed = await db.from('product_drafts').select('id').eq('id', draftId).maybeSingle()
+    expect(removed.error).toBeNull()
+    expect(removed.data).toBeNull()
+
+    const intake = await intakeRow(fixtures[10]!.intakeFileId)
+    expect(intake).toMatchObject({
+      status: 'enhanced',
+      product_draft_id: null,
+      grouped_at: null,
+    })
+    expect(await eventNames(draftId)).toContain('draft.deleted_after_shopify_delete')
+    expect(await eventNames(fixtures[10]!.intakeFileId)).toContain(
+      'intake.ungrouped_after_shopify_delete',
+    )
+    expect(await readCounter('NK')).toBe(counterBeforeRemoval)
+
+    const repeated = await db.rpc('delete_shopify_missing_draft', {
+      p_draft_id: draftId,
+      p_expected_shopify_product_id: 'gid://shopify/Product/D60-RECREATED',
+      p_actor: ACTOR,
+    })
+    expect(repeated.error).toBeNull()
+    expect(repeated.data).toBe(false)
   })
 })

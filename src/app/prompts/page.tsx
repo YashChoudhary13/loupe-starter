@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { Sidebar } from '@/components/console/Sidebar'
+import { PromptVersionForm } from '@/components/prompts/PromptVersionForm'
 import { requireOperator } from '@/lib/auth/authorize'
 import { curatedModel, modelsFor } from '@/lib/prompts/models'
 import {
@@ -13,7 +14,6 @@ import { presetNote } from '@/lib/prompts/presets'
 import { loadTrackingAttentionCount } from '@/lib/tracking/read-model'
 
 import {
-  createPromptVersionAction,
   promotePromptVersionAction,
   promptPresetAction,
   selectPromptModelAction,
@@ -158,7 +158,7 @@ function PresetPicker({ presets }: { presets: readonly PromptPreset[] }) {
               </p>
               {preset.isActive ? (
                 <span className="shrink-0 rounded-pill bg-ink px-2 py-0.5 text-[9px] uppercase tracking-[0.1em] text-white">
-                  In use
+                  Being used
                 </span>
               ) : null}
             </div>
@@ -268,69 +268,13 @@ function PromptGroup({
         <summary className="cursor-pointer select-none text-[11.5px] font-medium text-ink">
           Create a new version
         </summary>
-        <form action={createPromptVersionAction} className="mt-4">
-          <input type="hidden" name="kind" value={kind} />
-          <label
-            htmlFor={`${kind}-version-name`}
-            className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground"
-          >
-            Version name
-          </label>
-          <input
-            id={`${kind}-version-name`}
-            name="name"
-            required
-            maxLength={160}
-            defaultValue={current?.name ?? ''}
-            className="mt-1.5 w-full rounded-field bg-chip px-3 py-2.5 text-[12px] text-ink outline-none focus:ring-2 focus:ring-ink/15"
-          />
-          <label
-            htmlFor={`${kind}-version-body`}
-            className="mt-3 block text-[9px] uppercase tracking-[0.12em] text-muted-foreground"
-          >
-            Prompt
-          </label>
-          <textarea
-            id={`${kind}-version-body`}
-            name="body"
-            required
-            maxLength={20_000}
-            rows={12}
-            defaultValue={current?.body ?? ''}
-            className="mt-1.5 w-full resize-y rounded-field bg-chip px-3 py-2.5 font-mono text-[10.5px] leading-relaxed text-ink outline-none focus:ring-2 focus:ring-ink/15"
-          />
-          <label
-            htmlFor={`${kind}-version-model`}
-            className="mt-3 block text-[9px] uppercase tracking-[0.12em] text-muted-foreground"
-          >
-            Model
-          </label>
-          <select
-            id={`${kind}-version-model`}
-            name="model"
-            defaultValue={current?.model ?? options[0]?.id}
-            className="mt-1.5 w-full rounded-field bg-chip px-3 py-2.5 text-[11.5px] text-ink outline-none focus:ring-2 focus:ring-ink/15"
-          >
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.tier} · {option.label}
-              </option>
-            ))}
-          </select>
-          {kind === 'image' ? (
-            <p className="mt-2 text-[10.5px] leading-relaxed text-muted-foreground">
-              Keep exactly one PRODUCT block. Keep the {'{{COMPOSITION_DETAIL}}'} token if the
-              describer should choose the pose, or remove it entirely if the prompt stages the
-              product itself. Loupe checks both before saving and again before promotion.
-            </p>
-          ) : null}
-          <button
-            type="submit"
-            className="mt-3 rounded-pill bg-ink px-4 py-2 text-[11px] font-medium text-white transition-colors hover:bg-[#242428]"
-          >
-            Save new version
-          </button>
-        </form>
+        <PromptVersionForm
+          kind={kind}
+          currentName={current?.name ?? ''}
+          currentBody={current?.body ?? ''}
+          currentModel={current?.model ?? options[0]?.id ?? ''}
+          models={options}
+        />
       </details>
 
       <div className="mt-5">

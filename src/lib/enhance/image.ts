@@ -16,6 +16,15 @@ export interface ImageDimensions {
   readonly height: number
 }
 
+/**
+ * The raw catalogue photographs are commonly 1200x1600. Reducing them to a
+ * 1024px long edge made a hair-thin chain only a few pixels wide before either
+ * model inspected it, erasing the very link, setting and attachment details we
+ * ask the models to preserve. Keep normal phone-sized originals intact while
+ * still bounding unusually large uploads.
+ */
+export const MODEL_INPUT_MAX_EDGE = 2048
+
 function dimensions(
   width: number | undefined,
   height: number | undefined,
@@ -38,14 +47,14 @@ export async function prepareModelInput(input: Buffer): Promise<PreparedImage> {
 
     const base = sharp(input, { failOn: 'error' })
       .autoOrient()
-      .resize(1024, 1024, {
+      .resize(MODEL_INPUT_MAX_EDGE, MODEL_INPUT_MAX_EDGE, {
         fit: 'inside',
         withoutEnlargement: true,
       })
 
     const output = metadata.hasAlpha
       ? await base.png({ compressionLevel: 9 }).toBuffer({ resolveWithObject: true })
-      : await base.jpeg({ quality: 90, chromaSubsampling: '4:4:4' }).toBuffer({
+      : await base.jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toBuffer({
           resolveWithObject: true,
         })
 

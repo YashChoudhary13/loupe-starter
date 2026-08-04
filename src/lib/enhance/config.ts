@@ -75,7 +75,7 @@ export function enhancementConfig(env: Environment = process.env): EnhancementCo
     maxCostUsdPerDescription: positiveNumber(
       env,
       'MAX_COST_USD_PER_DESCRIPTION',
-      0.02,
+      0.05,
     ),
   }
 }
