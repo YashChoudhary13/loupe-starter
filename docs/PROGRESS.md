@@ -29,6 +29,110 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-04 — Shopify Multicolor spelling compatibility
+
+**Goal this session:** make the eight-colour BK364 draft update Shopify after the operator added
+more colours and stock in Loupe.
+
+**Built:**
+- `colour-options.ts` → saved-colour matching now treats Loupe's British `Multi Colour` label and
+  Shopify's taxonomy-owned `Multicolor` label as the same native Color entry. The existing Shopify
+  metaobject and its image swatch are reused; Loupe still does not invent flat data for an unknown
+  multi-colour pattern.
+- Saved-colour regression → proves the spelling alias resolves in the initial read without trying
+  to create or overwrite the merchant's saved Shopify entry.
+- D79 → records the display-label compatibility boundary.
+
+**Verified:**
+- Production audit showed Loupe had saved all eight requested BK364 variants with stock `1`, then
+  Shopify refused only `Multi Colour`; a live saved-colour read found Shopify already held the
+  equivalent `Multicolor` entry and image swatch.
+- The corrected normal publish path retried the same draft and the same Shopify product id
+  `gid://shopify/Product/10143283052841`. Shopify readback reports Silver, Gold, Yellow, Red, Pink,
+  Green, Multicolor and Purple, each at price `100.00`, inventory `1`, with product status DRAFT.
+- Focused Shopify coverage passed `26/26`; TypeScript, ESLint, the local production build, and the
+  Vercel production build passed.
+- Deployment `dpl_8M79J4iBRiqVY67NpvbFCn6rtTQy` is READY and aliased to
+  `https://qimati-loupe.vercel.app`; `/health` confirmed the database is reachable.
+
+**Not finished / known broken:** none for this failure. Shopify intentionally renders its native
+entry label as `Multicolor`, even though Loupe displays `Multi Colour` to operators.
+
+**Surprises:** the required native entry was not missing. It already existed with a richer image
+swatch, but exact spelling comparison prevented Loupe from finding it.
+
+**Next session should start with:** edit BK364 once more from a freshly reloaded console and confirm
+an added/removed ordinary colour reaches Shopify without an error.
+
+---
+
+## 2026-08-04 — Added console access for a second operator
+
+**Goal this session:** allow `kalpvrakshstones@gmail.com` to sign in to the production console.
+
+**Built:**
+- Production `app_users` membership → created an active `operator` entry for
+  `kalpvrakshstones@gmail.com` without granting prompt or user-administration privileges.
+- Production event audit → recorded `access.user_granted` with actor `codex:owner-request`.
+
+**Verified:** an independent production readback returned app-user id
+`ca60a378-7b4c-4182-877b-c85a0ad8a4d4`, the exact requested email, role `operator`, and
+`active: true`. The matching audit event was also read back successfully.
+
+**Not finished / known broken:** the app membership does not create or control the Google account;
+the user must sign in with that exact Google email address.
+
+**Surprises:** none.
+
+**Next session should start with:** have the new operator sign in and confirm the console opens.
+
+---
+
+## 2026-08-04 — Shopify draft edits now update native Color products
+
+**Goal this session:** fix saved Shopify drafts that stopped accepting later console edits to
+colours, per-colour stock and price.
+
+**Built:**
+- `product-set.ts` → native Color remains exclusively in Shopify's linked option input; Loupe no
+  longer writes the option-owned `shopify.color-pattern` metafield through the declarative
+  `productSet.metafields` list. The independent `custom.material` value is now set or cleared in a
+  dedicated follow-up mutation.
+- Shopify payload regression → proves a one-colour draft can become a three-colour draft without
+  sending any product metafields in the option/variant mutation, then verifies material is saved
+  separately against the returned product id.
+- D78 → supersedes D76's production workaround with the contract observed on an actual changed
+  colour set.
+
+**Verified:**
+- Production failure reproduced on BK364: Shopify rejected Yellow → Silver/Gold/Yellow with
+  `input.metafields.0: This metafield is connected to an option. To make changes, edit the option.`
+- The corrected payload succeeded against the same Shopify DRAFT and product id. Readback reports
+  Silver, Gold and Yellow, each SKU `BK364`, price `100.00`, inventory `1`; material is `316L`, the
+  original image is READY, and the product remains DRAFT.
+- Loupe bookkeeping was repaired through the normal retry path: the draft is `assembling`, its
+  stored error is null, and `draft.sent_to_shopify` records the same Shopify product id.
+- Focused colour/publish coverage passed `47/47`. The full suite passed `514/516`; its only failures
+  are the existing live prompt preset/body fixture drift, unrelated to Shopify. TypeScript, ESLint,
+  `git diff --check`, local production build, and the Vercel production build passed.
+- Deployment `dpl_BsVWa6idcHQtJ9RnwC6tCxiVrGKQ` is READY and aliased to
+  `https://qimati-loupe.vercel.app`; `/health` returned HTTP 200. The deployment was built from an
+  isolated worktree and does not include the separate uncommitted console-scrolling edits.
+
+**Not finished / known broken:** the two live prompt-fixture tests remain out of sync with the
+operator's current prompt configuration; this session did not overwrite live prompt choices to
+make unrelated tests pass.
+
+**Surprises:** repeating the linked colour-pattern metafield was enough for an unchanged retry but
+made a changed colour set fail. Omitting only that field also fails because `productSet.metafields`
+is a declarative list and Shopify interprets the omission as deleting an option-owned metafield.
+The safe boundary is to omit that list entirely for native Color and update material separately.
+
+**Next session should start with:** edit one ordinary Shopify colour draft twice from the deployed
+console—adding and then removing a colour—and confirm both the variant list and inventory readback.
+
+---
+
 ## 2026-08-04 — Remove blank document scrolling from console and drafts
 
 **Goal this session:** stop image selection and full-size preview from letting the browser scroll

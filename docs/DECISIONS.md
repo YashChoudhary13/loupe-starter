@@ -2044,3 +2044,46 @@ The third step corrects **future allocation**, not existing product history. The
 or lower Shopify maximum can never move a counter backward or make an old SKU reusable. Existing
 wrong SKUs remain visible reconciliation issues requiring a deliberate product-specific repair.
 The control states this boundary before it runs and records the counter scan in the event audit.
+
+---
+
+### D78 — Native Color product updates omit `productSet.metafields`
+
+*Production failure and acceptance, 2026-08-04; supersedes the linked-metafield workaround in
+D76 while preserving its failed-media rule.*
+
+Shopify owns `shopify.color-pattern` once that metafield is connected to the product's native
+`Color` option. The option must be changed through `productOptions.linkedMetafield.values`, and
+each variant selects its entry through `linkedMetafieldValue`.
+
+`productSet.metafields` is a declarative list, which creates two distinct failures on a native
+Color product:
+
+- including only `custom.material` asks Shopify to remove the omitted connected colour metafield
+  and returns `CAPABILITY_VIOLATION`;
+- repeating the connected colour metafield lets an unchanged retry pass, but adding or removing a
+  colour asks Shopify to edit the option-owned metafield directly and returns "To make changes,
+  edit the option."
+
+Loupe therefore omits `productSet.metafields` entirely whenever the option is native Color. After
+the product/options/variants mutation succeeds, it synchronises the unrelated `custom.material`
+metafield with `metafieldsSet`, or removes it with `metafieldsDelete` when an unfinished draft has
+no material. This is intentionally a two-call write. If the second call fails, the draft is marked
+failed while retaining its handle; the normal retry converges on the same Shopify product and does
+not create a duplicate.
+
+---
+
+### D79 — Native saved-colour matching normalises British and Shopify spellings
+
+*Production failure and acceptance, 2026-08-04; narrows D75's existing-entry rule.*
+
+Loupe may display British jewellery vocabulary such as `Multi Colour`, while Shopify's taxonomy
+owns the American label `Multicolor`. Saved native Color entries are matched through a canonical
+comparison that treats `colour` and `color` as equivalent and ignores spacing and punctuation.
+The product variant still receives Shopify's native display label because the linked metaobject is
+the source of truth.
+
+This is identity matching, not swatch generation. Loupe reuses the merchant's existing metaobject,
+including its richer image/pattern data, and continues to refuse an unknown multi-colour value
+rather than manufacture a misleading solid swatch.
