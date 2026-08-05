@@ -301,9 +301,27 @@ describe('deployed style presets', () => {
          * models have acceptance evidence; see D87.
          */
         expect(['openai/gpt-5.6-sol', 'moonshotai/kimi-k3']).toContain(row.model)
-        expect(row.body).toContain('Exact counts are mandatory')
         expect(row.body).not.toContain('Do NOT state exact counts')
         expect(row.body).toContain('80 to 200 words')
+
+        /**
+         * Every describer must refuse to report the photograph's accidental
+         * layout. Without this the describer wrote "laid as a loose loop",
+         * "along the top edge", "down the left side", that text was injected as
+         * the PRODUCT record, and the generated necklace came out as the lumpy
+         * rectangle the piece had been dumped in.
+         */
+        expect(row.body).toContain('Describe the object, not the photograph')
+
+        /**
+         * "Exact counts are mandatory" forced a confident count from an
+         * uncertain describer: it reported eleven stations where there are ten,
+         * and the image model invented an eleventh. Hedging is now required
+         * instead, because with no number the image stage falls back on the
+         * photograph, which is correct.
+         */
+        expect(row.body).not.toContain('Exact counts are mandatory')
+        expect(row.body).toContain('WITHOUT a total')
       } else {
         expect(row.model).toBe('openai/gpt-image-2')
         expect(row.body).toContain('SOURCE AUTHORITY')
