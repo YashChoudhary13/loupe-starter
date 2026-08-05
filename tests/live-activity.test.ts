@@ -55,6 +55,9 @@ describe('global live activity', () => {
     expect(noticesForLiveEvents([event(13, 'intake.failed')])[0]?.text).toBe(
       '1 process needs attention',
     )
+    expect(
+      noticesForLiveEvents([event(14, 'intake.paused_provider_quota')])[0]?.text,
+    ).toBe('1 photo paused — provider credits required')
   })
 
   it('refreshes heavy screens only for transitions that change their visible state', () => {
@@ -63,5 +66,6 @@ describe('global live activity', () => {
     expect(shouldRefreshTracking([event(22, 'image.generated')])).toBe(false)
     expect(shouldRefreshTracking([event(23, 'intake.claimed')])).toBe(true)
     expect(shouldRefreshTracking([event(24, 'intake.failed')])).toBe(true)
+    expect(shouldRefreshTracking([event(25, 'intake.paused_provider_quota')])).toBe(true)
   })
 })

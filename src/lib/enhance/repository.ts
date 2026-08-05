@@ -111,6 +111,12 @@ export interface IntakeFailureResult {
   readonly nextAttemptAt: string
 }
 
+export interface ProviderQuotaPauseResult {
+  readonly status: 'discovered'
+  readonly attempts: number
+  readonly providerPausedAt: string
+}
+
 export interface EnhancementRepository {
   claim(leaseSeconds: number): Promise<EnhancementClaim | null>
   assertLease(intakeFileId: string, leaseToken: string): Promise<boolean>
@@ -147,10 +153,20 @@ export interface EnhancementRepository {
   complete(input: CompletionInput): Promise<EnhancementCompletion>
   recordFailure(input: IntakeFailureInput): Promise<IntakeFailureResult>
   /**
-   * One row per tick when a provider quota pause happens, so Tracking can name
-   * the real cause. Deliberately not per photograph: the condition belongs to
-   * the account, and an event per claim would bury the audit trail.
+   * Releases the current lease into an explicit operator-visible provider pause.
+   * Unlike a photograph failure, this never consumes the retry budget.
    */
+  pauseForProviderQuota(input: {
+    readonly intakeFileId: string
+    readonly leaseToken: string
+    readonly message: string
+    readonly code: string
+    readonly detail: string
+    readonly stage: string
+    readonly source: string
+  }): Promise<ProviderQuotaPauseResult>
+  /** One aggregate account-level event per worker tick, in addition to each
+   * photograph's actionable pause record. */
   recordSystemEvent(input: {
     readonly event: string
     readonly detail: Record<string, unknown>

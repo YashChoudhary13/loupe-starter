@@ -246,7 +246,8 @@ export async function loadPipelineActivity(): Promise<PipelineActivity> {
     db
       .from('intake_files')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'discovered'),
+      .eq('status', 'discovered')
+      .is('provider_paused_at', null),
     db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
   ])
   if (uploadingResult.error) throw new Error(`intake_files (discovered): ${uploadingResult.error.message}`)
@@ -294,7 +295,8 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('intake_files')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'discovered'),
+      .eq('status', 'discovered')
+      .is('provider_paused_at', null),
     db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
   ])
 

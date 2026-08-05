@@ -36,7 +36,7 @@ export async function runWatchCron() {
  * would otherwise make this quietly do nothing in production for ever, while
  * every test passed.
  */
-async function nudgeEnhanceCron(): Promise<string> {
+export async function nudgeEnhanceCron(): Promise<string> {
   let url: string
   try {
     url = `${serverEnv.cronBaseUrl.replace(/\/+$/, '')}/api/cron/enhance`

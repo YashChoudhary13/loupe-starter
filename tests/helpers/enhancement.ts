@@ -87,6 +87,7 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
   }> = []
   readonly completions: Parameters<EnhancementRepository['complete']>[0][] = []
   readonly failures: IntakeFailureInput[] = []
+  readonly quotaPauses: Parameters<EnhancementRepository['pauseForProviderQuota']>[0][] = []
   readonly systemEvents: Parameters<EnhancementRepository['recordSystemEvent']>[0][] = []
   readonly descriptionFailures: string[] = []
   readonly presentationFallbacks: Array<{
@@ -220,6 +221,19 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
       status: input.retryable ? 'discovered' : 'failed',
       attempts: 1,
       nextAttemptAt: '2026-07-29T12:01:00.000Z',
+    }
+  }
+
+  async pauseForProviderQuota(
+    input: Parameters<EnhancementRepository['pauseForProviderQuota']>[0],
+  ) {
+    if (!this.validLeases.has(input.leaseToken)) throw new Error('stale')
+    this.validLeases.delete(input.leaseToken)
+    this.quotaPauses.push(input)
+    return {
+      status: 'discovered' as const,
+      attempts: this.attemptsById.get(input.intakeFileId) ?? 0,
+      providerPausedAt: '2026-07-29T12:00:00.000Z',
     }
   }
 

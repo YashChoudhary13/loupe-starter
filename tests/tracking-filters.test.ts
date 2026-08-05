@@ -20,6 +20,7 @@ function row(overrides: Partial<TrackingRow> = {}): TrackingRow {
     errorClass: 'retryable',
     costUsd: null,
     canResume: false,
+    canResumeEnhancement: false,
     canDiscard: false,
     rawDetail: null,
     thumb: null,

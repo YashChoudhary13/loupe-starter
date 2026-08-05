@@ -17,6 +17,7 @@ import {
   type LivePrompt,
   type LivePrompts,
   type PresentationCache,
+  type ProviderQuotaPauseResult,
 } from './repository'
 import type { PresentationClass } from './presentation'
 
@@ -78,6 +79,12 @@ interface FailureRow {
   status: 'discovered' | 'failed'
   attempts: number
   next_attempt_at: string
+}
+
+interface ProviderQuotaPauseRow {
+  status: 'discovered'
+  attempts: number
+  provider_paused_at: string
 }
 
 function dbError(message: string, detail: unknown): EnhancementRepositoryError {
@@ -361,6 +368,40 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
       status: data.status,
       attempts: data.attempts,
       nextAttemptAt: data.next_attempt_at,
+    }
+  }
+
+  async pauseForProviderQuota(input: {
+    readonly intakeFileId: string
+    readonly leaseToken: string
+    readonly message: string
+    readonly code: string
+    readonly detail: string
+    readonly stage: string
+    readonly source: string
+  }): Promise<ProviderQuotaPauseResult> {
+    const { data, error } = await this.db
+      .rpc('pause_intake_for_provider_quota', {
+        p_intake_file_id: input.intakeFileId,
+        p_lease_token: input.leaseToken,
+        p_error: input.message,
+        p_error_code: input.code,
+        p_error_detail: input.detail,
+        p_stage: input.stage,
+        p_source: input.source,
+      })
+      .select()
+      .single<ProviderQuotaPauseRow>()
+    if (error || !data) {
+      throw dbError(
+        `Could not pause enhancement for provider quota on ${input.intakeFileId}.`,
+        error ?? data,
+      )
+    }
+    return {
+      status: data.status,
+      attempts: data.attempts,
+      providerPausedAt: data.provider_paused_at,
     }
   }
 

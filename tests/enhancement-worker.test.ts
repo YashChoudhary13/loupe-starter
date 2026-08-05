@@ -639,13 +639,7 @@ describe('Phase 3B enhancement worker', () => {
     expect(repository.completions).toHaveLength(0)
   })
 
-  /**
-   * A provider quota refusal is a fact about the account, not the photograph.
-   * Recording it would spend one of three retries and eventually mark a good
-   * file `failed`. The claim is abandoned instead: the lease expires and the
-   * sweeper returns the row to `discovered` with `attempts` untouched.
-   */
-  it('abandons claims on a provider quota refusal without spending the retry budget', async () => {
+  it('pauses claims visibly on a provider quota refusal without spending the retry budget', async () => {
     const repository = new MemoryEnhancementRepository()
     const first = claim('quota-one')
     const second = claim('quota-two')
@@ -679,9 +673,24 @@ describe('Phase 3B enhancement worker', () => {
     expect(result.providerQuotaPaused).toBe(2)
     expect(result.failed).toBe(0)
     expect(result.retryScheduled).toBe(0)
-    // Nothing recorded against either photograph — no attempt was completed.
+    // No photograph failure was recorded and no attempt was completed.
     expect(repository.failures).toHaveLength(0)
     expect(repository.completions).toHaveLength(0)
+    expect(repository.quotaPauses).toHaveLength(2)
+    expect(repository.quotaPauses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          intakeFileId: first.id,
+          code: 'image_provider_quota_exhausted',
+          stage: 'image',
+        }),
+        expect.objectContaining({
+          intakeFileId: second.id,
+          code: 'image_provider_quota_exhausted',
+          stage: 'image',
+        }),
+      ]),
+    )
     // Claims run concurrently, so a sibling already past the breaker still
     // makes its call — the breaker only spares one that has not reached it.
     // Harmless: a 402 is refused before generation and bills nothing.
@@ -691,6 +700,42 @@ describe('Phase 3B enhancement worker', () => {
     expect(repository.systemEvents[0]).toMatchObject({
       event: 'enhancement.paused_provider_quota',
       detail: { code: 'image_provider_quota_exhausted', claims_released: 2 },
+    })
+  })
+
+  it('uses the same visible provider pause when the descriptor is refused for credits', async () => {
+    const repository = new MemoryEnhancementRepository()
+    const item = claim('descriptor-quota')
+    repository.enqueue(item)
+    const quotaDescriber: JewelleryDescriber = {
+      describe: vi.fn(async () => {
+        throw new EnhancementError('insufficient credit to start a request', {
+          stage: 'describe',
+          code: 'describe_provider_quota_exhausted',
+          retryable: true,
+          quota: true,
+        })
+      }),
+    }
+
+    const result = await runEnhancementBatch(
+      {
+        drive: drive(),
+        repository,
+        store: new MemoryObjectStore(),
+        describer: quotaDescriber,
+        enhancer: enhancer(),
+        config: CONFIG,
+      },
+      { maxItems: 1 },
+    )
+
+    expect(result).toMatchObject({ providerQuotaPaused: 1, failed: 0, retryScheduled: 0 })
+    expect(repository.descriptionFailures).toHaveLength(0)
+    expect(repository.quotaPauses[0]).toMatchObject({
+      intakeFileId: item.id,
+      code: 'describe_provider_quota_exhausted',
+      stage: 'describe',
     })
   })
 })

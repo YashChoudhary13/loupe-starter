@@ -42,7 +42,11 @@ export async function loadLiveActivity(
 
   const [eventsResult, queuedResult, enhancingResult] = await Promise.all([
     eventsQuery,
-    db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'discovered'),
+    db
+      .from('intake_files')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'discovered')
+      .is('provider_paused_at', null),
     db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
   ])
 

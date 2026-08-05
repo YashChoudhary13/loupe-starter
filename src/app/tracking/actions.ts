@@ -78,6 +78,25 @@ export async function resumeIntakeAction(
   })
 }
 
+/** Releases an account-credit pause and nudges enhancement immediately. */
+export async function resumeProviderPausedIntakeAction(
+  intakeFileId: string,
+): Promise<TrackingActionResult<TrackingSnapshot>> {
+  return withOperator(async (email) => {
+    const { error } = await supabaseServer().rpc('resume_provider_paused_intake_file', {
+      p_intake_file_id: intakeFileId,
+      p_actor: email,
+    })
+    if (error) throw new Error(error.hint || error.message)
+
+    // Best-effort latency optimisation. The minute cron remains the durable
+    // fallback if this request cannot be sent.
+    const { nudgeEnhanceCron } = await import('@/lib/cron/jobs')
+    await nudgeEnhanceCron()
+    return loadTracking()
+  })
+}
+
 /**
  * Discards a held photograph for good.
  *

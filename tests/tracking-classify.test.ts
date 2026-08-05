@@ -16,6 +16,9 @@ function intake(discoveredAt: string) {
     lastError: null,
     errorClass: null,
     leaseExpiresAt: null,
+    providerPausedAt: null,
+    providerPauseCode: null,
+    providerPauseMessage: null,
   }
 }
 
@@ -45,6 +48,27 @@ describe('tracking age and failure classification', () => {
       group: 'attention',
       tone: 'failed',
       reason: 'The provider refused this source.',
+    })
+  })
+
+  it('shows provider credit exhaustion immediately with an actionable explanation', () => {
+    expect(
+      classifyIntake(
+        {
+          ...intake(new Date(NOW - 1_000).toISOString()),
+          status: 'discovered',
+          providerPausedAt: new Date(NOW - 500).toISOString(),
+          providerPauseCode: 'image_provider_quota_exhausted',
+          providerPauseMessage:
+            'Image generation is paused because the provider account needs more credits. Add credits, then choose Resume enhancement.',
+        },
+        NOW,
+      ),
+    ).toMatchObject({
+      group: 'attention',
+      tone: 'failed',
+      statusLabel: 'Credits required',
+      reason: expect.stringContaining('Resume enhancement'),
     })
   })
 

@@ -360,6 +360,11 @@ async function processClaim(
         // Never cache/inject that response after its failure transition.
         result = null
         const failure = descriptionFailure(error)
+        // Credit exhaustion belongs to the provider account, not to the
+        // descriptor retry budget. Let the outer handler place this exact
+        // photograph into the same explicit provider-pause state as image
+        // generation instead of spending an attempt on a guaranteed 402.
+        if (failure.quota) throw failure
         const recorded = await repository.recordDescriptionFailure({
           intakeFileId: claim.id,
           leaseToken: claim.leaseToken,
@@ -565,17 +570,26 @@ async function processClaim(
     if (error.stage === 'fencing') throw error
 
     // A quota refusal says the account cannot pay — it says nothing about this
-    // photograph. Recording it would spend one of three retries and, once they
-    // ran out, mark a perfectly good file `failed`. Abandon the claim instead:
-    // the lease expires, the sweeper returns the row to `discovered`, and
-    // `attempts` is untouched because claim() deliberately never increments it.
+    // photograph. Recording it as a normal failure would spend the retry budget
+    // and eventually mark a good source `failed`. Release the lease into an
+    // explicit provider pause instead; Tracking tells the operator what to fix
+    // and offers Resume enhancement while completed attempts stay untouched.
     if (error.quota) {
       breaker.tripped ??= error
+      const paused = await repository.pauseForProviderQuota({
+        intakeFileId: claim.id,
+        leaseToken: claim.leaseToken,
+        message: error.message,
+        code: error.code,
+        detail: safeErrorDetail(error),
+        stage: error.stage,
+        source: SOURCE,
+      })
       return {
         intakeFileId: claim.id,
         driveFileId: claim.driveFileId,
         status: 'provider_quota_paused',
-        attempts: claim.attempts,
+        attempts: paused.attempts,
         descriptionCalled,
         descriptionInjected,
         descriptionMissing,

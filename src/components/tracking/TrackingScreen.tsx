@@ -7,6 +7,7 @@ import {
   discardIntakeAction,
   refreshTrackingAction,
   resumeIntakeAction,
+  resumeProviderPausedIntakeAction,
   retryIntakeAction,
   reviewDuplicateAction,
   runFullReconciliationAction,
@@ -382,6 +383,13 @@ export function TrackingScreen({
                     `${row.label} is back in the enhancement queue.`,
                   )
                 }
+                onResumeEnhancement={() =>
+                  void update(
+                    `resume-enhancement:${row.entityId}`,
+                    () => resumeProviderPausedIntakeAction(row.entityId),
+                    `${row.label} was released and enhancement resumed.`,
+                  )
+                }
                 onDiscard={() => {
                   // Irreversible and off-site: it deletes the images and moves
                   // the file out of RAW. Worth one deliberate confirmation.
@@ -459,6 +467,7 @@ function TrackingItem({
   onRetry,
   onSkip,
   onResume,
+  onResumeEnhancement,
   onDiscard,
   onDuplicate,
 }: {
@@ -468,6 +477,7 @@ function TrackingItem({
   onRetry: () => void
   onSkip: () => void
   onResume: () => void
+  onResumeEnhancement: () => void
   onDiscard: () => void
   onDuplicate: (decision: 'dismissed' | 'duplicate') => void
 }) {
@@ -560,6 +570,18 @@ function TrackingItem({
                 className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
               >
                 {busy === `resume:${row.entityId}` ? 'Resuming…' : 'Resume'}
+              </button>
+            ) : null}
+            {row.canResumeEnhancement ? (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={onResumeEnhancement}
+                className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
+              >
+                {busy === `resume-enhancement:${row.entityId}`
+                  ? 'Resuming…'
+                  : 'Resume enhancement'}
               </button>
             ) : null}
             {row.canDiscard ? (

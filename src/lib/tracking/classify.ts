@@ -11,6 +11,9 @@ export interface IntakeForTracking {
   readonly lastError: string | null
   readonly errorClass: string | null
   readonly leaseExpiresAt: string | null
+  readonly providerPausedAt: string | null
+  readonly providerPauseCode: string | null
+  readonly providerPauseMessage: string | null
 }
 
 export interface DraftForTracking {
@@ -36,6 +39,17 @@ export function classifyIntake(
   now: number,
   duplicateFilename?: string,
 ): Classification {
+  if (row.providerPausedAt !== null) {
+    return {
+      group: 'attention',
+      tone: 'failed',
+      statusLabel: 'Credits required',
+      reason:
+        row.providerPauseMessage ??
+        'Enhancement is paused because the image provider account needs more credits. Add credits, then choose Resume enhancement. The source photo and retry budget are unchanged.',
+    }
+  }
+
   if (row.status === 'failed') {
     return {
       group: 'attention',

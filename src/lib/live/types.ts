@@ -72,6 +72,8 @@ const TRACKING_INTAKE_EVENTS = new Set([
   'intake.published',
   'intake.lease_expired',
   'intake.lease_invalidated',
+  'intake.paused_provider_quota',
+  'intake.provider_quota_resumed',
   'duplicate.reviewed',
 ])
 
@@ -106,6 +108,7 @@ export function noticesForLiveEvents(events: readonly LiveActivityEvent[]): read
   const claimed = new Set<string>()
   const ready = new Set<string>()
   const failed = new Set<string>()
+  const providerPaused = new Set<string>()
   let redoReady = 0
   let redoFailed = 0
 
@@ -115,6 +118,7 @@ export function noticesForLiveEvents(events: readonly LiveActivityEvent[]): read
     if (item.event === 'intake.claimed') claimed.add(id)
     if (item.event === 'intake.enhanced' || item.event === 'intake.manual_uploaded') ready.add(id)
     if (item.event === 'intake.failed' || item.event === 'intake.rejected') failed.add(id)
+    if (item.event === 'intake.paused_provider_quota') providerPaused.add(id)
     if (item.event === 'image.redo_completed') redoReady += 1
     if (item.event === 'image.redo_failed' || item.event === 'image.redo_cost_ceiling_failed') {
       redoFailed += 1
@@ -122,6 +126,14 @@ export function noticesForLiveEvents(events: readonly LiveActivityEvent[]): read
   }
 
   const notices: LiveNotice[] = []
+  if (providerPaused.size > 0) {
+    notices.push({
+      key: `provider-paused:${events.at(-1)?.id ?? 0}`,
+      text: `${providerPaused.size} ${plural(providerPaused.size, 'photo')} paused — provider credits required`,
+      tone: 'attention',
+      href: '/tracking',
+    })
+  }
   const failedCount = failed.size + redoFailed
   if (failedCount > 0) {
     notices.push({

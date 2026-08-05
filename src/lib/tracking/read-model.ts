@@ -26,6 +26,10 @@ interface IntakeRow {
   last_error_detail: string | null
   error_class: string | null
   lease_expires_at: string | null
+  provider_paused_at: string | null
+  provider_pause_code: string | null
+  provider_pause_message: string | null
+  provider_pause_detail: string | null
   discovered_at: string
   updated_at: string
   product_draft_id: string | null
@@ -171,7 +175,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     db
       .from('intake_files')
       .select(
-        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, discovered_at, updated_at, product_draft_id, description_cost_usd',
+        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, provider_paused_at, provider_pause_code, provider_pause_message, provider_pause_detail, discovered_at, updated_at, product_draft_id, description_cost_usd',
       )
       .order('updated_at', { ascending: false })
       .limit(500),
@@ -391,6 +395,9 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
         lastError: row.last_error,
         errorClass: row.error_class,
         leaseExpiresAt: row.lease_expires_at,
+        providerPausedAt: row.provider_paused_at,
+        providerPauseCode: row.provider_pause_code,
+        providerPauseMessage: row.provider_pause_message,
       },
       now,
       duplicate?.matchFilename,
@@ -404,20 +411,25 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       statusLabel: classification.statusLabel,
       tone: classification.tone,
       group: classification.group,
-      occurredAt: row.updated_at,
+      occurredAt: row.provider_paused_at ?? row.updated_at,
       reason: classification.reason,
-      errorCode: row.last_error_code,
-      errorClass: row.error_class,
-      rawDetail: row.last_error_detail?.slice(0, 2_000) ?? null,
+      errorCode: row.provider_pause_code ?? row.last_error_code,
+      errorClass: row.provider_paused_at ? 'provider' : row.error_class,
+      rawDetail:
+        row.provider_pause_detail?.slice(0, 2_000) ??
+        row.last_error_detail?.slice(0, 2_000) ??
+        null,
       thumb: (thumbKey ? signed.get(thumbKey) : null) ?? null,
       events: events.get(row.id) ?? [],
       canRetry: row.status === 'failed' && row.error_class === 'retryable',
       // Held work is the operator's to pick back up or throw away. Both are
       // refused in SQL for anything grouped, published or in flight.
       canResume: row.status === 'skipped',
+      canResumeEnhancement: row.provider_paused_at !== null,
       canDiscard: row.status === 'skipped' && row.product_draft_id === null,
       canSkip:
         row.product_draft_id === null &&
+        row.provider_paused_at === null &&
         !['enhancing', 'grouped', 'published', 'duplicate', 'skipped'].includes(row.status),
       consoleHref: row.product_draft_id
         ? `/console/drafts/${row.product_draft_id}`
@@ -466,6 +478,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       canRetry: false,
       canSkip: false,
       canResume: false,
+      canResumeEnhancement: false,
       canDiscard: false,
       consoleHref: `/console/drafts/${row.id}`,
       driveHref: null,
@@ -495,6 +508,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     canRetry: false,
     canSkip: false,
     canResume: false,
+    canResumeEnhancement: false,
     canDiscard: false,
     consoleHref: `/console/drafts/${issue.product_draft_id}`,
     driveHref: null,
@@ -521,6 +535,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       canRetry: false,
       canSkip: false,
       canResume: false,
+      canResumeEnhancement: false,
       canDiscard: false,
       consoleHref: null,
       driveHref: null,

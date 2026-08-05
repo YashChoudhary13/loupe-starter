@@ -44,6 +44,8 @@ export interface TrackingRow {
   readonly canSkip: boolean
   /** On-hold work only: send it back to the enhancement queue. */
   readonly canResume: boolean
+  /** Provider-credit pause only: release the hold and retry immediately. */
+  readonly canResumeEnhancement: boolean
   /** On-hold work only: remove it from Loupe and move it out of RAW. */
   readonly canDiscard: boolean
   readonly consoleHref: string | null
