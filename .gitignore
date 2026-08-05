@@ -17,6 +17,7 @@ next-env.d.ts
 # testing
 coverage/
 .artifacts/
+/Raw Images/
 
 # production / deploy
 .vercel

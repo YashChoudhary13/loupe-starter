@@ -14,6 +14,14 @@ export interface EnhancementErrorInit {
   readonly code: string
   readonly retryable: boolean
   readonly detail?: unknown
+  /**
+   * The provider account cannot pay for the call. This is a fact about the
+   * account, not about the photograph, so it must never consume a file's retry
+   * budget: the same file succeeds unchanged once credit is restored. The worker
+   * abandons its claim instead of recording an attempt, and the lease sweeper
+   * returns the row to `discovered` with `attempts` untouched.
+   */
+  readonly quota?: boolean
 }
 
 export class EnhancementError extends Error {
@@ -21,6 +29,7 @@ export class EnhancementError extends Error {
   readonly code: string
   readonly retryable: boolean
   readonly detail?: unknown
+  readonly quota: boolean
 
   constructor(message: string, init: EnhancementErrorInit) {
     super(message)
@@ -29,6 +38,7 @@ export class EnhancementError extends Error {
     this.code = init.code
     this.retryable = init.retryable
     this.detail = init.detail
+    this.quota = init.quota ?? false
   }
 }
 
@@ -91,6 +101,22 @@ export function classifyWorkerError(error: unknown): EnhancementError {
   const network =
     (code !== undefined && NETWORK_CODES.has(code)) ||
     /\bfetch failed\b|\bnetwork error\b|\bsocket hang up\b|\btimed? ?out\b/i.test(message)
+
+  // 402 reaches here when a provider error arrives by a path other than
+  // openRouterFailure. Without this it fell through to a permanent failure,
+  // which marks the photograph `failed` for an account-level billing condition.
+  if (status === 402) {
+    return new EnhancementError(
+      'The image provider account has insufficient credit to start a request. Top up, then the queued photographs resume unchanged.',
+      {
+        stage: 'image',
+        code: 'provider_quota_exhausted',
+        retryable: true,
+        quota: true,
+        detail: error,
+      },
+    )
+  }
 
   if (status === 429 || status === 408 || (status !== undefined && status >= 500) || network) {
     return new EnhancementError('The enhancement service is temporarily unavailable.', {

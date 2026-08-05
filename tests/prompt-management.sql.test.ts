@@ -301,9 +301,14 @@ describe('deployed style presets', () => {
         expect(row.model).toBe('openai/gpt-image-2')
         expect(row.body).toContain('SOURCE AUTHORITY')
         expect(row.body).toContain('sole visual authority')
-        expect(row.body).toContain('premium retail hero')
         expect(row.body.toLowerCase()).toContain('uniform')
-        expect(row.body).not.toContain('warm luxury studio lighting')
+        if (['satin', 'marble', 'yellow'].includes(row.preset_slug)) {
+          expect(row.body).toContain('luxury e-commerce hero')
+          expect(row.body).toContain('warm luxury studio lighting')
+          expect(row.body).toContain('FINAL IDENTITY CHECK')
+        } else {
+          expect(row.body).toContain('premium retail hero')
+        }
       }
     }
   })
@@ -337,6 +342,12 @@ describe('deployed style presets', () => {
     expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
       '82-92%',
     )
+    expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
+      'warm luxury studio lighting',
+    )
+    expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
+      'FINAL IDENTITY CHECK',
+    )
   })
 
   it('offers the accepted catalogue prompt as a preset, so there is a way back', async () => {
@@ -362,6 +373,6 @@ describe('deployed style presets', () => {
       `select body from public.prompts
         where kind = 'image' and is_default and archived_at is null`,
     )
-    expect(back.rows[0]!.body).toContain('pale neutral pearl-ivory satin')
+    expect(back.rows[0]!.body).toContain('soft pale pearl-ivory satin')
   })
 })

@@ -485,15 +485,20 @@ function TrackingItem({
             <span className="truncate font-mono text-[12px] font-medium">{row.label}</span>
             <Status tone={row.tone}>{row.statusLabel}</Status>
             {/*
-              What this photograph actually cost: the cached description plus
-              every generated image, redos included. Provider-reported only
-              (D5/D35) — never derived from a price table. Absent, not zero,
-              when nothing has been billed yet.
+              What this row actually cost: the cached description plus every
+              generated image, redos included — for a photograph, its own; for a
+              draft, summed across every photograph grouped into it. Provider-
+              reported only (D5/D35), never derived from a price table. Absent,
+              not zero, when nothing has been billed yet.
             */}
             {row.costUsd !== null ? (
               <span
                 className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
-                title="Description + image generation for this photograph, as billed by the provider"
+                title={
+                  row.kind === 'draft'
+                    ? 'Description + image generation across every photograph in this product, as billed by the provider'
+                    : 'Description + image generation for this photograph, as billed by the provider'
+                }
               >
                 ${row.costUsd.toFixed(4)}
               </span>

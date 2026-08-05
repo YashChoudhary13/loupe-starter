@@ -146,6 +146,16 @@ export interface EnhancementRepository {
   }): Promise<DescriptionFailureResult>
   complete(input: CompletionInput): Promise<EnhancementCompletion>
   recordFailure(input: IntakeFailureInput): Promise<IntakeFailureResult>
+  /**
+   * One row per tick when a provider quota pause happens, so Tracking can name
+   * the real cause. Deliberately not per photograph: the condition belongs to
+   * the account, and an event per claim would bury the audit trail.
+   */
+  recordSystemEvent(input: {
+    readonly event: string
+    readonly detail: Record<string, unknown>
+    readonly actor: string
+  }): Promise<void>
 }
 
 export class EnhancementRepositoryError extends Error {

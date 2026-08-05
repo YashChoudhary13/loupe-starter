@@ -2247,3 +2247,41 @@ collection to reconcile: prefix `WC`, title pattern `Waist Chain {n}`, exact tag
 Shopify taxonomy `Body Jewelry`. Its counter starts at 0, so the first product preview is `WC001 ·
 Waist Chain 001`. Reading Shopify's maximum at publish time, automatically accepting the first
 taxonomy search result, and creating category/counter rows in separate requests were rejected.
+
+---
+
+### D86 — A provider quota refusal pauses the queue; it never fails a photograph
+
+*Discovered live on 2026-08-05 while running paid prompt evaluations.*
+
+OpenRouter answers HTTP `402` when the account balance falls below the reserve it holds *before*
+starting a request — not only when the balance reaches zero. Measured against `openai/gpt-image-2`:
+$0.739737 was accepted, $0.662771 was refused, and neither a 12-word prompt nor `quality: low`
+lowered the floor. Chat completions kept succeeding at the same balance, so the describer stays
+healthy while every image call fails, and the dashboard still shows positive credit.
+
+Loupe classified `402` as permanent, because `retryable` was true only for `408`, `429` and `5xx`.
+A permanent error skips the retry budget and fails immediately (hard rule 4), so a queue running
+out of credit would drain into `failed` at up to four photographs per tick, each showing the
+operator **"The image model rejected this photograph."** Nothing pointed at billing, and recovery
+meant a manual retry sweep across every drained row.
+
+A quota refusal is a fact about the *account*, not the photograph: the same file succeeds unchanged
+once credit is restored. So the worker now **abandons its claim** rather than recording an attempt.
+`claim_next_intake_file` deliberately does not increment `attempts`, so an abandoned lease expires
+and `sweep_expired_intake_leases` returns the row to `discovered` exactly as it was. No `failed`
+rows, no retry budget spent, no Drive housekeeping — `terminalFailures` is an allowlist of `failed`
+and `cost_ceiling_failed`, so paused work correctly stays in `/Raw`.
+
+`EnhancementError` carries a `quota` flag rather than a matched code string, and the batch reports
+`providerQuotaPaused` with one `enhancement.paused_provider_quota` system event per tick — not per
+photograph, because the condition belongs to the account.
+
+Rejected: keeping it retryable on the normal 1m/2m/5m schedule (it still fails the file permanently
+after ~8 minutes, for a condition a top-up fixes); and a per-tick circuit breaker strong enough to
+stop siblings mid-flight (claims run concurrently under `Promise.allSettled`, so a breaker only
+spares a claim that has not yet reached its provider call — acceptable, because a `402` is refused
+before generation and bills nothing).
+
+**Still open:** `/tracking` does not yet surface the pause. The event is durable and queryable, but
+an operator currently sees only work quietly not progressing.

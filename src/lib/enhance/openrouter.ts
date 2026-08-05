@@ -164,27 +164,48 @@ function openRouterFailure(
   const type = parsed?.error_type
   const providerCode = parsed?.error?.code
   const codeText = String(type ?? providerCode ?? '')
+  const policy = /content_policy|moderation|safety|refusal/i.test(codeText)
+
+  /**
+   * OpenRouter answers 402 when the account balance is below the reserve it
+   * holds before starting a request — not only when the balance is zero. For
+   * `gpt-image-2` that floor was measured between $0.662771 (refused) and
+   * $0.739737 (accepted) on 2026-08-05, and neither a shorter prompt nor
+   * `quality: low` lowers it. Chat calls keep succeeding throughout, so the
+   * describer looks healthy while every image call fails.
+   *
+   * Classified as permanent this stranded the whole queue in `failed` with the
+   * message "The image model rejected this photograph", which blames the
+   * photograph for a billing condition and points nobody at the credits page.
+   */
+  const quota =
+    response.status === 402 ||
+    /insufficient[_ ]credit|quota|billing|payment[_ ]required/i.test(codeText)
+
   const retryable =
+    quota ||
     stage === 'describe' ||
     response.status === 408 ||
     response.status === 429 ||
     response.status >= 500
-  const policy = /content_policy|moderation|safety|refusal/i.test(codeText)
 
   return new EnhancementError(
-    stage === 'describe'
-      ? 'The jewellery description could not be generated.'
-      : policy
-        ? 'The image model refused this photograph under its content policy.'
-        : response.status === 429
-          ? 'The image model is rate-limited; Loupe will retry it.'
-          : response.status >= 500
-            ? 'The image model is temporarily unavailable; Loupe will retry it.'
-            : 'The image model rejected this photograph.',
+    quota
+      ? `The ${stage === 'describe' ? 'description' : 'image'} provider account has insufficient credit to start a request. Top up at openrouter.ai/settings/credits; queued photographs resume unchanged.`
+      : stage === 'describe'
+        ? 'The jewellery description could not be generated.'
+        : policy
+          ? 'The image model refused this photograph under its content policy.'
+          : response.status === 429
+            ? 'The image model is rate-limited; Loupe will retry it.'
+            : response.status >= 500
+              ? 'The image model is temporarily unavailable; Loupe will retry it.'
+              : 'The image model rejected this photograph.',
     {
       stage,
-      code:
-        stage === 'describe'
+      code: quota
+        ? `${stage}_provider_quota_exhausted`
+        : stage === 'describe'
           ? 'description_provider_failed'
           : policy
             ? 'image_content_policy'
@@ -194,6 +215,7 @@ function openRouterFailure(
                 ? 'image_provider_unavailable'
                 : 'image_request_rejected',
       retryable,
+      quota,
       detail: {
         status: response.status,
         error_type: type,

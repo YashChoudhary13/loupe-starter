@@ -284,6 +284,49 @@ describe('OpenRouter two-call client', () => {
     },
   )
 
+  /**
+   * Measured live on 2026-08-05: OpenRouter answers 402 when the balance is
+   * below the reserve it holds before starting a gpt-image-2 request, not only
+   * when it is zero. Classified as permanent this marked every queued
+   * photograph `failed` and told the operator the photograph was rejected.
+   */
+  it('classifies an OpenRouter 402 as a retryable account quota condition, not a rejected photograph', async () => {
+    const body = {
+      error: {
+        message: 'Insufficient credits. Add more using https://openrouter.ai/settings/credits',
+        code: 402,
+        metadata: { limit_source: 'openrouter_credits' },
+      },
+    }
+    const client = new OpenRouterClient(
+      'test-key',
+      vi.fn(async () => Response.json(body, { status: 402 })) as typeof fetch,
+    )
+
+    const image = client.enhance(Buffer.from('source'), 'image/jpeg', 'prompt', {
+      model: 'openai/gpt-image-2',
+      size: '1280x1280',
+      quality: 'medium',
+    })
+    await expect(image).rejects.toMatchObject({
+      stage: 'image',
+      code: 'image_provider_quota_exhausted',
+      retryable: true,
+      quota: true,
+    } satisfies Partial<EnhancementError>)
+    // The message must point at billing, never at the photograph.
+    await expect(image).rejects.toThrow(/insufficient credit/i)
+
+    const description = client.describe(Buffer.from('source'), 'image/jpeg', 'prompt', {
+      model: 'openai/gpt-5.6-sol',
+      reasoningEffort: 'minimal',
+    })
+    await expect(description).rejects.toMatchObject({
+      code: 'describe_provider_quota_exhausted',
+      quota: true,
+    } satisfies Partial<EnhancementError>)
+  })
+
   it('keeps a describe provider failure retryable but a policy image failure permanent', async () => {
     const describeClient = new OpenRouterClient(
       'test-key',

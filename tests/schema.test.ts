@@ -558,8 +558,8 @@ describe('seed data', () => {
       },
       {
         kind: 'image',
-        chars: 4701,
-        sha256: '9f6a61ded2860421c29cb6ff135061a1fd955971505e2a2efc64bf07e2a2731e',
+        chars: 5356,
+        sha256: '00f9d72f49a6733121399051272fd3f6572543c0998eee63b822603fb6355f49',
       },
     ])
     expect(prompts[0]?.body).toContain('source photograph is the sole authority')
@@ -570,11 +570,15 @@ describe('seed data', () => {
     )
     expect(prompts[0]?.body).not.toContain('{{PRODUCT_DESCRIPTION}}')
     expect(prompts[1]?.body).toContain(
-      'PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nSCENE AND BACKGROUND',
+      'PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nSOURCE AUTHORITY',
     )
     expect(prompts[1]?.body).toContain('SOURCE AUTHORITY — NON-NEGOTIABLE')
     expect(prompts[1]?.body).toContain('FORM AND SCALE LOCK')
     expect(prompts[1]?.body).toContain('82-92%')
+    expect(prompts[1]?.body).toContain('warm luxury studio lighting')
+    expect(prompts[1]?.body).toContain('85-100mm macro product lens')
+    expect(prompts[1]?.body).toContain('FINAL IDENTITY CHECK')
+    expect(prompts[1]?.body).toContain('uniformly scaling the entire photographed piece')
     expect(prompts[1]?.body).toContain('jump-ring-mounted charm')
     expect(prompts[1]?.body).toContain('{{COMPOSITION_DETAIL}}')
     expect(prompts[1]?.body).not.toContain(

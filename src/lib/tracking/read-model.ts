@@ -6,6 +6,7 @@ import { loadDuplicateCandidates } from '@/lib/duplicates/read-model'
 import { supabaseServer } from '@/lib/supabase/server'
 
 import { classifyDraft, classifyIntake } from './classify'
+import { sumUsd, usd } from './cost'
 import { draftCoverKeys, preferredThumbKey } from './thumbs'
 import type {
   ReconciliationSummary,
@@ -28,6 +29,13 @@ interface IntakeRow {
   discovered_at: string
   updated_at: string
   product_draft_id: string | null
+  description_cost_usd: string | number | null
+}
+
+/** Draft membership fetched independently of the intake recency window. */
+interface DraftIntakeRow {
+  id: string
+  product_draft_id: string
   description_cost_usd: string | number | null
 }
 
@@ -247,7 +255,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
   const draftIdsNeedingCover = [
     ...new Set([...drafts.map((row) => row.id), ...issues.map((issue) => issue.product_draft_id)]),
   ]
-  const [eventsResult, versionsResult, draftImagesResult] = await Promise.all([
+  const [eventsResult, versionsResult, draftImagesResult, draftIntakesResult] = await Promise.all([
     entityIds.length
       ? db
           .from('events')
@@ -269,19 +277,55 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
           .in('product_draft_id', draftIdsNeedingCover)
           .order('position', { ascending: true })
       : Promise.resolve({ data: [], error: null }),
+    /**
+     * Draft membership, independent of the 500-row recency window above. A draft
+     * that has been sitting for a while can own photographs that fell out of
+     * that window, and summing only what happened to be in it would under-report
+     * the draft's spend without saying so.
+     */
+    draftIdsNeedingCover.length
+      ? db
+          .from('intake_files')
+          .select('id, product_draft_id, description_cost_usd')
+          .in('product_draft_id', draftIdsNeedingCover)
+      : Promise.resolve({ data: [], error: null }),
   ])
   if (eventsResult.error) throw new Error(`tracking events: ${eventsResult.error.message}`)
   if (versionsResult.error) throw new Error(`tracking thumbnails: ${versionsResult.error.message}`)
   if (draftImagesResult.error) {
     throw new Error(`tracking draft covers: ${draftImagesResult.error.message}`)
   }
+  if (draftIntakesResult.error) {
+    throw new Error(`tracking draft costs: ${draftIntakesResult.error.message}`)
+  }
 
   const events = eventMap((eventsResult.data ?? []) as EventRow[])
+  const draftIntakes = (draftIntakesResult.data ?? []) as DraftIntakeRow[]
+
   const versionsByIntake = new Map<string, VersionRow[]>()
   for (const row of (versionsResult.data ?? []) as VersionRow[]) {
     const list = versionsByIntake.get(row.intake_file_id) ?? []
     list.push(row)
     versionsByIntake.set(row.intake_file_id, list)
+  }
+
+  // Top-up: versions for draft photographs the recency window missed. Usually
+  // empty, because active drafts are recent — but a draft's total must be the
+  // whole total or nothing, never a quiet partial sum.
+  const missingVersionIntakeIds = draftIntakes
+    .map((row) => row.id)
+    .filter((id) => !versionsByIntake.has(id))
+  if (missingVersionIntakeIds.length > 0) {
+    const extra = await db
+      .from('image_versions')
+      .select('intake_file_id, version_no, is_selected, thumb_key, purged_at, cost_usd')
+      .in('intake_file_id', missingVersionIntakeIds)
+    if (extra.error) throw new Error(`tracking draft costs: ${extra.error.message}`)
+    for (const row of (extra.data ?? []) as VersionRow[]) {
+      const list = versionsByIntake.get(row.intake_file_id) ?? []
+      list.push(row)
+      versionsByIntake.set(row.intake_file_id, list)
+    }
   }
   const thumbKeyByIntake = new Map(
     intakes.map((intake) => [
@@ -301,27 +345,32 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
 
   const signed = await signKeys([...thumbKeyByIntake.values(), ...thumbKeyByDraft.values()])
 
-  /**
-   * PostgREST returns numeric(12,6) as a string to avoid float rounding. Parse
-   * defensively: an unreadable figure must not silently become 0, which would
-   * under-report spend against the ~₹5,000/month budget.
-   */
-  function usd(value: string | number | null | undefined): number | null {
-    if (value === null || value === undefined) return null
-    const parsed = typeof value === 'string' ? Number(value) : value
-    return Number.isFinite(parsed) ? parsed : null
-  }
-
   /** Description + every generated image for this photograph, redos included. */
-  function totalCostFor(intake: IntakeRow): number | null {
-    const parts = [
+  function totalCostFor(intake: Pick<IntakeRow, 'id' | 'description_cost_usd'>): number | null {
+    return sumUsd([
       usd(intake.description_cost_usd),
       ...(versionsByIntake.get(intake.id) ?? []).map((version) => usd(version.cost_usd)),
-    ].filter((part): part is number => part !== null)
-    if (parts.length === 0) return null
-    // Sum in micro-dollars: numeric(12,6) is exact to 6dp, and adding floats
-    // gives 0.07362399999999999 in the operator's face.
-    return parts.reduce((total, part) => total + Math.round(part * 1_000_000), 0) / 1_000_000
+    ])
+  }
+
+  /**
+   * What a product has cost so far: every grouped photograph's description plus
+   * every generated image, redos included. A draft is not itself billed — this
+   * is the sum of the source photographs the operator grouped into it, which is
+   * the figure that answers "what did this product cost to make".
+   *
+   * Null when no photograph in the draft has been billed yet, matching the
+   * per-photograph rule that 0 would falsely claim a paid call returned free.
+   */
+  const draftIntakesByDraft = new Map<string, DraftIntakeRow[]>()
+  for (const row of draftIntakes) {
+    const list = draftIntakesByDraft.get(row.product_draft_id) ?? []
+    list.push(row)
+    draftIntakesByDraft.set(row.product_draft_id, list)
+  }
+
+  function draftCostFor(draftId: string): number | null {
+    return sumUsd((draftIntakesByDraft.get(draftId) ?? []).map((member) => totalCostFor(member)))
   }
 
   /**
@@ -421,8 +470,8 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       consoleHref: `/console/drafts/${row.id}`,
       driveHref: null,
       duplicate: null,
-      // Not a billed photograph — cost is recorded per source photograph.
-      costUsd: null,
+      // A draft is not billed itself; this is what its grouped photographs cost.
+      costUsd: draftCostFor(row.id),
     }
   })
 

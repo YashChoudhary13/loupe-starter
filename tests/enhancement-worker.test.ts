@@ -199,7 +199,7 @@ describe('Phase 3B enhancement worker', () => {
     expect(descriptionClient.describe).not.toHaveBeenCalled()
     expect(repository.storedDescriptions).toHaveLength(0)
     expect(repository.completions[0]?.promptText).toContain(
-      'Show the exact source pieces upright and front-facing',
+      'Show the exact source pieces upright and face-readable',
     )
     expect(repository.completions[0]).toMatchObject({
       descriptionInjected: false,
@@ -637,5 +637,60 @@ describe('Phase 3B enhancement worker', () => {
     })
     expect(store.objects.has(`versions/${item.id}/v1.png`)).toBe(false)
     expect(repository.completions).toHaveLength(0)
+  })
+
+  /**
+   * A provider quota refusal is a fact about the account, not the photograph.
+   * Recording it would spend one of three retries and eventually mark a good
+   * file `failed`. The claim is abandoned instead: the lease expires and the
+   * sweeper returns the row to `discovered` with `attempts` untouched.
+   */
+  it('abandons claims on a provider quota refusal without spending the retry budget', async () => {
+    const repository = new MemoryEnhancementRepository()
+    const first = claim('quota-one')
+    const second = claim('quota-two')
+    repository.enqueue(first)
+    repository.enqueue(second)
+
+    const quotaError = new EnhancementError('insufficient credit to start a request', {
+      stage: 'image',
+      code: 'image_provider_quota_exhausted',
+      retryable: true,
+      quota: true,
+    })
+    const quotaEnhancer: ImageEnhancer & { enhance: ReturnType<typeof vi.fn> } = {
+      enhance: vi.fn(async () => {
+        throw quotaError
+      }),
+    }
+
+    const result = await runEnhancementBatch(
+      {
+        drive: drive(),
+        repository,
+        store: new MemoryObjectStore(),
+        describer: describer(),
+        enhancer: quotaEnhancer,
+        config: CONFIG,
+      },
+      { maxItems: 2 },
+    )
+
+    expect(result.providerQuotaPaused).toBe(2)
+    expect(result.failed).toBe(0)
+    expect(result.retryScheduled).toBe(0)
+    // Nothing recorded against either photograph — no attempt was completed.
+    expect(repository.failures).toHaveLength(0)
+    expect(repository.completions).toHaveLength(0)
+    // Claims run concurrently, so a sibling already past the breaker still
+    // makes its call — the breaker only spares one that has not reached it.
+    // Harmless: a 402 is refused before generation and bills nothing.
+    expect(quotaEnhancer.enhance.mock.calls.length).toBeGreaterThan(0)
+    // Exactly one audit row for the account-level condition.
+    expect(repository.systemEvents).toHaveLength(1)
+    expect(repository.systemEvents[0]).toMatchObject({
+      event: 'enhancement.paused_provider_quota',
+      detail: { code: 'image_provider_quota_exhausted', claims_released: 2 },
+    })
   })
 })

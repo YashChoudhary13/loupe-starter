@@ -363,4 +363,21 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
       nextAttemptAt: data.next_attempt_at,
     }
   }
+
+  async recordSystemEvent(input: {
+    readonly event: string
+    readonly detail: Record<string, unknown>
+    readonly actor: string
+  }): Promise<void> {
+    const { error } = await this.db.from('events').insert({
+      entity_type: 'system',
+      entity_id: null,
+      event: input.event,
+      detail: input.detail,
+      actor: input.actor,
+    })
+    if (error) {
+      throw dbError(`Could not record system event "${input.event}".`, error)
+    }
+  }
 }

@@ -18,44 +18,51 @@ export const FALLBACK_PRESENTATION_CLASS: PresentationClass = 'flat-curve'
 const PRESENTATION_CLASS_SET = new Set<string>(PRESENTATION_CLASSES)
 
 const COMPOSITION_DETAILS = {
-  'pair-upright': `Show the exact source pieces upright and front-facing, side by side at their original
+  'pair-upright': `Show the exact source pieces upright and face-readable, side by side at their original
 relative scale. Preserve the source item count and all pair differences; never create one piece by
-duplicating or mirroring the other. Use a close, balanced retail crop that makes their design readable
-without cutting either piece or selectively enlarging one.`,
-  'necklace-pendant': `Arrange the same necklace in a compact, graceful open oval or teardrop rather
-than a long narrow measuring loop. Place the exact primary pendant face-readable near the lower visual
-centre with its attachment naturally aligned, while the plain chain makes a supporting sweep. Prefer a
-close retail crop: every decorative component and distinctive fitting stays visible, but plain repetitive
-chain may approach or continue just beyond an edge when that is necessary to make the pendant readable.
-Any zoom applies uniformly to the photographed piece; never enlarge the pendant independently.`,
-  'necklace-station': `Arrange the same station or charm necklace in a broad relaxed curve or shallow
-S-shape, never a stretched narrow U. Preserve the exact component order, side placement, orientation and
-relative spacing while letting the flexible chain drape naturally. Make the decorated run visually
-prominent and readable at storefront-thumbnail size. Prefer the complete piece, but plain terminal chain
-may approach an edge when needed; never crop a decorative station or selectively enlarge a stone or charm.`,
+duplicating or mirroring the other. Use one close, balanced macro retail crop that makes the design and
+real differences readable without cutting either piece or selectively enlarging one.`,
+  'necklace-pendant': `Arrange the same necklace as a compact, graceful oval or soft teardrop rather than
+a long narrow measuring loop. If the source includes a real clasp or closure, fasten the two real ends
+using only that visible hardware and keep the clasp, extender and terminal tag together near the top; if
+no closure is visible, preserve the visible open topology and invent nothing. Rest the exact primary
+pendant face-readable at the lower visual centre with its attachment naturally aligned. Keep every
+decorative component and distinctive fitting visible. Any zoom applies uniformly to the whole piece;
+never enlarge the pendant or stones independently.`,
+  'necklace-station': `Arrange the same station or charm necklace as a broad closed oval or soft teardrop
+when the source includes real closure hardware; fasten only the two real ends and keep the clasp, extender
+and terminal tag together near the top. If the source is genuinely open or no closure is visible, preserve
+that exact topology instead of inventing a closure. Keep every station on the continuous chain: the chain
+must not terminate in a station, charm or bare cut end. Preserve exact component count, order, side
+placement, mounting, orientation and relative spacing. Make the decorated run prominent and readable at
+storefront-thumbnail size without selectively enlarging any component.`,
   'necklace-multistrand': `Arrange the same multi-strand necklace as a shallow layered crescent or broad
-soft U. Keep the exact strand count, end connections, nesting order and relative strand lengths. Separate
-the strands only enough to read their construction; do not fan, braid, merge, stretch or regularise them.
-Use a close, low-distortion retail crop rather than a long vertical loop, and magnify every strand uniformly.`,
+soft U, with its real joined ends or end caps close together near the top. Close it only through closure
+hardware visible in the source; otherwise invent no clasp. Count the distinct parallel strands in the
+source and reproduce exactly that many with their real end connections, nesting order, chain construction
+and relative lengths. Separate the strands only enough to read them; never merge, remove, braid, fan,
+stretch or substitute a plainer chain. Magnify every strand uniformly.`,
   'necklace-lariat': `Preserve the exact open lariat or Y topology. Place its real junction in the visual
 centre or lower third and let the exact drop fall in one intentional straight or gently curving direction.
 Do not close it into an oval necklace, relocate the junction, shorten the drop or redistribute motifs. Use
 a close crop that makes the junction and drop readable while applying one uniform optical scale to the piece.`,
   'flat-curve': `This is the legacy fallback for a flexible necklace or long chain. First follow the
 construction visible in the source: use a compact pendant layout for one dominant pendant, a broad relaxed
-curve for spaced stations or charms, a shallow layered crescent for multiple joined strands, or the exact Y
-topology for a lariat. Otherwise use a compact graceful open curve. Preserve exact topology, component
-order, side placement, spacing and hardware. Never stretch the product into a long narrow documentation
-loop. Use one uniform optical zoom; never enlarge an individual pendant, stone, charm or strand.`,
+closed curve for spaced stations when real closure hardware is visible, a shallow layered crescent for
+multiple joined strands, or the exact open Y topology for a lariat. Otherwise preserve the visible open or
+closed construction in a compact graceful curve. Keep exact component order, side placement, spacing,
+connections and hardware. Never create a new free end or terminate chain in a decorative element. Use one
+uniform optical zoom; never enlarge an individual pendant, stone, charm or strand.`,
   'standing-three-quarter': `Stand the same piece on its band at a gentle three-quarter angle only as
 far as the source supports. Preserve the exact face, profile, setting, band thickness and proportions;
 do not invent an unseen side or lay it flat.`,
   'angled-band': `Rest the same piece at a slight angle with its opening toward the camera. Preserve the
 exact width, inner face, closures, terminals, component count and proportions; do not complete,
 mirror or regularise details that are unclear in the source.`,
-  'flat-arc': `Lay the same flexible piece in a relaxed open arc. Preserve its exact strand count,
-chain topology, component sequence, spacing, clasp count, extender count and terminal tags; do not
-add, remove, duplicate or redistribute any component.`,
+  'flat-arc': `Lay the same flexible bracelet or anklet in a relaxed compact arc, or fasten it into one
+continuous loop only when the source visibly includes the required closure hardware. Preserve its exact
+strand count, chain topology, component sequence, spacing, clasp count, extender count and terminal tags;
+do not invent a closure or add, remove, duplicate or redistribute any component.`,
   'tray-grid': `Keep the exact source item count visible in aligned rows at their original relative
 scale and in the same sequence. Do not crop, duplicate, mirror, omit or redesign any item, and do not
 restage the set into a scene.`,

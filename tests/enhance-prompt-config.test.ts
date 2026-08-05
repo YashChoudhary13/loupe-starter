@@ -44,7 +44,7 @@ describe('Phase 3B two-call configuration', () => {
     expect(resolved.descriptionInjected).toBe(true)
     expect(resolved.descriptionMissing).toBe(false)
     expect(resolved.text).toContain(`PRODUCT\n${TEST_DESCRIPTION}\n\nCOMPOSITION`)
-    expect(resolved.text).toContain('Show the exact source pieces upright and front-facing')
+    expect(resolved.text).toContain('Show the exact source pieces upright and face-readable')
     expect(resolved.text).not.toContain(PRODUCT_DESCRIPTION_TOKEN)
     expect(resolved.text).not.toContain('{{COMPOSITION_DETAIL}}')
   })

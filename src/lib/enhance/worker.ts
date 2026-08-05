@@ -55,6 +55,21 @@ export type EnhancementOutcomeStatus =
   | 'retry_scheduled'
   | 'failed'
   | 'cost_ceiling_failed'
+  /**
+   * The provider account could not pay for the call. Nothing was recorded
+   * against the photograph: its lease is left to expire so the sweeper returns
+   * it to `discovered` with `attempts` unchanged.
+   */
+  | 'provider_quota_paused'
+
+/**
+ * Trips the moment one claim in this tick sees a provider quota refusal, so the
+ * siblings do not each make the same doomed paid request. Scoped to one tick —
+ * the next tick retries once, which is how the queue notices a top-up.
+ */
+interface QuotaBreaker {
+  tripped: EnhancementError | null
+}
 
 export interface EnhancementOutcome {
   readonly intakeFileId: string
@@ -77,6 +92,8 @@ export interface EnhancementBatchResult {
   readonly retryScheduled: number
   readonly failed: number
   readonly costCeilingFailed: number
+  /** Claims abandoned unchanged because the provider account cannot pay. */
+  readonly providerQuotaPaused: number
   readonly descriptionCalls: number
   readonly elapsedMs: number
   readonly outcomes: readonly EnhancementOutcome[]
@@ -243,6 +260,7 @@ function descriptionFailure(error: unknown): EnhancementError {
 async function processClaim(
   claim: EnhancementClaim,
   dependencies: EnhancementWorkerDependencies,
+  breaker: QuotaBreaker = { tripped: null },
 ): Promise<EnhancementOutcome> {
   const { drive, repository, store, describer, enhancer, config } = dependencies
   let descriptionCalled = false
@@ -252,6 +270,7 @@ async function processClaim(
   let presentationFallbackReason = claim.presentationFallbackReason
 
   try {
+    if (breaker.tripped) throw breaker.tripped
     const original = await drive.downloadFile(claim.driveFileId)
     if (claim.bytes !== null && original.byteLength !== claim.bytes) {
       throw new EnhancementError(
@@ -422,6 +441,11 @@ async function processClaim(
         descriptionMissing,
       })
     } else {
+      // Best-effort: siblings already past this point cannot be recalled, but a
+      // claim still downloading or describing skips a request the account
+      // provably cannot pay for. A 402 is refused before generation, so the
+      // wasted calls cost nothing either way.
+      if (breaker.tripped) throw breaker.tripped
       const result = await enhancer.enhance(
         prepared.buffer,
         prepared.mediaType,
@@ -539,6 +563,25 @@ async function processClaim(
           })
         : classifyWorkerError(rawError)
     if (error.stage === 'fencing') throw error
+
+    // A quota refusal says the account cannot pay — it says nothing about this
+    // photograph. Recording it would spend one of three retries and, once they
+    // ran out, mark a perfectly good file `failed`. Abandon the claim instead:
+    // the lease expires, the sweeper returns the row to `discovered`, and
+    // `attempts` is untouched because claim() deliberately never increments it.
+    if (error.quota) {
+      breaker.tripped ??= error
+      return {
+        intakeFileId: claim.id,
+        driveFileId: claim.driveFileId,
+        status: 'provider_quota_paused',
+        attempts: claim.attempts,
+        descriptionCalled,
+        descriptionInjected,
+        descriptionMissing,
+      }
+    }
+
     if (!(await repository.assertLease(claim.id, claim.leaseToken))) {
       throw new EnhancementError(
         `Enhancement ownership for ${claim.id} expired or was revoked. The stale worker result was discarded.`,
@@ -598,8 +641,9 @@ export async function runEnhancementBatch(
   // lease to a replacement — a fact about one photograph. Letting it reject the
   // whole batch would discard three siblings' finished work from the result,
   // and their rows are already written and correct.
+  const breaker: QuotaBreaker = { tripped: null }
   const settled = await Promise.allSettled(
-    claims.map((claim) => processClaim(claim, dependencies)),
+    claims.map((claim) => processClaim(claim, dependencies, breaker)),
   )
   const outcomes = settled.flatMap((result) =>
     result.status === 'fulfilled' ? [result.value] : [],
@@ -609,6 +653,27 @@ export async function runEnhancementBatch(
     throw (settled.find((result) => result.status === 'rejected') as PromiseRejectedResult).reason
   }
 
+  const providerQuotaPaused = outcomes.filter(
+    (row) => row.status === 'provider_quota_paused',
+  ).length
+
+  // One row per tick, not per photograph: the condition belongs to the account.
+  // Best-effort — a pause must never itself become a failure.
+  if (breaker.tripped) {
+    await dependencies.repository
+      .recordSystemEvent({
+        event: 'enhancement.paused_provider_quota',
+        detail: {
+          code: breaker.tripped.code,
+          stage: breaker.tripped.stage,
+          message: breaker.tripped.message,
+          claims_released: providerQuotaPaused,
+        },
+        actor: SOURCE,
+      })
+      .catch(() => undefined)
+  }
+
   return {
     claimed: claims.length,
     stale,
@@ -616,6 +681,7 @@ export async function runEnhancementBatch(
     retryScheduled: outcomes.filter((row) => row.status === 'retry_scheduled').length,
     failed: outcomes.filter((row) => row.status === 'failed').length,
     costCeilingFailed: outcomes.filter((row) => row.status === 'cost_ceiling_failed').length,
+    providerQuotaPaused,
     descriptionCalls: outcomes.filter((row) => row.descriptionCalled).length,
     elapsedMs: now() - started,
     outcomes,

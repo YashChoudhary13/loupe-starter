@@ -50,9 +50,12 @@ export interface TrackingRow {
   readonly driveHref: string | null
   readonly duplicate: TrackingDuplicate | null
   /**
-   * What this photograph has actually cost so far, in USD: the cached
-   * description plus EVERY generated image, redos included — provider-reported
-   * figures only, never derived from a price table (D5/D35).
+   * What this row has actually cost so far, in USD — provider-reported figures
+   * only, never derived from a price table (D5/D35).
+   *
+   * For a photograph: its cached description plus EVERY generated image, redos
+   * included. For a product draft: the same total summed across every
+   * photograph grouped into it, which is what the product cost to make.
    *
    * Null means nothing has been billed yet. That is different from 0, which
    * would claim a paid call returned free.

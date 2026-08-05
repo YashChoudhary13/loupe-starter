@@ -1,0 +1,9 @@
+/.git
+/.artifacts
+/Raw Images
+/coverage
+/design
+/docs
+/scripts
+/supabase
+/tests

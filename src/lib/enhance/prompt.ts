@@ -46,8 +46,8 @@ export function resolveImagePrompt(
   /**
    * False for a preset that stages the product itself — "worn on a hand", "bag
    * standing upright". Those contradict the describer's composition classes,
-   * which all describe a piece laid out on a surface ("lay the piece flat in a
-   * relaxed open arc"). Sending both leaves the image model to resolve a
+   * which all describe a piece posed on a product-photography surface. Sending
+   * both leaves the image model to resolve a
    * contradiction, which it does differently every time.
    */
   usesComposition = true,

@@ -241,8 +241,10 @@ three retries after 1m, 2m and 5m. If the fourth total attempt fails, the row be
 JSON and invented classes follow the same bounded path; free-form model composition never
 reaches the image prompt. A describer outage therefore stops that file after its retry
 budget instead of silently producing an image without a description.
-`MAX_COST_USD_PER_DESCRIPTION=0.02` guards accidental reasoning spend independently of the
-image ceiling. A successful describe response above that limit does **not** retry the same
+`MAX_COST_USD_PER_DESCRIPTION=0.05` guards accidental reasoning spend independently of the
+image ceiling. D84 raised it from `0.02` after six live probes cost $0.0300–$0.0366 each:
+the lower ceiling discarded a good response and silently sent the image stage no PRODUCT
+record. Measurements on 2026-08-05 ($0.031205–$0.038945) stayed inside that band. A successful describe response above that limit does **not** retry the same
 expensive configuration: it records the missing description and continues to the image call
 immediately.
 

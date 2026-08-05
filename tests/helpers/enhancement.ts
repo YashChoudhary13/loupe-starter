@@ -87,6 +87,7 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
   }> = []
   readonly completions: Parameters<EnhancementRepository['complete']>[0][] = []
   readonly failures: IntakeFailureInput[] = []
+  readonly systemEvents: Parameters<EnhancementRepository['recordSystemEvent']>[0][] = []
   readonly descriptionFailures: string[] = []
   readonly presentationFallbacks: Array<{
     intakeFileId: string
@@ -220,6 +221,12 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
       attempts: 1,
       nextAttemptAt: '2026-07-29T12:01:00.000Z',
     }
+  }
+
+  async recordSystemEvent(
+    input: Parameters<EnhancementRepository['recordSystemEvent']>[0],
+  ): Promise<void> {
+    this.systemEvents.push(input)
   }
 }
 

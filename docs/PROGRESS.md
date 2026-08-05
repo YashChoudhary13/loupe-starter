@@ -29,6 +29,98 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-05 — Image art-direction evaluation and the 402 quota bug
+
+**Goal this session:** find out why enhanced images are not sellable, and fix whatever the
+investigation exposed.
+
+**Built:**
+- `scripts/eval-art-direction.ts` → throwaway paid harness. Reads the live prompts over PostgREST,
+  runs prompt/quality/size/description variants over sources in
+  `.artifacts/art-direction-eval/raw/`, caches descriptions so re-runs never re-pay. Writes nothing
+  to Supabase or R2 and creates no `image_versions` rows.
+- `src/lib/enhance/errors.ts` → `EnhancementError.quota`; `classifyWorkerError` catches a bare 402.
+- `src/lib/enhance/openrouter.ts` → 402 and insufficient-credit markers become
+  `{image,describe}_provider_quota_exhausted`, retryable, with a message naming the credits page.
+- `src/lib/enhance/worker.ts` → new `provider_quota_paused` outcome. A quota error abandons the
+  claim without recording an attempt; batch reports `providerQuotaPaused` and writes one
+  `enhancement.paused_provider_quota` event per tick.
+- `src/lib/enhance/{repository,supabase-repository}.ts` → `recordSystemEvent`.
+
+**Verified:**
+
+*Round one — 5 variants on the heart station necklace (s4), $1.460275 total:*
+
+```
+A  live prompt, 1280, medium, +desc   $0.080416   47.4s   (production baseline)
+B  live prompt, 1280, HIGH,   +desc   $0.269026  128.4s
+C  art direction, 1280, HIGH, no desc $0.265186  126.9s
+D  art direction, 1280, HIGH, +desc   $0.266161  126.4s
+E  art direction, 2048, HIGH, no desc $0.441856  141.4s
+```
+
+A reproduced the reported defect exactly: source has a flat curb chain, A rendered round cable.
+B was the only round-one variant to get the chain right. C was the best photograph but reverted to
+cable. D degraded the heart geometry into lumpy pebbles — the only variable vs C is the injected
+description. E bought micro-detail but broke the topology and cost 1.7×.
+
+**`quality: high` costs $0.265–$0.269, above `MAX_COST_USD_PER_IMAGE=0.20`.** Switching production
+to `high` without raising that ceiling would pay in full and then fail every intake permanently.
+
+*Round two — corrected arrangement at medium, all four necklaces, $0.307864 ($0.076966 each):*
+
+| source | closure | chain | components |
+|---|---|---|---|
+| s3 baguette station | closed, clasp into extender | cable, correct | 7 of 7 exact, still dangling |
+| s4 heart station | closed | flat curb, correct | 9 vs 8 |
+| s2 multi-strand | closed | rope/wheat → curb ✗ | 4 strands → 2 ✗ |
+| s1 lariat | forced closed ✗ | cable | drop destroyed ✗ |
+
+The "chain ends in a heart" defect is explained and fixed for station necklaces: the source photo is
+folded double over a display card, so the real closure is hidden and the middle reads as an end —
+and **every `COMPOSITION_DETAILS` paragraph asks for an open shape** ("broad relaxed curve",
+"shallow S-shape", "relaxed open arc"), which forces the model to invent a terminus and fill it with
+the repeating motif. Naming the topology as a closed loop removed it. A *universal* closed-loop
+assertion then destroyed the lariat, which is why the correction belongs per class.
+
+Chain fidelity came out right at `medium` once a targeted chain clause was present, so the quality
+tier was not the lever it appeared to be in round one.
+
+*402 fix:* `npx vitest run` → **54 files, 556 tests, all passing** (242.86s).
+`npx tsc --noEmit` clean. `npx eslint` clean on all changed files. New tests: 402 →
+`image_provider_quota_exhausted`/`quota: true` with a billing-focused message; worker abandons two
+claims with zero `recordFailure` calls, zero retry budget spent, exactly one system event.
+
+**Not finished / known broken:**
+- **Rounds G/H never ran** — the OpenRouter balance fell below the image reserve mid-session.
+  Harness is written, typechecked and dry-run clean; needs a top-up above ~$0.74.
+- **No `COMPOSITION_DETAILS` change was made.** The corrected per-class arrangements exist only
+  inside the eval script. Landing them is a code change plus a new prompt version.
+- **`/tracking` does not surface a quota pause.** Event is durable; no UI yet.
+- Component-count drift (9 vs 8 hearts) and multi-strand strand-count collapse are unsolved.
+- Circuit breaker cannot stop siblings already in flight — documented, costs nothing.
+
+**Surprises:**
+1. **The MCP Supabase server points at a different account than `.env`.** `.env` uses
+   `sxuxqtzwuvftwfjkpnyo`; the MCP's "qimati-loupe" is `xaszahrthoggulikdour`. Several MCP queries
+   this session described the wrong database — including a false report that the deployed retry
+   schedule disagreed with CLAUDE.md. Verified against the real project over `pgClient()`: all three
+   failure functions use 1m/2m/5m with attempt 4 terminal, matching D80 and hard rule 4. **Use
+   `scripts/lib/pg.ts`, not the MCP, for this project's database.**
+2. **`SUPABASE_DB_PASSWORD` works.** The 2026-07-28 entry below says it is stale and `db:push` has
+   never run; the ledger is current through `20260804200000`. That note is outdated.
+3. `CLAUDE.md` still states `MAX_COST_USD_PER_DESCRIPTION=0.02`; `.env` and D84 both say `0.05`.
+   Observed describe costs $0.031205–$0.038945 sit inside D84's accepted $0.0300–$0.0366 band.
+4. **This session's direction partly conflicts with D84**, which forbids "aspirational redesign" and
+   mandates the injected PRODUCT record. The owner asked for output that does *not* resemble the
+   input, and variant D suggests injection can hurt component geometry. Not reversed — flagged.
+
+**Next session should start with:** decide whether to amend D84. If yes, top up OpenRouter above
+~$0.74 and run `sweep --variant G` and `--variant H` to test the live prompt with only the
+arrangement corrected; that is the smallest change that fixes the reported defect.
+
+---
+
 ## 2026-08-04 — Console category creation and Waist Chains WC sequence
 
 **Goal this session:** let an operator add a genuinely new category from the console and establish
