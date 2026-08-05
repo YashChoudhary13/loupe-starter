@@ -1,5 +1,7 @@
 'use server'
 
+import { after } from 'next/server'
+
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
 import {
   validateCategoryInput,
@@ -271,8 +273,13 @@ export async function previewPhotosAction(
 export interface RedoImageResult {
   readonly photo: PhotoSummary
   readonly jobId: string
-  readonly completed: boolean
-  readonly paidCalls: number
+  /**
+   * The job is durable and running in the background. The returned photo
+   * already carries `redo.status = 'queued'`, so the console renders progress
+   * immediately and the live heartbeat swaps in the new version when
+   * `image.redo_completed` lands.
+   */
+  readonly queued: true
 }
 
 /**
@@ -337,15 +344,25 @@ export async function redoImageAction(
       '@/lib/enhance/redo-server'
     )
     const jobId = await queueImageRedo(intakeFileId, operator.email, promptOverride)
-    const result = await runProductionRedoBatch(jobId)
+
+    /**
+     * The paid generation takes ~70 s. Awaiting it here held the operator on a
+     * frozen "Generating…" dialog for the whole call. `after` runs the exact
+     * same batch once the response has been sent, so execution and interruption
+     * semantics are unchanged — the job is durable, and the cron reclaims it if
+     * this invocation is cut short (D52). Only the response moves earlier.
+     *
+     * Errors are swallowed deliberately: the redo worker persists its own
+     * failure onto the job row, which the console renders as a failed badge. An
+     * unhandled rejection here would add noise without adding information.
+     */
+    after(async () => {
+      await runProductionRedoBatch(jobId).catch(() => undefined)
+    })
+
     const [photo] = await loadPhotos([intakeFileId])
     if (!photo) throw new ConsoleError('That photograph no longer exists.', null, false)
-    return {
-      photo,
-      jobId,
-      completed: result.completed === 1,
-      paidCalls: result.paidCalls,
-    }
+    return { photo, jobId, queued: true }
   })
 }
 

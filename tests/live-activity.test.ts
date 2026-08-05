@@ -68,4 +68,20 @@ describe('global live activity', () => {
     expect(shouldRefreshTracking([event(24, 'intake.failed')])).toBe(true)
     expect(shouldRefreshTracking([event(25, 'intake.paused_provider_quota')])).toBe(true)
   })
+
+  /**
+   * A redo generates in the background, so its terminal event is the only thing
+   * that clears the console's "redoing…" badge. A success-only filter left a
+   * failed redo showing progress forever.
+   */
+  it('refreshes the console on every redo outcome, not just success', () => {
+    for (const name of [
+      'image.redo_completed',
+      'image.redo_failed',
+      'image.redo_cost_ceiling_failed',
+      'image.redo_retry_scheduled',
+    ]) {
+      expect(shouldRefreshConsole([event(30, name)])).toBe(true)
+    }
+  })
 })

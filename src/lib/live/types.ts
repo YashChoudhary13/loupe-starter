@@ -46,6 +46,15 @@ const CONSOLE_REFRESH_EVENTS = new Set([
   'intake.console_delete_requested',
   'duplicate.reviewed',
   'image.redo_completed',
+  /**
+   * A redo runs in the background now, so its outcome is the only thing that
+   * clears the "redoing…" badge. Without the failure events the console would
+   * sit on that badge until some unrelated event happened to refresh it, and
+   * the operator would never learn the redo died.
+   */
+  'image.redo_failed',
+  'image.redo_cost_ceiling_failed',
+  'image.redo_retry_scheduled',
   'draft.created',
   'draft.saved',
   'draft.deleted_after_shopify_delete',

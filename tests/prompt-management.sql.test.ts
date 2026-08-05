@@ -293,7 +293,14 @@ describe('deployed style presets', () => {
     expect(latest.rows).toHaveLength(10)
     for (const row of latest.rows) {
       if (row.kind === 'describe') {
-        expect(row.model).toBe('openai/gpt-5.6-sol')
+        /**
+         * Was pinned to openai/gpt-5.6-sol. Presets no longer have to share one
+         * describer — selecting a model creates a new version for that preset
+         * alone — so the durable invariant is that every preset sits on a
+         * reviewed describer, not that they are all identical. Both listed
+         * models have acceptance evidence; see D87.
+         */
+        expect(['openai/gpt-5.6-sol', 'moonshotai/kimi-k3']).toContain(row.model)
         expect(row.body).toContain('Exact counts are mandatory')
         expect(row.body).not.toContain('Do NOT state exact counts')
         expect(row.body).toContain('80 to 200 words')
@@ -302,18 +309,35 @@ describe('deployed style presets', () => {
         expect(row.body).toContain('SOURCE AUTHORITY')
         expect(row.body).toContain('sole visual authority')
         expect(row.body.toLowerCase()).toContain('uniform')
-        if (['satin', 'marble', 'yellow'].includes(row.preset_slug)) {
-          expect(row.body).toContain('luxury e-commerce hero')
-          expect(row.body).toContain('warm luxury studio lighting')
-          expect(row.body).toContain('FINAL IDENTITY CHECK')
-        } else {
-          expect(row.body).toContain('premium retail hero')
-        }
+        /**
+         * Every preset now carries the same protected luxury macro contract.
+         * 20260805115500 gave it to satin, marble and yellow but left
+         * hand-chain and bag two revisions behind on the older "premium retail
+         * hero" text, which produced visibly flatter results for those two.
+         * 20260805140000 closed the gap, so the split this test used to encode
+         * is gone deliberately.
+         */
+        expect(row.body).toContain('luxury e-commerce hero')
+        expect(row.body).toContain('PRIORITY ORDER')
+        expect(row.body).toContain('warm luxury studio lighting')
+        expect(row.body).toContain('FINAL IDENTITY CHECK')
+
+        // The two self-staging presets place the product themselves, so they
+        // must still carry no composition token while sharing everything else.
+        const selfStaging = ['hand-chain', 'bag'].includes(row.preset_slug)
+        expect(row.body.includes('{{COMPOSITION_DETAIL}}')).toBe(!selfStaging)
       }
     }
   })
 
-  it('makes the live satin pair the highest-reliability model pair', async () => {
+  /**
+   * The live describer moved from openai/gpt-5.6-sol to moonshotai/kimi-k3 on
+   * 2026-08-05 (D87): kimi-k3 was the only evaluated candidate to return strict
+   * valid JSON on all five acceptance sources, classified all five correctly,
+   * and costs roughly half of Sol — which had just breached the live cost
+   * ceiling on a real photograph.
+   */
+  it('makes the live satin pair the selected model pair', async () => {
     const live = await db.query<{
       kind: 'describe' | 'image'
       model: string
@@ -327,7 +351,7 @@ describe('deployed style presets', () => {
     )
 
     expect(live.rows.map(({ kind, model, preset_slug }) => ({ kind, model, preset_slug }))).toEqual([
-      { kind: 'describe', model: 'openai/gpt-5.6-sol', preset_slug: 'satin' },
+      { kind: 'describe', model: 'moonshotai/kimi-k3', preset_slug: 'satin' },
       { kind: 'image', model: 'openai/gpt-image-2', preset_slug: 'satin' },
     ])
     expect(live.rows.find((row) => row.kind === 'describe')!.body).toContain(

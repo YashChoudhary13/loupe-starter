@@ -2285,3 +2285,56 @@ before generation and bills nothing).
 
 **Still open:** `/tracking` does not yet surface the pause. The event is durable and queryable, but
 an operator currently sees only work quietly not progressing.
+
+---
+
+### D87 — Kimi K3 is the describer, and reasoning effort is a tunable again
+
+*Isolated candidate evaluation and a live end-to-end call, 2026-08-05. Supersedes D84's
+`openai/gpt-5.6-sol` describer default and the hard `minimal` reasoning lock.*
+
+`scripts/evaluate-description-models.ts` over the five Phase 3C acceptance sources, zero
+production writes:
+
+```
+candidate                      strict JSON  class  cost/image
+qwen/qwen3.7-flash                    0/5      —   $0.00025          (empty result every time)
+google/gemini-3.5-flash-lite          4/5    5/5   $0.001
+moonshotai/kimi-k2.6                  0/5      —   $0.0065-0.0091    (empty result every time)
+moonshotai/kimi-k3                    5/5    5/5   $0.0108-0.0217
+```
+
+`kimi-k3` was the only candidate that returned strict valid JSON on every source. The two
+cheapest options are not cheap in practice: Qwen Flash returns nothing at all, and K2.6 also
+returns nothing while still billing more than Gemini, because it spends the budget reasoning
+and never emits. Against Sol's observed production range of $0.021612–$0.053134, K3 is roughly
+half the cost — and Sol had just breached the live $0.05 ceiling on a real photograph,
+discarding a paid description and leaving that product with no identity record.
+
+A live call through the production path afterwards: `$0.014358`, 18.0 s, `necklace-station`,
+170 words, and factually correct on a seven-station necklace — "four being solid polished
+gold-tone flat rectangles and three being clear faceted rectangular baguette-cut stones",
+which matches the source exactly.
+
+The harness's expected class for `phase3b-01.png` was corrected in the same change. It said
+`flat-curve`, written before 20260804193000 added the four `necklace-*` classes; K3 and Gemini
+independently answered `necklace-station`, which is what the live describer prompt actually
+defines. Both models were right and the fixture was stale.
+
+**Reasoning effort is no longer hard-locked.** `DESCRIBE_REASONING_EFFORT` accepts `minimal`,
+`low`, `medium` and `high`; an unrecognised value still fails loudly. The lock existed only to
+cap reasoning spend at Sol's $5/$30 per 1M, and `MAX_COST_USD_PER_DESCRIPTION` was always the
+real guard — it fails safe by refusing the result rather than overspending. The **default stays
+`minimal`**, so raising it is a deliberate experiment and never happens by upgrading.
+`max_completion_tokens` now scales with effort (1.5k/3k/6k/12k): reasoning tokens are excluded
+from the response but still counted against that budget, so a fixed 1,500 would have truncated
+the JSON mid-object the moment effort rose.
+
+The curated allow-list is enforced twice on purpose — `src/lib/prompts/models.ts` for the
+console selector and `prompts_model_is_curated` in Postgres so nothing reaches the table another
+way. Both moved together in `20260805150000`.
+
+**Not yet proven:** the comparable five-product *image* run CLAUDE.md requires before a
+describer change counts as accepted. The owner selected this model explicitly and is running
+that acceptance themselves. Phase 3C's `< $0.006` cost gate is still not met — $0.0108–$0.0217
+is above it — but the owner's stated target is $0.02–$0.03, which K3 meets.

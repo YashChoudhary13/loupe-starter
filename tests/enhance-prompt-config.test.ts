@@ -15,7 +15,7 @@ describe('Phase 3B two-call configuration', () => {
   it('uses the amendment defaults and resolves friendly model names for OpenRouter', () => {
     const config = enhancementConfig({})
     expect(config).toEqual({
-      describeModel: 'openai/gpt-5.6-sol',
+      describeModel: 'moonshotai/kimi-k3',
       describeReasoningEffort: 'minimal',
       injectDescription: true,
       imageModel: 'openai/gpt-image-2',
@@ -27,10 +27,23 @@ describe('Phase 3B two-call configuration', () => {
     expect(resolveOpenRouterModel('anthropic/example')).toBe('anthropic/example')
   })
 
-  it('refuses extended description reasoning', () => {
-    expect(() =>
-      enhancementConfig({ DESCRIBE_REASONING_EFFORT: 'low' }),
-    ).toThrow(/must be minimal/)
+  /**
+   * Effort was locked to `minimal` only to cap reasoning spend on
+   * openai/gpt-5.6-sol. On moonshotai/kimi-k3 it is a tunable (D87), so the
+   * four documented levels are accepted and anything else still fails loudly —
+   * a typo must not silently fall back to a different effort than intended.
+   */
+  it('accepts the documented reasoning efforts and rejects anything else', () => {
+    for (const effort of ['minimal', 'low', 'medium', 'high'] as const) {
+      expect(enhancementConfig({ DESCRIBE_REASONING_EFFORT: effort })).toMatchObject({
+        describeReasoningEffort: effort,
+      })
+    }
+    expect(() => enhancementConfig({ DESCRIBE_REASONING_EFFORT: 'extreme' })).toThrow(
+      /must be one of minimal, low, medium, high/,
+    )
+    // Default is unchanged: raising effort stays a deliberate experiment.
+    expect(enhancementConfig({}).describeReasoningEffort).toBe('minimal')
   })
 
   it('injects by one literal replacement and stores the resolved text', () => {

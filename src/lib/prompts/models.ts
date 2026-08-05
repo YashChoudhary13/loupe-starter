@@ -82,6 +82,13 @@ export const DESCRIBE_MODELS: readonly CuratedModel[] = [
     note: 'Premium vision and instruction following.',
   },
   {
+    id: 'moonshotai/kimi-k3',
+    label: 'Kimi K3',
+    tier: 'Strong',
+    priceHint: '$3 / $15 per 1M tokens',
+    note: 'Strict JSON on 5/5 acceptance sources at roughly half Sol’s cost.',
+  },
+  {
     id: 'openai/gpt-5.6-sol',
     label: 'GPT-5.6 Sol',
     tier: 'Premium',

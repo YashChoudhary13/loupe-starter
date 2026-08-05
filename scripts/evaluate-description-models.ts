@@ -32,7 +32,16 @@ const DEFAULT_CANDIDATES = [
 const SOURCES = [
   {
     filename: 'phase3b-01.png',
-    expectedPresentation: 'flat-curve',
+    /**
+     * Was 'flat-curve', written before 20260804193000 added the four
+     * necklace-* classes. This source is a single-strand chain with spaced
+     * dangling bezel-set stations and no dominant pendant, which the live
+     * describer prompt defines as necklace-station; it also says flat-curve is
+     * "only for another flexible long chain that fits none of those four".
+     * Corrected 2026-08-05 after kimi-k3 and gemini-3.5-flash-lite
+     * independently answered necklace-station and were both marked wrong.
+     */
+    expectedPresentation: 'necklace-station',
   },
   {
     filename: 'phase3b-02.jpg',
@@ -179,14 +188,17 @@ async function main(): Promise<void> {
   await db.connect()
   let describePrompt: string
   try {
+    // Whatever is live right now, not a name pinned to one revision. The
+    // original hardcoded 'Qimati factual describer — bounded presentation' and
+    // silently stopped working the moment that prompt was superseded.
     const prompt = await db.query<{ body: string }>(
       `select body
          from public.prompts
-        where name = 'Qimati factual describer — bounded presentation'
+        where kind = 'describe'
           and is_default
           and archived_at is null`,
     )
-    invariant(prompt.rows.length === 1, 'The live Phase 3C describe prompt is missing.')
+    invariant(prompt.rows.length === 1, 'There is no single live describe prompt.')
     describePrompt = prompt.rows[0]!.body
   } finally {
     await db.end()

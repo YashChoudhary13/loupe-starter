@@ -21,11 +21,11 @@ const PRESETS: Record<string, { label: string; note: string }> = {
   },
   'hand-chain': {
     label: 'Hand chain — worn',
-    note: 'Close, low-distortion worn view with exact wrist, branch, junction and finger-loop connections preserved.',
+    note: 'Close, low-distortion worn view with the same protected construction checks; exact wrist, branch, junction and finger-loop connections preserved.',
   },
   bag: {
     label: 'Bags — truthful premium hero',
-    note: 'The most flattering supported angle without inflating or reshaping the bag; artwork and lettering stay exact.',
+    note: 'The most flattering supported angle with the same protected construction checks; the bag is never inflated or reshaped and artwork and lettering stay exact.',
   },
 }
 

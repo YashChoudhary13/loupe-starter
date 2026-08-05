@@ -144,7 +144,12 @@ export function RedoPromptDialog({
             disabled={busy || promptText === null || unresolved.length > 0 || !draft.trim()}
             className="rounded-pill bg-ink px-4 py-2 text-[12px] font-medium text-white transition-opacity disabled:opacity-40"
           >
-            {busy ? 'Generating…' : 'Continue'}
+            {/*
+              The dialog only queues the job now; generation runs in the
+              background. "Generating…" would overstate what this button waits
+              for, which is a fast enqueue.
+            */}
+            {busy ? 'Starting…' : 'Continue'}
           </button>
         </div>
       </div>

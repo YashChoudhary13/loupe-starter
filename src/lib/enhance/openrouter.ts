@@ -101,10 +101,37 @@ function dataUrl(input: Buffer, mediaType: string): string {
  * live against `google/gemini-3.1-pro-preview` (docs/PROGRESS.md, 2026-07-31).
  * See D55.
  */
-const REASONING_CAPABLE_PREFIXES = ['openai/', 'google/', 'anthropic/', 'qwen/']
+const REASONING_CAPABLE_PREFIXES = [
+  'openai/',
+  'google/',
+  'anthropic/',
+  'qwen/',
+  // Moonshot added 2026-08-05 while pricing a cheaper describer: OpenRouter's
+  // /models endpoint reports `reasoning` in supported_parameters for
+  // moonshotai/kimi-k2.6 and kimi-k3, which is the same criterion the other
+  // four were admitted on. Inert until a kimi model is actually selected.
+  'moonshotai/',
+]
 
 function supportsReasoningControl(model: string): boolean {
   return REASONING_CAPABLE_PREFIXES.some((prefix) => model.startsWith(prefix))
+}
+
+/**
+ * Completion budget for one describe call. The visible answer never needs more
+ * than ~400 tokens; the rest is headroom for suppressed-but-billed reasoning.
+ */
+function completionBudgetFor(effort: DescribeReasoningEffort): number {
+  switch (effort) {
+    case 'high':
+      return 12_000
+    case 'medium':
+      return 6_000
+    case 'low':
+      return 3_000
+    default:
+      return 1_500
+  }
 }
 
 function imageGenerationParameters(options: EnhanceOptions): Record<string, unknown> {
@@ -281,7 +308,12 @@ export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
           // controlled, not a fixed per-effort-level budget — so an occasional
           // heavy call gets room to finish instead of truncating mid-JSON.
           // MAX_COST_USD_PER_DESCRIPTION still bounds actual spend regardless.
-          max_completion_tokens: 1500,
+          //
+          // Scaled by effort: reasoning tokens are excluded from the response but
+          // still counted against this budget, so a fixed 1500 would truncate the
+          // JSON mid-object the moment effort rose above minimal — the exact
+          // failure the ceiling was hiding.
+          max_completion_tokens: completionBudgetFor(options.reasoningEffort),
           stream: false,
         }),
       })

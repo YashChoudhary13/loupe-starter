@@ -29,10 +29,35 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
-## 2026-08-05 — Image art-direction evaluation and the 402 quota bug
+## 2026-08-05 — Image art-direction evaluation, the 402 quota bug, and the description ceiling
 
 **Goal this session:** find out why enhanced images are not sellable, and fix whatever the
 investigation exposed.
+
+> **Read the two facts in "Surprises" first — production is Railway, not Vercel, and the MCP
+> Supabase server points at a different account than `.env`. Both cost real time this session.**
+
+**The headline cause of "no presentation change" was not the prompt.** `MAX_COST_USD_PER_DESCRIPTION`
+in the Railway environment was still `0.02` while `.env` and D84 said `0.05`. The describer ran and
+succeeded on every photograph, and Loupe threw each paid result away, exactly as D84 predicted in
+writing. The image call therefore went out with `description_injected: false`,
+`description_missing: true` and the generic `flat-curve` fallback composition — no product identity
+and no real pose instruction — so the model kept the source layout and changed only the background.
+Six of seven photographs in the system were in that state. The owner raised the Railway value to
+`0.05` late in the session and photographs began describing correctly
+(`necklace-multistrand`, `necklace-station`, $0.021612 and $0.022002).
+
+**`0.05` is still too low.** Within the hour, `IMG_20260805_141226790.jpg` cost **$0.05313375** and
+was rejected. Every describe cost recorded so far:
+
+```
+succeeded  0.004668  0.021612  0.022002
+rejected   0.039484  0.041494  0.041734  0.041944  0.042334  0.042814  0.048814  0.053134
+```
+
+D84 set `0.05` from a sample of $0.0300–$0.0366; real traffic runs higher and has now exceeded it.
+**Recommended `0.08`** — roughly 50% headroom over the observed maximum, still far under the $0.20
+image ceiling. Not applied: the value is D84's and the change is the owner's to make.
 
 **Built:**
 - `scripts/eval-art-direction.ts` → throwaway paid harness. Reads the live prompts over PostgREST,
@@ -46,6 +71,25 @@ investigation exposed.
   claim without recording an attempt; batch reports `providerQuotaPaused` and writes one
   `enhancement.paused_provider_quota` event per tick.
 - `src/lib/enhance/{repository,supabase-repository}.ts` → `recordSystemEvent`.
+- `src/lib/tracking/cost.ts` + `read-model.ts` → product drafts now show what they cost: every
+  grouped photograph's description plus all its generated images. Draft membership is fetched
+  independently of the 500-row intake recency window, with a top-up query for versions that window
+  missed, so a draft's figure is the whole total or nothing rather than a quiet partial. The money
+  arithmetic moved out of the `server-only` module so it could be tested.
+- `src/app/console/actions.ts` → redo no longer blocks the UI. `redoImageAction` enqueues the
+  durable job and hands the ~70 s paid generation to `next/server`'s `after()`, so the response
+  returns immediately with `redo.status = 'queued'`. Same call, same interruption semantics; only
+  the response moves earlier.
+- `src/lib/live/types.ts` → `CONSOLE_REFRESH_EVENTS` gained `image.redo_failed`,
+  `image.redo_cost_ceiling_failed` and `image.redo_retry_scheduled`. It had only the success event,
+  which was harmless while the action awaited the result inline and would have left a failed
+  background redo showing "redoing…" forever.
+- `supabase/migrations/20260805140000_worn_and_bag_presets_luxury_macro_parity.sql` → the
+  hand-chain and bag image presets rebuilt on the current default's structure. `20260805115500`
+  had given the protected luxury macro contract to satin, marble and yellow only, leaving those
+  two on the 2026-08-04 text (93 lines diverged, against marble's 9). Both stage the product
+  themselves, so they carry no `{{COMPOSITION_DETAIL}}`; their pose sections are written in as
+  `WEARING AND FIT` and `STANDING AND PRESENTATION`. Inserted non-current — nothing promoted.
 
 **Verified:**
 
@@ -101,6 +145,13 @@ claims with zero `recordFailure` calls, zero retry budget spent, exactly one sys
 - Circuit breaker cannot stop siblings already in flight — documented, costs nothing.
 
 **Surprises:**
+0. **Production is Railway, not Vercel.** CLAUDE.md's stack line said Vercel, so a stale
+   `MAX_COST_USD_PER_DESCRIPTION` was hunted, changed and deployed twice on Vercel before the
+   Supabase `cron.job` rows showed `loupe_cron_base_url =
+   https://loupe-starter-production.up.railway.app`. Railway runs every worker; its dashboard holds
+   the runtime environment; deploys come from GitHub pushes. CLAUDE.md is corrected, including the
+   line that said the worker "stops before the Vercel limit" — the scheduler is Supabase `pg_cron` +
+   `pg_net`. An idle Vercel project and `.vercel/` link still exist and are **not** production.
 1. **The MCP Supabase server points at a different account than `.env`.** `.env` uses
    `sxuxqtzwuvftwfjkpnyo`; the MCP's "qimati-loupe" is `xaszahrthoggulikdour`. Several MCP queries
    this session described the wrong database — including a false report that the deployed retry
@@ -109,15 +160,25 @@ claims with zero `recordFailure` calls, zero retry budget spent, exactly one sys
    `scripts/lib/pg.ts`, not the MCP, for this project's database.**
 2. **`SUPABASE_DB_PASSWORD` works.** The 2026-07-28 entry below says it is stale and `db:push` has
    never run; the ledger is current through `20260804200000`. That note is outdated.
-3. `CLAUDE.md` still states `MAX_COST_USD_PER_DESCRIPTION=0.02`; `.env` and D84 both say `0.05`.
-   Observed describe costs $0.031205–$0.038945 sit inside D84's accepted $0.0300–$0.0366 band.
+3. `CLAUDE.md` stated `MAX_COST_USD_PER_DESCRIPTION=0.02` while `.env` and D84 said `0.05` and
+   Railway enforced `0.02`. Three sources, three values — the doc is now corrected and the real
+   ceiling lives in Railway. Describe cost is also the single biggest driver of enhancement spend
+   and is running above D84's sample; see the ceiling note at the top of this entry.
 4. **This session's direction partly conflicts with D84**, which forbids "aspirational redesign" and
    mandates the injected PRODUCT record. The owner asked for output that does *not* resemble the
    input, and variant D suggests injection can hurt component geometry. Not reversed — flagged.
+5. **OpenRouter refuses image requests on a fixed credit reserve, not a zero balance.** Measured
+   between $0.662771 (refused) and $0.739737 (accepted) for `gpt-image-2`; neither a shorter prompt
+   nor `quality: low` lowers it, and chat calls keep succeeding throughout. See D86.
+6. **`prompt-management.sql.test.ts` promotes prompts against the live database**, and
+   `promote_prompt_version` refuses while enhancement work is in flight. Six of its tests failed
+   purely because one photograph was mid-generation, then passed once the queue idled. Not a
+   regression — but it looks like one if the suite is run mid-batch.
 
-**Next session should start with:** decide whether to amend D84. If yes, top up OpenRouter above
-~$0.74 and run `sweep --variant G` and `--variant H` to test the live prompt with only the
-arrangement corrected; that is the smallest change that fixes the reported defect.
+**Next session should start with:** raise `MAX_COST_USD_PER_DESCRIPTION` in **Railway** (0.05 is
+already proven too tight — a photograph cost $0.05313375 and was rejected), then decide whether to
+amend D84. The five Aug-04 grouped photographs and `IMG_20260805_141226790.jpg` still carry
+`flat-curve` fallbacks and blind v1s; each needs a redo to trigger description recovery.
 
 ---
 

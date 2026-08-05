@@ -1,5 +1,26 @@
 export type ImageQuality = 'low' | 'medium' | 'high'
-export type DescribeReasoningEffort = 'minimal'
+
+/**
+ * Describe-stage reasoning effort.
+ *
+ * This was locked to `minimal` purely to stop reasoning spend on
+ * `openai/gpt-5.6-sol` at $5/$30 per 1M tokens, where a heavy call reached
+ * $0.053134 and was rejected by the cost ceiling. On `moonshotai/kimi-k3`
+ * ($3/$15) a full description measured $0.0108–$0.0217, so effort is now a
+ * tunable rather than a hard block — `MAX_COST_USD_PER_DESCRIPTION` remains the
+ * real guard, and it fails safe by refusing the result rather than overspending.
+ *
+ * Default stays `minimal`: raising it is a deliberate, measurable experiment,
+ * not something that should change under anyone by upgrading.
+ */
+export type DescribeReasoningEffort = 'minimal' | 'low' | 'medium' | 'high'
+
+const DESCRIBE_REASONING_EFFORTS: readonly DescribeReasoningEffort[] = [
+  'minimal',
+  'low',
+  'medium',
+  'high',
+]
 
 export interface EnhancementConfig {
   readonly describeModel: string
@@ -48,9 +69,9 @@ export function resolveOpenRouterModel(model: string): string {
 
 export function enhancementConfig(env: Environment = process.env): EnhancementConfig {
   const reasoning = value(env, 'DESCRIBE_REASONING_EFFORT', 'minimal')
-  if (reasoning !== 'minimal') {
+  if (!DESCRIBE_REASONING_EFFORTS.includes(reasoning as DescribeReasoningEffort)) {
     throw new Error(
-      'DESCRIBE_REASONING_EFFORT must be minimal. Description is a short factual task; extended reasoning is not allowed.',
+      `DESCRIBE_REASONING_EFFORT must be one of ${DESCRIBE_REASONING_EFFORTS.join(', ')}, got "${reasoning}".`,
     )
   }
 
@@ -65,8 +86,8 @@ export function enhancementConfig(env: Environment = process.env): EnhancementCo
   }
 
   return {
-    describeModel: resolveOpenRouterModel(value(env, 'DESCRIBE_MODEL', 'gpt-5.6-sol')),
-    describeReasoningEffort: reasoning,
+    describeModel: resolveOpenRouterModel(value(env, 'DESCRIBE_MODEL', 'moonshotai/kimi-k3')),
+    describeReasoningEffort: reasoning as DescribeReasoningEffort,
     injectDescription: booleanValue(env, 'INJECT_DESCRIPTION', true),
     imageModel: resolveOpenRouterModel(value(env, 'IMAGE_MODEL', 'gpt-image-2')),
     imageSize: size as `${number}x${number}`,

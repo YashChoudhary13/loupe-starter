@@ -2,7 +2,15 @@
 
 Internal tool for Qimati (qimati.in), a wholesale jewellery Shopify store in Jaipur. It replaces a manual process where one person enhanced photos across five ChatGPT tabs and hand-typed every Shopify listing.
 
-**Stack:** Next.js (App Router) + TypeScript · Supabase Postgres · Cloudflare R2 · Vercel
+**Stack:** Next.js (App Router) + TypeScript · Supabase Postgres · Cloudflare R2 · **Railway**
+
+⚠️ **Production is Railway, deployed by pushing to GitHub** (`YashChoudhary13/loupe-starter`) —
+not Vercel. Confirmed 2026-08-05: the Supabase `cron.job` rows call
+`https://loupe-starter-production.up.railway.app` (the `loupe_cron_base_url` vault secret), so
+Railway runs every worker. **Runtime environment variables live in the Railway dashboard**;
+changing them anywhere else has no effect on production. A `.vercel/` link and an idle Vercel
+project also exist and are *not* production — earlier drafts of this file said "Vercel" and cost a
+session's worth of debugging.
 **Volume:** ~300 products/month, 1–2 images each
 
 ---
@@ -211,7 +219,7 @@ so 0 g is the correct settled value and not a cutover item. See D19.
 
 **Route: OpenRouter.** `OPENROUTER_API_KEY` serves both model calls. D51 moves the
 provider-qualified model onto each immutable prompt version and exposes ten curated choices
-per stage in `/prompts`; the current defaults remain `openai/gpt-5.6-sol` and
+per stage in `/prompts`; the current defaults are `moonshotai/kimi-k3` (D87) and
 `openai/gpt-image-2`. The env values remain compatibility defaults, not the live selector.
 One key and billing account keep model swaps out of provider-specific SDKs.
 
@@ -219,7 +227,7 @@ One key and billing account keep model swaps out of provider-specific SDKs.
 
 1. A describer sees only the 1024 px-long-edge source copy and the live default
    `prompts.kind = 'describe'` body and selected model. It uses
-   `DESCRIBE_REASONING_EFFORT=minimal` where the provider supports that control and must
+   `DESCRIBE_REASONING_EFFORT` (default `minimal`, tunable to `low`/`medium`/`high` since D87) where the provider supports that control and must
    return one strict JSON object with exactly `description` and `presentation`. Description
    is one factual 60–100 word paragraph. Presentation must be one of the database enum's
    six values: `pair-upright`, `flat-curve`, `standing-three-quarter`, `angled-band`,
@@ -249,12 +257,19 @@ expensive configuration: it records the missing description and continues to the
 immediately.
 
 **Phase 3C status:** the bounded composition implementation is deployed and visually
-verified, but Phase 3C is not complete. The current `openai/gpt-5.6-sol` five-product
-acceptance cost $0.014816–$0.016851 per description, above the required `< $0.006` gate.
-Production stays on that model until an explicit decision selects a replacement and a fresh
-comparable five-product image run proves strict JSON, factual accuracy, correct classes,
-image fidelity and the 87-item tray count. The isolated cost evaluation is evidence, not
-permission to change `DESCRIBE_MODEL`.
+verified, but Phase 3C is **still not complete**.
+
+On 2026-08-05 the owner explicitly selected `moonshotai/kimi-k3` as the describer, replacing
+`openai/gpt-5.6-sol` (D87). Sol had reached $0.053134 on a live photograph and breached the
+cost ceiling, discarding a paid description. K3 was the only evaluated candidate to return
+strict valid JSON on all five acceptance sources, classified all five correctly, and costs
+$0.0108–$0.0217 — roughly half of Sol, and inside the owner's stated $0.02–$0.03 target.
+
+That still does **not** close Phase 3C. The `< $0.006` cost gate is unmet, and the required
+fresh five-product *image* run proving image fidelity and the 87-item tray count has not been
+run — K3 said "approximately 86 rings… 3 slots visibly empty" on the tray, structurally right
+with the exact count marginally off. An isolated description evaluation is evidence about
+descriptions only; it is not acceptance of the pipeline's output.
 
 **That cost work was deliberately deferred past Phase 4** (D43). Phase 4 completed without
 changing any model. In Phase 5 the owner explicitly brought curated model selection into
@@ -321,9 +336,10 @@ repairs Shopify automatically. See D54.
   deterministic key. Every version derives from it. Phase 3B never moves the Drive file to
   Processed; Drive housekeeping belongs to the later phase that produces `published`.
 
-**Production worker:** `POST /api/cron/enhance`, every minute through the existing Vault +
-`CRON_SECRET` pattern. A tick claims at most two items with the Phase 3A UUID token and
-stops before the Vercel limit. Before every R2 or database write it rechecks the unexpired
+**Production worker:** `POST /api/cron/enhance`, every minute, driven by Supabase `pg_cron` +
+`pg_net` against the `loupe_cron_base_url` / `loupe_cron_secret` vault secrets — *not* a
+platform scheduler. A tick claims at most two items with the Phase 3A UUID token and
+stops before the request time limit. Before every R2 or database write it rechecks the unexpired
 token. Generated/original keys are deterministic, so an R2 upload followed by a process
 crash is recovered without a duplicate version.
 
