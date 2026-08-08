@@ -119,8 +119,11 @@ enhanced product images in the listing console.
 
 **Built:**
 - `src/components/console/QueueGrid.tsx` → added `content-start` to the full-height CSS grid.
-  Without it, CSS Grid stretched the two automatic row tracks through the card's unused height
-  while the square tiles stayed at their intrinsic size, leaving a large blank area between rows.
+  Without it, CSS Grid stretched sparse automatic row tracks through the card's unused height while
+  the square tiles stayed at their intrinsic size, leaving a large blank area between rows.
+- Added `auto-rows-max` after dense live-console inspection showed the inverse failure: 53 items
+  compressed implicit row tracks to fit the card and made adjacent 115 px tiles overlap. Each row
+  now keeps its content height and the queue scrolls normally when it exceeds the card.
 
 **Verified:**
 - Reproduced with the application's compiled Tailwind styles at a 700 × 600 px queue: the previous
@@ -137,16 +140,23 @@ enhanced product images in the listing console.
   three real enhanced product images wrapped 2 + 1 into two rows with the second row immediately
   below the first at the normal grid gap. Evidence:
   `.artifacts/console-grid/live-production-two-row.png`.
+- Local production CSS validation of the dense follow-up used 53 queue tiles at 6 columns × 9 rows:
+  every tile remained **115 px** high, adjacent rows retained the intended **10 px** gap, and the
+  queue scrolled (`scrollHeight 1115 px` over `clientHeight 666 px`) instead of overlapping.
+- The complete fix is commit `ba967f2`, pushed to `origin/main`. Targeted ESLint, `npm run
+  typecheck`, and `npm run build` all pass after the dense-row follow-up.
 - Full suite result: **558 passed / 6 failed**. The failures are the already-recorded moving prompt
   fixtures and live SKU/database-state assertions, not the queue component or CSS change.
 
-**Not finished / known broken:** none for this spacing defect.
+**Not finished / known broken:** final production-only visual verification of `auto-rows-max` is
+left to the owner, who explicitly requested that it be performed from the company's laptop. The
+code, push, and local production-build checks are complete.
 
 **Surprises:** pushing `main` did not update Railway automatically during two polling windows. The
 owner updated Railway, after which the new CSS asset became live and passed the production check.
 
-**Next session should start with:** no follow-up is required for this defect; preserve
-`content-start` if the queue grid is refactored.
+**Next session should start with:** from the company's laptop, confirm a populated second row sits
+10 px below the first and a dense queue scrolls without overlap. No code follow-up is expected.
 
 ---
 
