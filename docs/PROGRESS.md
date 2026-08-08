@@ -29,6 +29,29 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-08 (h) — Added a console operator
+
+**Goal this session:** grant `lokendrasingh861981@gmail.com` access to Loupe.
+
+**Built:**
+- Live `app_users` allowlist → created the requested address as an active `operator`, preserving
+  least privilege for queue, grouping and publishing access.
+- Live `events` audit trail → recorded `access.user_added` with the new row as its entity.
+
+**Verified:** the first idempotent provisioning run returned
+`{"action":"created","email":"lokendrasingh861981@gmail.com","role":"operator","active":true}`.
+A second independent run returned `action: already_active` for the same exact active row. Google
+sign-in authorizes by exact active `app_users.email`, with no domain restriction.
+
+**Not finished / known broken:** none. The operator can now sign in with that Google account.
+
+**Surprises:** none.
+
+**Next session should start with:** no follow-up is required unless this user needs admin-only prompt
+management access rather than normal operator access.
+
+---
+
 ## 2026-08-08 (g) — Collision guards: Loupe steps past hand-made numbers and never overwrites them
 
 **Goal this session:** a draft failed with "could not draft to Shopify". Find out why, then make it
