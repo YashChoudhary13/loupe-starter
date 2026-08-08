@@ -50,19 +50,20 @@ enhanced product images in the listing console.
   `.content-start{align-content:flex-start}`.
 - Playwright against that live Railway stylesheet measured `alignContent: flex-start` and a
   **10.015625 px** first-to-second-row gap with ten production-styled queue tiles.
+- A separate authenticated, read-only capture exercised the actual `/console` queue at 950 px wide:
+  three real enhanced product images wrapped 2 + 1 into two rows with the second row immediately
+  below the first at the normal grid gap. Evidence:
+  `.artifacts/console-grid/live-production-two-row.png`.
 - Full suite result: **558 passed / 6 failed**. The failures are the already-recorded moving prompt
   fixtures and live SKU/database-state assertions, not the queue component or CSS change.
 
-**Not finished / known broken:**
-- Nothing remains for this spacing defect. The live queue had only four items during verification,
-  so it did not naturally form two rows; the exact deployed production stylesheet and grid classes
-  were exercised with ten tiles instead.
+**Not finished / known broken:** none for this spacing defect.
 
 **Surprises:** pushing `main` did not update Railway automatically during two polling windows. The
 owner updated Railway, after which the new CSS asset became live and passed the production check.
 
-**Next session should start with:** when the live queue next has enough items for two rows, make one
-quick visual confirmation that the photographs match the measured 10 px spacing.
+**Next session should start with:** no follow-up is required for this defect; preserve
+`content-start` if the queue grid is refactored.
 
 ---
 
