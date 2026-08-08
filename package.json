@@ -13,6 +13,7 @@
     "db:reset": "tsx scripts/db-reset.ts",
     "cron:configure": "tsx scripts/configure-cron.ts",
     "r2:cors": "tsx scripts/configure-r2-cors.ts",
+    "prompt:promote": "tsx scripts/promote-preset.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",
     "seed:counters": "tsx scripts/seed-counters.ts",
     "carry:export": "tsx scripts/carry-over.ts export",
