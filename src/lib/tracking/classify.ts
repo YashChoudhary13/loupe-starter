@@ -21,6 +21,12 @@ export interface DraftForTracking {
   readonly updatedAt: string
   readonly error: string | null
   readonly publishLeaseExpiresAt: string | null
+  /**
+   * Set once the draft has reached Shopify as a DRAFT product. That is a
+   * finished handoff parked on purpose, not an abandoned draft — see
+   * classifyDraft.
+   */
+  readonly shopifyProductId: string | null
 }
 
 export interface Classification {
@@ -176,12 +182,38 @@ export function classifyDraft(row: DraftForTracking, now: number): Classificatio
     }
   }
 
-  if (row.status === 'assembling' && ageMs(row.updatedAt, now) >= STALE_DRAFT_MS) {
+  /**
+   * A draft that has NOT reached Shopify and has not moved for 24 hours was
+   * probably forgotten. One that HAS reached Shopify is finished work waiting
+   * for launch day, and Qimati's whole workflow is to accumulate those and
+   * publish them together — so the old rule would have marked every correctly
+   * drafted product as needing attention, permanently. See D90.
+   *
+   * `record_draft_shopify_product` deliberately returns the draft to
+   * `assembling` (so the console can still edit it), which is why the status
+   * alone cannot tell the two cases apart. `shopify_product_id` can.
+   */
+  if (
+    row.status === 'assembling' &&
+    row.shopifyProductId === null &&
+    ageMs(row.updatedAt, now) >= STALE_DRAFT_MS
+  ) {
     return {
       group: 'attention',
       tone: 'stalled',
       statusLabel: 'Draft stalled',
-      reason: 'This product draft has not changed for 24 hours.',
+      reason:
+        'This product draft has not changed for 24 hours and has never been sent to Shopify.',
+    }
+  }
+
+  if (row.status === 'assembling' && row.shopifyProductId !== null) {
+    return {
+      group: 'draft',
+      tone: 'running',
+      statusLabel: 'In Shopify',
+      reason:
+        'Saved into Shopify as a draft product. It stays here until the launch, and needs nothing in the meantime.',
     }
   }
 

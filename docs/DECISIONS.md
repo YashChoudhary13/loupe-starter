@@ -2457,3 +2457,91 @@ confirmed via `currentAppInstallation { accessScopes { handle } }`.
 
 **Not covered:** the daily Shopify reconciliation (D54) does not yet treat a product falling off a
 channel as drift. If someone unpublishes a product in admin, Loupe will not notice.
+
+---
+
+### D90 — Reconciliation compares what Loupe owns, not what the business edits
+
+**The workflow this was built on was wrong.** D54 assumed Loupe publishes a product and therefore
+owns it afterwards, so it diffed every field nightly. Stated by the owner on 2026-08-08:
+
+> we will never publish products from console, our main use case of console is to draft products
+> together efficiently using auto AI enhancement loop in backend, and draft products in shopify and
+> publish them together during launch
+
+So Loupe's job ends when the product exists in Shopify **as a draft**. The business then finishes
+the listing in admin — correcting the material bullet, setting price, appending a title suffix like
+"(ball back)", swapping photographs — and publishes the batch on launch day.
+
+Under that workflow a field diff reports the business doing its job. The first run with real data
+proved it: 53 products checked, **45 issues across 23 of them**, every one a deliberate edit, and
+the same 45 would have reappeared every morning until somebody stopped reading Tracking. Hard rule
+5 already says alerting that cries wolf is worse than none.
+
+**Decided:** split by **ownership**, not by importance.
+
+| Loupe's — still checked | The business's — no longer checked |
+|---|---|
+| product exists (`product_missing`) | Shopify `status` |
+| Loupe recorded a product id | `title` |
+| `handle` | `productType`, `tags` |
+| variant SKU | `descriptionHtml`, material metafield |
+| variant count and option values | price, weight |
+| | media set and order |
+
+`handle` stays because it is `productSet`'s idempotency key (hard rule 2): edited in admin, the next
+save creates a second product with a duplicate SKU — the D2 failure by another road. Renaming a
+product does not change its handle, so this stays quiet through ordinary launch edits.
+
+**Variant structure stays** at the owner's explicit request — SKUs, deleted products, and changes to
+colours must still be tracked. It is also where a repurposed listing surfaces: `AK089` was published
+as "Anklets 089 (Single Piece)" and is now titled "Rings 229" carrying SKU `RS229`. The title is the
+business's to change; an anklet number attached to a ring is not.
+
+**Inventory quantity is still not compared.** D54 settled that and it holds harder now — it is the
+one field guaranteed to move on its own once the store sells. If Qimati wants pre-launch stock
+drift specifically, that is a separate, narrower decision.
+
+**Dry run against live data before deploying:** 53 drafts, **45 issues → 5**. The five are the
+AK089 SKU mismatch (3, one per variant) and a Gold colour added to Earrings 464 in admin that
+Loupe's draft does not have (2). Both are real.
+
+**Also fixed here: "Draft stalled" would have flooded next.** `record_draft_shopify_product`
+deliberately returns a draft to `assembling` so the console can keep editing it, and `classifyDraft`
+flagged any `assembling` draft untouched for 24 hours. Under this workflow that is *every*
+correctly-drafted product, permanently. The rule now requires `shopify_product_id is null` — never
+sent to Shopify, so probably forgotten. A draft that has reached Shopify reads "In Shopify" in the
+`draft` group and needs nothing until launch.
+
+**Rejected — demoting reconciliation issues to an informational group.** It would have hidden the
+noise without deciding what is actually worth knowing, and the two real problems above would have
+been hidden with it.
+
+---
+
+### D91 — Material never goes through `productSet.metafields`
+
+`productSet` treats its metafield list as declarative, so sending only `custom.material` tries to
+delete every other metafield on the product. When one of those is connected to an option, Shopify
+rejects the entire mutation.
+
+Native Color was the known case and the original fix exempted Color products only. **That was too
+narrow.** Shopify links a category metafield *by itself* whenever an option name matches one the
+product's taxonomy category defines — a ring published with `Size` options gets `shopify.ring-size`
+linked with nothing in Loupe asking for it. Every such publish failed:
+
+```
+productSet rejected the product "rings-228": input: This metafield is connected to an option.
+To make changes, edit the option. Metafield Namespace: shopify, Metafield Key: ring-size
+```
+
+**Decided:** `buildInput` never emits `metafields`, and `productSet()` always calls
+`syncMaterialMetafield` afterwards.
+
+**Rejected — an allowlist of affected option names** (`Color`, `Size`, …). There is no published
+list of which category defines which option metafield and it grows as Shopify extends the taxonomy,
+so the allowlist would be wrong again on the next category. Keeping material out unconditionally
+removes the class rather than the instance.
+
+The cost is one extra mutation on products that were previously exempt — which is exactly what
+Color products already paid.

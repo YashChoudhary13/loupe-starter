@@ -85,10 +85,47 @@ describe('tracking age and failure classification', () => {
         updatedAt: new Date(NOW - 1_000).toISOString(),
         error: null,
         publishLeaseExpiresAt: new Date(NOW - 1).toISOString(),
+        shopifyProductId: null,
       },
       NOW,
     )
     expect(result).toMatchObject({ group: 'attention', statusLabel: 'Publish interrupted' })
     expect(result.reason).toContain('same handle')
+  })
+
+  /**
+   * Qimati's workflow is to draft everything into Shopify and publish the batch
+   * on launch day, so a draft sitting untouched in Shopify for a week is the
+   * intended end state. The old rule keyed on status alone, and
+   * `record_draft_shopify_product` returns the draft to `assembling` — so every
+   * correctly drafted product would have been marked "needs attention" forever.
+   * See D90.
+   */
+  const oldDraft = {
+    status: 'assembling',
+    updatedAt: new Date(NOW - 8 * 24 * 3_600_000).toISOString(),
+    error: null,
+    publishLeaseExpiresAt: null,
+  }
+
+  it('leaves a week-old draft alone once it has reached Shopify', () => {
+    expect(
+      classifyDraft({ ...oldDraft, shopifyProductId: 'gid://shopify/Product/1' }, NOW),
+    ).toMatchObject({ group: 'draft', statusLabel: 'In Shopify' })
+  })
+
+  it('still flags a stale draft that never reached Shopify', () => {
+    const result = classifyDraft({ ...oldDraft, shopifyProductId: null }, NOW)
+    expect(result).toMatchObject({ group: 'attention', statusLabel: 'Draft stalled' })
+    expect(result.reason).toContain('never been sent to Shopify')
+  })
+
+  it('does not call a fresh un-sent draft stalled', () => {
+    expect(
+      classifyDraft(
+        { ...oldDraft, updatedAt: new Date(NOW - 1_000).toISOString(), shopifyProductId: null },
+        NOW,
+      ),
+    ).toMatchObject({ group: 'draft', statusLabel: 'Draft' })
   })
 })

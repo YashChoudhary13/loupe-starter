@@ -278,11 +278,31 @@ function materialError(action: 'save' | 'clear', errors: readonly { field?: read
 }
 
 /**
- * Native Color owns `shopify.color-pattern`, so `productSet.metafields` cannot
- * be used on the same product: Shopify treats that list as declarative and
- * either tries to edit or delete the connected metafield. Both are rejected
- * with "To make changes, edit the option." Keep Color in `productOptions` and
- * synchronize the unrelated material metafield through its dedicated mutation.
+ * Material is ALWAYS written here, never through `productSet.metafields`.
+ *
+ * `productSet` treats its metafield list as declarative, so sending only
+ * `custom.material` tries to delete every other metafield on the product. When
+ * one of those is connected to an option, Shopify rejects the whole mutation
+ * with "This metafield is connected to an option. To make changes, edit the
+ * option."
+ *
+ * Native Color was the known case: it owns `shopify.color-pattern`, and the
+ * original fix excluded metafields for Color products only. That was too narrow.
+ * Shopify links a category metafield **by itself** whenever an option name
+ * matches one the product's taxonomy category defines — a ring published with
+ * Size options gets `shopify.ring-size` linked with nothing in Loupe asking for
+ * it, and every such publish failed:
+ *
+ *     productSet rejected the product "rings-228": input: This metafield is
+ *     connected to an option. To make changes, edit the option.
+ *     Metafield Namespace: shopify, Metafield Key: ring-size
+ *
+ * There is no list of which category defines which option metafield, and it
+ * grows as Shopify extends the taxonomy — so an allowlist of affected option
+ * names would be wrong again the next time. Keeping material out of `productSet`
+ * unconditionally removes the whole class. It costs one extra mutation on the
+ * products that were previously exempt, which is what Color products already
+ * paid. See D91.
  */
 export async function syncMaterialMetafield(
   client: ShopifyClient,
@@ -418,14 +438,12 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
     // leak into a product.
     descriptionHtml: args.descriptionHtml,
     ...(args.categoryId ? { category: args.categoryId } : {}),
-    // A product with native Color cannot carry ANY productSet metafields. The
-    // field is a declarative list, so including only material tries to delete
-    // the connected color-pattern metafield, while including color-pattern
-    // tries to edit it directly. Shopify rejects both. productSet() syncs the
-    // independent material in a second, dedicated mutation after this succeeds.
-    ...(!nativeColour && args.material
-      ? { metafields: [{ ...MATERIAL_METAFIELD, value: args.material }] }
-      : {}),
+    // NO metafields, ever. The list is declarative, so naming only material
+    // tries to delete whatever else is on the product — and Shopify links a
+    // category metafield to any option whose name it recognises (color-pattern
+    // for Color, ring-size for Size), then refuses the mutation outright.
+    // productSet() writes material in its own mutation after this succeeds.
+    // See syncMaterialMetafield and D91.
     // Present only when the caller supplied images. `files` is declarative like
     // everything else in productSet, so listing them in draft order IS the
     // ordering instruction, and an omitted field is "leave the media alone"
@@ -501,9 +519,7 @@ export async function productSet(
     })
   }
 
-  if (args.optionName === COLOUR_OPTION_NAME) {
-    await syncMaterialMetafield(client, result.product.id, args.material)
-  }
+  await syncMaterialMetafield(client, result.product.id, args.material)
 
   return result.product
 }

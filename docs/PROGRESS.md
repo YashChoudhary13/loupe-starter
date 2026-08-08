@@ -29,6 +29,89 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-08 (c) — Tracking flood: reconciliation reframed, plus the rings publish bug
+
+**Goal this session:** Tracking showed 49 needing attention, almost all for the wrong reasons. Find
+out why and fix it, without losing the signals that matter.
+
+**The 49 broke down as 45 + 3 + 1:** 45 reconciliation issues, 3 photographs enhanced but never
+grouped (>24 h), 1 failed draft. It appeared "suddenly" because the daily job had never had
+anything to check — the four previous runs all report `total_products: 0`. All 53 drafts flipped to
+`published` in one hour (`publish.published` x53 at 2026-08-07 21:00Z = 02:30 IST), and the job ran
+30 minutes later at 03:00 IST. First real audit, not a new fault.
+
+**The root cause was an assumption, not a bug.** D54 built reconciliation to diff every field,
+assuming Loupe publishes a product and owns it afterwards. The owner corrected that: the console
+never publishes — it drafts products into Shopify, and the business finishes the listings there and
+publishes the batch at launch. Under that workflow a field diff reports the business doing its job.
+
+**Built:**
+- `src/lib/reconciliation/compare.ts` → rewritten to split by **ownership**. Still checked: product
+  exists, Loupe recorded an id, `handle`, variant SKU, variant count and option values. No longer
+  checked: status, title, productType, tags, descriptionHtml, material, price, weight, media.
+  Variant structure was kept at the owner's explicit request (SKUs, deleted products, colour
+  changes). Inventory quantity stays excluded per D54.
+- `src/lib/shopify/reconciliation.ts` → query slimmed to `id handle title variants{sku
+  selectedOptions}`. It was pulling status, productType, tags, descriptionHtml, the material
+  metafield, per-variant price/weight and 50 media per product, nightly.
+- `src/lib/reconciliation/server.ts` → stops rebuilding description, material, price, weight and
+  media shapes that existed only to be diffed.
+- `src/lib/tracking/classify.ts`, `read-model.ts` → **the next flood, pre-empted.**
+  `record_draft_shopify_product` returns a draft to `assembling`, and any `assembling` draft
+  untouched for 24 h was "Draft stalled" — which under this workflow is *every* correctly drafted
+  product, forever. Now requires `shopify_product_id is null`; a draft that reached Shopify reads
+  "In Shopify" in the `draft` group.
+- `src/lib/shopify/product-set.ts` → **the failed draft was a real bug.** Material now never goes
+  through `productSet.metafields`; `syncMaterialMetafield` always runs after. See D91.
+- `docs/DECISIONS.md` → D90, D91.
+
+**Verified:**
+- `npm run typecheck` clean, `npm run lint` clean.
+- `tests/reconciliation-compare.test.ts` rewritten, **14 pass**, split into "what it still checks"
+  and "what it deliberately ignores" so a future widening has to delete a named test.
+- `tests/tracking-classify.test.ts` +3, **9 pass**: a week-old Shopify-drafted product is left
+  alone; one never sent to Shopify is still flagged; a fresh one is not.
+- `tests/shopify-product-images.test.ts` +3, **24 pass**: material stays out of `productSet` for
+  Size, Number and no-option products. The old suite only covered Color, which is why the Size case
+  shipped broken.
+- Full suite: **578 passed, 8 failed** — the same 8 as before this session, no new failures.
+- **Dry run of the new comparison against live data, before deploying: 53 drafts, 45 issues → 5.**
+  ```
+  Rings 229 variant 1 carries SKU RS229, not the AK089 Loupe reserved.   (x3, one per variant)
+  Earrings 464 (Clip-ons) has 2 Shopify variants; Loupe's draft has 1.
+  Earrings 464 (Clip-ons) variant 1 is Color "Gold"; Loupe's draft says Title "Default Title".
+  ```
+  Both survivors are real: an anklet listing repurposed into a ring, and a colour added in admin
+  that the Loupe draft does not have. Expected Tracking total after deploy: **9** (5 + 3 ungrouped
+  + 1 failed draft), then 8 once rings-228 is retried.
+
+**Not finished / known broken:**
+- **`npm run db:push` has still not run.** It was blocked by the permission classifier this
+  session. Until it does, `20260808120000` is unapplied and the necklace / waist-chain presets do
+  not appear in `/prompts` — which is what the owner reported.
+- **The 45 stale issues remain visible until a new reconciliation run.** Tracking reads only the
+  latest run, so deploying the code and triggering `runFullReconciliationAction()` from Tracking
+  replaces them; otherwise the 03:00 IST job does it.
+- **The two real findings need a decision, not a fix.** `AK089` carries SKU `RS229` under handle
+  `anklets-089-single-piece` — the anklet number is spent on a ring and the public URL contradicts
+  the product. Earrings 464 has a Gold colour in Shopify that Loupe does not know about.
+- Six pre-existing test failures unchanged and still unaddressed — see the previous entry.
+- Reconciliation still does not check sales-channel publication (from entry b).
+
+**Surprises:**
+- The Size metafield bug had been latent since ring sizes shipped. `productSet.metafields` was
+  excluded for Color because Loupe explicitly links `shopify.color-pattern` — but Shopify links a
+  category metafield *on its own* for any option name its taxonomy recognises, so
+  `shopify.ring-size` appeared with nothing in Loupe asking for it. Every ring with sizes failed to
+  publish. An allowlist would have been wrong again on the next category, so material is now
+  unconditionally out of `productSet`.
+
+**Next session should start with:** `npm run db:push`, confirm the two presets appear in
+`/prompts`, then deploy and trigger a reconciliation from Tracking to replace the 45 stale issues.
+
+---
+
+
 ## 2026-08-08 (c) — Console queue rows no longer stretch
 
 **Goal this session:** remove the large vertical gap between the first and second rows of

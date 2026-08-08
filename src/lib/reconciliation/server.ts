@@ -2,9 +2,8 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { buildDescriptionHtml } from '@/lib/publish/description'
-import { paiseToShopifyPrice, parseSku, renderTitle } from '@/lib/publish/identity'
-import { buildProductTags, PRODUCT_TYPE } from '@/lib/publish/publish-product'
+import { parseSku, renderTitle } from '@/lib/publish/identity'
+import { buildProductTags } from '@/lib/publish/publish-product'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { readProductsForReconciliation } from '@/lib/shopify/reconciliation'
 import { supabaseServer } from '@/lib/supabase/server'
@@ -86,21 +85,19 @@ function expectedProduct(row: PublishedDraftRow): {
     shopify_tag: string | null
     default_weight_g: number | null
   }>(row.categories)
-  const material = one<{ name: string }>(row.materials)
   const parsed = parseSku(row.reserved_sku)
   const title =
     category && parsed
       ? renderTitle(category.title_pattern, parsed.number, row.title_suffix)
       : row.reserved_sku
+  const requiredTags = category?.shopify_tag
+    ? buildProductTags(category.shopify_tag)
+    : ['NEWEST']
+
   const optionValues = many<{ position: number; option_value: string }>(row.product_draft_variants)
     .sort((a, b) => a.position - b.position)
     .map((variant) => variant.option_value)
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
-  const media = many<{ position: number; shopify_media_id: string | null }>(
-    row.product_draft_images,
-  ).sort((a, b) => a.position - b.position)
-  const materialName = row.custom_material?.trim() || material?.name || null
-  const weightG = row.weight_g ?? category?.default_weight_g ?? 0
   const optionName: 'Color' | 'Number' | 'Size' | null =
     row.variant_kind === 'colour'
       ? 'Color'
@@ -109,31 +106,22 @@ function expectedProduct(row: PublishedDraftRow): {
         : row.variant_kind === 'size'
           ? 'Size'
           : null
-  const variants = (optionValues.length > 0 ? optionValues : [null]).map((optionValue) => ({
-    sku: row.reserved_sku,
-    price: paiseToShopifyPrice(row.price_paise),
-    weightG,
-    optionName,
-    optionValue,
-  }))
-  const requiredTags = category?.shopify_tag
-    ? buildProductTags(category.shopify_tag)
-    : ['NEWEST']
 
+  // Only what the handoff check needs (D90). The description, material, price,
+  // weight and media shapes were rebuilt here purely to diff them against
+  // Shopify, and that diff reported the business finishing its own listings.
+  // The variant structure stays: it is where a repurposed listing or an edited
+  // SKU shows up.
   const product: ExpectedReconciliationProduct = {
     draftId: row.id,
     shopifyProductId: row.shopify_product_id,
     handle: row.reserved_handle,
     title,
-    productType: PRODUCT_TYPE,
-    requiredTags,
-    descriptionHtml: buildDescriptionHtml(materialName, row.description_override),
-    material: materialName,
-    variants,
-    mediaIds: media
-      .map((image) => image.shopify_media_id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0),
-    missingRecordedMedia: media.some((image) => !image.shopify_media_id),
+    variants: (optionValues.length > 0 ? optionValues : [null]).map((optionValue) => ({
+      sku: row.reserved_sku,
+      optionName,
+      optionValue,
+    })),
   }
   const localIssues: ReconciliationIssue[] = []
   if (!category || !parsed) {

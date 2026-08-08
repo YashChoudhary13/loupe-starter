@@ -50,6 +50,7 @@ interface DraftRow {
   reserved_sku: string | null
   error: string | null
   publish_lease_expires_at: string | null
+  shopify_product_id: string | null
 }
 
 interface EventRow {
@@ -181,7 +182,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       .limit(500),
     db
       .from('product_drafts')
-      .select('id, status, updated_at, reserved_sku, error, publish_lease_expires_at')
+      .select('id, status, updated_at, reserved_sku, error, publish_lease_expires_at, shopify_product_id')
       .in('status', ['assembling', 'publishing', 'failed'])
       .order('updated_at', { ascending: false })
       .limit(300),
@@ -457,6 +458,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
         updatedAt: row.updated_at,
         error: row.error,
         publishLeaseExpiresAt: row.publish_lease_expires_at,
+        shopifyProductId: row.shopify_product_id,
       },
       now,
     )

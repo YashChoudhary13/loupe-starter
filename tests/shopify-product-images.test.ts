@@ -242,6 +242,83 @@ describe('Shopify customer choices', () => {
     })
   })
 
+  /**
+   * The rings-228 failure. Shopify links a category metafield to any option
+   * whose name it recognises, with nothing in Loupe asking for it — a ring
+   * published with Size options gets `shopify.ring-size` linked, and
+   * `productSet.metafields` then tries to delete it:
+   *
+   *   productSet rejected the product "rings-228": input: This metafield is
+   *   connected to an option. To make changes, edit the option.
+   *   Metafield Namespace: shopify, Metafield Key: ring-size
+   *
+   * The original fix exempted Color only. Material now stays out of productSet
+   * for every product. See D91.
+   */
+  it.each([
+    ['Size', '7.5'],
+    ['Number', '17'],
+    [null, null],
+  ] as const)('keeps material out of productSet for a %s product too', async (optionName, optionValue) => {
+    const graphql = vi
+      .fn()
+      .mockResolvedValueOnce({
+        productSet: {
+          product: {
+            id: 'gid://shopify/Product/228',
+            handle: 'rings-228',
+            title: 'Rings 228',
+            status: 'DRAFT',
+            productType: 'Jewellery',
+            tags: ['Rings', 'NEWEST'],
+          },
+          userErrors: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        metafieldsSet: {
+          metafields: [{ id: 'gid://shopify/Metafield/material' }],
+          userErrors: [],
+        },
+      })
+    const client = { graphql } as unknown as ShopifyClient
+
+    await productSet(client, {
+      handle: 'rings-228',
+      title: 'Rings 228',
+      status: 'DRAFT',
+      productType: 'Jewellery',
+      tags: ['Rings', 'NEWEST'],
+      descriptionHtml: '<ul><li>316L</li></ul>',
+      material: '316L',
+      optionName,
+      variants: [
+        {
+          sku: 'RS228',
+          price: '100.00',
+          weightG: 0,
+          stock: 1,
+          locationId: 'gid://shopify/Location/1',
+          ...(optionValue ? { optionValue } : {}),
+        },
+      ],
+    })
+
+    expect(graphql.mock.calls[0]?.[1]?.input).not.toHaveProperty('metafields')
+    expect(graphql).toHaveBeenCalledTimes(2)
+    expect(graphql.mock.calls[1]?.[1]).toEqual({
+      metafields: [
+        {
+          ownerId: 'gid://shopify/Product/228',
+          namespace: 'custom',
+          key: 'material',
+          type: 'single_line_text_field',
+          value: '316L',
+        },
+      ],
+    })
+  })
+
   it('saves numbered pieces as Shopify DRAFT variants with independent stock', () => {
     const input = buildInput({
       handle: 'rings-001',

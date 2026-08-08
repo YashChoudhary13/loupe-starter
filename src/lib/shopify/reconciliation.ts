@@ -2,6 +2,14 @@ import type { ActualReconciliationProduct } from '@/lib/reconciliation/compare'
 
 import type { ShopifyClient } from './client'
 
+/**
+ * Identity and variant structure only — reconciliation compares what Loupe owns
+ * rather than what the business edits in admin (D90). Gone from this query:
+ * `status`, `productType`, `tags`, `descriptionHtml`, the material metafield,
+ * per-variant price and weight, and 50 media per product.
+ *
+ * `title` is fetched for the message text alone; nothing compares it.
+ */
 const RECONCILIATION_PRODUCTS_QUERY = /* GraphQL */ `
   query LoupeReconciliationProducts($ids: [ID!]!) {
     nodes(ids: $ids) {
@@ -9,34 +17,13 @@ const RECONCILIATION_PRODUCTS_QUERY = /* GraphQL */ `
         id
         handle
         title
-        status
-        productType
-        tags
-        descriptionHtml
-        metafield(namespace: "custom", key: "material") {
-          value
-        }
-        variants(first: 50) {
+        variants(first: 100) {
           nodes {
             sku
-            price
             selectedOptions {
               name
               value
             }
-            inventoryItem {
-              measurement {
-                weight {
-                  value
-                  unit
-                }
-              }
-            }
-          }
-        }
-        media(first: 50) {
-          nodes {
-            id
           }
         }
       }

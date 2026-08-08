@@ -1,47 +1,61 @@
 import { DEFAULT_OPTION_NAME, DEFAULT_OPTION_VALUE } from '@/lib/shopify/product-set'
 
+/**
+ * Reconciliation compares STRUCTURE, not editorial content. See D90.
+ *
+ * D54 built this to diff every field, on the assumption that Loupe publishes a
+ * product and owns it afterwards. That assumption is wrong. Loupe's job ends
+ * when the product exists in Shopify; the business then finishes the listing in
+ * Shopify admin — correcting the material bullet, adjusting price, appending a
+ * title suffix like "(ball back)", swapping photographs — and publishes
+ * everything together at launch.
+ *
+ * The first run with real data proved the cost: 45 issues across 23 of 53
+ * products, every one of them a deliberate edit, and the same 45 would have
+ * reappeared every morning until somebody stopped reading Tracking. Alerting
+ * that cries wolf is worse than no alerting (hard rule 5).
+ *
+ * So the split is by OWNERSHIP, not by importance:
+ *
+ *   Loupe's, still checked          the product exists; the handle it is
+ *                                   addressed by; its SKU; how many variants it
+ *                                   has and what they are called.
+ *
+ *   the business's, not checked     status (a Shopify DRAFT awaiting launch is
+ *                                   the normal resting state, not drift), title,
+ *                                   product type, tags, description, material
+ *                                   metafield, price, weight, media.
+ *
+ * Inventory quantity is deliberately absent from both lists. D54 settled that
+ * changing stock is not drift, and it is the one field guaranteed to move on its
+ * own the moment the store starts selling.
+ */
+
 export interface ExpectedReconciliationProduct {
   readonly draftId: string
   readonly shopifyProductId: string | null
+  /** The idempotency key (hard rule 2). */
   readonly handle: string
+  /** Message text only — nothing compares it, because the business edits it. */
   readonly title: string
-  readonly productType: string
-  readonly requiredTags: readonly string[]
-  readonly descriptionHtml: string
-  readonly material: string | null
   readonly variants: readonly {
     readonly sku: string
-    readonly price: string
-    readonly weightG: number
     readonly optionName: 'Color' | 'Number' | 'Size' | null
     readonly optionValue: string | null
   }[]
-  readonly mediaIds: readonly string[]
-  readonly missingRecordedMedia: boolean
 }
 
 export interface ActualReconciliationProduct {
   readonly id: string
   readonly handle: string
+  /** Message text only — nothing compares it. */
   readonly title: string
-  readonly status: string
-  readonly productType: string | null
-  readonly tags: readonly string[]
-  readonly descriptionHtml: string
-  readonly metafield: { readonly value: string } | null
   readonly variants: {
     readonly nodes: readonly {
       readonly sku: string | null
-      readonly price: string
       readonly selectedOptions: readonly { readonly name: string; readonly value: string }[]
-      readonly inventoryItem: {
-        readonly measurement: {
-          readonly weight: { readonly value: number; readonly unit: string } | null
-        } | null
-      } | null
     }[]
   }
-  readonly media: { readonly nodes: readonly { readonly id: string }[] }
 }
 
 export interface ReconciliationIssue {
@@ -52,10 +66,6 @@ export interface ReconciliationIssue {
   readonly expected: unknown
   readonly actual: unknown
   readonly message: string
-}
-
-function canonicalHtml(value: string): string {
-  return value.trim().replace(/>\s+</g, '><')
 }
 
 function issue(
@@ -93,6 +103,12 @@ export function comparePublishedProduct(
       ),
     ]
   }
+
+  /**
+   * Deleted in Shopify. The SKU number is spent and the draft still claims the
+   * product exists, so nothing else about it can be trusted — report this alone
+   * rather than adding six consequential mismatches underneath it.
+   */
   if (!actual) {
     return [
       issue(
@@ -101,68 +117,44 @@ export function comparePublishedProduct(
         'product',
         expected.shopifyProductId,
         null,
-        `${expected.title} no longer exists in Shopify.`,
+        `${expected.title} no longer exists in Shopify. Its ${expected.variants[0]?.sku ?? 'SKU'} number is spent.`,
       ),
     ]
   }
 
   const issues: ReconciliationIssue[] = []
-  const exact = (
-    field: string,
-    expectedValue: unknown,
-    actualValue: unknown,
-    message: string,
-  ) => {
-    if (JSON.stringify(expectedValue) !== JSON.stringify(actualValue)) {
-      issues.push(
-        issue(expected, 'field_mismatch', field, expectedValue, actualValue, message),
-      )
-    }
-  }
 
-  exact('status', 'ACTIVE', actual.status, `${expected.title} is no longer active in Shopify.`)
-  exact('handle', expected.handle, actual.handle, `${expected.title} has a different Shopify handle.`)
-  exact('title', expected.title, actual.title, `${expected.title} has a different Shopify title.`)
-  exact(
-    'productType',
-    expected.productType,
-    actual.productType,
-    `${expected.title} has a different product type.`,
-  )
-
-  const missingTags = expected.requiredTags.filter((tag) => !actual.tags.includes(tag))
-  if (missingTags.length > 0) {
-    issues.push(
-      issue(
-        expected,
-        'required_tag_missing',
-        'tags',
-        expected.requiredTags,
-        actual.tags,
-        `${expected.title} is missing required ${missingTags.join(', ')} tag${missingTags.length === 1 ? '' : 's'}.`,
-      ),
-    )
-  }
-
-  if (canonicalHtml(expected.descriptionHtml) !== canonicalHtml(actual.descriptionHtml)) {
+  /**
+   * `productSet` is identified BY HANDLE (hard rule 2), so the handle is what
+   * makes a retry update the existing product instead of creating a twin. A
+   * handle edited in admin silently turns the next Save Draft into a duplicate
+   * listing carrying a duplicate SKU — the D2 failure by another road.
+   *
+   * Renaming a product in admin does not change its handle, so this stays quiet
+   * through the ordinary launch edits.
+   */
+  if (expected.handle !== actual.handle) {
     issues.push(
       issue(
         expected,
         'field_mismatch',
-        'descriptionHtml',
-        canonicalHtml(expected.descriptionHtml),
-        canonicalHtml(actual.descriptionHtml),
-        `${expected.title} has a different product description.`,
+        'handle',
+        expected.handle,
+        actual.handle,
+        `${actual.title} has a different Shopify handle, so the next save would create a second product instead of updating this one.`,
       ),
     )
   }
-  exact(
-    'material',
-    expected.material,
-    actual.metafield?.value ?? null,
-    `${expected.title} has a different material metafield.`,
-  )
 
+  /**
+   * The variant structure: how many, what each is called, and the SKU on each.
+   *
+   * This is where a repurposed listing shows up. AK089 was published as
+   * "Anklets 089 (Single Piece)" and is now titled "Rings 229" in admin — the
+   * title change is the business's business, but the SKU underneath it is not:
+   * an anklet number is now attached to a ring, and the next AK the counter
+   * issues will sit beside a product that is not an anklet.
+   */
   if (actual.variants.nodes.length !== expected.variants.length) {
     issues.push(
       issue(
@@ -171,7 +163,7 @@ export function comparePublishedProduct(
         'variants',
         expected.variants.length,
         actual.variants.nodes.length,
-        `${expected.title} has ${actual.variants.nodes.length} Shopify variants; Loupe expects ${expected.variants.length}.`,
+        `${actual.title} has ${actual.variants.nodes.length} Shopify variants; Loupe's draft has ${expected.variants.length}.`,
       ),
     )
   }
@@ -179,56 +171,38 @@ export function comparePublishedProduct(
   expected.variants.forEach((variant, index) => {
     const observed = actual.variants.nodes[index]
     if (!observed) return
-    exact(
-      `variants.${index}.sku`,
-      variant.sku,
-      observed.sku,
-      `${expected.title} variant ${index + 1} has a different SKU.`,
-    )
-    exact(
-      `variants.${index}.price`,
-      variant.price,
-      observed.price,
-      `${expected.title} variant ${index + 1} has a different price.`,
-    )
-    const option = observed.selectedOptions[0] ?? null
-    const expectedOption = variant.optionName && variant.optionValue
-      ? { name: variant.optionName, value: variant.optionValue }
-      : { name: DEFAULT_OPTION_NAME, value: DEFAULT_OPTION_VALUE }
-    exact(
-      `variants.${index}.option`,
-      expectedOption,
-      option,
-      `${expected.title} variant ${index + 1} has a different option value.`,
-    )
-    const weight = observed.inventoryItem?.measurement?.weight
-    exact(
-      `variants.${index}.weight`,
-      { value: variant.weightG, unit: 'GRAMS' },
-      weight ? { value: weight.value, unit: weight.unit } : null,
-      `${expected.title} variant ${index + 1} has a different weight.`,
-    )
-  })
 
-  const actualMediaIds = actual.media.nodes.map((media) => media.id)
-  if (expected.missingRecordedMedia || expected.mediaIds.length === 0) {
-    issues.push(
-      issue(
-        expected,
-        'local_media_id_missing',
-        'media',
-        'Every published draft image must record its Shopify media ID.',
-        expected.mediaIds,
-        `${expected.title} has a published image without a recorded Shopify media ID.`,
-      ),
-    )
-  }
-  exact(
-    'media',
-    expected.mediaIds,
-    actualMediaIds,
-    `${expected.title} has different Shopify images or image order.`,
-  )
+    if (variant.sku !== observed.sku) {
+      issues.push(
+        issue(
+          expected,
+          'field_mismatch',
+          `variants.${index}.sku`,
+          variant.sku,
+          observed.sku,
+          `${actual.title} variant ${index + 1} carries SKU ${observed.sku ?? '(none)'}, not the ${variant.sku} Loupe reserved.`,
+        ),
+      )
+    }
+
+    const observedOption = observed.selectedOptions[0] ?? null
+    const expectedOption =
+      variant.optionName && variant.optionValue
+        ? { name: variant.optionName, value: variant.optionValue }
+        : { name: DEFAULT_OPTION_NAME, value: DEFAULT_OPTION_VALUE }
+    if (JSON.stringify(expectedOption) !== JSON.stringify(observedOption)) {
+      issues.push(
+        issue(
+          expected,
+          'field_mismatch',
+          `variants.${index}.option`,
+          expectedOption,
+          observedOption,
+          `${actual.title} variant ${index + 1} is ${observedOption ? `${observedOption.name} "${observedOption.value}"` : 'missing its option'}; Loupe's draft says ${expectedOption.name} "${expectedOption.value}".`,
+        ),
+      )
+    }
+  })
 
   return issues
 }
