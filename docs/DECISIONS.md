@@ -2338,3 +2338,66 @@ way. Both moved together in `20260805150000`.
 describer change counts as accepted. The owner selected this model explicitly and is running
 that acceptance themselves. Phase 3C's `< $0.006` cost gate is still not met — $0.0108–$0.0217
 is above it — but the owner's stated target is $0.02–$0.03, which K3 meets.
+
+---
+
+### D88 — Long chains get their own self-staging presets, because scale is not recoverable from an isolated square
+
+Reported 2026-08-08: necklaces and waist chains enhanced through the satin and marble presets
+come out looking like bracelets or anklets. Those presets remain good for rings, earrings and
+everything else, so the fix is a new preset per long-chain category rather than an edit to the
+shared art direction.
+
+D1 already recorded the underlying fact from the other side: *"an anklet and a chain bracelet are
+the same object at different lengths and cannot be told apart from a photograph."* The generation
+stage has exactly that problem in reverse. A closed gold loop on satin, cropped to fill a square,
+carries no scale reference at all; a 45 cm necklace and an 18 cm bracelet posed that way are the
+same picture. The shared prompt then pushes actively toward the shorter reading in four places:
+
+* `CAMERA AND CROP` — "Arrange flexible length compactly so the focal design is large" plus
+  "Fill roughly 82-92% of the useful square". Compact-plus-fill is scale-blind.
+* `ART DIRECTION` — rules out a "stretched display of length", penalising the one cue that says
+  the piece is long.
+* `necklace-pendant` asks for a "compact, graceful oval … rather than a long narrow measuring
+  loop"; `necklace-station` asks for a "broad closed oval".
+* Nothing states the real worn length anywhere.
+
+Waist chains have a fifth and sharper problem: there is no waist-chain presentation class, and the
+nearest by wording is `flat-arc` — *"Lay the same flexible bracelet or anklet in a relaxed compact
+arc."* A waist chain classified `flat-arc` is being instructed to pose as an anklet.
+
+**Decided:** two new presets, `necklace` and `waist-chain`, in `20260808120000`. Every block
+already visually accepted (SOURCE AUTHORITY, FORM AND SCALE LOCK, LIGHTING, COMMERCIAL RETOUCHING,
+OUTPUT) is copied byte for byte from the accepted satin hero so the look does not drift. Four
+blocks are new or rewritten: a `TRUE LENGTH` scale contract naming the real worn length and the
+proportions that carry it; an inverted crop rule putting the negative space *inside* the loop
+rather than around it; an explicit POSE block; and a background chosen not to compete with a piece
+that crosses the whole frame.
+
+The scale contract is the load-bearing part, and it is written as proportions rather than as a
+measurement, because the model cannot render centimetres but can render *many fine links around a
+wide open centre*. Coarsening the chain — fewer, fatter links to fill the frame — is named
+explicitly as the single change that shortens a piece.
+
+**Both are `uses_composition = false`**, joining hand-chain and bag. The audited composition
+classes stage a piece lying compactly on a surface, which is precisely the instruction these
+presets exist to overrule; injecting one would send the image model two contradictory poses. The
+consequence is that the POSE block must cover pendant, station, multistrand and lariat itself, and
+that is most of why these bodies run ~1270 and ~1350 words against the house 774-830.
+
+**Rejected — editing the shared composition classes in `presentation.ts`.** That would change
+satin, marble and yellow for every necklace at once, including the ones the owner is happy with,
+and it cannot express a waist chain at all without a new enum value and a migration on
+`presentation_class`.
+
+**Rejected for now — staging the piece on a neck form or a worn model.** It is the surest fix,
+because it supplies the absolute scale reference a flat-lay cannot, and hand-chain is the existing
+precedent for a worn preset. It was not taken because the rest of the catalogue is flat-lay and a
+bust changes the storefront's visual language. Revisit if the flat-lay scale contract proves
+insufficient in the acceptance run.
+
+**Not yet proven:** no image has been generated from either preset. Both are inserted non-current
+and archived; nothing is promoted. Acceptance is a five-source image run per preset, checking that
+the output cannot pass for a bracelet or anklet, that component counts and chain construction
+still match the source, and — for waist chain specifically — that a doubled drape never renders
+as two separate chains.

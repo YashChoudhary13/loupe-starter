@@ -29,6 +29,85 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-08 — Long-chain presets: necklace and waist chain
+
+**Goal this session:** stop necklaces and waist chains rendering at bracelet/anklet scale,
+without touching the satin default that works for rings, earrings and the rest.
+
+**Built:**
+- `supabase/migrations/20260808120000_long_chain_necklace_and_waist_chain_presets.sql` → two new
+  style presets, `necklace` and `waist-chain`, each a describe + image pair. Both
+  `uses_composition = false` (self-staging), both inserted **non-current and archived**. Nothing
+  promoted.
+- `src/lib/prompts/presets.ts` → labels, notes and display order for the two new slugs; they now
+  sort between `yellow` and `hand-chain` in `/prompts`.
+- `tests/prompt-management.sql.test.ts` → preset slug list, `toHaveLength(10)` → `14`, and the
+  self-staging set extended to `['hand-chain', 'bag', 'necklace', 'waist-chain']`.
+- `docs/DECISIONS.md` → D88, including the two options rejected (editing the shared composition
+  classes; staging on a neck form).
+
+**Diagnosis** — five separate causes, all pushing the same way, documented in the migration
+header and D88:
+1. `CAMERA AND CROP` says "Arrange flexible length compactly so the focal design is large" then
+   "Fill roughly 82-92% of the useful square". Compact-plus-fill is scale-blind.
+2. `ART DIRECTION` rules out a "stretched display of length".
+3. `necklace-pendant` asks for a "compact, graceful oval"; `necklace-station` for a "broad closed
+   oval".
+4. No prompt anywhere states the real worn length, and an isolated square macro carries no scale
+   reference — the reverse of the fact D1 already recorded.
+5. There is no waist-chain presentation class. The nearest by wording is `flat-arc`: *"Lay the
+   same flexible bracelet or anklet in a relaxed compact arc."* A waist chain classified
+   `flat-arc` is being instructed to pose as an anklet.
+
+**Verified:** static only — **no image has been generated from either preset yet.**
+- `npm run typecheck` clean; `npm run lint` clean.
+- Migration SQL parsed offline: 87 string literals, zero unbalanced quotes, all three
+  dollar-quote tags (`$migration$`, `$image$`, `$describe$`) balanced.
+- Both image bodies simulated through their `<<...>>` substitutions: no placeholder left
+  unsubstituted; exactly one `PRODUCT\n{{PRODUCT_DESCRIPTION}}\n\n` block; zero
+  `{{COMPOSITION_DETAIL}}` tokens, which is what `validate_prompt_body(..., false)` requires for a
+  self-staging prompt.
+- Both bodies carry every invariant `tests/prompt-management.sql.test.ts` asserts across the preset
+  suite: `SOURCE AUTHORITY`, `sole visual authority`, `PRIORITY ORDER`, `luxury e-commerce hero`,
+  `warm luxury studio lighting`, `FINAL IDENTITY CHECK`, `uniform`.
+- Both describers carry `Describe the object, not the photograph`, `WITHOUT a total` and
+  `80 to 200 words`, and neither contains `Exact counts are mandatory`.
+- Word counts: describers 665 / 660 (existing jewellery describer: 618). Image bodies 1266 / 1349
+  against the house 774-830 — see below.
+
+**Not finished / known broken:**
+- **The migration has not been applied.** `npm run db:push` writes to the live Supabase project
+  and was not run without the owner saying so. Until it runs, the presets do not exist in
+  `/prompts`.
+- **No acceptance evidence.** Neither preset has produced an image. Acceptance is a five-source
+  run per preset checking that the output cannot pass for a bracelet or anklet, that component
+  counts and chain construction still match the source, and — waist chain specifically — that the
+  doubled drape never renders as two separate chains.
+- The DB-backed tests in `tests/prompt-management.sql.test.ts` were updated but not executed;
+  they need a live Postgres connection, so they will first run against the pushed migration.
+- Image bodies run ~45% longer than the house standard. Self-staging is most of it: the POSE block
+  covers pendant, station, multistrand and lariat itself, where a composed preset receives one
+  already-chosen class of ~90 words. If output comes back stiff, cut POSE branches before cutting
+  the `TRUE LENGTH` scale contract.
+
+**Surprises:**
+- The composition classes are the *cause*, not a neutral party. `necklace-pendant` explicitly
+  prefers a compact oval "rather than a long narrow measuring loop", which is a reasonable rule
+  for a pendant and the wrong one for communicating length. That is why both new presets are
+  self-staging rather than composed — the shared classes cannot be reused here without
+  contradiction.
+- `.artifacts/screw-check2/IMG20260805144043-gen.png` shows the current satin preset producing a
+  *good* long necklace. The failure is therefore not universal, which matters: this is a
+  reliability problem, not a broken prompt, and a single good sample is not evidence the fix is
+  unnecessary.
+
+**Next session should start with:** `npm run db:push`, then promote `necklace` in `/prompts` and
+run five real necklace sources through it. Compare against the same five under `satin` before
+promoting anything for a batch.
+
+---
+
+
 ## 2026-08-05 — Image art-direction evaluation, the 402 quota bug, and the description ceiling
 
 **Goal this session:** find out why enhanced images are not sellable, and fix whatever the

@@ -270,7 +270,9 @@ describe('deployed style presets', () => {
       'bag',
       'hand-chain',
       'marble',
+      'necklace',
       'satin',
+      'waist-chain',
       'yellow',
     ])
     expect(halves.rows.every((row) => row.kinds === 2)).toBe(true)
@@ -290,7 +292,7 @@ describe('deployed style presets', () => {
         order by preset_slug, kind, created_at desc, id desc`,
     )
 
-    expect(latest.rows).toHaveLength(10)
+    expect(latest.rows).toHaveLength(14)
     for (const row of latest.rows) {
       if (row.kind === 'describe') {
         /**
@@ -340,9 +342,14 @@ describe('deployed style presets', () => {
         expect(row.body).toContain('warm luxury studio lighting')
         expect(row.body).toContain('FINAL IDENTITY CHECK')
 
-        // The two self-staging presets place the product themselves, so they
-        // must still carry no composition token while sharing everything else.
-        const selfStaging = ['hand-chain', 'bag'].includes(row.preset_slug)
+        // The self-staging presets place the product themselves, so they must
+        // still carry no composition token while sharing everything else.
+        // necklace and waist-chain joined that set on 2026-08-08: the audited
+        // composition classes ask a long chain for a "compact oval", which is
+        // the instruction those two presets exist to overrule.
+        const selfStaging = ['hand-chain', 'bag', 'necklace', 'waist-chain'].includes(
+          row.preset_slug,
+        )
         expect(row.body.includes('{{COMPOSITION_DETAIL}}')).toBe(!selfStaging)
       }
     }
