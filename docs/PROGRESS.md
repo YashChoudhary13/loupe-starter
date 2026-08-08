@@ -29,6 +29,43 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-08 (c) — Console queue rows no longer stretch
+
+**Goal this session:** remove the large vertical gap between the first and second rows of
+enhanced product images in the listing console.
+
+**Built:**
+- `src/components/console/QueueGrid.tsx` → added `content-start` to the full-height CSS grid.
+  Without it, CSS Grid stretched the two automatic row tracks through the card's unused height
+  while the square tiles stayed at their intrinsic size, leaving a large blank area between rows.
+
+**Verified:**
+- Reproduced with the application's compiled Tailwind styles at a 700 × 600 px queue: the previous
+  layout left **173.8 px** between rows; the corrected layout leaves the intended **10.0 px**
+  (`gap-2.5`).
+- `npm run typecheck` clean; targeted ESLint on `QueueGrid.tsx` clean; `npm run build` completed as
+  an optimized production build.
+- Fix commit `6b241ce` was pushed to `origin/main`. Railway now serves CSS chunk
+  `/_next/static/chunks/31wji0u5fzhv0.css` containing
+  `.content-start{align-content:flex-start}`.
+- Playwright against that live Railway stylesheet measured `alignContent: flex-start` and a
+  **10.015625 px** first-to-second-row gap with ten production-styled queue tiles.
+- Full suite result: **558 passed / 6 failed**. The failures are the already-recorded moving prompt
+  fixtures and live SKU/database-state assertions, not the queue component or CSS change.
+
+**Not finished / known broken:**
+- Nothing remains for this spacing defect. The live queue had only four items during verification,
+  so it did not naturally form two rows; the exact deployed production stylesheet and grid classes
+  were exercised with ten tiles instead.
+
+**Surprises:** pushing `main` did not update Railway automatically during two polling windows. The
+owner updated Railway, after which the new CSS asset became live and passed the production check.
+
+**Next session should start with:** when the live queue next has enough items for two rows, make one
+quick visual confirmation that the photographs match the measured 10 px spacing.
+
+---
+
 ## 2026-08-08 (b) — Publish sets its own sales channels
 
 **Goal this session:** stop the operator having to open Shopify admin and tick Online Store,
