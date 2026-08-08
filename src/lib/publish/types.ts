@@ -1,4 +1,5 @@
 /** Shapes read out of Postgres and handed to the publisher. */
+import type { SalesChannel } from '@/lib/shopify/publications'
 
 export interface DraftRow {
   readonly id: string
@@ -108,6 +109,12 @@ export interface PublishResult {
   readonly reusedIdentity: boolean
   /** In published order. Empty when the caller published no images. */
   readonly images: readonly PublishedImage[]
+  /**
+   * The sales channels this product was published to. Empty only when the store
+   * has no active sales channel at all — `productSet` cannot set publications,
+   * so every publish makes a second call and this records what it achieved.
+   */
+  readonly salesChannels: readonly SalesChannel[]
 }
 
 export interface PublishOptions {

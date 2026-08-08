@@ -29,6 +29,81 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-08 (b) — Publish sets its own sales channels
+
+**Goal this session:** stop the operator having to open Shopify admin and tick Online Store,
+Point of Sale and Google & YouTube on every product Loupe publishes.
+
+**Cause:** `ProductSetInput` has no publications field — introspected against the live store on
+API 2026-07, full list is `descriptionHtml handle seo productType tags templateSuffix
+giftCardTemplateSuffix title vendor category giftCard redirectNewHandle status collections
+metafields files productOptions variants requiresSellingPlan claimOwnership combinedListingRole`.
+`productSet` cannot publish to a channel whatever it is passed, and nothing was covering the gap.
+
+**Built:**
+- `src/lib/shopify/publications.ts` → `salesChannels()` (every ACTIVE APP catalog, cached per
+  client like `primaryLocationId`, refuses a truncated >100 page) and `publishToSalesChannels()`
+  (one `publishablePublish` for all channels at once).
+- `src/lib/publish/publish-product.ts` → calls it after `productSet` on **both** the DRAFT and
+  ACTIVE paths, before the media read-back. A failure throws into the existing catch, so the draft
+  is marked `failed` with its handle kept and the retry is idempotent on both halves.
+- `src/lib/publish/types.ts`, `src/app/console/actions.ts`,
+  `src/components/console/ConsoleScreen.tsx` → the channels reached are carried through to a
+  "Live on N sales channels" notice, and an attention notice when the store has none.
+- `tests/shopify-publications.test.ts` → 9 tests.
+- `docs/DECISIONS.md` → D89, including the two rejected options (`autoPublish`,
+  deprecated `Publication.name`).
+
+**Verified:**
+- `npm run typecheck` clean, `npm run lint` clean.
+- `npx vitest run tests/shopify-publications.test.ts` → **9 passed**. Covers: `catalogType: APP`
+  only; ARCHIVED/DRAFT catalogs skipped; id fallback for a nameless channel; a truncated page
+  throws; one publications query for three publishes; the exact mutation variables; empty channel
+  list makes no mutation call; a `userErrors` refusal throws non-retryable and names
+  `write_publications`; a null payload throws.
+- **Scopes already granted** — `currentAppInstallation { accessScopes { handle } }` returns
+  `read_locations read_metaobjects read_products read_publications write_locations
+  write_metaobjects write_products write_publications`. No app configuration change needed.
+- **Live channels on `qimti`:** Online Store, Point of Sale, Google & YouTube, sr checkout. All
+  four have `autoPublish=false`, which is why nothing was covering the gap.
+- **Live evidence the manual step was real:** swept all 2,816 products. 97 are on fewer than 4
+  channels and **every one of them is ARCHIVED**. Every ACTIVE product is 4/4 — a person put it
+  there.
+- **Live end-to-end proof of the mutation and scope,** idempotent, against `necklace-1006`:
+  ```
+  before: 4/4 — Online Store, Point of Sale, Google & YouTube, sr checkout
+  publishToSalesChannels returned 4: Online Store, Point of Sale, Google & YouTube, sr checkout
+  after : 4/4 — Online Store, Point of Sale, Google & YouTube, sr checkout
+  ```
+
+**Not finished / known broken:**
+- **No from-zero live proof.** Every non-archived product on the test store was already 4/4, so
+  there was no safe target to publish from nothing. The next real console publish is the proof —
+  check the "Live on 4 sales channels" notice, then confirm in Shopify admin without touching
+  anything.
+- **Reconciliation does not check channels.** The daily job (D54) will not notice a product
+  unpublished from a channel in admin. Deliberate scope call, not an oversight.
+- Nothing published to MARKET or COMPANY_LOCATION catalogs — see D89.
+
+**Surprises:**
+- **A stray temp file is in HEAD.** `scripts/tmp-introspect-pub.ts` was committed in `29bbdfc`
+  along with the preset work. It is deleted in the working tree and needs committing out.
+- **Six test failures are pre-existing and unrelated to either change this session.** Confirmed by
+  reading each: `prompt-models.test.ts` expects 10 curated models and `src/lib/prompts/models.ts`
+  now has 11; `schema.test.ts` pins the seed prompt sha and the live default has since been
+  promoted past it (2955→4084 chars describe, 5356→5721 image); `category-management.sql.test.ts`
+  expects the WC counter at 001 and real waist chains have been published; three
+  `publish-identity.test.ts` cases depend on DB state. None are worth fixing blind — each is a
+  test pinning a fact that has legitimately moved, and each needs a decision about the new fact.
+- The two updated preset assertions in `tests/prompt-management.sql.test.ts` also fail, correctly:
+  they now encode the post-migration state and `20260808120000` has not been pushed.
+
+**Next session should start with:** `npm run db:push` (applies `20260808120000`), then publish one
+real product from the console and confirm the sales-channel notice against Shopify admin.
+
+---
+
+
 ## 2026-08-08 — Long-chain presets: necklace and waist chain
 
 **Goal this session:** stop necklaces and waist chains rendering at bracelet/anklet scale,

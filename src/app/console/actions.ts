@@ -493,6 +493,12 @@ export interface PublishSummary {
   readonly imageCount: number
   readonly altTexts: readonly { readonly mediaId: string; readonly alt: string | null }[]
   readonly housekeeping: readonly DriveHousekeepingOutcome[]
+  /**
+   * The sales channels the product went live on. Shown because the operator's
+   * previous job was to open Shopify and tick these by hand; seeing them named
+   * in the console is what tells them the trip is no longer needed.
+   */
+  readonly salesChannels: readonly string[]
 }
 
 export async function publishDraftAction(
@@ -519,6 +525,7 @@ export async function publishDraftAction(
         imageCount: published.media.length,
         altTexts: published.media.map((m) => ({ mediaId: m.id, alt: m.alt })),
         housekeeping: published.housekeeping,
+        salesChannels: published.result.salesChannels.map((channel) => channel.name),
       },
       bundle: await bundle(request.draftId, request.allowZeroStock),
       queue: await loadQueue(),

@@ -2401,3 +2401,59 @@ and archived; nothing is promoted. Acceptance is a five-source image run per pre
 the output cannot pass for a bracelet or anklet, that component counts and chain construction
 still match the source, and — for waist chain specifically — that a doubled drape never renders
 as two separate chains.
+
+---
+
+### D89 — Publish sets the sales channels itself, on every publish, to every active APP catalog
+
+Reported 2026-08-08: every product published from the console lands on **no** sales channel, and
+somebody has to open Shopify admin and tick Online Store, Point of Sale and Google & YouTube by
+hand, one product at a time.
+
+**Cause, introspected against the live store on API 2026-07:** `ProductSetInput` has no
+publications field. Its full input list is `descriptionHtml handle seo productType tags
+templateSuffix giftCardTemplateSuffix title vendor category giftCard redirectNewHandle status
+collections metafields files productOptions variants requiresSellingPlan claimOwnership
+combinedListingRole`. `productSet` therefore *cannot* publish to a channel, whatever it is passed.
+Nothing was auto-covering the gap either: `autoPublish` is `false` on all four publications on
+`qimti`, and all 2,816 products confirm the pattern — every ACTIVE product is on 4/4 channels
+because a person put it there, and the only products below 4/4 are ARCHIVED.
+
+**Decided:** `src/lib/shopify/publications.ts`. After `productSet` returns, `publishProduct` calls
+`publishablePublish(id, [PublicationInput!])` with every publication whose catalog is an **APP**
+catalog with status ACTIVE.
+
+*Every* APP catalog, with no allowlist of channel names. A channel Qimati installs later is a
+channel they want their products on; an allowlist would silently omit it and reintroduce the manual
+step this removes. MARKET and COMPANY_LOCATION catalogs are excluded — those are Markets and B2B
+price lists, and publishing to them is a different commercial decision.
+
+**It runs on the Shopify DRAFT path too** (D60). Shopify's DRAFT status hides a product from buyers
+regardless of publication, so setting channels early is invisible, and it means the later Publish
+makes the product live everywhere at once with nothing left to remember.
+
+**A failure here is fatal, not best-effort.** It throws, and the existing catch marks the draft
+`failed` while keeping its handle — the same trade the media-id write already makes. That is safe
+because both halves of the retry are idempotent: `productSet` updates the same product by handle,
+and `publishablePublish` is a no-op for a publication the resource already has. Swallowing the
+error would produce a draft that reports "published" while reaching no buyer, which is the exact
+failure being fixed.
+
+**An empty channel list is not an error.** A store with no active sales channel is one nobody has
+finished setting up; blocking a publish over it would stop the operator for a reason they cannot
+act on from the console. The console shows an attention notice instead.
+
+**Rejected — `Publication.autoPublish`.** Turning it on in Shopify would cover products created by
+any source, but it is store configuration rather than something Loupe controls or can assert, it
+is per-publication and easy to miss on a newly installed channel, and it leaves no audit trail. The
+explicit call records exactly which channels each product reached.
+
+**Rejected — a `Publication.name` lookup.** That field is deprecated. Channel names come from
+`catalog { ... on AppCatalog { apps(first: 1) { nodes { title } } } }`, falling back to the
+publication id so a nameless channel is still published to rather than dropped for cosmetics.
+
+**Scopes:** none needed. `read_publications` and `write_publications` are already granted —
+confirmed via `currentAppInstallation { accessScopes { handle } }`.
+
+**Not covered:** the daily Shopify reconciliation (D54) does not yet treat a product falling off a
+channel as drift. If someone unpublishes a product in admin, Loupe will not notice.

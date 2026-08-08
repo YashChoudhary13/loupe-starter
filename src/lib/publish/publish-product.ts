@@ -37,6 +37,7 @@ import {
   type ProductSetFile,
   type ProductSetVariant,
 } from '@/lib/shopify/product-set'
+import { publishToSalesChannels } from '@/lib/shopify/publications'
 
 import { buildDescriptionHtml } from './description'
 import { paiseToShopifyPrice } from './identity'
@@ -458,6 +459,29 @@ export async function publishProduct(
       ...(files ? { files } : {}),
     })
 
+    /**
+     * Sales channels, every time, for both the DRAFT and the ACTIVE path.
+     *
+     * `productSet` cannot carry publications (see publications.ts), so without
+     * this a published product lands on no channel and somebody has to open
+     * Shopify admin and tick Online Store, Point of Sale and Google & YouTube by
+     * hand — which is the manual step Loupe exists to remove.
+     *
+     * Running it on the DRAFT path too is safe and deliberate: Shopify's DRAFT
+     * status hides a product from buyers regardless of which channels it is
+     * published to, so setting the channels early means the later Publish makes
+     * it live everywhere at once with nothing left to remember.
+     *
+     * A failure here throws, and the catch below marks the draft `failed` while
+     * keeping its handle. That is the same trade the media-id write already
+     * makes: Shopify holds the product, Loupe says so in Tracking, and the retry
+     * is idempotent — `productSet` updates the same product by handle and
+     * `publishablePublish` is a no-op for channels it already has. A publish that
+     * silently reached no channel is the failure mode being fixed, so it must not
+     * be swallowed.
+     */
+    const channels = await publishToSalesChannels(shopify, product.id)
+
     // Read the media back so the recorded ids are Shopify's, not ours. Assuming
     // the mutation did what it was told is exactly how duplicate media survives
     // a green test run.
@@ -523,6 +547,7 @@ export async function publishProduct(
       variants: input.variants,
       reusedIdentity: identity.reused,
       images: published,
+      salesChannels: channels,
     }
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause)

@@ -1084,6 +1084,16 @@ function PublishedNotice({ summary }: { summary: PublishSummary }) {
         {summary.shopifyStatus?.toLowerCase() ?? 'live'}
         {summary.reusedIdentity ? ' · repaired the existing product' : ''}
       </Notice>
+      {summary.salesChannels.length > 0 ? (
+        <Notice tone="plain" title={`Live on ${summary.salesChannels.length} sales channels`}>
+          {summary.salesChannels.join(' · ')}
+        </Notice>
+      ) : (
+        <Notice tone="attention" title="Published, but the store has no active sales channel">
+          Nothing was refused — there is simply nothing to publish to. Add a sales channel in
+          Shopify admin, then republish this draft to put it in front of buyers.
+        </Notice>
+      )}
       {failedMoves.length > 0 ? (
         <Notice
           tone="attention"
