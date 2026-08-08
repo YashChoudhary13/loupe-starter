@@ -2681,3 +2681,33 @@ LIVE after "Promote this version":
   describe  Necklaces — length-aware inspector
   image     Necklaces — worn V hero   uses_composition=false, contains THE WORN V
 ```
+
+---
+
+### D96 — Selecting a preset must pick up a newer revision of that preset
+
+`promote_prompt_preset` treated "a half of this preset is already live" as "nothing to do". That is
+right when the live prompt IS the newest revision, and wrong the moment a new revision of the same
+preset is added — which is exactly what editing a preset means.
+
+**Cost of the bug, 2026-08-08:** two worn-V necklace revisions sat in the table as `ready` while the
+full-length prompt stayed live and kept producing the flat closed oval it asks for. The reasonable
+reading of that was "the new prompt does not work", and two rounds went into re-engineering a prompt
+that had never been switched on. A control that silently does nothing is worse than one that errors.
+
+**Decided:** compare **identity**, not existence — promote unless the live prompt is already the
+newest revision of that preset. Promotion still copies rather than flipping in place, so the copy
+becomes the newest revision and an immediate second call is correctly a no-op. Proved in a
+rolled-back transaction: `promote('marble')` then `promote('necklace')` both return `changed: true`
+and land on `Necklaces — worn V hero, hanging with ceramic backdrop`.
+
+One trap found while writing it: `kind` is a `RETURNS TABLE` output parameter, so an **unqualified**
+`kind` inside the function's `EXISTS` checks raises `column reference "kind" is ambiguous` at
+runtime, not at create time. Every table reference in the function is aliased.
+
+**Also added:** `npm run prompt:promote [slug]`. With no argument it prints every preset, its newest
+revision and what is actually live, flagging `!` where the live prompt is an older revision — the
+state that was invisible. With a slug it promotes, then **reads the live pair back** and exits
+non-zero if a half is still stale, which catches the case where the deployed function is still the
+old one. It calls the same audited SQL as the console, so the promotion is recorded in `events`
+identically; it is a convenience, not a second code path.

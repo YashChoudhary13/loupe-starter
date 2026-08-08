@@ -51,16 +51,16 @@ begin
   end if;
 
   if not exists (
-    select 1 from public.prompts
-     where preset_slug = v_slug and kind = 'describe'
+    select 1 from public.prompts as p
+     where p.preset_slug = v_slug and p.kind = 'describe'
   ) then
     raise exception 'promote_prompt_preset: preset "%" has no describe prompt', v_slug
       using errcode = '22023',
             hint = 'A preset must define both the describer and the image prompt.';
   end if;
   if not exists (
-    select 1 from public.prompts
-     where preset_slug = v_slug and kind = 'image'
+    select 1 from public.prompts as p
+     where p.preset_slug = v_slug and p.kind = 'image'
   ) then
     raise exception 'promote_prompt_preset: preset "%" has no image prompt', v_slug
       using errcode = '22023',

@@ -29,6 +29,69 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-08 (f) — The prompt was never live: promotion silently no-opped
+
+**Goal this session:** the owner reported the necklace output was "oval now". Find out why.
+
+**It was not a prompt problem.** The live image prompt was still `Necklaces — full-length luxury
+hero`, and a closed oval on satin is precisely what that prompt asks for. Both worn-V revisions were
+sitting in the table as `ready`.
+
+**Timeline, from `events` and `image_versions`:**
+```
+08:14:46  migration 20260808170000 added the worn-V v2 prompt
+08:18:09  the oval image was generated        ← full-length prompt still live
+08:23:25  prompt.promoted by lakhira.studio@gmail.com   ← 5 minutes later
+```
+The rejected image predates the promote. The worn-V prompt had never produced an image.
+
+**Root cause (D96).** `promote_prompt_preset` returned `changed: false` for both halves whenever the
+preset was already live, so selecting `necklace` while `necklace` was live could never pick up a
+newer revision of it — and the preset selector is the prominent control on `/prompts`. Two rounds
+went into re-engineering a prompt that was never switched on.
+
+**Built:**
+- `supabase/migrations/20260808180000_promote_preset_picks_up_newer_revisions.sql` → compare
+  identity, not existence. Also aliases every table in the function: `kind` is a `RETURNS TABLE`
+  output parameter, so an unqualified `kind` in the EXISTS checks raises `column reference "kind" is
+  ambiguous` at runtime rather than at create time — hit while writing this, fixed.
+- `scripts/promote-preset.ts` + `npm run prompt:promote` → with no argument, prints every preset,
+  its newest revision and what is live, flagging `!` where the live prompt is an older revision. With
+  a slug, promotes and then reads the live pair back, exiting non-zero if a half is still stale.
+- `docs/DECISIONS.md` → D96.
+
+**Verified:**
+- `npm run typecheck` clean, `npm run lint` clean, `tests/prompt-management.sql.test.ts` 13 pass.
+- The survey immediately exposed the invisible state:
+  ```
+  ! necklace
+        image    newest: Necklaces — worn V hero, hanging with ceramic backdrop
+                 LIVE IS STALE — running "Necklaces — full-length luxury hero"
+  ```
+- Fix proved in a rolled-back transaction: `promote('marble')` then `promote('necklace')` both
+  return `changed: true` and land on the worn-V hanging prompt; an immediate repeat is a no-op.
+- **The live worn-V prompt was run against the rejected oval's own source** (a station necklace with
+  a graduated bezel bar and black bead pairs — a different branch from the two-pendant test).
+  `$0.084199`, 55s. Result: hanging shallow U, both arms leaving the top edge, bar centrepiece at the
+  lowest point, bead stations mirrored down both arms, ceramic form soft behind, no oval, clasp out
+  of frame. `.artifacts/worn-v/station-wornv.png` beside `latest-oval.png` for comparison.
+
+**Not finished / known broken:**
+- `20260808180000` is unapplied — `db:push` is blocked for the agent. Until then the preset selector
+  still silently no-ops; `npm run prompt:promote` works regardless, because it warns rather than
+  relying on the fixed function.
+- The bar-centrepiece piece renders as a shallow U rather than a deep V. That follows `V WIDTH
+  FOLLOWS THE PIECE` and matches the owner's own samples (`image copy`, `image copy 3`), but if a
+  deeper V is wanted for every piece regardless of centrepiece, that is a one-line change.
+- Everything outstanding from entries (b), (d) and (e) still outstanding, including the dismiss
+  button and the RAW sweep, which are in unapplied migrations.
+
+**Next session should start with:** `npm run db:push`, then `npm run prompt:promote` with no
+argument to confirm every preset reads `●` rather than `!`.
+
+---
+
+
 ## 2026-08-08 (e) — Necklace hero becomes a worn V
 
 **Goal this session:** the owner does not want the full-length necklace after all — they want the
