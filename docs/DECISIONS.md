@@ -2711,3 +2711,72 @@ state that was invisible. With a slug it promotes, then **reads the live pair ba
 non-zero if a half is still stale, which catches the case where the deployed function is still the
 old one. It calls the same audited SQL as the console, so the promotion is recorded in `events`
 identically; it is a convenience, not a second code path.
+
+---
+
+### D97 — Loupe steps past hand-made Shopify numbers, and never writes over a product it did not create
+
+Qimati lists products directly in Shopify admin, often, without the console. Loupe's counter only
+learned about those during reconciliation — nightly at 03:00 IST or on a Full reconciliation click —
+so anything listed by hand between scans was invisible to it.
+
+**What happened on 2026-08-08.** `necklace-1007` was created by hand at 08:01:39. The console draft
+at 08:42:42 was issued `NK1007` from a counter that still said 1006, and `productSet` — which
+addresses BY HANDLE — collided with the manual product. No reconciliation ran in that 41-minute
+window; by the time one did (08:46) Loupe had already taken 1007 itself, so the scan correctly found
+nothing to raise. The mechanism was working; the clocks were not aligned.
+
+Two guards, because either alone is insufficient.
+
+**1. Step the counter past occupied numbers, before reserving.**
+`src/lib/publish/shopify-numbering.ts`. Probe the candidate number in Shopify; if it is taken, raise
+the counter and try the next. Runs on every publish where the draft has no reservation yet.
+
+*Hard rule 1 is intact.* It forbids deriving a SKU from Shopify's max, because Shopify accepts
+duplicate SKUs silently and any max query lies under concurrency. This does something narrower and
+monotone: the counter remains the sole allocator, and Shopify is consulted only to rule candidates
+out. `raise_sku_counter` cannot walk a sequence backwards.
+
+*Probe, not scan.* `sync-sku-counters` pages every variant SKU in the store — right for a nightly
+audit, far too heavy per publish. A probe is two indexed lookups in one request. Measured live: 412 ms
+and one probe on the clean path; 1,503 ms and two probes stepping over the real NK1007.
+
+*Both a SKU probe and a handle probe.* SKU alone misses a hand-made product listed with a blank SKU,
+which is common, and its handle would still collide. Handle alone misses a product whose title was
+edited after creation, since Shopify keeps the original handle while the SKU stays ours. Verified
+that `sku:` search is exact rather than a prefix match — `sku:NK100` returns NK100, not NK1007 — so a
+probe cannot skip a number by matching a longer one.
+
+*Raise to `nextFree - 1`, not to `nextFree`.* `next_sku()` increments before returning, so the counter
+must sit one below the number it should hand out. Raising to the free number itself would burn one
+every time this ran.
+
+**2. Refuse to write over a product Loupe did not create.**
+`src/lib/publish/handle-ownership.ts`. Prevention that depends on a lookup a moment earlier cannot
+cover somebody creating a product in the seconds in between — this makes the residual collision
+harmless rather than merely rare.
+
+Telling ours from theirs is easy when `shopify_product_id` matches. The hard case is the crash
+window: `productSet` succeeded, the process died before the id was recorded, and recovering from
+exactly that is a documented requirement, so this cannot simply refuse whenever the id is missing.
+
+**The discriminator is time.** A product Loupe created FOR THIS DRAFT cannot predate the draft row —
+Loupe did not know the number before then. A matching SKU is required as well but is *not* sufficient
+on its own: the hand-made Necklace 1007 carried `NK1007` too, because whoever made it followed the
+same convention. SKU-alone would have adopted and overwritten it. Verified against live data:
+
+```
+ownership of necklace-1007: foreign —
+  "Necklace 1007" was created in Shopify before this draft existed, so Loupe did not create it
+```
+
+**Rejected — a Loupe-owned marker tag or metafield on every product.** It would identify our
+products directly, but only from the moment it shipped; the 53 already published carry no marker, so
+the timestamp rule would still be needed for them. Two mechanisms where one suffices.
+
+**Rejected — checking Shopify's max inside `reserve_draft_identity`.** That SQL function cannot make
+HTTP calls, and moving the reservation into TypeScript would give up the atomicity that makes
+concurrent publishes safe (hard rule 1).
+
+**Note on the existing failure.** The guards prevent the next collision; they do not repair the
+`NK1007` draft, whose identity is frozen by design. That draft still needs a fresh one.

@@ -535,6 +535,9 @@ const PRODUCT_BY_HANDLE_QUERY = /* GraphQL */ `
       id
       handle
       title
+      # Ownership: a product Loupe made for a draft cannot predate that draft.
+      # See publish/handle-ownership.ts.
+      createdAt
       status
       productType
       tags
@@ -570,6 +573,8 @@ export interface ProductReadback {
   readonly id: string
   readonly handle: string
   readonly title: string
+  /** Used to tell an interrupted Loupe publish from a hand-made product. */
+  readonly createdAt: string | null
   readonly status: string
   readonly productType: string | null
   readonly tags: readonly string[]

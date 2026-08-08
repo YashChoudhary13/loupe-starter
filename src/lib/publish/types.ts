@@ -16,6 +16,8 @@ export interface DraftRow {
   readonly reserved_sku: string | null
   readonly reserved_handle: string | null
   readonly shopify_product_id: string | null
+  /** A product Loupe created for this draft cannot be older than this. */
+  readonly created_at: string
 }
 
 export interface CategoryRow {

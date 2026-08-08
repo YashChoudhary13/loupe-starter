@@ -47,6 +47,7 @@ const DRAFT: DraftRow = {
   reserved_sku: null,
   reserved_handle: null,
   shopify_product_id: null,
+  created_at: '2026-08-08T00:00:00.000Z',
 }
 
 const IMAGE: PublishImage = {

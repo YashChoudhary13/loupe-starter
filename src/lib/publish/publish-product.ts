@@ -33,6 +33,7 @@ import {
   SIZE_OPTION_NAME,
   primaryLocationId,
   productSet,
+  readProductByHandle,
   readProductMedia,
   type ProductSetFile,
   type ProductSetVariant,
@@ -40,7 +41,9 @@ import {
 import { publishToSalesChannels } from '@/lib/shopify/publications'
 
 import { buildDescriptionHtml } from './description'
+import { assertHandleIsWritable, classifyHandleOwnership } from './handle-ownership'
 import { paiseToShopifyPrice } from './identity'
+import { clearCounterOfShopifyNumbers } from './shopify-numbering'
 import type {
   CategoryRow,
   DraftRow,
@@ -88,7 +91,7 @@ export function filenameForStorage(sourceFilename: string, storageKey: string): 
 }
 
 const DRAFT_COLUMNS =
-  'id, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, status, reserved_sku, reserved_handle, shopify_product_id'
+  'id, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, status, reserved_sku, reserved_handle, shopify_product_id, created_at'
 const CATEGORY_COLUMNS =
   'id, name, sku_prefix, title_pattern, shopify_tag, shopify_taxonomy_category_id, default_weight_g, default_stock'
 
@@ -278,6 +281,29 @@ export async function buildProductFiles(
  * Reserves (or reuses) the SKU and handle. One round trip, one transaction — the
  * number from `next_sku()` and the row that records it cannot come apart.
  */
+/**
+ * The counter's current `last_number`. The next number issued is this plus one.
+ *
+ * Read outside the reservation transaction on purpose: it only seeds the Shopify
+ * probe. `next_sku()` remains the single atomic allocator, and `raise_sku_counter`
+ * is monotone, so a stale read here can make the probe start low — costing an
+ * extra probe — but can never issue a number twice.
+ */
+async function currentCounter(db: SupabaseClient, prefix: string): Promise<number> {
+  const { data, error } = await db
+    .from('sku_counters')
+    .select('last_number')
+    .eq('sku_prefix', prefix)
+    .single<{ last_number: number }>()
+  if (error || !data) {
+    throw new Error(
+      `No SKU counter for prefix ${prefix}: ${error?.message ?? 'not found'}. ` +
+        'Confirm the category against the live store rather than inventing a sequence.',
+    )
+  }
+  return data.last_number
+}
+
 export async function reserveIdentity(
   db: SupabaseClient,
   draftId: string,
@@ -357,6 +383,54 @@ export async function publishProduct(
   }
   const weightG = resolvedWeightG ?? 0
 
+  /**
+   * Step the counter past any number Shopify already uses, BEFORE reserving.
+   *
+   * Qimati lists products in Shopify admin without the console, and the counter
+   * only learned about those during reconciliation — so a product listed by hand
+   * since the last scan was invisible and the next draft collided with it. This
+   * closes that window on every publish. See D97.
+   *
+   * Hard rule 1 is intact: the number still comes from the atomic counter, and
+   * Shopify is consulted only to rule candidates out. `raise_sku_counter` is
+   * monotone, so this can never walk a sequence backwards.
+   *
+   * Skipped when the draft already holds a reservation — that identity is frozen
+   * (hard rule 2) and moving the counter would not change it.
+   */
+  if (!input.draft.reserved_sku) {
+    const counter = await currentCounter(db, input.category.sku_prefix)
+    const numbering = await clearCounterOfShopifyNumbers(
+      shopify,
+      {
+        prefix: input.category.sku_prefix,
+        titlePattern: input.category.title_pattern,
+        titleSuffix: input.draft.title_suffix,
+        counterLastNumber: counter,
+      },
+      async (prefix, to) => {
+        const { error } = await db.rpc('raise_sku_counter', { p_prefix: prefix, p_to: to })
+        if (error) throw new Error(`Could not raise the ${prefix} counter to ${to}: ${error.message}`)
+      },
+    )
+    if (numbering.raisedTo !== null) {
+      // Direct insert, like sync-sku-counters — there is no record_event RPC,
+      // and stepping over somebody's hand-made numbers must leave a trace.
+      await db.from('events').insert({
+        entity_type: 'product_draft',
+        entity_id: draftId,
+        event: 'publish.counter_advanced',
+        detail: {
+          prefix: input.category.sku_prefix,
+          raised_to: numbering.raisedTo,
+          next_free: numbering.nextFree,
+          skipped: numbering.skipped,
+        },
+        actor: options.actor ?? null,
+      })
+    }
+  }
+
   const identity = await reserveIdentity(db, draftId, options.actor, !asDraft)
 
   try {
@@ -394,6 +468,35 @@ export async function publishProduct(
             optionValue: variant.value,
           }))
         : [{ sku: identity.sku, price, weightG, stock: input.draft.stock, locationId }]
+
+    /**
+     * Never write over a product Loupe did not create.
+     *
+     * `productSet` addresses by handle, which silently assumes the product there
+     * is ours. On 2026-08-08 a hand-made `necklace-1007` occupied a handle Loupe
+     * reserved; Shopify happened to refuse the write because of a linked Color
+     * option, and that refusal is the only reason the product survived. A plain
+     * hand-made product would have been overwritten with nothing said. See D97.
+     */
+    const occupant = await readProductByHandle(shopify, identity.handle)
+    const ownership = classifyHandleOwnership(
+      {
+        handle: identity.handle,
+        reservedSku: identity.sku,
+        recordedProductId: input.draft.shopify_product_id,
+        draftCreatedAt: input.draft.created_at,
+      },
+      occupant,
+    )
+    assertHandleIsWritable(
+      {
+        handle: identity.handle,
+        reservedSku: identity.sku,
+        recordedProductId: input.draft.shopify_product_id,
+        draftCreatedAt: input.draft.created_at,
+      },
+      ownership,
+    )
 
     // Read the store's media BEFORE writing. A publish that was interrupted
     // after Shopify accepted the files but before Loupe recorded their ids is

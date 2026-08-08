@@ -29,6 +29,72 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-08 (g) — Collision guards: Loupe steps past hand-made numbers and never overwrites them
+
+**Goal this session:** a draft failed with "could not draft to Shopify". Find out why, then make it
+fail-proof — the owner lists products in Shopify admin often, without the console.
+
+**Diagnosis.** `necklace-1007` was created by hand at 08:01:39. The console draft at 08:42:42 was
+issued `NK1007` from a counter that still said 1006, and `productSet` — addressed by handle —
+collided. No reconciliation ran in that 41-minute window; by the time one did (08:46) Loupe had
+already taken 1007 itself, so the scan correctly reported `raised: []`. **The counter mechanism was
+never broken** — proved by `next_sku('NK')` returning 1008 in a rolled-back transaction, and by the
+07:20 scan raising `ER 473→474` the same morning. The clocks were misaligned, not the code.
+
+**The near-miss.** Shopify refused the write only because the manual product carried a `Color`
+option linked to `shopify.color-pattern`. A plain hand-made product would have been silently
+overwritten — title, description, price, variants, images.
+
+**Built (D97):**
+- `src/lib/publish/shopify-numbering.ts` → probe the candidate number in Shopify; if taken, raise the
+  counter and try the next. Both a SKU probe and a handle probe, in one aliased request. Bounded at
+  40, raises loudly rather than issuing an unchecked number.
+- `src/lib/publish/handle-ownership.ts` → classify the product at a reserved handle as free / ours /
+  adopt / foreign, and refuse to write to a foreign one. Discriminator is **time**: a product Loupe
+  made for a draft cannot predate the draft row.
+- Wired both into `publishProduct`, before reserve and before `productSet`. Counter advances are
+  recorded as `publish.counter_advanced`.
+- `readProductByHandle` now returns `createdAt`; `DraftRow` carries `created_at`.
+- `src/lib/tables.ts` → `shopify_reconciliation_dismissals`, which the earlier migration added.
+- `tests/publish-collision-guards.test.ts` (15).
+
+**Verified:**
+- `typecheck` and `lint` clean. Full suite **600 passed**.
+- 15 new tests: clean path costs one probe and no counter write; the real NK1007 case steps to 1008
+  and raises to **1007 not 1008** (`next_sku` increments before returning, so raising to the free
+  number would burn one per call); blank-SKU and edited-title cases each caught by the probe the
+  other misses; suffix handles (`rings-222-adjustable`); bounded give-up.
+- **Both guards run against the live store and the real failure:**
+  ```
+  counter at 1006 → nextFree 1008 in 2 probes, 1503ms   skipped NK1007 (sku+handle)
+  counter at 1007 → nextFree 1008 in 1 probe,   412ms   ← the ordinary cost
+  ownership of necklace-1007: foreign — "Necklace 1007" was created in Shopify
+      before this draft existed, so Loupe did not create it
+  ```
+- Confirmed `sku:` search is exact, not prefix — `sku:NK100` returns NK100, not NK1007 — so a probe
+  cannot skip a number by matching a longer one.
+- The user's `db:push` landed `20260808150000`, so the two `image-redo` failures are gone.
+
+**Not finished / known broken:**
+- **Nothing here is deployed.** No migration was needed for the guards, but the code must ship; and
+  `20260808180000` (preset promotion) is still unapplied.
+- **The NK1007 draft is still stuck.** The guards prevent the next collision; they cannot repair a
+  frozen identity. It needs a fresh draft, and there is still no delete-draft action in the console.
+- Five pre-existing failures unchanged (`prompt-models` 10-vs-11, `schema` seed sha, WC counter,
+  `publish-identity` ×3).
+- The probe adds ~400 ms to a publish. Acceptable at ~300/month; worth remembering if volume grows.
+
+**Surprises:**
+- A SKU match alone would have been the wrong discriminator for ownership. The hand-made Necklace
+  1007 carried `NK1007` too, because whoever made it followed the same numbering convention — so
+  "does it have our SKU" would have adopted and overwritten it. The timestamp is what settles it.
+
+**Next session should start with:** ship this, `npm run db:push`, then re-group the NK1007
+photographs into a fresh draft and watch it take NK1008.
+
+---
+
+
 ## 2026-08-08 (f) — The prompt was never live: promotion silently no-opped
 
 **Goal this session:** the owner reported the necklace output was "oval now". Find out why.
