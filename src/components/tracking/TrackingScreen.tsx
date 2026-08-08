@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  dismissReconciliationIssueAction,
   discardIntakeAction,
   refreshTrackingAction,
   resumeIntakeAction,
@@ -186,9 +187,16 @@ export function TrackingScreen({
               .map((row) => `${row.prefix} ${row.from}→${row.to}`)
               .join(', ')}).`
           : 'SKU counters were already safe; none were lowered.'
+      const driveResult = result.data.driveError
+        ? ` Drive tidy-up failed: ${result.data.driveError}`
+        : result.data.driveMoved > 0 || result.data.driveFailed > 0
+          ? ` ${result.data.driveMoved} photograph${result.data.driveMoved === 1 ? '' : 's'} moved out of RAW into Processed${
+              result.data.driveFailed > 0 ? `, ${result.data.driveFailed} could not be moved` : ''
+            }${result.data.driveMore ? ' (more remain — run again)' : ''}.`
+          : ' RAW was already clear of published photographs.'
       setFeedback(result.data.started
-        ? `Full reconciliation completed: ${result.data.deletedShopifyDrafts} Shopify-deleted draft${result.data.deletedShopifyDrafts === 1 ? '' : 's'} removed from Loupe; ${result.data.matchedProducts}/${result.data.totalProducts} published products matched, ${result.data.issueCount} published-product issues, ${result.data.promotedProducts} Shopify-published drafts reflected. ${counterResult}`
-        : `A catalogue check was already running; no duplicate check was started. ${counterResult}`)
+        ? `Full reconciliation completed: ${result.data.deletedShopifyDrafts} Shopify-deleted draft${result.data.deletedShopifyDrafts === 1 ? '' : 's'} removed from Loupe; ${result.data.matchedProducts}/${result.data.totalProducts} published products matched, ${result.data.issueCount} published-product issues, ${result.data.promotedProducts} Shopify-published drafts reflected.${driveResult} ${counterResult}`
+        : `A catalogue check was already running; no duplicate check was started.${driveResult} ${counterResult}`)
 
       const warnings = [
         result.data.promotionError
@@ -422,6 +430,17 @@ export function TrackingScreen({
                       )
                     : undefined
                 }
+                onDismiss={() => {
+                  // The issue id lives in rowId: `entityId` is the run id, so the
+                  // event trail hangs off the run rather than the finding.
+                  const issueId = Number(row.rowId.split(':')[1])
+                  if (!Number.isFinite(issueId)) return
+                  void update(
+                    `dismiss:${row.rowId}`,
+                    () => dismissReconciliationIssueAction({ issueId }),
+                    'Marked correct. It will stay hidden unless the value changes again.',
+                  )
+                }}
               />
             ))}
             {rows.length === 0 ? (
@@ -470,6 +489,7 @@ function TrackingItem({
   onResumeEnhancement,
   onDiscard,
   onDuplicate,
+  onDismiss,
 }: {
   row: TrackingRow
   now: number
@@ -480,6 +500,7 @@ function TrackingItem({
   onResumeEnhancement: () => void
   onDiscard: () => void
   onDuplicate: (decision: 'dismissed' | 'duplicate') => void
+  onDismiss: () => void
 }) {
   return (
     <article className="rounded-panel border border-[#efefef] p-3.5 focus-within:border-ink">
@@ -616,6 +637,17 @@ function TrackingItem({
                   Not a duplicate
                 </button>
               </>
+            ) : null}
+            {row.canDismiss ? (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={onDismiss}
+                title="Records that this difference is correct. It stays hidden across future checks, and returns only if the value changes again."
+                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft disabled:opacity-40"
+              >
+                {busy === `dismiss:${row.rowId}` ? 'Dismissing…' : 'This is correct'}
+              </button>
             ) : null}
             <details className="ml-auto text-[11px]">
               <summary className="cursor-pointer rounded-pill bg-chip px-3 py-1.5 text-ink-soft">

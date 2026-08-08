@@ -27,6 +27,7 @@ function row(overrides: Partial<TrackingRow> = {}): TrackingRow {
     events: [],
     canRetry: true,
     canSkip: true,
+    canDismiss: false,
     consoleHref: null,
     driveHref: null,
     duplicate: null,

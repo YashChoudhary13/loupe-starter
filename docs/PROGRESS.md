@@ -29,6 +29,148 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-08 (e) — Necklace hero becomes a worn V
+
+**Goal this session:** the owner does not want the full-length necklace after all — they want the
+piece shown as it looks on the wearer. Six reference images supplied in `Sample-Necklace/`.
+
+**Analysed all six.** Every one: the piece hangs under gravity rather than lying flat; both chain
+arms fall from the TOP EDGE and are cut off by it, so clasp and extender are out of frame; the arms
+converge into a V or shallow U with the focal element at the single lowest point, centred; and the
+V's depth tracks the piece — wide/shallow for a bar or cluster, deep/narrow for a long station
+necklace. Backgrounds varied (ceramic sculpture, dish rim, blurred flowers, window light on satin)
+but all warm neutral with a real cast shadow.
+
+**Asked four questions before writing anything; all four answered:** clean background with no props;
+crop the clasp and extender knowingly; replace the full-length half rather than adding a preset;
+leave waist chains alone.
+
+**Built:**
+- `supabase/migrations/20260808160000_necklace_worn_v_hero.sql` → new image half for the `necklace`
+  preset, 1,177 words, `uses_composition = false`, inserted non-current.
+  New blocks: `THE WORN V`, `V DEPTH FOLLOWS THE PIECE`, `BOTH ARMS ARE THE SAME CHAIN`.
+  Kept: SOURCE AUTHORITY, SOURCE POSE IS NOT THE PRODUCT, the link-gauge lock (a coarse chain still
+  reads as a bracelet, V or no V), LIGHTING, RETOUCHING, FINAL IDENTITY CHECK.
+  Dropped: OPEN CENTRE, closed oval / horseshoe, 90-96% outline fill, never-crop-the-clasp.
+  The migration asserts both that the required new blocks are present **and** that none of the
+  dropped full-length instructions survived — two contradictory poses in one prompt is the failure
+  that would be hardest to spot afterwards.
+- `docs/DECISIONS.md` → D95.
+
+**Verified:**
+- `npm run typecheck` clean, `npm run lint` clean.
+- All three pending migrations dry-run together against the live database in a rolled-back
+  transaction; the new version lands at 1,177 words with the composition token absent, as
+  `validate_prompt_body(..., false)` requires.
+- **Found a gap that would have blocked activation.** `promote_prompt_preset('necklace')` returns
+  `changed: false` for both halves and does NOT pick up the new revision — it leaves a half that is
+  already live alone by design, and `necklace` is currently the live pair. Proved the working path
+  instead:
+  ```
+  LIVE after "Promote this version":
+    describe  Necklaces — length-aware inspector
+    image     Necklaces — worn V hero   uses_composition=false, contains THE WORN V
+  ```
+
+**Not finished / known broken:**
+- **Three migrations still unapplied** — `20260808140000` (dismiss), `20260808150000` (redo fix),
+  `20260808160000` (worn V). `db:push` is blocked for the agent.
+- **No image has been generated from the worn-V prompt.** Acceptance is a run across a pendant
+  necklace, a station necklace and a multi-strand, checking both arms leave the top edge, the focal
+  element is the lowest point, and no neck or bust appears.
+- The live pair moved from `waist-chain` to `necklace` between sessions — worth knowing when reading
+  earlier entries.
+- Everything outstanding from entry (d) still outstanding.
+
+**Next session should start with:** `npm run db:push`, then `/prompts` → image prompt list →
+**"Promote this version"** on "Necklaces — worn V hero". The preset button will not do it.
+
+---
+
+
+## 2026-08-08 (d) — Dismissable findings, the RAW backlog, and a live redo bug
+
+**Goal this session:** four operator reports — no way to dismiss a correct "needs attention" item,
+RAW never empties, one upload stuck at Queued, and presets missing from /prompts.
+
+**`npm run db:push` ran mid-session (by the owner).** `20260808120000` is applied; /prompts now
+lists **7** presets including `necklace` and `waist-chain`. The owner then promoted **waist-chain**
+as the live pair — which immediately exposed D94 below.
+
+**Built:**
+- `supabase/migrations/20260808140000_dismiss_reconciliation_issues.sql` → dismissals table +
+  `dismiss_reconciliation_issue()` / `restore_reconciliation_dismissal()`. **Not a delete** —
+  issue rows are recreated by every run, so a delete would clear Tracking until 03:00 and the
+  finding would come back. Keyed on `(product_draft_id, code, field, actual)` so a dismissal
+  silences a *fact*, and new drift on the same product still surfaces. D93.
+- `src/lib/tracking/*`, `src/app/tracking/actions.ts`, `TrackingScreen.tsx` → dismissed findings
+  filtered out of the snapshot; a "This is correct" button on reconciliation rows only.
+- `src/lib/console/drive-backlog.ts` → `tidyPublishedDriveBacklog()`, a sweep over DB state, wired
+  into the daily reconciliation job and the Tracking "Full reconciliation" button. D92.
+- `supabase/migrations/20260808150000_redo_accepts_self_staging_prompts.sql` → **live bug fix**,
+  see below. D94.
+- `tests/drive-backlog.test.ts` (6), fixture repairs in `tests/prompt-management.sql.test.ts`.
+- `docs/DECISIONS.md` → D92, D93, D94.
+
+**The RAW folder (D92).** `tidyDriveForDraft` is only called from the console publish path, which
+Qimati does not use. Reconciliation promotes drafts published in Shopify admin and never tidied
+Drive. Measured: **49 drive-sourced photographs at `published` with `drive_processed_at` null, and
+zero housekeeping events ever recorded.** A sweep keyed on state (not on an event) clears the
+existing backlog as well as covering the promotion path; a call inside `promote()` would have
+stranded the 49 forever.
+
+**Redo was broken in production (D94).** `enqueue_image_redo` kept a two-argument
+`validate_prompt_body(kind, body)` call, so `p_uses_composition` defaulted to `true` and every redo
+demanded a `{{COMPOSITION_DETAIL}}` token from a self-staging prompt. Latent since presets shipped;
+live the moment `waist-chain` was promoted. Proved against the live database, both directions:
+```
+BEFORE fix: REJECTED — validate_prompt_body: image prompt needs exactly one {{COMPOSITION_DETAIL}} token
+AFTER fix : OK — job 34d1dce2…  (prompt=waist-chain, uses_composition=false)
+```
+
+**"1 queued and not enhancing" was not stuck.** `IMG20260805144043.jpg` was in its bounded retry
+backoff: attempts 1 and 2 both failed with "The jewellery describer returned malformed structured
+output", and between attempts the row returns to `discovered`, which `classifyIntake` labels
+**"Queued"**. It completed on a later attempt. pg_cron fired every minute throughout. **Not fixed:**
+a row in backoff is indistinguishable from one never touched — see below.
+
+**Verified:**
+- `npm run typecheck` clean, `npm run lint` clean.
+- `tests/drive-backlog.test.ts` **6 pass** — the query filters (published + drive + never moved),
+  per-file failure isolation, already-in-/Processed as a no-op success, and the bounded run
+  reporting `more: true` rather than implying RAW is clear.
+- `tests/prompt-management.sql.test.ts` **13 pass** after two fixture repairs. The duplicate-token
+  fixture appended one token and assumed the live prompt already had one — false under any
+  self-staging preset. Two others pinned `satin` as live; which preset is live is now a routine
+  operator choice, so they assert the durable invariant instead (both halves one preset, reviewed
+  models).
+- Both new migrations dry-run against the live database inside a rolled-back transaction: dismiss →
+  insert, idempotent re-dismiss (1 row), restore → 0 rows, both `events` written, RLS enabled.
+
+**Not finished / known broken:**
+- **`20260808140000` and `20260808150000` are not applied.** `db:push` is blocked for the agent by
+  the permission classifier; the owner must run it. Until then the dismiss button 500s and redo
+  stays broken under the live waist-chain preset. The 2 remaining `image-redo.sql` failures are
+  exactly this.
+- **The 45 stale reconciliation issues are still displayed** — a new run must replace them.
+- Six pre-existing failures unchanged (`prompt-models` 10-vs-11, `schema` seed sha, WC counter,
+  `publish-identity` x3).
+- **Backoff reads as "Queued".** A photograph between retries shows the same label as one never
+  picked up, with no attempt count and no next-attempt time. Worth fixing; not done.
+- The describer returned malformed JSON twice on one image. Recovered, but if kimi-k3 does this
+  often the retry budget is being spent on it.
+
+**Surprises:**
+- Six SQL tests failed together with `promote_prompt_version: enhancement work is currently in
+  flight` — the guard doing its job while a real enhancement ran. They passed on re-run. DB tests
+  execute against production, so a busy pipeline reads as a red suite.
+
+**Next session should start with:** `npm run db:push`, then Tracking → "Full reconciliation" (which
+now also empties RAW), and confirm redo works under waist-chain.
+
+---
+
+
 ## 2026-08-08 (c) — Tracking flood: reconciliation reframed, plus the rings publish bug
 
 **Goal this session:** Tracking showed 49 needing attention, almost all for the wrong reasons. Find

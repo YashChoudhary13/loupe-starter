@@ -2545,3 +2545,139 @@ removes the class rather than the instance.
 
 The cost is one extra mutation on products that were previously exempt — which is exactly what
 Color products already paid.
+
+---
+
+### D92 — Drive tidy-up is a sweep over state, not a step in the publish path
+
+`tidyDriveForDraft` was only ever called from the console's publish path. Qimati does not publish
+from the console (D90): reconciliation notices drafts published in Shopify admin and calls
+`mark_draft_published()`, which publishes the intake rows correctly and never tidies Drive, because
+nothing on that path ever did. `promote.ts` even documents the consequence in a comment and does not
+act on it.
+
+Measured 2026-08-08: **49 drive-sourced photographs at `published` with `drive_processed_at` null,
+and zero `drive.housekeeping` events ever recorded.** RAW only ever grew.
+
+**Decided:** `src/lib/console/drive-backlog.ts` — `tidyPublishedDriveBacklog()`, keyed on database
+state (`status='published' and source='drive' and drive_processed_at is null`) rather than on an
+event. It runs on the daily reconciliation job and on the Tracking "Full reconciliation" button,
+after promotion so anything published in that same run leaves RAW immediately.
+
+**Rejected — calling `tidyDriveForDraft` inside `promotePublishedInShopify`.** It fixes new products
+and strands the existing 49 forever, because nothing revisits a draft once it is published. A sweep
+is self-healing: it clears the backlog on first run, covers the promotion path, and also covers a
+console publish whose own tidy-up failed. Hard rule 3 again — the DB says what is true, and
+"published but never moved" is a fact readable at any time.
+
+Bounded at 100 per run so a large backlog cannot hold a cron request open past its limit, and the
+result reports `more: true` rather than implying the folder is clear. Still `published` only: a
+grouped-but-unpublished photograph belongs to a draft that may still change.
+
+---
+
+### D93 — A dismissed reconciliation finding is a judgement, not a deleted row
+
+Requested 2026-08-08: *"There should be option to delete some need attention task since I think they
+are correct already."*
+
+**It cannot be a delete.** `shopify_reconciliation_issues` rows are derived — every run recreates
+them from scratch — so deleting one clears Tracking until 03:00 IST and then the same finding
+reappears. That is worse than not offering the button.
+
+**Decided:** `shopify_reconciliation_dismissals`, a durable record of the operator's judgement, keyed
+on the finding rather than on the row that reported it:
+
+```
+(product_draft_id, code, field, actual)
+```
+
+`actual` is in the key, and that is the load-bearing part. "I accept that AK089 now carries RS229" is
+a different statement from "never tell me about AK089's SKU again". If the value changes again — a
+third SKU, a different colour — that is new drift and it returns. **A dismissal silences a fact,
+never a subject.**
+
+`expected` is deliberately **not** in the key: it is derived from the Loupe draft, so editing the
+draft would otherwise silently revive a dismissal already made about the Shopify side.
+
+`restore_reconciliation_dismissal()` undoes one. Both write to `events`, so a silenced finding is
+still traceable to who silenced it and why. The unique index coalesces `actual` to `'null'::jsonb`
+because NULL never equals NULL in a plain UNIQUE constraint and two dismissals of the same
+null-valued finding would both be accepted.
+
+A **failed reconciliation run** is not dismissible. It does not mean "this difference is fine", it
+means Loupe never looked.
+
+---
+
+### D94 — `enqueue_image_redo` must validate a prompt against its own staging flag
+
+20260801170000 added `uses_composition` to `validate_prompt_body` and updated
+`create_prompt_version` and `promote_prompt_version` to pass it. **`enqueue_image_redo` was missed**
+and kept the two-argument call, so `p_uses_composition` defaulted to `true` and every redo demanded
+a `{{COMPOSITION_DETAIL}}` token from prompts that must not have one.
+
+The gap stayed invisible for a week because the live prompt had always been satin, marble or yellow
+— all composed. It became real on 2026-08-08 the moment `waist-chain` was promoted, and would have
+done the same for `necklace`, `hand-chain` or `bag`. Proved against the live database:
+
+```
+BEFORE fix: REJECTED — validate_prompt_body: image prompt needs exactly one {{COMPOSITION_DETAIL}} token
+AFTER fix : OK — job 34d1dce2…  (prompt=waist-chain, uses_composition=false)
+```
+
+**Decided:** `validate_current_image_prompt(prompts)` — one function that takes the whole row and
+reads the flag off it. `enqueue_image_redo` calls that instead. A future caller cannot reintroduce
+the mistake by copying a two-argument call, because the correct call no longer takes the flag
+separately.
+
+The migration rewrites the deployed function body with `pg_get_functiondef` + `replace`, and raises
+if the string it expects to replace is absent — so a hand-edited or already-fixed function is a
+loud failure rather than a silent no-op.
+
+---
+
+### D95 — The necklace hero is a top-cropped worn V, not the full length
+
+D88 solved "necklaces render at bracelet scale" by showing the whole piece: a broad closed oval
+filling the square with the neck opening as the largest area. It works, and it is not what Qimati
+sells on.
+
+Six reference images (`Sample-Necklace/`, reviewed 2026-08-08) all use a different shot, and the
+owner asked for that one. All six share four properties:
+
+1. the piece **hangs** under gravity — it is not lying on a surface;
+2. both chain arms fall from the **top edge** and are cut off by it; clasp, extender and the top of
+   the loop are out of frame in every one;
+3. the arms converge into a V or shallow U with the focal element at the single lowest point,
+   centred;
+4. the V's depth tracks the piece — wide and shallow for a bar or cluster centrepiece, deep and
+   narrow for a long station necklace.
+
+It serves the original problem *better* than full length did: a V cut off by the top edge is
+unmistakably neck-worn, where a closed loop on a surface is not. The link-gauge lock from D88 is
+kept for the same reason it existed — a coarsened chain still reads as a bracelet, V or no V.
+
+**Four decisions, taken by the owner:**
+
+| | |
+|---|---|
+| Background | Clean warm ivory sweep, **no props**. The samples use ceramic sculptures, a dish rim, blurred flowers and window light; at ~300 products/month a model picking a different prop each time stops the catalogue looking like one shoot. Soft directional light and a real cast shadow do that work instead. |
+| Clasp and extender | **Cropped out**, knowingly. The adjuster is information a wholesale buyer looks for and it now lives only in the description bullets. |
+| Scope | **Replaces** the full-length image half. The full-length version stays in prompt history, one promote away. |
+| Waist chains | Unchanged. |
+
+Only the **image** half is replaced. The describer produces a factual identity record of the object,
+which does not change with the pose, and the length-aware inspector already reports the centrepiece
+and the link-to-component ratio the V needs.
+
+**Consequence worth knowing: `promote_prompt_preset` cannot activate this.** It leaves a half that
+is already live alone by design, so promoting `necklace` while `necklace` is live is a no-op and
+never picks up a newer revision of the same preset. Activate it in `/prompts` with **"Promote this
+version"** on the image prompt instead. Proved against the live database:
+
+```
+LIVE after "Promote this version":
+  describe  Necklaces — length-aware inspector
+  image     Necklaces — worn V hero   uses_composition=false, contains THE WORN V
+```

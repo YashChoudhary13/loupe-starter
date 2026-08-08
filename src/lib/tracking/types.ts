@@ -52,6 +52,12 @@ export interface TrackingRow {
   readonly driveHref: string | null
   readonly duplicate: TrackingDuplicate | null
   /**
+   * Reconciliation findings only: the operator can record that this specific
+   * difference is acceptable. Durable across runs, and it comes back if the
+   * observed value changes again. See D93.
+   */
+  readonly canDismiss: boolean
+  /**
    * What this row has actually cost so far, in USD — provider-reported figures
    * only, never derived from a price table (D5/D35).
    *

@@ -91,6 +91,21 @@ interface ReconciliationRunRow {
   error: string | null
 }
 
+/**
+ * The identity of one reconciliation FINDING, stable across runs.
+ *
+ * `JSON.stringify` is safe as a key here because both sides come from the same
+ * jsonb column via the same client, so key order is Postgres's and matches.
+ */
+function reconciliationKey(
+  draftId: string,
+  code: string,
+  field: string,
+  actual: unknown,
+): string {
+  return `${draftId}\u0000${code}\u0000${field}\u0000${JSON.stringify(actual ?? null)}`
+}
+
 interface ReconciliationIssueRow {
   id: number
   run_id: string
@@ -248,7 +263,41 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
   if (latestIssuesResult.error) {
     throw new Error(`reconciliation issues: ${latestIssuesResult.error.message}`)
   }
-  const issues = (latestIssuesResult.data ?? []) as ReconciliationIssueRow[]
+  const allIssues = (latestIssuesResult.data ?? []) as ReconciliationIssueRow[]
+
+  /**
+   * Findings the operator has already judged acceptable.
+   *
+   * Keyed on (draft, code, field, actual) rather than on the issue row id,
+   * because issue rows are recreated from scratch by every run — deleting one
+   * would clear Tracking until 03:00 and then the same finding would reappear.
+   * `actual` is in the key on purpose: dismissing "AK089 carries RS229" accepts
+   * that value, not the subject, so a different value later is new drift and
+   * surfaces again. See D93.
+   */
+  const dismissalsResult = allIssues.length
+    ? await db
+        .from('shopify_reconciliation_dismissals')
+        .select('product_draft_id, code, field, actual')
+        .in('product_draft_id', [...new Set(allIssues.map((row) => row.product_draft_id))])
+    : { data: [], error: null }
+  if (dismissalsResult.error) {
+    throw new Error(`reconciliation dismissals: ${dismissalsResult.error.message}`)
+  }
+  const dismissedKeys = new Set(
+    (dismissalsResult.data ?? []).map((row) =>
+      reconciliationKey(
+        row.product_draft_id as string,
+        row.code as string,
+        row.field as string,
+        row.actual,
+      ),
+    ),
+  )
+  const issues = allIssues.filter(
+    (row) =>
+      !dismissedKeys.has(reconciliationKey(row.product_draft_id, row.code, row.field, row.actual)),
+  )
 
   const entityIds = [
     ...intakes.map((row) => row.id),
@@ -439,6 +488,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
           : null,
       costUsd: totalCostFor(row),
       driveHref: `https://drive.google.com/open?id=${encodeURIComponent(row.drive_file_id)}`,
+      canDismiss: false,
       duplicate: duplicate
         ? {
             matchIntakeFileId: duplicate.matchIntakeFileId,
@@ -485,6 +535,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       consoleHref: `/console/drafts/${row.id}`,
       driveHref: null,
       duplicate: null,
+      canDismiss: false,
       // A draft is not billed itself; this is what its grouped photographs cost.
       costUsd: draftCostFor(row.id),
     }
@@ -515,6 +566,9 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     consoleHref: `/console/drafts/${issue.product_draft_id}`,
     driveHref: null,
     duplicate: null,
+    // The one row kind an operator can judge and silence. `entityId` is the run
+    // id for the event trail, so the issue id travels in `rowId`.
+    canDismiss: true,
     costUsd: null,
   }))
 
@@ -542,6 +596,8 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       consoleHref: null,
       driveHref: null,
       duplicate: null,
+      // A failed CHECK is not a finding to accept — it means Loupe never looked.
+      canDismiss: false,
       costUsd: null,
     })
   }

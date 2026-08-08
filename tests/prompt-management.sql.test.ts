@@ -116,7 +116,18 @@ describe('deployed append-only prompt management', () => {
 
   it('refuses an image version with a duplicate required token', async () => {
     const current = await currentPrompt('image')
-    const invalid = `${current.body}\n{{COMPOSITION_DETAIL}}`
+    /**
+     * Build a body with EXACTLY two tokens, whatever the live prompt is. This
+     * used to append one and assume the live prompt already had one — true
+     * while satin/marble/yellow were the only presets ever promoted, and false
+     * the moment a self-staging preset (necklace, waist-chain, hand-chain, bag)
+     * went live, at which point the fixture became a *valid* one-token body and
+     * the test failed for a reason that had nothing to do with the function.
+     */
+    const token = '{{COMPOSITION_DETAIL}}'
+    const present = current.body.split(token).length - 1
+    const invalid = `${current.body}${`\n${token}`.repeat(Math.max(1, 2 - present))}`
+    expect(invalid.split(token).length - 1).toBe(2)
 
     await expect(
       db.query(
@@ -362,7 +373,13 @@ describe('deployed style presets', () => {
    * and costs roughly half of Sol — which had just breached the live cost
    * ceiling on a real photograph.
    */
-  it('makes the live satin pair the selected model pair', async () => {
+  /**
+   * Which preset is live is the operator's routine choice — waist-chain on
+   * 2026-08-08 — so pinning `satin` here made a normal action fail the suite.
+   * The durable invariants are that BOTH halves come from the SAME preset and
+   * both sit on reviewed models; the preset itself is not one of them.
+   */
+  it('keeps the live pair on one preset and on reviewed models', async () => {
     const live = await db.query<{
       kind: 'describe' | 'image'
       model: string
@@ -375,28 +392,21 @@ describe('deployed style presets', () => {
         order by kind`,
     )
 
-    expect(live.rows.map(({ kind, model, preset_slug }) => ({ kind, model, preset_slug }))).toEqual([
-      { kind: 'describe', model: 'moonshotai/kimi-k3', preset_slug: 'satin' },
-      { kind: 'image', model: 'openai/gpt-image-2', preset_slug: 'satin' },
-    ])
-    expect(live.rows.find((row) => row.kind === 'describe')!.body).toContain(
-      'component ledger',
-    )
-    expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
-      'jump-ring-mounted charm',
-    )
-    expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
-      'FORM AND SCALE LOCK',
-    )
-    expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
-      '82-92%',
-    )
-    expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
-      'warm luxury studio lighting',
-    )
-    expect(live.rows.find((row) => row.kind === 'image')!.body).toContain(
-      'FINAL IDENTITY CHECK',
-    )
+    const describe = live.rows.find((row) => row.kind === 'describe')!
+    const image = live.rows.find((row) => row.kind === 'image')!
+
+    // Half a preset means the two stages describe different products (D51).
+    expect(describe.preset_slug).toBe(image.preset_slug)
+    expect(describe.preset_slug).not.toBeNull()
+    expect(['openai/gpt-5.6-sol', 'moonshotai/kimi-k3']).toContain(describe.model)
+    expect(image.model).toBe('openai/gpt-image-2')
+
+    // The contract every reviewed preset carries, whichever one is selected.
+    expect(describe.body).toContain('Describe the object, not the photograph')
+    expect(image.body).toContain('SOURCE AUTHORITY')
+    expect(image.body).toContain('FORM AND SCALE LOCK')
+    expect(image.body).toContain('warm luxury studio lighting')
+    expect(image.body).toContain('FINAL IDENTITY CHECK')
   })
 
   it('offers the accepted catalogue prompt as a preset, so there is a way back', async () => {
@@ -409,10 +419,11 @@ describe('deployed style presets', () => {
         where is_default and archived_at is null
         order by kind`,
     )
-    expect(live.rows).toEqual([
-      { kind: 'describe', preset_slug: 'satin' },
-      { kind: 'image', preset_slug: 'satin' },
-    ])
+    // Whichever preset is live, both halves carry its slug — that is what makes
+    // "go back to the accepted catalogue prompt" a single promote away.
+    expect(live.rows).toHaveLength(2)
+    expect(live.rows[0]!.preset_slug).toBe(live.rows[1]!.preset_slug)
+    expect(live.rows[0]!.preset_slug).not.toBeNull()
 
     // Away and back, and the catalogue prompt is live again.
     await db.query(`select * from public.promote_prompt_preset('marble', 'test:presets')`)

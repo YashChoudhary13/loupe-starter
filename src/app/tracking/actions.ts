@@ -155,6 +155,30 @@ export async function reviewDuplicateAction(input: {
   })
 }
 
+/**
+ * Record that an operator has judged one reconciliation finding acceptable.
+ *
+ * NOT a delete. Issue rows are derived — every run recreates them — so deleting
+ * one clears Tracking until 03:00 and then the same finding reappears. The
+ * dismissal is a durable record keyed on (draft, code, field, observed value),
+ * which means it survives future runs and returns if that value changes again.
+ * See D93.
+ */
+export async function dismissReconciliationIssueAction(input: {
+  readonly issueId: number
+  readonly reason?: string
+}): Promise<TrackingActionResult<TrackingSnapshot>> {
+  return withOperator(async (email) => {
+    const { error } = await supabaseServer().rpc('dismiss_reconciliation_issue', {
+      p_issue_id: input.issueId,
+      p_actor: email,
+      p_reason: input.reason ?? null,
+    })
+    if (error) throw new Error(error.hint || error.message)
+    return loadTracking()
+  })
+}
+
 export async function runFullReconciliationAction(): Promise<
   TrackingActionResult<{
     snapshot: TrackingSnapshot
@@ -167,6 +191,12 @@ export async function runFullReconciliationAction(): Promise<
     deletedShopifyDrafts: number
     promotionFailures: number
     promotionError: string | null
+    /** Photographs moved out of Drive /RAW into /Processed by this run. */
+    driveMoved: number
+    driveFailed: number
+    /** True when the backlog was larger than one run's limit. */
+    driveMore: boolean
+    driveError: string | null
     skuCounters: {
       variantsScanned: number
       countersChecked: number
@@ -202,6 +232,36 @@ export async function runFullReconciliationAction(): Promise<
     }
 
     const reconciliation = await runShopifyReconciliation(email)
+
+    /**
+     * Drive tidy-up, after promotion, so anything published in Shopify admin
+     * during this run leaves RAW in the same click. Mirrors the daily job. D92.
+     */
+    let driveMoved = 0
+    let driveFailed = 0
+    let driveMore = false
+    let driveError: string | null = null
+    try {
+      const [{ tidyPublishedDriveBacklog }, { googleDriveClient }, { serverEnv }, { supabaseServer }] =
+        await Promise.all([
+          import('@/lib/console/drive-backlog'),
+          import('@/lib/google/drive-server'),
+          import('@/lib/env'),
+          import('@/lib/supabase/server'),
+        ])
+      const backlog = await tidyPublishedDriveBacklog({
+        db: supabaseServer(),
+        drive: googleDriveClient(),
+        processedFolderId: serverEnv.driveProcessedFolderId,
+        actor: email,
+      })
+      driveMoved = backlog.moved
+      driveFailed = backlog.failed
+      driveMore = backlog.more
+    } catch (cause) {
+      driveError = cause instanceof Error ? cause.message : String(cause)
+    }
+
     const skuCounters = await syncSkuCountersFromShopify(email)
     return {
       snapshot: await loadTracking(),
@@ -214,6 +274,10 @@ export async function runFullReconciliationAction(): Promise<
       deletedShopifyDrafts,
       promotionFailures,
       promotionError,
+      driveMoved,
+      driveFailed,
+      driveMore,
+      driveError,
       skuCounters,
     }
   })

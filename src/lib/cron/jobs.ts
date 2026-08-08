@@ -126,5 +126,33 @@ export async function runShopifyReconciliationCron() {
   }
 
   const reconciliation = await runShopifyReconciliation('supabase-pg-cron')
-  return { promotion, reconciliation }
+
+  /**
+   * Drive tidy-up, AFTER promotion, so photographs whose product was published
+   * in Shopify admin during this same run are already `published` and get moved
+   * out of RAW immediately rather than waiting a day.
+   *
+   * Runs on the reconciliation job rather than the promotion path because it is
+   * a sweep over database state, not a reaction to an event — that is what
+   * clears the backlog the console-only tidy-up left behind. See D92.
+   */
+  let driveBacklog
+  try {
+    const { tidyPublishedDriveBacklog } = await import('@/lib/console/drive-backlog')
+    const { supabaseServer } = await import('@/lib/supabase/server')
+    const { serverEnv } = await import('@/lib/env')
+    driveBacklog = await tidyPublishedDriveBacklog({
+      db: supabaseServer(),
+      drive: googleDriveClient(),
+      processedFolderId: serverEnv.driveProcessedFolderId,
+      actor: 'supabase-pg-cron',
+    })
+  } catch (cause) {
+    // Housekeeping, like promotion, is not a precondition for the drift check.
+    // A Drive outage must not take reconciliation down with it (hard rule 3 —
+    // Drive is an inbox; failing to tidy it breaks nothing).
+    driveBacklog = { error: cause instanceof Error ? cause.message : String(cause) }
+  }
+
+  return { promotion, reconciliation, driveBacklog }
 }
