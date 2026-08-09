@@ -29,6 +29,36 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-09 — SEO audit of qimati.in and roadmap document
+
+**Goal this session:** the owner asked for an expert SEO plan to get qimati.in ranking; audit the
+live site and write a prioritised, beginner-safe roadmap.
+
+**Built:**
+- `docs/SEO.md` → phased SEO roadmap (measure → on-page → technical → Loupe automation →
+  authority → monthly loop), grounded in a live audit and fenced by the CLAUDE.md hard
+  constraints (tags/titles/handles are load-bearing and must not be "tidied" for SEO).
+
+**Verified:** live fetches on 2026-08-09 of www.qimati.in, /robots.txt and /collections/all.
+Evidence: robots.txt lists `Sitemap: https://www.qimati.in/sitemap.xml` with standard Shopify
+disallows; homepage title is "QIMATI India's Top Premium Jewellery Wholesaler – Qimati" with no
+visible H1 and a "Jewllery" misspelling in navigation; /collections/all shows keyword-free titles
+(`Anklets 003 (Single Piece)`, `/products/anklet-1`). No code changed, so no code criteria apply.
+
+**Not finished / known broken:**
+- Phase D of the roadmap (Loupe writing `seo.title`, meta description, unique descriptionHtml
+  paragraph and media alt text from the cached describe-stage paragraph) is designed but not
+  built. It needs a DECISIONS.md entry and a reconciler update (Loupe-written SEO fields must not
+  read as drift) when implemented.
+
+**Surprises:** none — live-site findings matched CLAUDE.md's description of the catalogue
+(numbered titles, shared six-bullet descriptions).
+
+**Next session should start with:** the owner does Phase A (Search Console + sitemap submission)
+by hand; the next Loupe coding session on SEO should implement Phase D in the publish path.
+
+---
+
 ## 2026-08-08 (h) — Added a console operator
 
 **Goal this session:** grant `lokendrasingh861981@gmail.com` access to Loupe.
