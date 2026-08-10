@@ -27,6 +27,10 @@ const PRESETS: Record<string, { label: string; note: string }> = {
     label: 'Waist chains — full-length hero',
     note: 'For waist and hip chains, the longest pieces in the catalogue. Adds the adjuster run, dangling charms and a smooth seamless sweep, and refuses the anklet pose the shared classes fall back to.',
   },
+  'chain-bracelet': {
+    label: 'Chain bracelets — wrist-scale hero',
+    note: 'For flexible wrist chains, which the general presets pose at necklace scale. States the real worn length, keeps links countable and the extender at its true fraction, and fastens the small circle itself on the house satin.',
+  },
   'hand-chain': {
     label: 'Hand chain — worn',
     note: 'Close, low-distortion worn view with the same protected construction checks; exact wrist, branch, junction and finger-loop connections preserved.',
@@ -38,7 +42,7 @@ const PRESETS: Record<string, { label: string; note: string }> = {
 }
 
 /** Display order. Anything not listed sorts after, alphabetically. */
-const ORDER = ['satin', 'marble', 'yellow', 'necklace', 'waist-chain', 'hand-chain', 'bag']
+const ORDER = ['satin', 'marble', 'yellow', 'necklace', 'waist-chain', 'chain-bracelet', 'hand-chain', 'bag']
 
 export function presetLabel(slug: string): string | null {
   return PRESETS[slug]?.label ?? null

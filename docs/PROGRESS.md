@@ -29,6 +29,55 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-10 — Chain-bracelet style preset (live-batch fidelity fix)
+
+**Goal this session:** diagnose why the morning chain-bracelet batch enhanced into images that do
+not represent the product, and fix it.
+
+**Built:**
+- `supabase/migrations/20260810120000_chain_bracelet_preset.sql` → inserts the `chain-bracelet`
+  preset pair (length-aware describer + self-staging wrist-scale image prompt), non-current,
+  following the 20260808120000 long-chain pattern. Applied to production.
+- `src/lib/prompts/presets.ts` → label, note and ordering for the new preset. **Not deployed** —
+  needs a push to GitHub; until then the preset shows under its own prompt name.
+- D98 in `docs/DECISIONS.md` → why the preset exists and why the background axis stays baked in.
+
+**Verified:**
+- Diagnosis from live data, not conjecture: pulled originals and v1 enhancements for intakes
+  `a5aed1e5` (IMG20260810145953) and `43794a1d` (IMG20260810150320) from R2. Both raw photos are
+  fine wrist chains; both v1 images are wide open ovals that read as necklaces, extender rendered
+  at roughly 3× true gauge, and on `a5aed1e5` a hedged description clause became an invented heart
+  charm. Cached describer text hedged the category on both ("bracelet or anklet"). The third piece
+  checked (`8fa60abe`) is a genuine necklace and the worn-V preset rendered it correctly — the
+  category-preset pattern works; chain bracelets simply did not have one.
+- `npm run db:push` → `apply 20260810120000_chain_bracelet_preset.sql … ok. Applied 1 of 79
+  migration(s).` The migration's own `validate_prompt_body` and required-block checks passed.
+- REST query against production `prompts`: both halves present with `preset_slug=chain-bracelet`,
+  describe on `moonshotai/kimi-k3`, image on `openai/gpt-image-2`, `is_default=false`, image
+  `uses_composition=false` — the same shape as every other preset revision, so `/prompts` offers it.
+
+**Not finished / known broken:**
+- **No image has been generated with the new preset yet.** Inserting a prompt is not acceptance
+  (the 3C lesson). The redo path reuses the cached hedged descriptions; the image prompt is written
+  to overrule them, but that is a hypothesis until an operator runs one.
+- `presets.ts` label not deployed (no commit/push made this session).
+- Anklets (AK) almost certainly share this failure — same construction, 22–27 cm — and have no
+  preset. Same pattern applies if confirmed.
+- Browser extension was not connectable this session; verification used the DB and R2 directly.
+
+**Surprises:**
+- CLAUDE.md's Supabase project is stale: production is `sxuxqtzwuvftwfjkpnyo` per `.env`, not the
+  MCP-visible `qimati-loupe` project (`xaszahrthoggulikdour`), whose prompts froze on 2026-08-01.
+- Redo offers no preset picker — it resolves the *current default* image prompt (plus a one-off
+  manual edit). Applying a category preset to a batch means promoting it first, exactly the
+  necklace workflow.
+
+**Next session should start with:** operator promotes `chain-bracelet` in `/prompts`, redoes
+`a5aed1e5` and `43794a1d`, and judges the two outputs against the raw photos (wrist-size read,
+link gauge held, extender at true fraction, no invented components). Then promote satin back —
+or leave the preset live if more bracelets are queued.
+
+---
 ## 2026-08-08 (h) — Added a console operator
 
 **Goal this session:** grant `lokendrasingh861981@gmail.com` access to Loupe.

@@ -2780,3 +2780,37 @@ concurrent publishes safe (hard rule 1).
 
 **Note on the existing failure.** The guards prevent the next collision; they do not repair the
 `NK1007` draft, whose identity is frozen by design. That draft still needs a fresh one.
+
+---
+
+### D98 — Chain bracelets get their own category preset; the satin scene stays baked in
+
+Reported 2026-08-10 against the live batch: chain bracelets out of the satin default posed as wide
+open ovals that read as necklaces. Intakes `a5aed1e5` and `43794a1d` both show it, and both add the
+same two aggravations: the short extender swelled into a heavy feature chain at roughly three times
+its true gauge, and the shared describer hedged the category — "bracelet or anklet", "anklet or
+bracelet" — so the image stage never received the word *bracelet* at all. One hedge ("a disc with a
+slightly curved or heart-like silhouette") came back as an invented literal heart charm.
+
+This is 20260808120000's diagnosis arriving from the opposite direction — compact-plus-fill is
+scale-blind in both directions — so the fix follows the same proven pattern rather than a new one:
+`20260810120000_chain_bracelet_preset.sql` inserts a `chain-bracelet` preset pair, self-staging
+(`uses_composition = false`), with three deliberate differences from the long-chain presets:
+
+1. **TRUE SIZE inverts the necklace scale contract.** Links are *dozens, not hundreds* and must stay
+   countable; components sit LARGE against the loop; and the extender is pinned to its real
+   proportion — a quarter to a third of the main chain, links one readable step larger — because the
+   swollen extender was the most visible corruption in both failures.
+2. **The whole piece stays inside the frame.** The necklace V crops the clasp out; on a bracelet the
+   clasp and extender are scale evidence and are never cropped.
+3. **The describer is category-committed.** It must call the piece a chain bracelet, never hedge,
+   and returns a fixed `flat-arc` class as audit metadata.
+
+The scene block is the live satin hero's, byte for byte. The operator's proposal of splitting
+prompts into a category axis and a background axis was considered and deliberately not built into
+the schema now: every category preset so far couples its scene to its pose (the necklace's ceramic
+backdrop only makes sense behind a hanging piece, satin folds only under a flat lay), and a
+compose-at-generation background token would reintroduce exactly the contradictory-instruction
+problem the presets exist to remove. If a real need for per-category background switching arrives,
+the `{{COMPOSITION_DETAIL}}` resolver pattern is the template for a `{{SCENE_DETAIL}}` token —
+nothing done here blocks it. Until then, category presets own their scene.
