@@ -2844,3 +2844,25 @@ back of the hand, a tassel glued flat along the skin.
 
 The describer half is deliberately untouched — its connection ledgers on all three failures were
 accurate. The fit was lost in the image stage, not the record.
+
+---
+
+### D100 — Anklets guard scale in both directions, and one anklet is never a pair
+
+The anklet preset (`20260810140000`) reuses the chain-bracelet skeleton (D98) but is not a copy
+with new numbers. Three anklet-specific judgements, made ahead of the first anklet batch rather
+than after its failures:
+
+1. **Both drift directions are banned by name.** A bracelet only ever drifts up toward necklace
+   scale; an anklet (22–27 cm) sits between the two and can be corrupted either way — coarsened
+   links shrink it into a bracelet, refined and multiplied links stretch it into a necklace. TRUE
+   SIZE states both bans; the link gauge is named as the scale witness.
+2. **Dangles are the design, and their distribution is data.** Drops, bells, coins and tassels
+   stay on their real attachments, fall outward from the fastened circle under their own weight,
+   and keep the source's distribution — a decorated front run with plain chain behind must never
+   be "tidied" into even spacing or extended further than the source carries it.
+3. **The pair prior is refused in both stages.** Anklets are traditionally worn in pairs and the
+   model knows it; Qimati sells `(Single Piece)`. The image prompt's HOW MANY bans adding a second
+   anklet, mirroring, or background echoes; the describer must state the quantity plainly and
+   never assume an unseen partner. An invented pair is invented stock, which is worse than a bad
+   pose.

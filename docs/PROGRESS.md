@@ -87,6 +87,16 @@ one canonical hand pose. Applied: `Applied 1 of 80 migration(s)`; verified newes
 selecting the preset again picks it up (D96). Note: `9294e886` looks like a lariat necklace (clasp,
 extender, tag, swag, Y-drop, no finger loops) — possibly the wrong category for this preset at all.
 
+**Same session, later still:** built the `anklet` preset ahead of its batch, on the operator's
+request — same skeleton as `chain-bracelet`, with anklet-specific judgement recorded in D100:
+scale guarded in both drift directions (22–27 cm sits between bracelet and necklace), a DANGLES
+block that keeps drops, bells and tassels on their real attachments in their real distribution,
+and pair-completion banned in both stages because Qimati sells `(Single Piece)`. Applied
+`20260810140000_anklet_preset.sql` (`Applied 1 of 81 migration(s)`); both halves verified in
+production (`kimi-k3` describe, `gpt-image-2` image, non-default). `presets.ts` label and order
+updated; lint and typecheck clean. Like every preset, unproven until a real anklet photograph goes
+through it.
+
 **Next session should start with:** operator re-selects the hand-chain preset (picks up the
 anchored-fit revision per D96) and redoes `da012474` first — its worn source is the direct test of
 WORN SOURCE — then `e10ec3ca`; decide whether `9294e886` is actually a necklace and if so redo it
