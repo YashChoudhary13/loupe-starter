@@ -2814,3 +2814,33 @@ compose-at-generation background token would reintroduce exactly the contradicto
 problem the presets exist to remove. If a real need for per-category background switching arrives,
 the `{{COMPOSITION_DETAIL}}` resolver pattern is the template for a `{{SCENE_DETAIL}}` token —
 nothing done here blocks it. Until then, category presets own their scene.
+
+---
+
+### D99 — A worn hand-chain source is fit evidence, and fit means encirclement
+
+The hand-chain preset's image half (revision "protected hero, source pose ignored") produced three
+bad fits in the 2026-08-10 afternoon batch, including one whose source was photographed already
+worn on a real hand — the best fit evidence an operator can supply — which the prompt then ordered
+the model to discard: SOURCE POSE IS NOT THE PRODUCT was unconditional. The second cause was
+subtler: "fit the real wrist section at the wrist" names a location, not a fastening, and the model
+satisfied it by laying chain on top of skin — a wrist band up the forearm, a clasp displayed on the
+back of the hand, a tassel glued flat along the skin.
+
+`20260810130000_hand_chain_anchored_fit.sql` inserts the corrected image half:
+
+1. **SOURCE POSE is scoped to loose sources.** A new WORN SOURCE block keeps an already-correct
+   fit — same attachment points, same branch routing, same finger per loop — replacing only the
+   hand, scene and polish. This is the necklace preset's IF-THE-SOURCE-IS-ALREADY-HANGING rule
+   (D95 lineage) applied to the worn category that needed it most.
+2. **WEARING AND FIT is four anchor rules, all stated as encirclement.** The wrist section
+   encircles the wrist at the crease and disappears behind it; crossing branches route
+   one-for-one; each finger loop encircles the base of its finger; a tassel or drop hangs under
+   gravity. "Never lies across", "never crosses the knuckles", "never flat along the skin" ban the
+   observed failures by name.
+3. **One canonical hand pose** (back of hand to camera, wrist from an upper corner, fingertips to
+   the opposite lower corner), for the same reason the necklace hero fixed one scene: at ~300
+   products/month, per-image pose invention stops the catalogue looking like one shoot.
+
+The describer half is deliberately untouched — its connection ledgers on all three failures were
+accurate. The fit was lost in the image stage, not the record.

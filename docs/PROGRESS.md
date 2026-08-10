@@ -72,10 +72,27 @@ not represent the product, and fix it.
   manual edit). Applying a category preset to a batch means promoting it first, exactly the
   necklace workflow.
 
-**Next session should start with:** operator promotes `chain-bracelet` in `/prompts`, redoes
-`a5aed1e5` and `43794a1d`, and judges the two outputs against the raw photos (wrist-size read,
-link gauge held, extender at true fraction, no invented components). Then promote satin back —
-or leave the preset live if more bracelets are queued.
+**Same session, later:** the afternoon hand-chain batch (preset live, both halves) still failed on
+fit: `da012474` — photographed already worn on a real hand — lost a wrist-to-heart branch, had its
+wrist section moved up the forearm and its finger loops reduced to a chain around the palm edge;
+`e10ec3ca` wore its "wrist" section across the knuckles with the clasp on top of the hand;
+`9294e886`'s tassel lay flat along the skin. Two prompt causes: the unconditional "source pose
+ignored" block discarded the operator's worn reference (the necklace preset's IF-ALREADY-HANGING
+lesson, unlearned here), and "fit at the wrist" named a location but never demanded encirclement,
+so chain was laid on top of skin. Shipped `20260810130000_hand_chain_anchored_fit.sql` — a new
+image-half revision (describer untouched; its ledgers were accurate): WORN SOURCE keeps an
+already-correct fit, WEARING AND FIT becomes four anchor rules (wrist encircled at the crease,
+branches one-for-one, finger loops encircling finger bases, free elements hanging under gravity),
+one canonical hand pose. Applied: `Applied 1 of 80 migration(s)`; verified newest for the slug, so
+selecting the preset again picks it up (D96). Note: `9294e886` looks like a lariat necklace (clasp,
+extender, tag, swag, Y-drop, no finger loops) — possibly the wrong category for this preset at all.
+
+**Next session should start with:** operator re-selects the hand-chain preset (picks up the
+anchored-fit revision per D96) and redoes `da012474` first — its worn source is the direct test of
+WORN SOURCE — then `e10ec3ca`; decide whether `9294e886` is actually a necklace and if so redo it
+under the necklace preset. Separately: promote `chain-bracelet` and redo `a5aed1e5`/`43794a1d`
+(wrist-size read, link gauge held, extender at true fraction). Then restore whichever default the
+next batch needs.
 
 ---
 ## 2026-08-08 (h) — Added a console operator
