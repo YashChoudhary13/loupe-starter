@@ -29,6 +29,83 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-10 — Chain-bracelet style preset (live-batch fidelity fix)
+
+**Goal this session:** diagnose why the morning chain-bracelet batch enhanced into images that do
+not represent the product, and fix it.
+
+**Built:**
+- `supabase/migrations/20260810120000_chain_bracelet_preset.sql` → inserts the `chain-bracelet`
+  preset pair (length-aware describer + self-staging wrist-scale image prompt), non-current,
+  following the 20260808120000 long-chain pattern. Applied to production.
+- `src/lib/prompts/presets.ts` → label, note and ordering for the new preset. **Not deployed** —
+  needs a push to GitHub; until then the preset shows under its own prompt name.
+- D98 in `docs/DECISIONS.md` → why the preset exists and why the background axis stays baked in.
+
+**Verified:**
+- Diagnosis from live data, not conjecture: pulled originals and v1 enhancements for intakes
+  `a5aed1e5` (IMG20260810145953) and `43794a1d` (IMG20260810150320) from R2. Both raw photos are
+  fine wrist chains; both v1 images are wide open ovals that read as necklaces, extender rendered
+  at roughly 3× true gauge, and on `a5aed1e5` a hedged description clause became an invented heart
+  charm. Cached describer text hedged the category on both ("bracelet or anklet"). The third piece
+  checked (`8fa60abe`) is a genuine necklace and the worn-V preset rendered it correctly — the
+  category-preset pattern works; chain bracelets simply did not have one.
+- `npm run db:push` → `apply 20260810120000_chain_bracelet_preset.sql … ok. Applied 1 of 79
+  migration(s).` The migration's own `validate_prompt_body` and required-block checks passed.
+- REST query against production `prompts`: both halves present with `preset_slug=chain-bracelet`,
+  describe on `moonshotai/kimi-k3`, image on `openai/gpt-image-2`, `is_default=false`, image
+  `uses_composition=false` — the same shape as every other preset revision, so `/prompts` offers it.
+
+**Not finished / known broken:**
+- **No image has been generated with the new preset yet.** Inserting a prompt is not acceptance
+  (the 3C lesson). The redo path reuses the cached hedged descriptions; the image prompt is written
+  to overrule them, but that is a hypothesis until an operator runs one.
+- `presets.ts` label not deployed (no commit/push made this session).
+- Anklets (AK) almost certainly share this failure — same construction, 22–27 cm — and have no
+  preset. Same pattern applies if confirmed.
+- Browser extension was not connectable this session; verification used the DB and R2 directly.
+
+**Surprises:**
+- CLAUDE.md's Supabase project is stale: production is `sxuxqtzwuvftwfjkpnyo` per `.env`, not the
+  MCP-visible `qimati-loupe` project (`xaszahrthoggulikdour`), whose prompts froze on 2026-08-01.
+- Redo offers no preset picker — it resolves the *current default* image prompt (plus a one-off
+  manual edit). Applying a category preset to a batch means promoting it first, exactly the
+  necklace workflow.
+
+**Same session, later:** the afternoon hand-chain batch (preset live, both halves) still failed on
+fit: `da012474` — photographed already worn on a real hand — lost a wrist-to-heart branch, had its
+wrist section moved up the forearm and its finger loops reduced to a chain around the palm edge;
+`e10ec3ca` wore its "wrist" section across the knuckles with the clasp on top of the hand;
+`9294e886`'s tassel lay flat along the skin. Two prompt causes: the unconditional "source pose
+ignored" block discarded the operator's worn reference (the necklace preset's IF-ALREADY-HANGING
+lesson, unlearned here), and "fit at the wrist" named a location but never demanded encirclement,
+so chain was laid on top of skin. Shipped `20260810130000_hand_chain_anchored_fit.sql` — a new
+image-half revision (describer untouched; its ledgers were accurate): WORN SOURCE keeps an
+already-correct fit, WEARING AND FIT becomes four anchor rules (wrist encircled at the crease,
+branches one-for-one, finger loops encircling finger bases, free elements hanging under gravity),
+one canonical hand pose. Applied: `Applied 1 of 80 migration(s)`; verified newest for the slug, so
+selecting the preset again picks it up (D96). Note: `9294e886` looks like a lariat necklace (clasp,
+extender, tag, swag, Y-drop, no finger loops) — possibly the wrong category for this preset at all.
+
+**Same session, later still:** built the `anklet` preset ahead of its batch, on the operator's
+request — same skeleton as `chain-bracelet`, with anklet-specific judgement recorded in D100:
+scale guarded in both drift directions (22–27 cm sits between bracelet and necklace), a DANGLES
+block that keeps drops, bells and tassels on their real attachments in their real distribution,
+and pair-completion banned in both stages because Qimati sells `(Single Piece)`. Applied
+`20260810140000_anklet_preset.sql` (`Applied 1 of 81 migration(s)`); both halves verified in
+production (`kimi-k3` describe, `gpt-image-2` image, non-default). `presets.ts` label and order
+updated; lint and typecheck clean. Like every preset, unproven until a real anklet photograph goes
+through it.
+
+**Next session should start with:** operator re-selects the hand-chain preset (picks up the
+anchored-fit revision per D96) and redoes `da012474` first — its worn source is the direct test of
+WORN SOURCE — then `e10ec3ca`; decide whether `9294e886` is actually a necklace and if so redo it
+under the necklace preset. Separately: promote `chain-bracelet` and redo `a5aed1e5`/`43794a1d`
+(wrist-size read, link gauge held, extender at true fraction). Then restore whichever default the
+next batch needs.
+
+---
+
 ## 2026-08-09 — SEO audit of qimati.in and roadmap document
 
 **Goal this session:** the owner asked for an expert SEO plan to get qimati.in ranking; audit the

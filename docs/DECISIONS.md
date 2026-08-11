@@ -2780,3 +2780,89 @@ concurrent publishes safe (hard rule 1).
 
 **Note on the existing failure.** The guards prevent the next collision; they do not repair the
 `NK1007` draft, whose identity is frozen by design. That draft still needs a fresh one.
+
+---
+
+### D98 — Chain bracelets get their own category preset; the satin scene stays baked in
+
+Reported 2026-08-10 against the live batch: chain bracelets out of the satin default posed as wide
+open ovals that read as necklaces. Intakes `a5aed1e5` and `43794a1d` both show it, and both add the
+same two aggravations: the short extender swelled into a heavy feature chain at roughly three times
+its true gauge, and the shared describer hedged the category — "bracelet or anklet", "anklet or
+bracelet" — so the image stage never received the word *bracelet* at all. One hedge ("a disc with a
+slightly curved or heart-like silhouette") came back as an invented literal heart charm.
+
+This is 20260808120000's diagnosis arriving from the opposite direction — compact-plus-fill is
+scale-blind in both directions — so the fix follows the same proven pattern rather than a new one:
+`20260810120000_chain_bracelet_preset.sql` inserts a `chain-bracelet` preset pair, self-staging
+(`uses_composition = false`), with three deliberate differences from the long-chain presets:
+
+1. **TRUE SIZE inverts the necklace scale contract.** Links are *dozens, not hundreds* and must stay
+   countable; components sit LARGE against the loop; and the extender is pinned to its real
+   proportion — a quarter to a third of the main chain, links one readable step larger — because the
+   swollen extender was the most visible corruption in both failures.
+2. **The whole piece stays inside the frame.** The necklace V crops the clasp out; on a bracelet the
+   clasp and extender are scale evidence and are never cropped.
+3. **The describer is category-committed.** It must call the piece a chain bracelet, never hedge,
+   and returns a fixed `flat-arc` class as audit metadata.
+
+The scene block is the live satin hero's, byte for byte. The operator's proposal of splitting
+prompts into a category axis and a background axis was considered and deliberately not built into
+the schema now: every category preset so far couples its scene to its pose (the necklace's ceramic
+backdrop only makes sense behind a hanging piece, satin folds only under a flat lay), and a
+compose-at-generation background token would reintroduce exactly the contradictory-instruction
+problem the presets exist to remove. If a real need for per-category background switching arrives,
+the `{{COMPOSITION_DETAIL}}` resolver pattern is the template for a `{{SCENE_DETAIL}}` token —
+nothing done here blocks it. Until then, category presets own their scene.
+
+---
+
+### D99 — A worn hand-chain source is fit evidence, and fit means encirclement
+
+The hand-chain preset's image half (revision "protected hero, source pose ignored") produced three
+bad fits in the 2026-08-10 afternoon batch, including one whose source was photographed already
+worn on a real hand — the best fit evidence an operator can supply — which the prompt then ordered
+the model to discard: SOURCE POSE IS NOT THE PRODUCT was unconditional. The second cause was
+subtler: "fit the real wrist section at the wrist" names a location, not a fastening, and the model
+satisfied it by laying chain on top of skin — a wrist band up the forearm, a clasp displayed on the
+back of the hand, a tassel glued flat along the skin.
+
+`20260810130000_hand_chain_anchored_fit.sql` inserts the corrected image half:
+
+1. **SOURCE POSE is scoped to loose sources.** A new WORN SOURCE block keeps an already-correct
+   fit — same attachment points, same branch routing, same finger per loop — replacing only the
+   hand, scene and polish. This is the necklace preset's IF-THE-SOURCE-IS-ALREADY-HANGING rule
+   (D95 lineage) applied to the worn category that needed it most.
+2. **WEARING AND FIT is four anchor rules, all stated as encirclement.** The wrist section
+   encircles the wrist at the crease and disappears behind it; crossing branches route
+   one-for-one; each finger loop encircles the base of its finger; a tassel or drop hangs under
+   gravity. "Never lies across", "never crosses the knuckles", "never flat along the skin" ban the
+   observed failures by name.
+3. **One canonical hand pose** (back of hand to camera, wrist from an upper corner, fingertips to
+   the opposite lower corner), for the same reason the necklace hero fixed one scene: at ~300
+   products/month, per-image pose invention stops the catalogue looking like one shoot.
+
+The describer half is deliberately untouched — its connection ledgers on all three failures were
+accurate. The fit was lost in the image stage, not the record.
+
+---
+
+### D100 — Anklets guard scale in both directions, and one anklet is never a pair
+
+The anklet preset (`20260810140000`) reuses the chain-bracelet skeleton (D98) but is not a copy
+with new numbers. Three anklet-specific judgements, made ahead of the first anklet batch rather
+than after its failures:
+
+1. **Both drift directions are banned by name.** A bracelet only ever drifts up toward necklace
+   scale; an anklet (22–27 cm) sits between the two and can be corrupted either way — coarsened
+   links shrink it into a bracelet, refined and multiplied links stretch it into a necklace. TRUE
+   SIZE states both bans; the link gauge is named as the scale witness.
+2. **Dangles are the design, and their distribution is data.** Drops, bells, coins and tassels
+   stay on their real attachments, fall outward from the fastened circle under their own weight,
+   and keep the source's distribution — a decorated front run with plain chain behind must never
+   be "tidied" into even spacing or extended further than the source carries it.
+3. **The pair prior is refused in both stages.** Anklets are traditionally worn in pairs and the
+   model knows it; Qimati sells `(Single Piece)`. The image prompt's HOW MANY bans adding a second
+   anklet, mirroring, or background echoes; the describer must state the quantity plainly and
+   never assume an unseen partner. An invented pair is invented stock, which is worse than a bad
+   pose.
