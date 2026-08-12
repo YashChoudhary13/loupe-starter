@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 export default async function TrackingPage() {
-  const operator = await requireOperator()
+  await requireOperator()
   const snapshot = await loadTracking()
-  return <TrackingScreen operator={operator} initialSnapshot={snapshot} />
+  return <TrackingScreen initialSnapshot={snapshot} />
 }

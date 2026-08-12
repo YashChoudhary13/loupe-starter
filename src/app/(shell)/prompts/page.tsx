@@ -1,6 +1,5 @@
 import Link from 'next/link'
 
-import { Sidebar } from '@/components/console/Sidebar'
 import { PromptVersionForm } from '@/components/prompts/PromptVersionForm'
 import { requireOperator } from '@/lib/auth/authorize'
 import { curatedModel, modelsFor } from '@/lib/prompts/models'
@@ -11,7 +10,6 @@ import {
   type PromptVersion,
 } from '@/lib/prompts/library'
 import { presetNote } from '@/lib/prompts/presets'
-import { loadTrackingAttentionCount } from '@/lib/tracking/read-model'
 
 import {
   promotePromptVersionAction,
@@ -32,18 +30,12 @@ export default async function PromptsPage({
     error?: string
   }>
 }) {
-  const operator = await requireOperator()
-  const [prompts, attentionCount] = await Promise.all([
-    loadPromptLibrary(),
-    loadTrackingAttentionCount(),
-  ])
+  await requireOperator()
+  const prompts = await loadPromptLibrary()
   const feedback = await searchParams
 
   return (
-    <div className="grid min-h-dvh grid-cols-[216px_1fr] gap-[18px] p-[18px]">
-      <Sidebar operator={operator} attentionCount={attentionCount} active="prompts" />
-
-      <main className="min-w-0">
+    <main className="loupe-scroll min-h-0 min-w-0 overflow-y-auto pr-1">
         <header className="mb-4">
           <h1 className="text-[26px] font-medium tracking-[-0.025em]">Prompts</h1>
           <p className="mt-1 text-[12px] text-muted-foreground">
@@ -89,8 +81,7 @@ export default async function PromptsPage({
           <PromptGroup kind="describe" versions={prompts.describe} />
           <PromptGroup kind="image" versions={prompts.image} />
         </div>
-      </main>
-    </div>
+    </main>
   )
 }
 

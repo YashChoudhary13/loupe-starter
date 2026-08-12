@@ -15,6 +15,8 @@ export interface LiveActivitySnapshot {
   readonly queued: number
   /** Currently leased by an enhancement worker. */
   readonly enhancing: number
+  /** Work needing a human — feeds the sidebar badge between full page loads. */
+  readonly attention: number
   /** Audit transitions since the caller's previous revision. */
   readonly events: readonly LiveActivityEvent[]
   readonly generatedAt: string

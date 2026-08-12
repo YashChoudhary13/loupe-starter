@@ -6,7 +6,7 @@ import {
   createCategoryAction,
   searchShopifyTaxonomyAction,
   type ShopifyTaxonomyOption,
-} from '@/app/console/actions'
+} from '@/app/(shell)/console/actions'
 import {
   suggestedSkuPrefix,
   suggestedTitleBase,

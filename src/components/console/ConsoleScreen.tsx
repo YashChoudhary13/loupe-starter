@@ -21,8 +21,7 @@ import {
   type ActionResult,
   type DraftBundle,
   type PublishSummary,
-} from '@/app/console/actions'
-import type { Operator } from '@/lib/auth/authorize'
+} from '@/app/(shell)/console/actions'
 import { parseRupeesToPaise } from '@/lib/console/money'
 import { predictIdentity, type PredictedIdentity } from '@/lib/console/preview'
 import {
@@ -50,7 +49,6 @@ import { NewCategoryDialog } from './NewCategoryDialog'
 import { Card, Notice, StatPill } from './primitives'
 import { QueueGrid } from './QueueGrid'
 import { RedoPromptDialog } from './RedoPromptDialog'
-import { Sidebar } from './Sidebar'
 
 /**
  * The console.
@@ -198,19 +196,15 @@ function formatRupees(paise: number): string {
 }
 
 export interface ConsoleScreenProps {
-  readonly operator: Operator
   readonly initialQueue: QueueSnapshot
   readonly catalog: ConsoleCatalog
   readonly initialBundle: DraftBundle | null
-  readonly trackingAttentionCount: number
 }
 
 export function ConsoleScreen({
-  operator,
   initialQueue,
   catalog,
   initialBundle,
-  trackingAttentionCount,
 }: ConsoleScreenProps) {
   const [queue, setQueue] = useState(initialQueue)
   const [activity, setActivity] = useState(initialQueue.pipelineActivity)
@@ -829,7 +823,7 @@ export function ConsoleScreen({
   })
 
   return (
-    <div className="grid h-dvh overflow-hidden grid-cols-[216px_1fr] gap-[18px] p-[18px]">
+    <main className="flex min-h-0 min-w-0 flex-col gap-3.5">
       {addingCategory ? (
         <NewCategoryDialog
           onCancel={() => setAddingCategory(false)}
@@ -859,10 +853,7 @@ export function ConsoleScreen({
         />
       ) : null}
 
-      <Sidebar operator={operator} attentionCount={trackingAttentionCount} />
-
-      <main className="flex min-h-0 min-w-0 flex-col gap-3.5">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3">
           <div>
             <h1 className="text-[26px] font-medium tracking-[-0.025em]">Console</h1>
             <div className="text-[12px] text-muted-foreground">{today}</div>
@@ -927,7 +918,7 @@ export function ConsoleScreen({
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 grid-cols-[1fr_372px] gap-3.5 overflow-hidden">
+        <div className="grid min-h-0 flex-1 grid-cols-[1fr_clamp(400px,32vw,500px)] gap-3.5 overflow-hidden">
           <Card className="flex min-h-0 flex-col">
             <div className="mb-4 flex items-center gap-2.5">
               <h2 className="text-[14px] font-medium">{QUEUE_VIEW_LABELS[queueView]}</h2>
@@ -1056,8 +1047,7 @@ export function ConsoleScreen({
             </DraftEditor>
           </Card>
         </div>
-      </main>
-    </div>
+    </main>
   )
 }
 

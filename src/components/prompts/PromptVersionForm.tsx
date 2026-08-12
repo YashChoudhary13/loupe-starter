@@ -5,7 +5,7 @@ import { useActionState, useState } from 'react'
 import {
   createPromptVersionAction,
   type PromptVersionFormState,
-} from '@/app/prompts/actions'
+} from '@/app/(shell)/prompts/actions'
 import type { PromptKind } from '@/lib/prompts/library'
 
 interface ModelOption {

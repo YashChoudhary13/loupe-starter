@@ -43,7 +43,7 @@ function writeCursor(value: number | null): void {
 }
 
 /** Site-wide pipeline heartbeat, mounted by the shared authenticated sidebar. */
-export function LiveActivity() {
+export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
   const [snapshot, setSnapshot] = useState<LiveActivitySnapshot | null>(null)
   const [notices, setNotices] = useState<readonly VisibleNotice[]>([])
   const cursorRef = useRef<number | null>(null)
@@ -141,16 +141,27 @@ export function LiveActivity() {
       ) : null}
 
       {active ? (
-        <Link
-          href="/tracking"
-          className="flex w-full items-center justify-center gap-2 rounded-pill bg-ink/95 px-3 py-2.5 text-[11.5px] text-white shadow-sm transition-transform hover:-translate-y-0.5"
-          aria-label={`${queued} queued, ${enhancing} enhancing. Open Tracking.`}
-        >
-          <span className="size-1.5 animate-pulse rounded-full bg-white/85" aria-hidden />
-          {queued > 0 ? `${queued} queued` : null}
-          {queued > 0 && enhancing > 0 ? <span className="text-white/55">·</span> : null}
-          {enhancing > 0 ? `${enhancing} enhancing` : null}
-        </Link>
+        compact ? (
+          <Link
+            href="/tracking"
+            title={`${queued} queued · ${enhancing} enhancing`}
+            aria-label={`${queued} queued, ${enhancing} enhancing. Open Tracking.`}
+            className="mx-auto grid size-8 place-items-center rounded-full bg-ink/95 shadow-sm"
+          >
+            <span className="size-2 animate-pulse rounded-full bg-white/85" aria-hidden />
+          </Link>
+        ) : (
+          <Link
+            href="/tracking"
+            className="flex w-full items-center justify-center gap-2 rounded-pill bg-ink/95 px-3 py-2.5 text-[11.5px] text-white shadow-sm transition-transform hover:-translate-y-0.5"
+            aria-label={`${queued} queued, ${enhancing} enhancing. Open Tracking.`}
+          >
+            <span className="size-1.5 animate-pulse rounded-full bg-white/85" aria-hidden />
+            {queued > 0 ? `${queued} queued` : null}
+            {queued > 0 && enhancing > 0 ? <span className="text-white/55">·</span> : null}
+            {enhancing > 0 ? `${enhancing} enhancing` : null}
+          </Link>
+        )
       ) : null}
     </>
   )

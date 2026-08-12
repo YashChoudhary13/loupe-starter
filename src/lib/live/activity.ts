@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { supabaseServer } from '@/lib/supabase/server'
+import { loadAttentionCount } from '@/lib/tracking/attention-count'
 
 import type { LiveActivityEvent, LiveActivitySnapshot } from './types'
 
@@ -40,7 +41,7 @@ export async function loadLiveActivity(
         .order('id', { ascending: false })
         .limit(1)
 
-  const [eventsResult, queuedResult, enhancingResult] = await Promise.all([
+  const [eventsResult, queuedResult, enhancingResult, attention] = await Promise.all([
     eventsQuery,
     db
       .from('intake_files')
@@ -48,6 +49,7 @@ export async function loadLiveActivity(
       .eq('status', 'discovered')
       .is('provider_paused_at', null),
     db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
+    loadAttentionCount(),
   ])
 
   if (eventsResult.error) throw new Error(`live events: ${eventsResult.error.message}`)
@@ -73,6 +75,7 @@ export async function loadLiveActivity(
     revision: newest,
     queued: queuedResult.count ?? 0,
     enhancing: enhancingResult.count ?? 0,
+    attention,
     events,
     generatedAt: new Date().toISOString(),
   }

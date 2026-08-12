@@ -13,8 +13,7 @@ import {
   reviewDuplicateAction,
   runFullReconciliationAction,
   skipIntakeAction,
-} from '@/app/tracking/actions'
-import type { Operator } from '@/lib/auth/authorize'
+} from '@/app/(shell)/tracking/actions'
 import {
   LIVE_ACTIVITY_EVENT,
   shouldRefreshTracking,
@@ -24,7 +23,6 @@ import { filterTrackingRows, type TrackingFilters } from '@/lib/tracking/filters
 import type { TrackingRow, TrackingSnapshot } from '@/lib/tracking/types'
 import { cn } from '@/lib/utils'
 
-import { Sidebar } from '@/components/console/Sidebar'
 
 const DEFAULT_FILTERS: TrackingFilters = {
   view: 'attention',
@@ -73,10 +71,8 @@ function relativeAge(iso: string, now: number): string {
 }
 
 export function TrackingScreen({
-  operator,
   initialSnapshot,
 }: {
-  operator: Operator
   initialSnapshot: TrackingSnapshot
 }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
@@ -222,14 +218,7 @@ export function TrackingScreen({
   }
 
   return (
-    <div className="grid min-h-dvh grid-cols-[216px_1fr] gap-[18px] p-[18px]">
-      <Sidebar
-        operator={operator}
-        attentionCount={snapshot.attentionCount}
-        active="tracking"
-      />
-
-      <main className="flex min-w-0 flex-col gap-3.5">
+    <main className="loupe-scroll flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto pr-1">
         <header className="flex flex-wrap items-center gap-3">
           <div>
             <h1 className="text-[26px] font-medium tracking-[-0.025em]">Tracking</h1>
@@ -474,8 +463,7 @@ export function TrackingScreen({
             </button>
           </footer>
         </section>
-      </main>
-    </div>
+    </main>
   )
 }
 
