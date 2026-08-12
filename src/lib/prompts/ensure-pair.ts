@@ -2,7 +2,7 @@ import 'server-only'
 
 import { supabaseServer } from '@/lib/supabase/server'
 
-import { categoryCore, promptSetting } from './matrix'
+import { composeClientPair } from './matrix'
 
 /**
  * D103/D104 — category × setting prompt pairs, materialised on demand.
@@ -17,38 +17,8 @@ import { categoryCore, promptSetting } from './matrix'
  * bound photographs and promoted defaults follow automatically.
  */
 
-const SETTING_TOKEN = '{{SETTING_DETAIL}}'
 const DESCRIBE_MODEL = 'moonshotai/kimi-k3'
 const IMAGE_MODEL = 'openai/gpt-image-2'
-
-export function pairSlug(categorySlug: string, settingSlug: string): string {
-  return `${categorySlug}--${settingSlug}`
-}
-
-export interface ComposedPair {
-  readonly slug: string
-  readonly label: string
-  readonly describeBody: string
-  readonly imageBody: string
-}
-
-export function composePromptPair(
-  categorySlug: string,
-  settingSlug: string,
-): ComposedPair | null {
-  const core = categoryCore(categorySlug)
-  const setting = promptSetting(settingSlug)
-  if (!core || !setting) return null
-  if (!core.imageBody.includes(SETTING_TOKEN)) {
-    throw new Error(`category core ${categorySlug} is missing its ${SETTING_TOKEN} slot`)
-  }
-  return {
-    slug: pairSlug(categorySlug, settingSlug),
-    label: `${core.label} · ${setting.label}`,
-    describeBody: core.describeBody,
-    imageBody: core.imageBody.replace(SETTING_TOKEN, setting.scene),
-  }
-}
 
 async function newestPair(slug: string): Promise<{
   describe: { id: string; body: string } | null
@@ -106,7 +76,7 @@ export async function ensurePromptPair(
   settingSlug: string,
   actor: string,
 ): Promise<string> {
-  const composed = composePromptPair(categorySlug, settingSlug)
+  const composed = composeClientPair(categorySlug, settingSlug)
   if (!composed) {
     throw new Error(`Unknown prompt combination: ${categorySlug} × ${settingSlug}`)
   }

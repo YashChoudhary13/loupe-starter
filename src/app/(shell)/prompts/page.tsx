@@ -1,5 +1,6 @@
 import Link from 'next/link'
 
+import { PromptMatrix } from '@/components/prompts/PromptMatrix'
 import { PromptVersionForm } from '@/components/prompts/PromptVersionForm'
 import { requireOperator } from '@/lib/auth/authorize'
 import { curatedModel, modelsFor } from '@/lib/prompts/models'
@@ -33,13 +34,16 @@ export default async function PromptsPage({
   await requireOperator()
   const prompts = await loadPromptLibrary()
   const feedback = await searchParams
+  const activePairSlug =
+    prompts.presets.find((preset) => preset.isActive && preset.slug.includes('--'))?.slug ?? null
 
   return (
     <main className="loupe-scroll min-h-0 min-w-0 overflow-y-auto pr-1">
         <header className="mb-4">
           <h1 className="text-[26px] font-medium tracking-[-0.025em]">Prompts</h1>
           <p className="mt-1 text-[12px] text-muted-foreground">
-            Current enhancement instructions and their immutable history.
+            Pick what the piece is, then the scene it sells in. Two choices; the exact
+            prompts they produce are shown before anything changes.
           </p>
         </header>
 
@@ -75,12 +79,28 @@ export default async function PromptsPage({
         ) : null}
         {feedback.error ? <Banner tone="error">{feedback.error}</Banner> : null}
 
-        <PresetPicker presets={prompts.presets} />
+        <PromptMatrix activePairSlug={activePairSlug} />
 
-        <div className="grid gap-3.5 xl:grid-cols-2">
-          <PromptGroup kind="describe" versions={prompts.describe} />
-          <PromptGroup kind="image" versions={prompts.image} />
-        </div>
+        {/* The pre-matrix machinery, intact: legacy style presets, model
+            selection, hand-written versions and the immutable history. */}
+        <details className="group mt-4 rounded-card bg-surface p-5">
+          <summary className="cursor-pointer list-none">
+            <span className="loupe-label">Advanced · presets, models & version history</span>
+            <span className="ml-2 text-[11px] text-muted-foreground group-open:hidden">
+              show
+            </span>
+            <span className="ml-2 hidden text-[11px] text-muted-foreground group-open:inline">
+              hide
+            </span>
+          </summary>
+          <div className="mt-4">
+            <PresetPicker presets={prompts.presets} />
+            <div className="grid gap-3.5 xl:grid-cols-2">
+              <PromptGroup kind="describe" versions={prompts.describe} />
+              <PromptGroup kind="image" versions={prompts.image} />
+            </div>
+          </div>
+        </details>
     </main>
   )
 }

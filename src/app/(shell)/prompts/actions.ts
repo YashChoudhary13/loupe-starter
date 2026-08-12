@@ -156,6 +156,49 @@ export async function promptPresetAction(formData: FormData): Promise<void> {
   returnToPrompts('preset', slug)
 }
 
+/**
+ * D104 — the category × setting picker's one button. Materialises the pair
+ * (or a fresh revision of it, when the matrix improved since last use) through
+ * create_prompt_version, then promotes both halves in one transaction.
+ * Photographs uploaded from now on — Drive or Upload — use it; per-photo
+ * bindings from the Upload section are untouched.
+ */
+export async function useCategorySettingAction(formData: FormData): Promise<void> {
+  const operator = await requireOperatorForAction()
+  const categorySlug = String(formData.get('category') ?? '').trim()
+  const settingSlug = String(formData.get('setting') ?? '').trim()
+
+  const { categoryCore, promptSetting } = await import('@/lib/prompts/matrix')
+  if (!categoryCore(categorySlug) || !promptSetting(settingSlug)) {
+    returnToPrompts('error', 'That category and setting combination does not exist.')
+  }
+
+  const { ensurePromptPair } = await import('@/lib/prompts/ensure-pair')
+  let slug: string
+  try {
+    slug = await ensurePromptPair(categorySlug, settingSlug, operator.email)
+  } catch (cause) {
+    returnToPrompts(
+      'error',
+      cause instanceof Error ? cause.message : 'The prompt pair could not be prepared.',
+    )
+  }
+
+  const { error } = await supabaseServer().rpc('promote_prompt_preset', {
+    p_slug: slug,
+    p_actor: operator.email,
+  })
+  if (error) {
+    returnToPrompts(
+      'error',
+      error.hint?.trim() || error.message || 'The prompt pair could not be made current.',
+    )
+  }
+
+  revalidatePath('/prompts')
+  returnToPrompts('preset', slug)
+}
+
 export async function promotePromptVersionAction(formData: FormData): Promise<void> {
   const operator = await requireOperatorForAction()
   const promptId = String(formData.get('promptId') ?? '').trim()

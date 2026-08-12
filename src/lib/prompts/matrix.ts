@@ -958,3 +958,29 @@ export function settingsForCategory(
     ...PROMPT_SETTINGS.filter((setting) => !setting.bestFor.includes(categorySlug)),
   ]
 }
+
+/**
+ * Pure composition of a category × setting pair — the exact bodies "Use for
+ * new batches" materialises. Client-safe (this file has no imports), so the
+ * prompts screen can preview what a combination produces before anything is
+ * written; the server's ensure-pair reuses it as the single source of truth.
+ */
+export function composeClientPair(
+  categorySlug: string,
+  settingSlug: string,
+): {
+  readonly slug: string
+  readonly label: string
+  readonly describeBody: string
+  readonly imageBody: string
+} | null {
+  const core = categoryCore(categorySlug)
+  const setting = promptSetting(settingSlug)
+  if (!core || !setting) return null
+  return {
+    slug: `${categorySlug}--${settingSlug}`,
+    label: `${core.label} · ${setting.label}`,
+    describeBody: core.describeBody,
+    imageBody: core.imageBody.replace('{{SETTING_DETAIL}}', setting.scene),
+  }
+}
