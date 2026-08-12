@@ -19,7 +19,6 @@ export function filterTrackingRows(
 
   return rows.filter((row) => {
     if (filters.view === 'attention' && row.group !== 'attention') return false
-    if (filters.view === 'draft' && row.group !== 'draft') return false
     if (filters.view === 'progress' && row.group !== 'progress') return false
     if (filters.status !== 'any' && row.tone !== filters.status) return false
     if (filters.error && row.errorCode !== filters.error) return false

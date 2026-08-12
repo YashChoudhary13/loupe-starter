@@ -81,12 +81,22 @@ function normalise(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLowerCase()
 }
 
-function comparable(value: string): string {
-  // Shopify's taxonomy labels use American spelling ("Multicolor"), while
-  // Loupe's operator-facing palette uses British spelling ("Multi Colour").
-  // They identify the same saved Color entry, so canonicalise the spelling
-  // before removing spaces and punctuation.
+/**
+ * Shopify's taxonomy labels use American spelling ("Multicolor"), while
+ * Loupe's operator-facing palette uses British spelling ("Multi Colour").
+ * They identify the same saved Color entry, so canonicalise the spelling
+ * before removing spaces and punctuation.
+ *
+ * Exported because reconciliation must judge sameness by the SAME rule the
+ * publish path used to pick the entry — comparing raw strings there flagged
+ * "Multi Colour" vs "Multicolor" as drift forever (cosmetic, not real).
+ */
+export function comparableOptionValue(value: string): string {
   return normalise(value).replace(/colour/g, 'color').replace(/[^a-z0-9]+/g, '')
+}
+
+function comparable(value: string): string {
+  return comparableOptionValue(value)
 }
 
 function handleise(value: string): string {

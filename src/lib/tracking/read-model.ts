@@ -32,8 +32,22 @@ interface IntakeRow {
   provider_pause_detail: string | null
   discovered_at: string
   updated_at: string
+  enhanced_at: string | null
+  described_at: string | null
   product_draft_id: string | null
   description_cost_usd: string | number | null
+}
+
+interface RedoJobRow {
+  id: string
+  intake_file_id: string
+  status: string
+  version_no: number
+  model: string
+  created_at: string
+  updated_at: string
+  generation_started_at: string | null
+  intake_files: { filename: string; product_draft_id: string | null } | null
 }
 
 /** Draft membership fetched independently of the intake recency window. */
@@ -186,12 +200,13 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     listedResult,
     ungroupedResult,
     openDraftsResult,
+    redoJobsResult,
     duplicateCandidates,
   ] = await Promise.all([
     db
       .from('intake_files')
       .select(
-        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, provider_paused_at, provider_pause_code, provider_pause_message, provider_pause_detail, discovered_at, updated_at, product_draft_id, description_cost_usd',
+        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, provider_paused_at, provider_pause_code, provider_pause_message, provider_pause_detail, discovered_at, updated_at, enhanced_at, described_at, product_draft_id, description_cost_usd',
       )
       .order('updated_at', { ascending: false })
       .limit(500),
@@ -226,6 +241,14 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       .from('product_drafts')
       .select('id', { count: 'exact', head: true })
       .in('status', ['assembling', 'publishing', 'failed']),
+    db
+      .from('image_redo_jobs')
+      .select(
+        'id, intake_file_id, status, version_no, model, created_at, updated_at, generation_started_at, intake_files(filename, product_draft_id)',
+      )
+      .in('status', ['queued', 'processing'])
+      .order('created_at', { ascending: false })
+      .limit(100),
     loadDuplicateCandidates(),
   ])
 
@@ -237,6 +260,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     ['listed count', listedResult.error],
     ['ungrouped count', ungroupedResult.error],
     ['open draft count', openDraftsResult.error],
+    ['redo jobs', redoJobsResult.error],
   ] as const) {
     if (error) throw new Error(`${label}: ${error.message}`)
   }
@@ -299,10 +323,13 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       !dismissedKeys.has(reconciliationKey(row.product_draft_id, row.code, row.field, row.actual)),
   )
 
+  const redoJobs = (redoJobsResult.data ?? []) as unknown as RedoJobRow[]
+
   const entityIds = [
     ...intakes.map((row) => row.id),
     ...drafts.map((row) => row.id),
     ...runs.map((row) => row.id),
+    ...redoJobs.map((row) => row.id),
   ]
   // Drafts on screen, plus the drafts a Shopify mismatch points at — those are
   // published, so they are not in the draft query above.
@@ -448,6 +475,8 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
         providerPausedAt: row.provider_paused_at,
         providerPauseCode: row.provider_pause_code,
         providerPauseMessage: row.provider_pause_message,
+        describedAt: row.described_at,
+        enhancedAt: row.enhanced_at,
       },
       now,
       duplicate?.matchFilename,
@@ -541,6 +570,50 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     }
   })
 
+  /**
+   * A redo is paid pipeline work the operator kicked off; before this it was
+   * invisible here — the only sign was a badge inside the draft editor.
+   */
+  const redoRows: TrackingRow[] = redoJobs.map((job) => {
+    const generating = job.status === 'processing' && job.generation_started_at !== null
+    return {
+      rowId: `redo:${job.id}`,
+      kind: 'redo' as const,
+      entityId: job.id,
+      label: job.intake_files?.filename ?? `Redo v${job.version_no}`,
+      statusLabel:
+        job.status === 'queued'
+          ? 'Redo queued'
+          : generating
+            ? 'Image model working'
+            : 'Redo starting',
+      tone: 'running' as const,
+      group: 'progress' as const,
+      occurredAt: job.updated_at,
+      reason:
+        job.status === 'queued'
+          ? `Waiting to regenerate version ${job.version_no} on ${job.model}.`
+          : `Regenerating version ${job.version_no} on ${job.model}.`,
+      errorCode: null,
+      errorClass: null,
+      rawDetail: null,
+      thumb: signed.get(thumbKeyByIntake.get(job.intake_file_id) ?? '') ?? null,
+      events: events.get(job.id) ?? [],
+      canRetry: false,
+      canSkip: false,
+      canResume: false,
+      canResumeEnhancement: false,
+      canDiscard: false,
+      consoleHref: job.intake_files?.product_draft_id
+        ? `/console/drafts/${job.intake_files.product_draft_id}`
+        : '/console',
+      driveHref: null,
+      duplicate: null,
+      canDismiss: false,
+      costUsd: null,
+    }
+  })
+
   const issueRows: TrackingRow[] = issues.map((issue) => ({
     rowId: `reconciliation:${issue.id}`,
     kind: 'reconciliation',
@@ -602,13 +675,21 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     })
   }
 
-  const rows = [...issueRows, ...draftRows, ...intakeRows].sort((a, b) => {
-    const groupRank = { attention: 0, draft: 1, progress: 2, complete: 3 } as const
-    return (
-      groupRank[a.group] - groupRank[b.group] ||
-      b.occurredAt.localeCompare(a.occurredAt)
-    )
-  })
+  /**
+   * Rows the page actually shows. `hidden` is healthy work already visible in
+   * the console (enhanced-and-pending photographs); `draft` rows are the
+   * console's working set and Tracking stopped duplicating them — only their
+   * attention/progress classifications surface here.
+   */
+  const rows = [...issueRows, ...redoRows, ...draftRows, ...intakeRows]
+    .filter((row) => row.group === 'attention' || row.group === 'progress')
+    .sort((a, b) => {
+      const groupRank = { attention: 0, draft: 1, progress: 2, complete: 3, hidden: 4 } as const
+      return (
+        groupRank[a.group] - groupRank[b.group] ||
+        b.occurredAt.localeCompare(a.occurredAt)
+      )
+    })
   const expiries = rows
     .map((row) => row.thumb?.expiresAt)
     .filter((value): value is number => typeof value === 'number')

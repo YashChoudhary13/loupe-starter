@@ -268,9 +268,7 @@ export function TrackingScreen({
             <div className="flex rounded-pill bg-chip p-[3px]" aria-label="Tracking view">
               {([
                 ['attention', 'Needs attention'],
-                ['draft', 'Drafts'],
                 ['progress', 'In progress'],
-                ['all', 'All'],
               ] as const).map(([value, label]) => (
                 <button
                   key={value}
@@ -278,18 +276,16 @@ export function TrackingScreen({
                   aria-pressed={filters.view === value}
                   onClick={() => setFilters((current) => ({ ...current, view: value }))}
                   className={cn(
-                    'rounded-pill px-3.5 py-1.5 text-[11.5px]',
+                    'rounded-pill px-3.5 py-1.5 text-[11.5px] transition-colors',
                     filters.view === value
                       ? 'bg-ink font-medium text-white'
-                      : 'text-muted-foreground',
+                      : 'text-muted-foreground hover:text-ink-soft',
                   )}
                 >
                   {label}
-                  {value !== 'all' ? (
-                    <span className="ml-1.5 rounded-pill bg-black/10 px-1.5 text-[10px]">
-                      {snapshot.rows.filter((row) => row.group === value).length}
-                    </span>
-                  ) : null}
+                  <span className="ml-1.5 rounded-pill bg-black/10 px-1.5 text-[10px]">
+                    {snapshot.rows.filter((row) => row.group === value).length}
+                  </span>
                 </button>
               ))}
             </div>

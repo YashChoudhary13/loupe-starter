@@ -19,13 +19,66 @@ function intake(discoveredAt: string) {
     providerPausedAt: null,
     providerPauseCode: null,
     providerPauseMessage: null,
+    describedAt: null,
+    enhancedAt: null,
   }
 }
 
 describe('tracking age and failure classification', () => {
-  it('does not call recent enhanced work an error', () => {
+  it('retires healthy enhanced work from tracking — it lives in the console', () => {
     expect(classifyIntake(intake(new Date(NOW - STALE_UNGROUPED_MS + 1).toISOString()), NOW))
-      .toMatchObject({ group: 'progress', statusLabel: 'Enhanced' })
+      .toMatchObject({ group: 'hidden', statusLabel: 'Enhanced' })
+  })
+
+  it('shows a freshly enhanced photograph in progress with its tick, then lets it retire', () => {
+    const fresh = {
+      ...intake(new Date(NOW - 60_000).toISOString()),
+      enhancedAt: new Date(NOW - 30_000).toISOString(),
+    }
+    expect(classifyIntake(fresh, NOW)).toMatchObject({
+      group: 'progress',
+      tone: 'complete',
+      statusLabel: 'Enhanced ✓',
+    })
+    const older = {
+      ...fresh,
+      enhancedAt: new Date(NOW - 11 * 60_000).toISOString(),
+    }
+    expect(classifyIntake(older, NOW)).toMatchObject({ group: 'hidden' })
+  })
+
+  it('splits the enhancing stage on described_at — describer first, then the image model', () => {
+    const enhancing = {
+      ...intake(new Date(NOW - 60_000).toISOString()),
+      status: 'enhancing',
+      leaseExpiresAt: new Date(NOW + 60_000).toISOString(),
+    }
+    expect(classifyIntake(enhancing, NOW)).toMatchObject({
+      group: 'progress',
+      statusLabel: 'Describer working',
+    })
+    expect(
+      classifyIntake({ ...enhancing, describedAt: new Date(NOW - 20_000).toISOString() }, NOW),
+    ).toMatchObject({ group: 'progress', statusLabel: 'Image model working' })
+  })
+
+  it('flags a draft whose background Shopify push failed', () => {
+    expect(
+      classifyDraft(
+        {
+          status: 'assembling',
+          updatedAt: new Date(NOW - 1_000).toISOString(),
+          error: 'Shopify returned HTTP 502.',
+          publishLeaseExpiresAt: null,
+          shopifyProductId: null,
+        },
+        NOW,
+      ),
+    ).toMatchObject({
+      group: 'attention',
+      statusLabel: 'Shopify draft failed',
+      reason: 'Shopify returned HTTP 502.',
+    })
   })
 
   it('marks the exact 24-hour ungrouped boundary stalled', () => {

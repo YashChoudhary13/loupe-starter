@@ -3,6 +3,13 @@ import type { TrackingGroup, TrackingTone } from './types'
 export const STALE_UNGROUPED_MS = 24 * 60 * 60 * 1000
 export const STALE_PIPELINE_MS = 60 * 60 * 1000
 export const STALE_DRAFT_MS = 24 * 60 * 60 * 1000
+/**
+ * How long a freshly enhanced photograph stays visible under In progress with
+ * its green tick before the row retires. It is already in the console's
+ * Pending grid the whole time — this window only exists so the operator
+ * watching the pipeline sees the finish, then the list cleans itself up.
+ */
+export const ENHANCED_VISIBLE_MS = 10 * 60 * 1000
 
 export interface IntakeForTracking {
   readonly status: string
@@ -14,6 +21,9 @@ export interface IntakeForTracking {
   readonly providerPausedAt: string | null
   readonly providerPauseCode: string | null
   readonly providerPauseMessage: string | null
+  /** Set once the describer stage finished — splits 'enhancing' into its two stages. */
+  readonly describedAt: string | null
+  readonly enhancedAt: string | null
 }
 
 export interface DraftForTracking {
@@ -132,28 +142,45 @@ export function classifyIntake(
     }
   }
 
+  if (row.status === 'enhanced') {
+    const recentlyFinished =
+      row.enhancedAt !== null && ageMs(row.enhancedAt, now) < ENHANCED_VISIBLE_MS
+    if (!recentlyFinished) {
+      // Healthy, ungrouped, already visible in the console's Pending grid.
+      // Under the old rules this padded In progress forever.
+      return {
+        group: 'hidden',
+        tone: 'running',
+        statusLabel: 'Enhanced',
+        reason: 'Enhanced and ready in the console.',
+      }
+    }
+    return {
+      group: 'progress',
+      tone: 'complete',
+      statusLabel: 'Enhanced ✓',
+      reason: 'Both AI stages finished. The photograph is ready in the console.',
+    }
+  }
+
+  if (row.status === 'enhancing') {
+    // The row holds both AI stages; described_at is the boundary between them.
+    const describing = row.describedAt === null
+    return {
+      group: 'progress',
+      tone: 'running',
+      statusLabel: describing ? 'Describer working' : 'Image model working',
+      reason: describing
+        ? 'Stage 1 of 2 — the describer is reading the photograph.'
+        : 'Stage 2 of 2 — the description is cached; the image model is generating.',
+    }
+  }
+
   return {
     group: 'progress',
     tone: 'running',
-    statusLabel:
-      // "Enhanced" states the fact — the work finished and the photograph is in
-      // the console. "Waiting" described what the OPERATOR still has to do and
-      // read as though the pipeline had not finished.
-      row.status === 'enhanced'
-        ? 'Enhanced'
-        : row.status === 'grouped'
-          ? 'Draft'
-          : row.status === 'enhancing'
-            ? 'Enhancing'
-            : 'Queued',
-    reason:
-      row.status === 'enhanced'
-        ? 'Enhanced and ready in the console, waiting for an operator.'
-        : row.status === 'grouped'
-          ? 'Grouped into a product draft.'
-          : row.status === 'enhancing'
-            ? 'The enhancement worker owns this photograph.'
-            : 'Waiting for the enhancement worker.',
+    statusLabel: 'Queued',
+    reason: 'Waiting for the enhancement worker.',
   }
 }
 
@@ -204,6 +231,21 @@ export function classifyDraft(row: DraftForTracking, now: number): Classificatio
       statusLabel: 'Draft stalled',
       reason:
         'This product draft has not changed for 24 hours and has never been sent to Shopify.',
+    }
+  }
+
+  /**
+   * The background Shopify push (D60, moved off the click) records its failure
+   * on the draft row without flipping the status — the local save succeeded
+   * and the console can still edit it. It still needs a human: the product is
+   * not in Shopify and only a retry from the console fixes that.
+   */
+  if (row.status === 'assembling' && row.shopifyProductId === null && row.error !== null) {
+    return {
+      group: 'attention',
+      tone: 'failed',
+      statusLabel: 'Shopify draft failed',
+      reason: row.error,
     }
   }
 

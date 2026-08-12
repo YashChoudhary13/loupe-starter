@@ -35,8 +35,10 @@ function row(overrides: Partial<TrackingRow> = {}): TrackingRow {
   }
 }
 
+// Age/status/search assertions run on the attention view; the failing row in
+// `rows` is an attention row, so view no longer widens the result set.
 const defaults: TrackingFilters = {
-  view: 'all',
+  view: 'attention',
   status: 'any',
   error: '',
   age: 'any',

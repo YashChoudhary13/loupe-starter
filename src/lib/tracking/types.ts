@@ -1,13 +1,17 @@
 import type { SignedImage } from '@/lib/console/types'
 
-export type TrackingView = 'attention' | 'draft' | 'progress' | 'all'
 /**
- * `draft` is its own group, not a flavour of `progress`. Qimati's operators
- * build 100-150 drafts and only then publish the batch, so drafts are the
- * working set — burying them among transient pipeline work made the one list
- * they live in hardest to read.
+ * Two views only. Drafts live in the Console (their working home) and the old
+ * "All" tab answered no question anyone asked. Tracking is for what is wrong
+ * (attention) and what the pipeline is doing right now (progress).
  */
-export type TrackingGroup = 'attention' | 'draft' | 'progress' | 'complete'
+export type TrackingView = 'attention' | 'progress'
+/**
+ * `hidden` classifies work that is healthy and already represented elsewhere —
+ * an enhanced photograph sitting in the console's Pending grid, an assembling
+ * draft in the console's Drafts view. The read model drops these rows.
+ */
+export type TrackingGroup = 'attention' | 'draft' | 'progress' | 'complete' | 'hidden'
 export type TrackingTone = 'failed' | 'stalled' | 'running' | 'mismatch' | 'complete'
 
 export interface TrackingEvent {
@@ -27,7 +31,7 @@ export interface TrackingDuplicate {
 
 export interface TrackingRow {
   readonly rowId: string
-  readonly kind: 'intake' | 'draft' | 'reconciliation'
+  readonly kind: 'intake' | 'draft' | 'reconciliation' | 'redo'
   readonly entityId: string
   readonly label: string
   readonly statusLabel: string

@@ -125,6 +125,21 @@ describe('what reconciliation still checks', () => {
     ).toEqual([expect.objectContaining({ field: 'variants.0.option' })])
   })
 
+  it('does not call a spelling convention drift — Multi Colour IS Multicolor', () => {
+    const multi: ExpectedReconciliationProduct = {
+      ...expected,
+      variants: [{ sku: 'NK001', optionName: 'Color', optionValue: 'Multi Colour' }],
+    }
+    expect(
+      comparePublishedProduct(multi, {
+        ...actual,
+        variants: {
+          nodes: [{ sku: 'NK001', selectedOptions: [{ name: 'Color', value: 'Multicolor' }] }],
+        },
+      }),
+    ).toEqual([])
+  })
+
   it('accepts Number and Size options unchanged', () => {
     for (const [name, value] of [
       ['Number', '17'],

@@ -1,3 +1,4 @@
+import { comparableOptionValue } from '@/lib/shopify/colour-options'
 import { DEFAULT_OPTION_NAME, DEFAULT_OPTION_VALUE } from '@/lib/shopify/product-set'
 
 /**
@@ -190,7 +191,20 @@ export function comparePublishedProduct(
       variant.optionName && variant.optionValue
         ? { name: variant.optionName, value: variant.optionValue }
         : { name: DEFAULT_OPTION_NAME, value: DEFAULT_OPTION_VALUE }
-    if (JSON.stringify(expectedOption) !== JSON.stringify(observedOption)) {
+    /**
+     * The option NAME is structural ('Color'/'Number'/'Size' — Loupe wrote it)
+     * and stays exact. The VALUE is judged by the same canonicaliser the
+     * publish path used to select the saved Color entry, so "Multi Colour" vs
+     * Shopify's "Multicolor" — same entry, different spelling convention — is
+     * not drift. A genuinely different value still is.
+     */
+    const optionDiffers =
+      observedOption === null
+        ? true
+        : expectedOption.name !== observedOption.name ||
+          comparableOptionValue(expectedOption.value) !==
+            comparableOptionValue(observedOption.value)
+    if (optionDiffers) {
       issues.push(
         issue(
           expected,
