@@ -142,6 +142,16 @@ export function DraftEditor(props: DraftEditorProps) {
   const [colourDraft, setColourDraft] = useState('')
   const [sizeDraft, setSizeDraft] = useState('')
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  /**
+   * Progressive disclosure for the three choice fields. `null` means "follow
+   * the flow": an unfilled category opens itself, then material, and a filled
+   * field collapses to its one-line summary. Price and stock never collapse —
+   * they are the operator's two-keystroke path.
+   */
+  const [openSection, setOpenSection] = useState<'category' | 'material' | 'description' | null>(
+    null,
+  )
+  const [categoryQuery, setCategoryQuery] = useState('')
   const openLightbox = (index: number) => setLightboxIndex(index)
   const category = categories.find((c) => c.id === form.categoryId) ?? null
   const selectedMaterial = materials.find((m) => m.id === form.materialId)?.name ?? null
@@ -244,6 +254,21 @@ export function DraftEditor(props: DraftEditorProps) {
       </div>
     )
   }
+
+  const materialFilled = Boolean(form.materialId || form.customMaterial.trim())
+  const effectiveOpen =
+    openSection ?? (!form.categoryId ? 'category' : !materialFilled ? 'material' : null)
+  const toggleSection = (section: 'category' | 'material' | 'description') =>
+    setOpenSection((current) => (current === section ? null : section))
+  const filteredCategories = categoryQuery.trim()
+    ? categories.filter((option) => {
+        const query = categoryQuery.trim().toLowerCase()
+        return (
+          option.name.toLowerCase().includes(query) ||
+          option.skuPrefix.toLowerCase().includes(query)
+        )
+      })
+    : categories
 
   const photoByIntake = new Map(photos.map((p) => [p.intakeFileId, p]))
   const orderedImages = form.images
@@ -575,10 +600,32 @@ export function DraftEditor(props: DraftEditorProps) {
           ) : null}
         </div>
 
-        {/* Category — the first of the two human judgements. */}
-        <Field label="Category">
-          <div className="flex flex-wrap gap-1.5">
-            {categories.map((option) => (
+        {/* Category — the first of the two human judgements. Collapses to its
+            choice once made; searchable while open so a growing catalogue is
+            never an endless chip wall. */}
+        <Disclosure
+          label="Category"
+          value={category ? `${category.name} · ${category.skuPrefix}` : null}
+          placeholder="Choose category"
+          open={effectiveOpen === 'category'}
+          attention={Boolean(blockFor('category'))}
+          locked={identityLocked}
+          onToggle={() => toggleSection('category')}
+        >
+          {categories.length > 8 ? (
+            <input
+              value={categoryQuery}
+              onChange={(event) => setCategoryQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.preventDefault()
+              }}
+              aria-label="Search categories"
+              placeholder="Search categories…"
+              className="mb-2 w-full rounded-field bg-surface px-3.5 py-2 text-[12.5px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset] placeholder:text-[#bfbfc4]"
+            />
+          ) : null}
+          <div className="loupe-scroll flex max-h-56 flex-wrap content-start gap-1.5 overflow-y-auto">
+            {filteredCategories.map((option) => (
               <Chip
                 key={option.id}
                 selected={option.id === form.categoryId}
@@ -590,12 +637,21 @@ export function DraftEditor(props: DraftEditorProps) {
                       ? `${option.name} has no confirmed Shopify tag yet — publishing is blocked until somebody reads it off a live product.`
                       : `${option.skuPrefix} · next ${option.skuPrefix}${String(option.lastNumber + 1).padStart(3, '0')}`
                 }
-                onClick={() => onChange({ categoryId: option.id })}
+                onClick={() => {
+                  onChange({ categoryId: option.id })
+                  setCategoryQuery('')
+                  setOpenSection(null)
+                }}
               >
                 {option.name}
                 {option.shopifyTag === null ? ' ·' : ''}
               </Chip>
             ))}
+            {filteredCategories.length === 0 ? (
+              <p className="px-1 py-2 text-[11.5px] text-muted-foreground">
+                No category matches “{categoryQuery.trim()}”.
+              </p>
+            ) : null}
             {!readOnly && !identityLocked ? (
               <Chip ghost title="Create a category and its own SKU sequence" onClick={onAddCategory}>
                 + New category
@@ -615,16 +671,26 @@ export function DraftEditor(props: DraftEditorProps) {
               {blockFor('category')!.message}
             </p>
           ) : null}
-        </Field>
+        </Disclosure>
 
-        <Field label="Material">
+        <Disclosure
+          label="Material"
+          value={materialName}
+          placeholder="Choose material"
+          open={effectiveOpen === 'material'}
+          attention={Boolean(blockFor('material'))}
+          onToggle={() => toggleSection('material')}
+        >
           <div className="flex flex-wrap gap-1.5">
             {materials.map((option) => (
               <Chip
                 key={option.id}
                 selected={option.id === form.materialId}
                 disabled={readOnly}
-                onClick={() => onChange({ materialId: option.id, customMaterial: '' })}
+                onClick={() => {
+                  onChange({ materialId: option.id, customMaterial: '' })
+                  setOpenSection(null)
+                }}
               >
                 {option.name}
               </Chip>
@@ -634,29 +700,45 @@ export function DraftEditor(props: DraftEditorProps) {
             value={form.customMaterial}
             disabled={readOnly}
             maxLength={100}
+            onFocus={() => setOpenSection('material')}
             onChange={(event) =>
               onChange({ customMaterial: event.target.value, materialId: null })
             }
             onKeyDown={(event) => {
               // A custom material is still a choice field. Enter here must not
               // publish the form while the operator is typing it.
-              if (event.key === 'Enter') event.preventDefault()
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                if (form.customMaterial.trim()) setOpenSection(null)
+              }
             }}
             aria-label="Custom material"
             placeholder="Or type a custom material"
-            className="mt-2.5 w-full rounded-field bg-chip px-3.5 py-2.5 text-[13px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset] placeholder:text-[#bfbfc4]"
+            className="mt-2.5 w-full rounded-field bg-surface px-3.5 py-2.5 text-[13px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset] placeholder:text-[#bfbfc4]"
           />
           {blockFor('material') ? (
             <p className="mt-2 text-[11.5px] leading-relaxed text-amber">
               {blockFor('material')!.message}
             </p>
           ) : null}
-        </Field>
+        </Disclosure>
 
-        <Field label="Description">
+        <Disclosure
+          label="Description"
+          value={
+            form.descriptionOverride !== null
+              ? 'Custom text for this product'
+              : materialName
+                ? 'Standard six bullets'
+                : null
+          }
+          placeholder="Follows the material"
+          open={effectiveOpen === 'description'}
+          onToggle={() => toggleSection('description')}
+        >
           {form.descriptionOverride === null ? (
             <>
-              <div className="whitespace-pre-line rounded-field bg-chip px-3.5 py-3 text-[11.5px] leading-relaxed text-ink-soft">
+              <div className="whitespace-pre-line rounded-field bg-surface px-3.5 py-3 text-[11.5px] leading-relaxed text-ink-soft">
                 {defaultDescription ||
                   'Choose a material to preview the standard six-point description.'}
               </div>
@@ -665,7 +747,7 @@ export function DraftEditor(props: DraftEditorProps) {
                   type="button"
                   disabled={!defaultDescription}
                   onClick={() => onChange({ descriptionOverride: defaultDescription })}
-                  className="mt-2 rounded-pill bg-chip px-3 py-1.5 text-[11px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb] disabled:opacity-45"
+                  className="mt-2 rounded-pill bg-surface px-3 py-1.5 text-[11px] font-medium text-ink-soft transition-colors hover:bg-white disabled:opacity-45"
                 >
                   Edit default description
                 </button>
@@ -680,13 +762,13 @@ export function DraftEditor(props: DraftEditorProps) {
                 rows={7}
                 onChange={(event) => onChange({ descriptionOverride: event.target.value })}
                 aria-label="Product description"
-                className="w-full resize-y rounded-field bg-chip px-3.5 py-3 text-[12px] leading-relaxed text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
+                className="w-full resize-y rounded-field bg-surface px-3.5 py-3 text-[12px] leading-relaxed text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
               />
               {!readOnly ? (
                 <button
                   type="button"
                   onClick={() => onChange({ descriptionOverride: null })}
-                  className="mt-2 rounded-pill bg-chip px-3 py-1.5 text-[11px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb]"
+                  className="mt-2 rounded-pill bg-surface px-3 py-1.5 text-[11px] font-medium text-ink-soft transition-colors hover:bg-white"
                 >
                   Use standard description
                 </button>
@@ -697,7 +779,7 @@ export function DraftEditor(props: DraftEditorProps) {
             The standard text follows the material. Editing creates a plain-text exception for
             this product only.
           </p>
-        </Field>
+        </Disclosure>
 
         <Field label="Stock method">
           <div className="flex flex-wrap gap-1.5">
@@ -1142,6 +1224,82 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="mt-[18px]">
       <SectionLabel>{label}</SectionLabel>
       <div className="mt-2.5">{children}</div>
+    </div>
+  )
+}
+
+/**
+ * A choice field that collapses to its one-line answer once made. Children
+ * stay mounted while closed (the grid-rows trick) so inputs keep their state
+ * and the open/close motion is a real animation, not a remount.
+ */
+function Disclosure({
+  label,
+  value,
+  placeholder,
+  open,
+  attention = false,
+  locked = false,
+  onToggle,
+  children,
+}: {
+  label: string
+  value: string | null
+  placeholder: string
+  open: boolean
+  attention?: boolean
+  locked?: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="mt-[18px]">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={cn(
+          'flex w-full items-center gap-2.5 rounded-field px-3.5 py-2.5 text-left transition-colors',
+          open ? 'bg-chip' : 'bg-chip hover:bg-[#ebebeb]',
+        )}
+      >
+        <span className="loupe-label shrink-0">{label}</span>
+        {attention ? (
+          <span className="size-1.5 shrink-0 rounded-full bg-amber" aria-label="Needs attention" />
+        ) : null}
+        <span
+          className={cn(
+            'ml-auto min-w-0 truncate text-[12.5px]',
+            value ? 'font-medium text-ink' : 'text-muted-foreground',
+          )}
+        >
+          {locked ? '🔒 ' : ''}
+          {value ?? placeholder}
+        </span>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          aria-hidden
+          className={cn(
+            'size-3.5 shrink-0 text-muted-foreground transition-transform duration-200',
+            open && 'rotate-180',
+          )}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      <div
+        className={cn(
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className={cn('px-0.5 pb-1 pt-2.5', open ? '' : 'invisible')}>{children}</div>
+        </div>
+      </div>
     </div>
   )
 }
