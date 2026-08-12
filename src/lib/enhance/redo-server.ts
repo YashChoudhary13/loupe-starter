@@ -22,12 +22,6 @@ interface IntakeRedoRow {
   preset_slug: string | null
 }
 
-interface DescribePromptRow {
-  id: string
-  body: string
-  model: string
-}
-
 interface OriginalVersionRow {
   storage_key: string | null
 }

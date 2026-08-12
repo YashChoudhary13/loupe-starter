@@ -46,6 +46,8 @@ import {
 } from '@/lib/live/types'
 import type { PublishBlock } from '@/lib/publish/validate'
 
+import { putUploadedObject } from '@/components/upload/put-object'
+
 import { DraftEditor, type EditorForm } from './DraftEditor'
 import { NewCategoryDialog } from './NewCategoryDialog'
 import { Card, Notice, StatPill } from './primitives'
@@ -74,36 +76,6 @@ import { RedoPromptDialog } from './RedoPromptDialog'
 const STICKY_KEY = 'loupe.sticky.v1'
 /** Presigned URLs live 15 minutes; refresh well inside that. */
 const QUEUE_REFRESH_MS = 9 * 60 * 1000
-
-function putReadyImage(
-  url: string,
-  file: File,
-  contentType: string,
-  onProgress: (percent: number) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest()
-    request.open('PUT', url)
-    request.timeout = 10 * 60 * 1000
-    request.setRequestHeader('Content-Type', contentType)
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
-      }
-    }
-    request.onload = () => {
-      if (request.status >= 200 && request.status < 300) {
-        onProgress(100)
-        resolve()
-      } else {
-        reject(new Error(`Private image storage returned HTTP ${request.status}.`))
-      }
-    }
-    request.onerror = () => reject(new Error('The browser could not reach private image storage.'))
-    request.ontimeout = () => reject(new Error('The image upload took longer than ten minutes.'))
-    request.send(file)
-  })
-}
 
 export interface UploadItem {
   readonly key: string
@@ -729,7 +701,7 @@ export function ConsoleScreen({
                 continue
               }
               const ticket = ticketResult.data
-              await putReadyImage(ticket.uploadUrl, file, ticket.contentType, (percent) =>
+              await putUploadedObject(ticket.uploadUrl, file, ticket.contentType, (percent) =>
                 patchItem(item.key, { progress: percent }),
               )
               const completed = await finalizeManualUploadAction(ticket.uploadId)
