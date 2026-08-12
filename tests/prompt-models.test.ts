@@ -8,11 +8,14 @@ import {
 } from '@/lib/prompts/models'
 
 describe('curated enhancement models', () => {
-  it('offers exactly ten deliberate choices for each prompt stage', () => {
-    expect(DESCRIBE_MODELS).toHaveLength(10)
+  it('offers exactly the deliberate curated choices for each prompt stage', () => {
+    // Ten images; eleven describers since D87 added moonshotai/kimi-k3 as the
+    // production describer alongside the original ten.
+    expect(DESCRIBE_MODELS).toHaveLength(11)
     expect(IMAGE_MODELS).toHaveLength(10)
-    expect(new Set(DESCRIBE_MODELS.map((model) => model.id))).toHaveLength(10)
+    expect(new Set(DESCRIBE_MODELS.map((model) => model.id))).toHaveLength(11)
     expect(new Set(IMAGE_MODELS.map((model) => model.id))).toHaveLength(10)
+    expect(DESCRIBE_MODELS.some((model) => model.id === 'moonshotai/kimi-k3')).toBe(true)
   })
 
   it('keeps the already accepted models as the premium defaults in the lists', () => {

@@ -29,6 +29,92 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-13 — Overnight console/UX overhaul: shell, instant drafting, webhooks, SKU pool, prompt matrix, Upload section
+
+**Goal this session:** the owner's 12-point overnight list — kill every console wait, make
+Tracking useful, let Shopify push changes in, free a wrong-category SKU, rebuild Prompts as
+category × setting, and add a direct Upload section — ready to push to Railway in the morning.
+
+**Built (one commit per unit, in order):**
+- `(shell)` route group + `AppShell`/`Sidebar` rewrite → persistent collapsible sidebar
+  (216/68px, cookie-backed), live attention badge fed by the heartbeat, content-only loading
+  skeletons; the badge's full-tracking-read-model cost replaced by
+  `src/lib/tracking/attention-count.ts`. Editor column now clamp(400px,32vw,500px); queue
+  tiles 152px.
+- Console interaction overhaul (D105) → "Draft" answers instantly (Shopify DRAFT push runs in
+  `after()`, reporting via `draft.shopify_synced`/`draft.shopify_push_failed` + draft.error);
+  scoped busy state replaces the single global slot; deletes optimistic and four-wide with a
+  bulk "Delete N selected"; uploads multi-file, three-wide, per-file progress; Drive
+  originals get a permanent 1280px preview backfilled on first view
+  (`src/lib/console/original-preview.ts`).
+- Progressive-disclosure product form → searchable category picker, collapsing
+  Category/Material/Description, price+stock always visible.
+- Tracking overhaul → two views only; In progress shows Queued → Describer working → Image
+  model working (split on `described_at`) → Enhanced ✓ (retires after 10 min); redo jobs
+  visible; healthy enhanced/assembling work no longer duplicated from the console; cosmetic
+  option-value spelling (Multi Colour/Multicolor) no longer drift.
+- D101 SKU pool → `freed_skus` + `release_draft_identity()` + pool-draining
+  `reserve_draft_identity()`; category change on a reserved draft deletes Loupe's own Shopify
+  DRAFT (status-verified), frees the number, re-reserves under the new sequence.
+- D102 webhooks → HMAC-verified `/api/webhooks/shopify`; instant counter raises on hand-made
+  products; one-product reconciliation with live `shopify_webhook_alerts` (auto-resolving);
+  DRAFT deletions release drafts in seconds; idempotent registration from the nightly cron.
+- D103 Upload section → `/upload` drag-drop straight into the AI pipeline (no Drive), R2
+  source + per-photograph `preset_slug`; worker and redo resolve bound pairs
+  newest-per-kind with whole-pair fallback.
+- D104 prompt matrix → `src/lib/prompts/matrix.ts` (13 cores: 6 extracted byte-faithful from
+  shipped preset migrations with the scene swapped for `{{SETTING_DETAIL}}`, 7 new in the
+  same skeleton; 10 settings from the owner's SAMPLE/ reference boards); `/prompts` rebuilt
+  around the two-step picker with exact-body preview and one "Use for new batches" action;
+  all previous machinery intact under Advanced.
+
+**Verified:**
+- Migrations `20260813010000`–`013000` applied to production via `npm run db:push` (85 total).
+- `tests/sku-release.sql.test.ts` 3/3 against the DEPLOYED functions: pool reuse, exactly-once
+  drain, counter untouched, publish-lease/published/unproven-deletion guards. Production
+  `freed_skus` left empty.
+- `tests/prompt-matrix.test.ts`: all 130 category × setting combinations pass the worker's own
+  `resolveImagePrompt` gate, injected and description-less.
+- Worker suite 18/18 (new: R2-sourced claim never calls Drive; bound pair overrides; missing
+  pair falls back whole). Webhook HMAC/parse 5/5. Tracking classify/filters 15/15 including
+  the new stage split and Shopify-draft-failed rule.
+- Full suite **618 passed**, `tsc` clean, `eslint` clean, `next build` clean,
+  `npm run verify:isolation` passed (service-role key still unreachable from the client).
+
+**Not finished / known broken:**
+- **Nothing is deployed** — the owner pushes to Railway in the morning. Until then production
+  runs the old code against the new (backward-compatible) schema.
+- Webhook subscriptions register on the first nightly reconcile after deploy (or the manual
+  Full reconciliation button). Until that runs, the push channel is dormant.
+- 7 failing tests remain, all PRE-EXISTING environment drift between test fixtures and the
+  live database (3 publish-identity forced-counter collisions with real drafts, 2
+  preset-shape, WC seed, verbatim-default seed). Two baseline failures were fixed tonight
+  (curated model count; /health table registry gained `freed_skus` +
+  `shopify_webhook_alerts`). None of the 7 are from tonight's code.
+- Discarding an upload-sourced photograph before enhancement leaves its `manual/{id}/` source
+  object until retention (noted in D103).
+- Phase 3C acceptance is still open, unchanged.
+- The pooled-SKU publish path skips the D97 counter-forward probe (window documented in D101;
+  D102 webhooks close most of it).
+
+**Surprises:**
+- `loadTrackingAttentionCount()` was the whole tracking read model — every console render paid
+  for ~10 queries plus R2 presigning to draw one badge integer.
+- Drive originals never had thumbnails (only generated versions did), which is why "the
+  original never loads" — the editor was rendering up-to-50MB files into a 450px box.
+- The 4-vs-6 drafts count was classification, not a bug: Tracking rehomed failed/stalled/
+  publishing drafts into other groups while the console counted every open draft.
+- The first `release_draft_identity` hit SQLSTATE 42702 — an OUT column named `sku_prefix`
+  shadowed the table column (same bug class `20260804181000` fixed in
+  `promote_prompt_preset`). Fixed in `20260813011000`.
+
+**Next session should start with:** after the owner's morning push — watch the first live
+"Draft" for the background `draft.shopify_synced` event, press Full reconciliation once to
+register webhooks immediately (instead of waiting for 03:00), then hand-edit one product in
+Shopify admin and watch the alert arrive.
+
+---
+
 ## 2026-08-10 — Chain-bracelet style preset (live-batch fidelity fix)
 
 **Goal this session:** diagnose why the morning chain-bracelet batch enhanced into images that do

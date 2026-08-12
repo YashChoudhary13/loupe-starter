@@ -2866,3 +2866,127 @@ than after its failures:
    anklet, mirroring, or background echoes; the describer must state the quantity plainly and
    never assume an unseen partner. An invented pair is invented stock, which is worse than a bad
    pose.
+
+---
+
+### D101 — A drafted product's category can be corrected; the freed number returns through a pool, never through the counter
+
+*2026-08-13, owner request: "in case I chose wrong category it frees the SKU for next draft in this category and gives it the latest+1 SKU of the new category."*
+
+The category was frozen the moment a SKU was reserved (D27), and the only remedy was a new
+draft plus a burnt number. Now `release_draft_identity()` frees an UNPUBLISHED draft's number
+into `freed_skus (sku_prefix, sku_number)`, and `reserve_draft_identity()` drains that pool
+lowest-first — one `delete … returning` under `for update skip locked`, so two concurrent
+reservations can never take the same freed number — before falling back to `next_sku()`.
+
+Hard rule 1 is untouched: the counter still only moves forward, and `next_sku()` is still the
+only mint. Release is guarded like the destructive operation it is: refused for published
+drafts, refused under a live publish lease, and — when the draft ever reached Shopify —
+refused unless the caller passes the exact product id it just deleted. The console flow
+deletes Loupe's own DRAFT product first (ownership verified by recorded id; a product someone
+activated in admin is live retail and is never deleted).
+
+**Rejected:** decrementing the counter (out-of-order frees re-issue only the newest and
+collide when the counter catches up), and reusing numbers from published-then-deleted
+products (a spent retail number stays spent — the pool holds only numbers whose product
+provably never went live).
+
+**Known window, accepted:** a pooled number skips the D97 publish-time Shopify probe (which
+scans from the counter upward). The handle-ownership check still refuses to overwrite a
+foreign product at publish, and the D102 webhook raises counters/alerts on hand-made
+products within seconds, which closes most of what the probe covered.
+
+---
+
+### D102 — Shopify pushes changes to Loupe; the nightly reconciliation becomes the backstop
+
+*2026-08-13, owner request: "something changes in shopify triggers update here in backend automatically."*
+
+An HMAC-verified webhook route (`/api/webhooks/shopify`, app client secret, timing-safe
+compare) subscribes to `products/create|update|delete`, registered idempotently from the
+nightly reconcile cron.
+
+- `products/create` and `products/update` raise the per-prefix SKU counters immediately via
+  the monotone `raise_sku_counter` — the NK1007 class of hand-made collision now closes in
+  seconds instead of at 03:00.
+- An update to a Loupe-PUBLISHED product runs a one-product comparison with exactly the D90
+  comparator and keeps ONE live alert per finding in `shopify_webhook_alerts` (unique
+  partial index on unresolved (product, code)); a clean read-back auto-resolves. Edits to
+  DRAFT-stage products stay silent — that is the business finishing its listings.
+- A deleted DRAFT-stage product releases its Loupe draft through the existing
+  `delete_shopify_missing_draft` path, returning photographs to Pending immediately.
+  Deleting a PUBLISHED product raises an alert a human must resolve.
+
+A verified payload always gets a 200 even when a handler fails: Shopify's retry storm cannot
+fix a Loupe-side bug, and the nightly run remains the backstop for exactly the case where
+webhooks are broken.
+
+---
+
+### D103 — Raw uploads enter the pipeline directly, and a photograph can carry its own prompts
+
+*2026-08-13, owner request: an Upload section that bypasses Drive, choosing "which prompts to run through, category then setting" per image.*
+
+`intake_files` gains `source_storage_key` (the browser-uploaded source in R2 — the worker
+reads it instead of Drive; everything downstream is unchanged) and `preset_slug` (the prompt
+pair for THIS photograph; null means the live default, exactly today's behaviour).
+`finalize_raw_image_upload` lands a verified upload in `discovered` using the manual-upload
+synthetic `drive_file_id` precedent (`upload:{id}`), so every existing query shape survives.
+
+The worker and the redo path resolve a bound pair by newest-revision-per-kind — the same D96
+rule promotion uses — and fall back to the default pair WHOLE when either half is missing.
+A mixed pair (bound describe, default image) is never assembled: its halves were not written
+together.
+
+**Known gap, accepted:** discarding an upload-sourced photograph before enhancement leaves
+its source object under `manual/{id}/` until retention; the discard path cleans version
+rows, which such a photograph does not yet have.
+
+---
+
+### D104 — Prompts are a category × setting matrix in code; rows materialise on first use
+
+*2026-08-13, owner request: prompts organised as category prompts and setting/background prompts, "prompt for each category", from the reference boards in SAMPLE/.*
+
+`src/lib/prompts/matrix.ts` holds 13 category cores and 10 scene settings. Six cores are
+extracted byte-faithful from the shipped preset migrations (necklace, waist-chain,
+chain-bracelet, anklet, hand-chain, bag) with exactly one surgical change: the baked scene
+paragraph becomes a `{{SETTING_DETAIL}}` slot, plus the lighting/prop clauses that would
+contradict a chosen scene now defer to it. Seven new cores (earrings, rings, kada-bracelet,
+nose-pin, watch, indian-jewellery, hair-accessory) follow the same protection skeleton.
+Settings are pure environment paragraphs authored from the owner's reference boards — never
+pose, never product claims.
+
+A combination becomes prompt ROWS (slug `category--setting`) only when first used, through
+`create_prompt_version` — so validation, audit events and immutability are identical to a
+hand-written revision — then both halves promote in one transaction. Re-using a combination
+after the matrix improved writes a new revision, which D96 semantics pick up automatically
+for both promoted defaults and bound photographs.
+
+`tests/prompt-matrix.test.ts` runs all 130 combinations through the worker's own
+`resolveImagePrompt` gate, injected and description-less. No selectable combination can die
+at claim time.
+
+**Rejected:** a third `{{SETTING}}` token resolved at enhancement time (would have touched
+the certified five-place validation contract), and pre-inserting 130 pairs as migrations
+(the matrix in code is the source of truth; unused combinations cost nothing).
+
+---
+
+### D105 — Save draft answers instantly; the Shopify push happens after the response
+
+*2026-08-13, owner request: drafting must not lag the console.*
+
+D60 put a full `productSet` round trip inside the Save-draft click, freezing the console for
+seconds per product. The local save (the operator's typing, into Postgres) is the only part
+the click now waits for; `publishDraftForOperator(…, DRAFT)` runs in `after()` — the same
+pattern D52 established for redo — and reports through `draft.shopify_synced` /
+`draft.shopify_push_failed` events plus the draft row's `error` column. Failure surfaces as
+an amber live notice, in the draft editor, and as "Shopify draft failed" under Needs
+attention; the next Draft or Publish retries by the same reserved handle (hard rule 2).
+`begin_draft_publish` serialises a background push against a concurrent Publish, and a push
+that loses that race yields silently — the winner reports.
+
+The single global `busy` slot went with it: saves, deletes and uploads each carry their own
+scoped in-flight state, deletes run four-wide and optimistically, and uploads run three-wide
+with per-file progress. Publish remains the one deliberately exclusive act.

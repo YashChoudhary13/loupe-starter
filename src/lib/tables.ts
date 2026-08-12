@@ -24,6 +24,8 @@ export const TABLES = [
   'shopify_reconciliation_runs',
   'shopify_reconciliation_issues',
   'shopify_reconciliation_dismissals',
+  'shopify_webhook_alerts',
+  'freed_skus',
 ] as const
 
 export type TableName = (typeof TABLES)[number]

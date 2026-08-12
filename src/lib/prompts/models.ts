@@ -10,7 +10,8 @@ export interface CuratedModel {
 }
 
 /**
- * Ten deliberately curated choices per stage, ordered from lowest cost to most
+ * Deliberately curated choices per stage (eleven describers since D87 added
+ * kimi-k3; ten image models), ordered from lowest cost to most
  * capable/expensive. This is configuration, not an unbounded provider catalogue.
  *
  * Pricing and availability checked against OpenRouter's official model APIs on

@@ -31,7 +31,12 @@ session's worth of debugging.
 
 ## What it does
 
-The photographer drops photos into one flat Google Drive folder. A watcher records each file, a worker enhances it via `gpt-image-2`, and an operator groups images into products, picks category / material / colours, types a price, and publishes to Shopify. A tracking page surfaces anything that failed or stalled.
+The photographer drops photos into one flat Google Drive folder — or an operator drags them
+straight into the **/upload** section (D103), optionally choosing a per-photo prompt pair. A
+watcher records each file, a worker enhances it via the bound or default prompt pair, and an
+operator groups images into products, picks category / material / colours, types a price, and
+publishes to Shopify. A tracking page surfaces what needs a human and what the pipeline is
+doing right now; Shopify webhooks (D102) push admin-side changes back into Loupe in seconds.
 
 Of the twelve fields on a product, only **two** need human judgement: **category** and **price**. Everything else is derived.
 
@@ -163,6 +168,9 @@ case-insensitively after collapsing whitespace so the same size cannot appear tw
 These are the things that break the business if they're wrong.
 
 **1. SKU numbers come from an atomic Postgres counter — never from querying Shopify's max.**
+*(Amended by D101: a drafted, never-published product may release its number into the
+`freed_skus` pool when its category is corrected; `reserve_draft_identity()` drains the pool
+before minting. The counter itself still only moves forward.)*
 Shopify enforces no uniqueness on SKU; it accepts collisions silently. Drafts, deletions and in-flight writes make any "current max" query lie. The counter is the source of truth. The console may *display* a predicted SKU, but the authoritative number is allocated server-side inside the publish transaction. This is not a theoretical concern — see `RS221` above.
 
 *As built (Phase 1):* `public.next_sku(p_prefix text) returns integer`. One `UPDATE … RETURNING`, which takes the row lock; concurrent callers serialise automatically. Raises SQLSTATE `22023` on an unknown prefix rather than inventing a sequence. `EXECUTE` is revoked from `anon` and `authenticated` so nobody can burn numbers from a browser. **Never rewrite it as a SELECT followed by an UPDATE** — measured, that returns 13 distinct numbers for 100 concurrent products. `tests/next-sku.concurrency.test.ts` asserts the shape of the *deployed* function, not just the migration file. `product_drafts.reserved_sku` and `reserved_handle` are additionally UNIQUE as a database-level backstop.
@@ -288,11 +296,14 @@ from an already-written deterministic R2 object without another provider call; i
 request started but no object exists, automatic retry stops because billing is ambiguous.
 Starting another redo is an explicit operator action with a new job and version. See D52.
 
-**Phase 6 is complete.** `/tracking` is the protected operating view for failed, stalled
-and mismatched work. A failed intake needs attention immediately; an enhanced, ungrouped
-photograph becomes stalled only after 24 hours. Photograph and product counts remain
-separate and use the Asia/Kolkata day boundary. Retry, skip and duplicate-review actions
-are validated in SQL and audited.
+**Phase 6 is complete** (reshaped 2026-08-13). `/tracking` has two views: **Needs
+attention** (failures, provider pauses, stalls, publish problems, real Shopify drift incl.
+live webhook alerts — cosmetic option-value spelling differences are canonicalised away) and
+**In progress** (Queued → Describer working → Image model working → Enhanced ✓, which
+retires itself; redo jobs included). Healthy enhanced photographs and assembling drafts live
+in the console, not here. A failed intake needs attention immediately; an enhanced,
+ungrouped photograph becomes stalled only after 24 hours. Retry, skip, duplicate-review and
+alert-resolve actions are validated in SQL and audited.
 
 Every decodable source receives a deterministic 64-bit perceptual hash: 32×32 grayscale,
 2D DCT and median-thresholded 8×8 low-frequency coefficients. Hamming distance `<= 8`
