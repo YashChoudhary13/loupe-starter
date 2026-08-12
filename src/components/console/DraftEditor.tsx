@@ -88,6 +88,12 @@ export interface DraftEditorProps {
   readonly readOnly?: boolean
   readonly blocks: readonly PublishBlock[]
   readonly busy: string | null
+  /** True while THIS draft's local save + background Shopify push is starting. */
+  readonly savingDraft: boolean
+  /** Photograph ids with a delete in flight — deletes run in parallel now. */
+  readonly deletingIds: ReadonlySet<string>
+  /** Signed 1280px previews backfilled for Drive originals, by image version id. */
+  readonly originalPreviews: Readonly<Record<string, string>>
   readonly dirty: boolean
   readonly priceRef: RefObject<HTMLInputElement | null>
   readonly onPublish: () => void
@@ -117,6 +123,9 @@ export function DraftEditor(props: DraftEditorProps) {
     readOnly = false,
     blocks,
     busy,
+    savingDraft,
+    deletingIds,
+    originalPreviews,
     dirty,
     priceRef,
     onPublish,
@@ -290,6 +299,16 @@ export function DraftEditor(props: DraftEditorProps) {
               const fullSizeIndex = version?.full
                 ? lightboxImages.findIndex((image) => image.url === version.full!.url)
                 : -1
+              // A Drive original is the raw multi-MB download; render its
+              // backfilled 1280px preview (or thumb) in the panel and keep the
+              // exact bytes for the lightbox. Generated versions are already
+              // display-sized.
+              const panelUrl =
+                version?.kind === 'original'
+                  ? (version.thumb?.url ??
+                    (version.id ? originalPreviews[version.id] : undefined) ??
+                    version.full?.url)
+                  : version?.full?.url
               return (
                 <div
                   key={`preview:${row.image.intakeFileId}`}
@@ -307,8 +326,10 @@ export function DraftEditor(props: DraftEditorProps) {
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL. */}
                       <img
-                        src={version.full.url}
+                        src={panelUrl ?? version.full.url}
                         alt={row.photo.description ?? row.photo.filename}
+                        loading={index === 0 ? 'eager' : 'lazy'}
+                        decoding="async"
                         className="absolute inset-0 size-full object-contain"
                       />
                       <span className="pointer-events-none absolute bottom-2 right-2 rounded-pill bg-ink/75 px-2.5 py-1 text-[10.5px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
@@ -538,11 +559,11 @@ export function DraftEditor(props: DraftEditorProps) {
                   {onDeletePhoto ? (
                     <button
                       type="button"
-                      disabled={busy !== null}
+                      disabled={deletingIds.has(row.image.intakeFileId)}
                       onClick={() => onDeletePhoto(row.image.intakeFileId, row.photo.filename)}
                       className="rounded-pill px-2 py-1 text-[10px] font-medium text-amber transition-colors hover:bg-white disabled:opacity-40"
                     >
-                      {busy === `delete:${row.image.intakeFileId}` ? 'Deleting…' : 'Delete'}
+                      {deletingIds.has(row.image.intakeFileId) ? 'Deleting…' : 'Delete'}
                     </button>
                   ) : null}
                 </div>
@@ -1085,10 +1106,10 @@ export function DraftEditor(props: DraftEditorProps) {
           <>
             <button
               type="submit"
-              disabled={busy !== null}
+              disabled={busy !== null || savingDraft}
               className={cn(
                 'flex flex-1 items-center justify-center gap-2 rounded-pill bg-ink py-3 text-[13px] font-medium text-white transition-colors',
-                busy ? 'opacity-60' : 'hover:bg-[#242428]',
+                busy || savingDraft ? 'opacity-60' : 'hover:bg-[#242428]',
               )}
             >
               {busy === 'publish' ? 'Publishing…' : 'Publish'}
@@ -1097,17 +1118,17 @@ export function DraftEditor(props: DraftEditorProps) {
             <button
               type="button"
               onClick={onSaveDraft}
-              disabled={busy !== null}
+              disabled={busy === 'publish' || savingDraft}
               title={
                 dirty
-                  ? 'Save as a Shopify draft — reserves the category SKU but does not publish it live'
-                  : 'This draft is saved'
+                  ? 'Draft it — saves in Loupe instantly and sends a Shopify draft in the background'
+                  : 'This product is drafted'
               }
               aria-live="polite"
               className="flex min-w-[108px] shrink-0 items-center justify-center gap-1.5 rounded-pill bg-chip px-4 text-[12px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb] disabled:opacity-60"
             >
-              <span aria-hidden="true">{busy === 'save' ? '·' : dirty ? '◔' : '✓'}</span>
-              {busy === 'save' ? 'Saving…' : dirty ? 'Save draft' : 'Saved'}
+              <span aria-hidden="true">{savingDraft ? '·' : dirty ? '◔' : '✓'}</span>
+              {savingDraft ? 'Drafting…' : dirty ? 'Draft' : 'Drafted'}
             </button>
           </>
         )}

@@ -60,6 +60,13 @@ const CONSOLE_REFRESH_EVENTS = new Set([
   'draft.created',
   'draft.saved',
   'draft.deleted_after_shopify_delete',
+  /**
+   * Save draft answers instantly now; the Shopify DRAFT push finishes in the
+   * background. These two events are how the console learns the reserved SKU
+   * arrived (synced) or that the push needs a retry (failed).
+   */
+  'draft.shopify_synced',
+  'draft.shopify_push_failed',
   'publish.failed',
   'publish.published',
 ])
@@ -122,6 +129,7 @@ export function noticesForLiveEvents(events: readonly LiveActivityEvent[]): read
   const providerPaused = new Set<string>()
   let redoReady = 0
   let redoFailed = 0
+  const shopifyPushFailed = new Set<string>()
 
   for (const item of events) {
     const id = item.entityId ?? `event:${item.id}`
@@ -134,9 +142,20 @@ export function noticesForLiveEvents(events: readonly LiveActivityEvent[]): read
     if (item.event === 'image.redo_failed' || item.event === 'image.redo_cost_ceiling_failed') {
       redoFailed += 1
     }
+    if (item.event === 'draft.shopify_push_failed') shopifyPushFailed.add(id)
+    // A later successful sync of the same draft withdraws the warning.
+    if (item.event === 'draft.shopify_synced') shopifyPushFailed.delete(id)
   }
 
   const notices: LiveNotice[] = []
+  if (shopifyPushFailed.size > 0) {
+    notices.push({
+      key: `shopify-push-failed:${events.at(-1)?.id ?? 0}`,
+      text: `${shopifyPushFailed.size} ${plural(shopifyPushFailed.size, 'draft')} could not reach Shopify — open to retry`,
+      tone: 'attention',
+      href: '/console',
+    })
+  }
   if (providerPaused.size > 0) {
     notices.push({
       key: `provider-paused:${events.at(-1)?.id ?? 0}`,

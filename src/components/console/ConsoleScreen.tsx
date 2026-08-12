@@ -13,6 +13,7 @@ import {
   previewPhotosAction,
   publishDraftAction,
   redoImageAction,
+  originalPreviewAction,
   redoPromptPreviewAction,
   refreshQueueAction,
   saveDraftAction,
@@ -101,6 +102,14 @@ function putReadyImage(
     request.ontimeout = () => reject(new Error('The image upload took longer than ten minutes.'))
     request.send(file)
   })
+}
+
+export interface UploadItem {
+  readonly key: string
+  readonly name: string
+  readonly progress: number
+  readonly state: 'uploading' | 'done' | 'failed'
+  readonly detail: string | null
 }
 
 interface Sticky {
@@ -235,10 +244,25 @@ export function ConsoleScreen({
   const [lastPublish, setLastPublish] = useState<PublishSummary | null>(null)
   const [focusIndex, setFocusIndex] = useState(0)
   const [queueView, setQueueView] = useState<QueueView>('pending')
-  const [manualUploadProgress, setManualUploadProgress] = useState<number | null>(null)
+  /**
+   * Long-running work is scoped to what it touches instead of one global
+   * `busy` slot. A draft being pushed, three photographs being deleted and a
+   * batch of uploads can all be in flight while the operator keeps selecting
+   * and typing — the old single slot froze the whole console per operation.
+   */
+  const [savingDraftIds, setSavingDraftIds] = useState<ReadonlySet<string>>(new Set())
+  const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set())
+  const [uploads, setUploads] = useState<readonly UploadItem[]>([])
+  /** Backfilled 1280px previews for Drive originals, by image version id. */
+  const [originalPreviews, setOriginalPreviews] = useState<Record<string, string>>({})
 
   const priceRef = useRef<HTMLInputElement>(null)
   const manualUploadRef = useRef<HTMLInputElement>(null)
+  /** Latest editor context, readable from background completions without stale closures. */
+  const activeDraftIdRef = useRef<string | null>(null)
+  const formRef = useRef<EditorForm | null>(null)
+  const requestedPreviewsRef = useRef(new Set<string>())
+  const queueRefreshTimerRef = useRef<number | null>(null)
   const tileRefs = useRef(new Map<number, HTMLButtonElement>())
   const registerTile = useCallback((index: number, node: HTMLButtonElement | null) => {
     if (node) tileRefs.current.set(index, node)
@@ -251,8 +275,11 @@ export function ConsoleScreen({
       ? 'new'
       : 'empty'
   const selectionKey = selectedPhotoIds.join(',')
-  const previewPhotos = preview.key === selectionKey ? preview.photos : []
-  const photos = mode === 'draft' ? (bundle?.draft.photos ?? []) : previewPhotos
+  const draftPhotos = bundle?.draft.photos
+  const photos = useMemo(() => {
+    if (mode === 'draft') return draftPhotos ?? []
+    return preview.key === selectionKey ? preview.photos : []
+  }, [mode, draftPhotos, preview, selectionKey])
   const visibleTiles = useMemo(() => tilesForQueueView(queue, queueView), [queue, queueView])
   const listedReadOnly = bundle?.draft.status === 'published'
 
@@ -263,6 +290,19 @@ export function ConsoleScreen({
     const result = await refreshQueueAction()
     if (result.ok) setQueue((current) => preserveThumbs(current, result.data))
   }, [])
+
+  /**
+   * At most one queue re-read per 1.5s no matter how many background
+   * completions land together — ten parallel uploads must not cost ten full
+   * presigned snapshots.
+   */
+  const refreshQueueSoon = useCallback(() => {
+    if (queueRefreshTimerRef.current !== null) return
+    queueRefreshTimerRef.current = window.setTimeout(() => {
+      queueRefreshTimerRef.current = null
+      void refreshQueue()
+    }, 1_500)
+  }, [refreshQueue])
 
   /** Signed URLs expire on their own schedule, regardless of Drive activity. */
   useEffect(() => {
@@ -351,6 +391,12 @@ export function ConsoleScreen({
 
   const dirty = savedForm === null || JSON.stringify(savedForm) !== JSON.stringify(form)
 
+  useEffect(() => {
+    activeDraftIdRef.current = bundle?.draft.id ?? null
+  }, [bundle?.draft.id])
+  useEffect(() => {
+    formRef.current = form
+  }, [form])
 
   const updateForm = useCallback((patch: Partial<EditorForm>) => {
     setForm((current) => ({ ...current, ...patch }))
@@ -506,6 +552,7 @@ export function ConsoleScreen({
    */
   useEffect(() => {
     if (!bundle || !dirty || busy !== null || listedReadOnly) return
+    if (savingDraftIds.has(bundle.draft.id)) return
     const draftId = bundle.draft.id
     const timer = window.setTimeout(async () => {
       const result = await autosaveDraftAction(saveRequest(bundle))
@@ -518,7 +565,7 @@ export function ConsoleScreen({
       )
     }, 1_500)
     return () => window.clearTimeout(timer)
-  }, [bundle, busy, dirty, listedReadOnly, saveRequest])
+  }, [bundle, busy, dirty, listedReadOnly, saveRequest, savingDraftIds])
 
   const rememberSticky = useCallback(() => {
     const previous = readSticky()
@@ -538,37 +585,58 @@ export function ConsoleScreen({
     form.variantKind,
   ])
 
+  /**
+   * "Draft" is near-instant now. The local save is the only awaited part; the
+   * Shopify DRAFT push runs server-side after the response and reports back
+   * through live events. The operator can select the next photograph the
+   * moment the click lands — completion only touches the editor if they are
+   * still looking at the same draft, and never overwrites newer typing.
+   */
   const handleSaveDraft = useCallback(async () => {
-    setBusy('save')
     setLastPublish(null)
     const target = await ensureDraft()
-    if (!target) {
-      setBusy(null)
+    if (!target) return
+    const draftId = target.draft.id
+    const requestedForm = formRef.current
+    setSavingDraftIds((current) => new Set(current).add(draftId))
+    // The grid is free immediately: grouped photographs already left Pending
+    // via ensureDraft's snapshot, and holding the selection highlight through
+    // a background save made "click the next image" feel broken.
+    setSelectedPhotoIds([])
+    rememberSticky()
+
+    const result = await saveDraftAction(saveRequest(target))
+    setSavingDraftIds((current) => {
+      const next = new Set(current)
+      next.delete(draftId)
+      return next
+    })
+
+    if (!result.ok) {
+      // Surface the failure wherever the operator is now — the draft still
+      // holds their typing locally if the save was a conflict.
+      handleResult(result)
       return
     }
-    const data = handleResult(await saveDraftAction(saveRequest(target)))
-    if (data) {
-      setQueue(data.queue)
-      applyBundle(data.bundle)
-      rememberSticky()
-      // The draft IS saved either way — D60 keeps the local save authoritative
-      // and treats Shopify as the part that can fail. Say so plainly rather
-      // than letting a silent failure read as "it's in Shopify".
-      setError(
-        data.shopifyDraftError
-          ? {
-              kind: 'error',
-              message:
-                'Saved in Loupe, but this draft has not reached Shopify yet. Saving again will retry the same product.',
-              detail: data.shopifyDraftError,
-              retryable: true,
-              blocks: [],
-            }
-          : null,
-      )
+
+    const stillOnThisDraft = activeDraftIdRef.current === draftId
+    if (stillOnThisDraft) {
+      const untouchedSinceRequest = formRef.current === requestedForm
+      if (untouchedSinceRequest) {
+        setBundle(result.data.bundle)
+        setColours(result.data.bundle.colours)
+        const nextForm = formFromBundle(result.data.bundle)
+        setForm(nextForm)
+        setSavedForm(nextForm)
+      } else {
+        // Keep the newer typing; adopt only the server-side draft facts
+        // (updatedAt for optimistic concurrency, blocks, reserved identity).
+        setBundle(result.data.bundle)
+        setSavedForm(formFromBundle(result.data.bundle))
+      }
     }
-    setBusy(null)
-  }, [applyBundle, ensureDraft, handleResult, rememberSticky, saveRequest])
+    refreshQueueSoon()
+  }, [ensureDraft, handleResult, refreshQueueSoon, rememberSticky, saveRequest])
 
   const focusNextUngrouped = useCallback((snapshot: QueueSnapshot) => {
     const nextPhoto = snapshot.tiles.find((tile) => tile.kind === 'photo')
@@ -591,56 +659,79 @@ export function ConsoleScreen({
     setFocusIndex(0)
   }, [])
 
-  const handleManualUpload = useCallback(
-    async (file: File) => {
-      setBusy('manual-upload')
-      setManualUploadProgress(0)
+  /**
+   * Any number of files, three at a time, none of them blocking anything.
+   * Each file runs its own begin → direct-to-R2 PUT → finalize; the queue is
+   * refreshed once per burst rather than once per file. Failures stay in the
+   * panel with their reason until dismissed — a silent partial upload is how
+   * a catalogue loses photographs.
+   */
+  const handleManualUploads = useCallback(
+    async (files: readonly File[]) => {
+      if (files.length === 0) return
       setLastPublish(null)
-      setError(null)
-      try {
-        const ticket = handleResult(
-          await beginManualUploadAction({
-            filename: file.name,
-            mimeType: file.type,
-            bytes: file.size,
-          }),
+      const items: UploadItem[] = files.map((file, index) => ({
+        key: `${Date.now()}:${index}:${file.name}`,
+        name: file.name,
+        progress: 0,
+        state: 'uploading',
+        detail: null,
+      }))
+      setUploads((current) => [...current, ...items])
+      const patchItem = (key: string, patch: Partial<UploadItem>) =>
+        setUploads((current) =>
+          current.map((item) => (item.key === key ? { ...item, ...patch } : item)),
         )
-        if (!ticket) return
 
-        await putReadyImage(
-          ticket.uploadUrl,
-          file,
-          ticket.contentType,
-          setManualUploadProgress,
-        )
-        const completed = handleResult(await finalizeManualUploadAction(ticket.uploadId))
-        if (!completed) return
-
-        setQueue(completed.queue)
-        setQueueView('pending')
-        setFocusIndex(0)
-        setBundle(null)
-        setSavedForm(null)
-        setForm(seededForm())
-        setSelectedPhotoIds([completed.intakeFileId])
-        window.setTimeout(() => priceRef.current?.focus(), 0)
-      } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : String(cause)
-        setError({
-          kind: 'error',
-          message: 'The ready image could not be uploaded. Nothing was added to Pending.',
-          detail,
-          retryable: true,
-          blocks: [],
-        })
-      } finally {
-        setBusy(null)
-        setManualUploadProgress(null)
-        if (manualUploadRef.current) manualUploadRef.current.value = ''
-      }
+      const work = files.map((file, index) => ({ file, item: items[index]! }))
+      const pending = [...work]
+      await Promise.all(
+        Array.from({ length: Math.min(3, pending.length) }, async () => {
+          for (;;) {
+            const next = pending.shift()
+            if (!next) return
+            const { file, item } = next
+            try {
+              const ticketResult = await beginManualUploadAction({
+                filename: file.name,
+                mimeType: file.type,
+                bytes: file.size,
+              })
+              if (!ticketResult.ok) {
+                patchItem(item.key, { state: 'failed', detail: ticketResult.error.message })
+                continue
+              }
+              const ticket = ticketResult.data
+              await putReadyImage(ticket.uploadUrl, file, ticket.contentType, (percent) =>
+                patchItem(item.key, { progress: percent }),
+              )
+              const completed = await finalizeManualUploadAction(ticket.uploadId)
+              if (!completed.ok) {
+                patchItem(item.key, { state: 'failed', detail: completed.error.message })
+                continue
+              }
+              patchItem(item.key, { state: 'done', progress: 100 })
+              refreshQueueSoon()
+            } catch (cause) {
+              patchItem(item.key, {
+                state: 'failed',
+                detail: cause instanceof Error ? cause.message : String(cause),
+              })
+            }
+          }
+        }),
+      )
+      // Completed rows tidy themselves away; failures stay until dismissed.
+      window.setTimeout(() => {
+        setUploads((current) => current.filter((item) => item.state !== 'done'))
+      }, 4_000)
     },
-    [handleResult, seededForm],
+    [refreshQueueSoon],
   )
+
+  const dismissUpload = useCallback((key: string) => {
+    setUploads((current) => current.filter((item) => item.key !== key))
+  }, [])
 
   const handlePublish = useCallback(async () => {
     setBusy('publish')
@@ -688,37 +779,88 @@ export function ConsoleScreen({
     [applyBundle, bundle, handleResult],
   )
 
+  /**
+   * Deletes are optimistic and parallel: the tile disappears on click, the
+   * server call runs in the background, and a failure restores the truth with
+   * one refreshed snapshot. Nothing else on screen is disabled while a delete
+   * is in flight — the old single busy slot made a five-photo cleanup five
+   * sequential waits.
+   */
+  const deletePhotos = useCallback(
+    async (intakeFileIds: readonly string[]) => {
+      const ids = intakeFileIds.filter((id) => !deletingIds.has(id))
+      if (ids.length === 0) return
+      const idSet = new Set(ids)
+      setLastPublish(null)
+      setDeletingIds((current) => new Set([...current, ...ids]))
+      setQueue((current) => ({
+        ...current,
+        tiles: current.tiles.filter((tile) => !(tile.kind === 'photo' && idSet.has(tile.id))),
+        ungroupedCount: Math.max(0, current.ungroupedCount - ids.length),
+      }))
+      setSelectedPhotoIds((current) => current.filter((id) => !idSet.has(id)))
+      setForm((current) => ({
+        ...current,
+        images: current.images.filter((image) => !idSet.has(image.intakeFileId)),
+      }))
+      setFocusIndex((current) => Math.max(0, current - 1))
+
+      // Bounded concurrency: enough to feel instant, never a stampede of
+      // Drive/R2 cleanups.
+      const queueOfIds = [...ids]
+      let anyFailed = false
+      await Promise.all(
+        Array.from({ length: Math.min(4, queueOfIds.length) }, async () => {
+          for (;;) {
+            const id = queueOfIds.shift()
+            if (!id) return
+            const result = await deleteUngroupedPhotoAction(id)
+            if (!result.ok) {
+              anyFailed = true
+              handleResult(result)
+            }
+            setDeletingIds((current) => {
+              const next = new Set(current)
+              next.delete(id)
+              return next
+            })
+          }
+        }),
+      )
+      if (anyFailed) {
+        // The claim runs before external cleanup; a fresh snapshot honestly
+        // restores anything that refused to delete, and Tracking exposes the
+        // retryable Discard action for a partial cleanup.
+        void refreshQueue()
+      }
+    },
+    [deletingIds, handleResult, refreshQueue],
+  )
+
   const handleDeletePhoto = useCallback(
-    async (intakeFileId: string, filename: string) => {
+    (intakeFileId: string, filename: string) => {
       const confirmed = window.confirm(
         `Delete ${filename}?\n\nThis permanently removes its stored images from Loupe. ` +
           'If it came from RAW, the source file is moved to /Discarded. ' +
           'Photographs already attached to a draft or sent to Shopify are refused.',
       )
       if (!confirmed) return
-
-      setBusy(`delete:${intakeFileId}`)
-      setLastPublish(null)
-      const data = handleResult(await deleteUngroupedPhotoAction(intakeFileId))
-      if (data) {
-        setQueue(data)
-        setSelectedPhotoIds((current) => current.filter((id) => id !== intakeFileId))
-        setForm((current) => ({
-          ...current,
-          images: current.images.filter((image) => image.intakeFileId !== intakeFileId),
-        }))
-        setFocusIndex((current) => Math.max(0, current - 1))
-      } else {
-        // The delete path claims the row before external cleanup. If cleanup
-        // stopped part-way, a fresh snapshot honestly removes it from Pending
-        // and Tracking exposes the retryable Discard action.
-        const refreshed = await refreshQueueAction()
-        if (refreshed.ok) setQueue(refreshed.data)
-      }
-      setBusy(null)
+      void deletePhotos([intakeFileId])
     },
-    [handleResult],
+    [deletePhotos],
   )
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedPhotoIds.length === 0) return
+    const confirmed = window.confirm(
+      `Delete ${selectedPhotoIds.length} selected photograph${
+        selectedPhotoIds.length === 1 ? '' : 's'
+      }?\n\nThis permanently removes their stored images from Loupe. ` +
+        'Files from RAW are moved to /Discarded.',
+    )
+    if (!confirmed) return
+    void deletePhotos(selectedPhotoIds)
+  }, [deletePhotos, selectedPhotoIds])
 
   const moveImage = useCallback((imageVersionId: string, delta: number) => {
     setForm((current) => {
@@ -731,6 +873,32 @@ export function ConsoleScreen({
       return { ...current, images }
     })
   }, [])
+
+  /**
+   * Backfill a display-sized preview whenever a Drive original (no thumb row)
+   * becomes a selected version — covers both the "orig" chip click and a saved
+   * draft that reopens with an original selected. Runs once per version; the
+   * server stores the preview permanently.
+   */
+  useEffect(() => {
+    for (const image of form.images) {
+      const photo = photos.find((candidate) => candidate.intakeFileId === image.intakeFileId)
+      const version = photo?.versions.find((candidate) => candidate.id === image.imageVersionId)
+      if (!version || version.kind !== 'original' || version.thumb) continue
+      if (originalPreviews[version.id] || requestedPreviewsRef.current.has(version.id)) continue
+      requestedPreviewsRef.current.add(version.id)
+      void originalPreviewAction(image.intakeFileId).then((result) => {
+        if (result.ok) {
+          setOriginalPreviews((current) => ({
+            ...current,
+            [result.data.imageVersionId]: result.data.thumbUrl,
+          }))
+        } else {
+          requestedPreviewsRef.current.delete(version.id)
+        }
+      })
+    }
+  }, [photos, form.images, originalPreviews])
 
   const chooseVersion = useCallback((intakeFileId: string, imageVersionId: string) => {
     setForm((current) => ({
@@ -889,6 +1057,43 @@ export function ConsoleScreen({
           </div>
         </div>
 
+        {uploads.length > 0 ? (
+          <div className="flex flex-col gap-1.5 rounded-panel bg-surface p-3" role="status" aria-live="polite">
+            {uploads.map((item) => (
+              <div key={item.key} className="flex items-center gap-2.5 text-[11.5px]">
+                <span className="min-w-0 flex-1 truncate font-mono text-ink-soft">{item.name}</span>
+                {item.state === 'uploading' ? (
+                  <span className="relative h-1.5 w-32 overflow-hidden rounded-pill bg-chip">
+                    <span
+                      className="absolute inset-y-0 left-0 rounded-pill bg-ink transition-[width] duration-200"
+                      style={{ width: `${item.progress}%` }}
+                    />
+                  </span>
+                ) : null}
+                {item.state === 'uploading' ? (
+                  <span className="w-9 text-right tabular-nums text-muted-foreground">{item.progress}%</span>
+                ) : item.state === 'done' ? (
+                  <span className="text-green">✓ added to Pending</span>
+                ) : (
+                  <span className="text-amber" title={item.detail ?? undefined}>
+                    failed{item.detail ? ` · ${item.detail}` : ''}
+                  </span>
+                )}
+                {item.state !== 'uploading' ? (
+                  <button
+                    type="button"
+                    aria-label={`Dismiss ${item.name}`}
+                    onClick={() => dismissUpload(item.key)}
+                    className="grid size-5 place-items-center rounded-full bg-chip text-[10px] text-ink-soft hover:bg-[#e6e6e6]"
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {queue.truncated ? (
           <div className="rounded-pill bg-[#faf4e9] px-4 py-2 text-[12px] text-amber" role="status">
             The queue is showing only part of the outstanding work. Publish or clear some of it
@@ -930,28 +1135,36 @@ export function ConsoleScreen({
                   {selectedPhotoIds.length} selected · Esc to clear
                 </span>
               ) : null}
+              {mode === 'new' && selectedPhotoIds.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  className="rounded-pill px-2.5 py-1 text-[11px] font-medium text-amber transition-colors hover:bg-[#faf4e9]"
+                >
+                  Delete {selectedPhotoIds.length} selected
+                </button>
+              ) : null}
               <input
                 ref={manualUploadRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
+                multiple
                 className="sr-only"
                 onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (file) void handleManualUpload(file)
+                  const files = Array.from(event.target.files ?? [])
+                  event.target.value = ''
+                  if (files.length > 0) void handleManualUploads(files)
                 }}
               />
               <button
                 type="button"
-                disabled={busy !== null}
                 onClick={() => manualUploadRef.current?.click()}
-                title="Upload a catalogue-ready JPEG, PNG or WebP without running AI enhancement"
-                className="ml-auto rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#242428] disabled:opacity-60"
+                title="Upload catalogue-ready JPEGs, PNGs or WebPs without running AI enhancement — pick as many as you like"
+                className="ml-auto rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#242428]"
               >
-                {busy === 'manual-upload'
-                  ? manualUploadProgress === null
-                    ? 'Preparing…'
-                    : `Uploading ${manualUploadProgress}%`
-                  : 'Upload ready image'}
+                {uploads.some((item) => item.state === 'uploading')
+                  ? `Uploading ${uploads.filter((item) => item.state === 'uploading').length}…`
+                  : 'Upload images'}
               </button>
               <button
                 type="button"
@@ -1003,6 +1216,11 @@ export function ConsoleScreen({
               readOnly={listedReadOnly}
               blocks={blocks}
               busy={busy}
+              savingDraft={
+                bundle ? savingDraftIds.has(bundle.draft.id) : savingDraftIds.size > 0
+              }
+              deletingIds={deletingIds}
+              originalPreviews={originalPreviews}
               dirty={dirty}
               priceRef={priceRef}
               onPublish={() => void handlePublish()}
@@ -1012,12 +1230,7 @@ export function ConsoleScreen({
               onChooseVersion={chooseVersion}
               onRedo={(intakeFileId, filename) => void openRedoReview(intakeFileId, filename)}
               onAddCategory={() => setAddingCategory(true)}
-              onDeletePhoto={
-                mode === 'new'
-                  ? (intakeFileId, filename) =>
-                      void handleDeletePhoto(intakeFileId, filename)
-                  : null
-              }
+              onDeletePhoto={mode === 'new' ? handleDeletePhoto : null}
             >
               <div className="mt-3 flex flex-col gap-2">
                 {error ? (

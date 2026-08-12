@@ -14,6 +14,7 @@ import {
   PublishInProgressError,
   type DriveHousekeepingOutcome,
 } from '@/lib/console/publish'
+import { pushDraftToShopifyInBackground } from '@/lib/console/shopify-push'
 import {
   loadColourSuggestions,
   loadCatalog,
@@ -240,13 +241,20 @@ export async function beginManualUploadAction(
   return withOperator((operator) => beginManualUpload(operator, input))
 }
 
-/** Verifies the bytes and atomically makes the ready image visible in Pending. */
+/**
+ * Verifies the bytes and atomically makes the ready image visible in Pending.
+ *
+ * Returns only the intake id: the multi-file upload queue finalises several
+ * files concurrently, and each carrying a full presigned queue snapshot made
+ * every completion pay for a whole grid re-sign. The client refreshes the
+ * queue once, debounced, as completions land.
+ */
 export async function finalizeManualUploadAction(
   uploadId: string,
-): Promise<ActionResult<{ intakeFileId: string; queue: QueueSnapshot }>> {
+): Promise<ActionResult<{ intakeFileId: string }>> {
   return withOperator(async (operator) => {
     const intakeFileId = await finalizeManualUpload(operator, uploadId)
-    return { intakeFileId, queue: await loadQueue() }
+    return { intakeFileId }
   })
 }
 
@@ -306,7 +314,7 @@ export async function redoPromptPreviewAction(
  */
 export async function deleteUngroupedPhotoAction(
   intakeFileId: string,
-): Promise<ActionResult<QueueSnapshot>> {
+): Promise<ActionResult<{ intakeFileId: string }>> {
   return withOperator(async (operator) => {
     const db = (await import('@/lib/supabase/server')).supabaseServer()
     const { error } = await db.rpc('prepare_console_photo_delete', {
@@ -331,7 +339,9 @@ export async function deleteUngroupedPhotoAction(
         true,
       )
     }
-    return loadQueue()
+    // No queue snapshot: the client removes the tile optimistically and deletes
+    // run in parallel; a snapshot per delete re-signed the whole grid each time.
+    return { intakeFileId }
   })
 }
 
@@ -363,6 +373,21 @@ export async function redoImageAction(
     const [photo] = await loadPhotos([intakeFileId])
     if (!photo) throw new ConsoleError('That photograph no longer exists.', null, false)
     return { photo, jobId, queued: true }
+  })
+}
+
+/**
+ * Signed 1280px preview for a Drive-sourced original, generated on first
+ * request (see original-preview.ts). Called when the operator switches a
+ * photograph to its "orig" version and the row predates original thumbnails.
+ */
+export async function originalPreviewAction(
+  intakeFileId: string,
+): Promise<ActionResult<{ imageVersionId: string; thumbUrl: string }>> {
+  return withOperator(async () => {
+    const { ensureOriginalPreview } = await import('@/lib/console/original-preview')
+    const preview = await ensureOriginalPreview(intakeFileId)
+    return { imageVersionId: preview.imageVersionId, thumbUrl: preview.thumb.url }
   })
 }
 
@@ -421,47 +446,31 @@ export interface SaveDraftRequest extends DraftSaveInput {
 
 export async function saveDraftAction(
   request: SaveDraftRequest,
-): Promise<
-  ActionResult<{
-    bundle: DraftBundle
-    queue: QueueSnapshot
-    /** Set when the draft saved locally but could not reach Shopify (D60). */
-    shopifyDraftError: string | null
-  }>
-> {
+): Promise<ActionResult<{ bundle: DraftBundle }>> {
   return withOperator(async (operator) => {
     await saveDraft(operator, request)
 
     /**
-     * D60 (supersedes D7): Save Draft now puts the product in Shopify with
+     * D60 (supersedes D7): Save Draft also puts the product in Shopify with
      * status DRAFT, so an unfinished piece is visible to the team there rather
      * than only inside Loupe.
      *
-     * Two things this deliberately does NOT do. It does not mark the Loupe
-     * draft published — it is still the operator's to finish. And it does not
-     * fail the save when Shopify is unreachable: the operator's typing is
-     * already safely in Postgres by this point, and losing that because a
-     * third-party API blinked would be a far worse outcome than a draft that
-     * has not reached Shopify yet. The failure is reported, not swallowed, and
-     * the next save retries by the same reserved handle (hard rule 2).
+     * The Shopify half runs after the response — the same `after` pattern the
+     * redo path uses — because a full `productSet` round trip inside the click
+     * froze the console for seconds per draft. The operator's typing is already
+     * safely in Postgres; `pushDraftToShopifyInBackground` records the outcome
+     * on the draft row and as live events, and the next save retries by the
+     * same reserved handle (hard rule 2).
      */
-    let shopifyDraftError: string | null = null
-    try {
-      await publishDraftForOperator(request.draftId, operator, {
-        allowZeroStock: request.allowZeroStock,
-        shopifyStatus: 'DRAFT',
-      })
-    } catch (error) {
-      if (error instanceof PublishInProgressError) throw error
-      shopifyDraftError =
-        error instanceof Error ? error.message : 'The draft could not be sent to Shopify.'
-    }
+    after(async () => {
+      await pushDraftToShopifyInBackground(
+        request.draftId,
+        operator,
+        request.allowZeroStock,
+      ).catch(() => undefined)
+    })
 
-    return {
-      bundle: await bundle(request.draftId, request.allowZeroStock),
-      queue: await loadQueue(),
-      shopifyDraftError,
-    }
+    return { bundle: await bundle(request.draftId, request.allowZeroStock) }
   })
 }
 
