@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   autosaveDraftAction,
   beginManualUploadAction,
+  changeDraftCategoryAction,
   colourSuggestionsAction,
   deleteUngroupedPhotoAction,
   detachPhotoAction,
@@ -463,6 +464,32 @@ export function ConsoleScreen({
       window.setTimeout(() => priceRef.current?.focus(), 0)
     },
     [bundle, seededForm, selectedPhotoIds.length],
+  )
+
+  /** D101: correct a reserved draft's category — frees the number, new sequence next Draft. */
+  const handleChangeCategoryLocked = useCallback(
+    async (categoryId: string) => {
+      if (!bundle) return
+      const target = categories.find((option) => option.id === categoryId)
+      const confirmed = window.confirm(
+        `Change category to ${target?.name ?? 'the selected category'}?\n\n` +
+          `• ${bundle.draft.reservedSku ?? 'The reserved number'} is freed — the next draft in its old category will use it.\n` +
+          '• The Shopify draft product (if any) is deleted.\n' +
+          `• The next Draft or Publish assigns a fresh ${target?.skuPrefix ?? ''} number.\n\n` +
+          'Published products are never touched.',
+      )
+      if (!confirmed) return
+      setBusy('open')
+      const result = await changeDraftCategoryAction(bundle.draft.id, categoryId)
+      if (result.ok) {
+        applyBundle(result.data.bundle)
+        void refreshQueue()
+      } else {
+        handleResult(result)
+      }
+      setBusy(null)
+    },
+    [applyBundle, bundle, categories, handleResult, refreshQueue],
   )
 
   const openDraft = useCallback(
@@ -1230,6 +1257,11 @@ export function ConsoleScreen({
               onChooseVersion={chooseVersion}
               onRedo={(intakeFileId, filename) => void openRedoReview(intakeFileId, filename)}
               onAddCategory={() => setAddingCategory(true)}
+              onChangeCategoryLocked={
+                bundle && !listedReadOnly && bundle.draft.status !== 'publishing'
+                  ? (categoryId) => void handleChangeCategoryLocked(categoryId)
+                  : null
+              }
               onDeletePhoto={mode === 'new' ? handleDeletePhoto : null}
             >
               <div className="mt-3 flex flex-col gap-2">

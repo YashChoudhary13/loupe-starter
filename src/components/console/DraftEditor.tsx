@@ -104,6 +104,12 @@ export interface DraftEditorProps {
   readonly onRedo: (intakeFileId: string, filename: string) => void
   /** Opens the complete category + SKU-sequence creation flow. */
   readonly onAddCategory: () => void
+  /**
+   * Present when a reserved draft may still correct its category (D101):
+   * frees the number into the pool, deletes the Shopify draft, re-reserves
+   * under the new sequence on the next Draft/Publish.
+   */
+  readonly onChangeCategoryLocked: ((categoryId: string) => void) | null
   /** Present only while the photograph is ungrouped and deletable from Loupe. */
   readonly onDeletePhoto: ((intakeFileId: string, filename: string) => void) | null
   readonly children?: React.ReactNode
@@ -135,6 +141,7 @@ export function DraftEditor(props: DraftEditorProps) {
     onChooseVersion,
     onRedo,
     onAddCategory,
+    onChangeCategoryLocked,
     onDeletePhoto,
     children,
   } = props
@@ -629,15 +636,22 @@ export function DraftEditor(props: DraftEditorProps) {
               <Chip
                 key={option.id}
                 selected={option.id === form.categoryId}
-                disabled={readOnly || (identityLocked && option.id !== form.categoryId)}
+                disabled={
+                  readOnly ||
+                  (identityLocked && option.id !== form.categoryId && !onChangeCategoryLocked)
+                }
                 title={
                   identityLocked && option.id !== form.categoryId
-                    ? 'This product already holds a reserved SKU from its category’s sequence, so the category is frozen. Create a new draft to change it.'
+                    ? `Frees ${identity?.sku ?? 'the reserved number'} back to its sequence and re-reserves from ${option.skuPrefix} (D101)`
                     : option.shopifyTag === null
                       ? `${option.name} has no confirmed Shopify tag yet — publishing is blocked until somebody reads it off a live product.`
                       : `${option.skuPrefix} · next ${option.skuPrefix}${String(option.lastNumber + 1).padStart(3, '0')}`
                 }
                 onClick={() => {
+                  if (identityLocked && option.id !== form.categoryId) {
+                    onChangeCategoryLocked?.(option.id)
+                    return
+                  }
                   onChange({ categoryId: option.id })
                   setCategoryQuery('')
                   setOpenSection(null)
@@ -660,10 +674,10 @@ export function DraftEditor(props: DraftEditorProps) {
           </div>
           {identityLocked ? (
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              Category is locked: this draft holds{' '}
-              <span className="font-mono">{identity?.sku}</span> from that sequence, and the
-              handle behind it is what stops a retry creating a second product. To change the
-              category, start a new draft — the abandoned number is a harmless gap.
+              This draft holds <span className="font-mono">{identity?.sku}</span>.
+              {onChangeCategoryLocked
+                ? ' Picking a different category frees that number for the next draft in its sequence, removes the Shopify draft, and assigns the new category’s number when you next Draft or Publish.'
+                : ' The category is frozen while it is publishing.'}
             </p>
           ) : null}
           {blockFor('category') ? (

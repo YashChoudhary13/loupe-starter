@@ -39,6 +39,7 @@ import {
   type ManualUploadTicket,
 } from '@/lib/manual-upload/server'
 import { ShopifyClient } from '@/lib/shopify/client'
+import { deleteProduct, readProductByHandle } from '@/lib/shopify/product-set'
 import { supabaseServer } from '@/lib/supabase/server'
 
 /**
@@ -442,6 +443,132 @@ export async function detachPhotoAction(
 
 export interface SaveDraftRequest extends DraftSaveInput {
   readonly allowZeroStock: boolean
+}
+
+/**
+ * Corrects a drafted product's category AFTER its SKU was reserved (D101).
+ *
+ * Order matters and every step is guarded:
+ *  1. If the draft reached Shopify, the recorded DRAFT product is read back by
+ *     its frozen handle and deleted — but only if it is still the product
+ *     Loupe recorded and still a DRAFT. A product someone activated in admin
+ *     is live retail and is never touched.
+ *  2. `release_draft_identity` frees the number into the per-prefix pool and
+ *     clears the frozen identity, requiring the deleted product id as proof.
+ *  3. The category moves. The next Draft/Publish reserves from the new
+ *     category's sequence (draining that pool first).
+ */
+export async function changeDraftCategoryAction(
+  draftId: string,
+  newCategoryId: string,
+): Promise<ActionResult<{ bundle: DraftBundle }>> {
+  return withOperator(async (operator) => {
+    const db = supabaseServer()
+    const { data: draft, error: readError } = await db
+      .from('product_drafts')
+      .select(
+        'id, status, category_id, reserved_sku, reserved_handle, shopify_product_id, publish_lease_expires_at',
+      )
+      .eq('id', draftId)
+      .maybeSingle<{
+        id: string
+        status: string
+        category_id: string
+        reserved_sku: string | null
+        reserved_handle: string | null
+        shopify_product_id: string | null
+        publish_lease_expires_at: string | null
+      }>()
+    if (readError || !draft) {
+      throw new ConsoleError('That product draft no longer exists.', readError?.message ?? null, false)
+    }
+    if (draft.status === 'published') {
+      throw new ConsoleError(
+        'This product is published — its SKU is spent forever and its category cannot change.',
+        null,
+        false,
+      )
+    }
+    if (
+      draft.publish_lease_expires_at !== null &&
+      new Date(draft.publish_lease_expires_at).getTime() > Date.now()
+    ) {
+      throw new ConsoleError(
+        'A publish or Shopify draft push is in flight for this product. Wait for it to finish, then change the category.',
+        null,
+        true,
+      )
+    }
+    if (draft.category_id === newCategoryId) {
+      return { bundle: await bundle(draftId, false) }
+    }
+
+    if (draft.reserved_sku) {
+      let deletedShopifyProductId: string | null = null
+      if (draft.shopify_product_id && draft.reserved_handle) {
+        const shopify = new ShopifyClient()
+        const product = await readProductByHandle(shopify, draft.reserved_handle)
+        if (!product) {
+          // Already gone (deleted in admin). The recorded id is the proof value.
+          deletedShopifyProductId = draft.shopify_product_id
+        } else if (product.id !== draft.shopify_product_id) {
+          throw new ConsoleError(
+            'The Shopify product at this handle is not the one Loupe created. Nothing was changed — resolve it in Shopify admin first.',
+            `handle ${draft.reserved_handle}: recorded ${draft.shopify_product_id}, found ${product.id}`,
+            false,
+          )
+        } else if (product.status === 'ACTIVE') {
+          throw new ConsoleError(
+            'This product is live in Shopify (someone published it in admin). Loupe will not delete a live listing — unpublish it in Shopify first, or keep the category.',
+            null,
+            false,
+          )
+        } else {
+          await deleteProduct(shopify, product.id)
+          deletedShopifyProductId = product.id
+        }
+      }
+
+      const { error: releaseError } = await db.rpc('release_draft_identity', {
+        p_draft_id: draftId,
+        p_actor: operator.email,
+        p_deleted_shopify_product_id: deletedShopifyProductId,
+      })
+      if (releaseError) {
+        throw new ConsoleError(
+          releaseError.hint?.trim() || 'The reserved SKU could not be freed.',
+          [releaseError.code, releaseError.message].filter(Boolean).join(' · '),
+          releaseError.code === '55000',
+        )
+      }
+    }
+
+    const { error: moveError } = await db
+      .from('product_drafts')
+      .update({ category_id: newCategoryId })
+      .eq('id', draftId)
+      .in('status', ['assembling', 'failed'])
+    if (moveError) {
+      throw new ConsoleError(
+        'The category could not be changed.',
+        [moveError.code, moveError.message].filter(Boolean).join(' · '),
+        true,
+      )
+    }
+    await db.from('events').insert({
+      entity_type: 'product_draft',
+      entity_id: draftId,
+      event: 'draft.category_changed',
+      detail: {
+        from_category_id: draft.category_id,
+        to_category_id: newCategoryId,
+        freed_sku: draft.reserved_sku,
+      },
+      actor: operator.email,
+    })
+
+    return { bundle: await bundle(draftId, false) }
+  })
 }
 
 export async function saveDraftAction(
