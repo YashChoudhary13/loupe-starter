@@ -108,6 +108,7 @@ function thumbKey(uploadId: string): string {
 export async function beginManualUpload(
   operator: Operator,
   input: BeginManualUploadInput,
+  target: 'ready' | 'raw' = 'ready',
 ): Promise<ManualUploadTicket> {
   const filename = validatedFilename(input.filename)
   const mimeType = validatedMimeType(input.mimeType)
@@ -122,6 +123,7 @@ export async function beginManualUpload(
     mime_type: mimeType,
     bytes,
     storage_key: key,
+    target,
     created_by: operator.email,
   })
   if (error) {
@@ -191,12 +193,23 @@ async function loadOwnedUpload(uploadId: string, operator: Operator): Promise<Ma
  * read its display dimensions, and make the small WebP queue thumbnail. The
  * selected publish version remains the photographer's exact uploaded file.
  */
-export async function finalizeManualUpload(
+interface VerifiedUpload {
+  readonly upload: ManualUploadRow
+  readonly width: number
+  readonly height: number
+  readonly thumbnailKey: string
+  readonly phash: string
+}
+
+/** Shared verification: bytes intact, decodes, format matches, thumb + phash made. */
+async function verifyUploadedObject(
   operator: Operator,
   uploadId: string,
-): Promise<string> {
+): Promise<VerifiedUpload | { readonly completed: string }> {
   const upload = await loadOwnedUpload(uploadId, operator)
-  if (upload.status === 'completed' && upload.intake_file_id) return upload.intake_file_id
+  if (upload.status === 'completed' && upload.intake_file_id) {
+    return { completed: upload.intake_file_id }
+  }
 
   const store = objectStore()
   const object = await store.head(upload.storage_key)
@@ -253,17 +266,59 @@ export async function finalizeManualUpload(
     source: 'manual-ready-image',
   })
 
+  return { upload, width: oriented.width, height: oriented.height, thumbnailKey, phash }
+}
+
+export async function finalizeManualUpload(
+  operator: Operator,
+  uploadId: string,
+): Promise<string> {
+  const verified = await verifyUploadedObject(operator, uploadId)
+  if ('completed' in verified) return verified.completed
+
   const { data, error } = await supabaseServer().rpc('finalize_manual_image_upload', {
-    p_upload_id: upload.id,
-    p_thumb_key: thumbnailKey,
-    p_width: oriented.width,
-    p_height: oriented.height,
-    p_phash: phash,
+    p_upload_id: verified.upload.id,
+    p_thumb_key: verified.thumbnailKey,
+    p_width: verified.width,
+    p_height: verified.height,
+    p_phash: verified.phash,
     p_actor: operator.email,
   })
   if (error || typeof data !== 'string') {
     throw new ConsoleError(
       'The image is safely uploaded, but it could not be added to Pending. Try again.',
+      error?.message ?? 'The database returned no intake id.',
+      true,
+    )
+  }
+  return data
+}
+
+/**
+ * D103: the raw-pipeline finalise. Same verification, but the row lands in
+ * `discovered` carrying its prompt binding, and the enhancement worker reads
+ * the source straight from R2.
+ */
+export async function finalizeRawUpload(
+  operator: Operator,
+  uploadId: string,
+  presetSlug: string | null,
+): Promise<string> {
+  const verified = await verifyUploadedObject(operator, uploadId)
+  if ('completed' in verified) return verified.completed
+
+  const { data, error } = await supabaseServer().rpc('finalize_raw_image_upload', {
+    p_upload_id: verified.upload.id,
+    p_thumb_key: verified.thumbnailKey,
+    p_width: verified.width,
+    p_height: verified.height,
+    p_phash: verified.phash,
+    p_preset_slug: presetSlug,
+    p_actor: operator.email,
+  })
+  if (error || typeof data !== 'string') {
+    throw new ConsoleError(
+      'The image is safely uploaded, but it could not join the enhancement queue. Try again.',
       error?.message ?? 'The database returned no intake id.',
       true,
     )

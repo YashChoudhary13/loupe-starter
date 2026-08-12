@@ -271,10 +271,14 @@ async function processClaim(
 
   try {
     if (breaker.tripped) throw breaker.tripped
-    const original = await drive.downloadFile(claim.driveFileId)
+    // D103: a browser-uploaded source lives in R2 already; everything after
+    // this line is identical to the Drive path.
+    const original = claim.sourceStorageKey
+      ? await store.get(claim.sourceStorageKey)
+      : await drive.downloadFile(claim.driveFileId)
     if (claim.bytes !== null && original.byteLength !== claim.bytes) {
       throw new EnhancementError(
-        `Drive returned ${original.byteLength} bytes for ${claim.filename}, but discovery recorded ${claim.bytes}.`,
+        `The source returned ${original.byteLength} bytes for ${claim.filename}, but discovery recorded ${claim.bytes}.`,
         {
           stage: 'drive',
           code: 'drive_size_changed',
@@ -314,7 +318,12 @@ async function processClaim(
       'source-sha256': sourceSha256,
     })
 
-    const prompts = await repository.loadLivePrompts()
+    // D103: a photograph may carry its own prompt pair. A missing or
+    // half-missing bound pair falls back to the live default whole — never a
+    // mixed pair, whose two halves were not written together.
+    const prompts =
+      (claim.presetSlug ? await repository.loadPromptsForPreset(claim.presetSlug) : null) ??
+      (await repository.loadLivePrompts())
     let productDescription = claim.productDescription
 
     if (productDescription && !presentationClass) {

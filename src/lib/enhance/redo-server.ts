@@ -19,6 +19,7 @@ interface IntakeRedoRow {
   product_description: string | null
   description_missing_at: string | null
   presentation_class: string | null
+  preset_slug: string | null
 }
 
 interface DescribePromptRow {
@@ -92,7 +93,7 @@ export async function prepareImageRedo(
   const fileResult = await db
     .from('intake_files')
     .select(
-      'source, status, mime_type, product_description, description_missing_at, presentation_class',
+      'source, status, mime_type, product_description, description_missing_at, presentation_class, preset_slug',
     )
     .eq('id', intakeFileId)
     .maybeSingle<IntakeRedoRow>()
@@ -106,13 +107,7 @@ export async function prepareImageRedo(
   }
 
   const [promptResult, originalResult] = await Promise.all([
-    db
-      .from('prompts')
-      .select('id, body, model')
-      .eq('kind', 'describe')
-      .eq('is_default', true)
-      .is('archived_at', null)
-      .maybeSingle<DescribePromptRow>(),
+    boundOrDefaultPrompt(db, file.preset_slug, 'describe'),
     db
       .from('image_versions')
       .select('storage_key')
@@ -165,27 +160,49 @@ export async function prepareImageRedo(
 /** Backward-compatible name for callers deployed with the manual-only helper. */
 export const prepareManualImageRedo = prepareImageRedo
 
-async function resolveRedo(intakeFileId: string) {
-  const db = supabaseServer()
-  const [fileResult, promptResult] = await Promise.all([
-    db
-      .from('intake_files')
-      .select(
-        'source, status, mime_type, product_description, description_missing_at, presentation_class',
-      )
-      .eq('id', intakeFileId)
-      .maybeSingle<IntakeRedoRow>(),
-    db
+/**
+ * D103: a photograph bound to a preset pair redoes under the NEWEST revision
+ * of that pair, exactly like the enhancement worker; anything else uses the
+ * live default. A half-missing pair falls back whole.
+ */
+async function boundOrDefaultPrompt(
+  db: ReturnType<typeof supabaseServer>,
+  presetSlug: string | null | undefined,
+  kind: 'describe' | 'image',
+) {
+  if (presetSlug) {
+    const bound = await db
       .from('prompts')
       .select('id, body, model, uses_composition')
-      .eq('kind', 'image')
-      .eq('is_default', true)
-      .is('archived_at', null)
-      .maybeSingle<ImagePromptRow>(),
-  ])
+      .eq('preset_slug', presetSlug)
+      .eq('kind', kind)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle<ImagePromptRow>()
+    if (!bound.error && bound.data) return bound
+  }
+  return db
+    .from('prompts')
+    .select('id, body, model, uses_composition')
+    .eq('kind', kind)
+    .eq('is_default', true)
+    .is('archived_at', null)
+    .maybeSingle<ImagePromptRow>()
+}
+
+async function resolveRedo(intakeFileId: string) {
+  const db = supabaseServer()
+  const fileResult = await db
+    .from('intake_files')
+    .select(
+      'source, status, mime_type, product_description, description_missing_at, presentation_class, preset_slug',
+    )
+    .eq('id', intakeFileId)
+    .maybeSingle<IntakeRedoRow>()
   if (fileResult.error || !fileResult.data) {
     throw new Error(fileResult.error?.message || 'That photograph is no longer available.')
   }
+  const promptResult = await boundOrDefaultPrompt(db, fileResult.data.preset_slug, 'image')
   if (promptResult.error || !promptResult.data) {
     throw new Error(promptResult.error?.message || 'There is no current image prompt.')
   }

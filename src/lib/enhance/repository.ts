@@ -18,6 +18,10 @@ export interface EnhancementClaim {
   readonly describedAt: string | null
   readonly descriptionCostUsd: number | null
   readonly descriptionMissingAt: string | null
+  /** R2 key of a browser-uploaded source (D103). Null → download from Drive. */
+  readonly sourceStorageKey: string | null
+  /** Per-photograph prompt pair (D103). Null → the live default pair. */
+  readonly presetSlug: string | null
 }
 
 export type PromptKind = 'describe' | 'image'
@@ -127,6 +131,12 @@ export interface EnhancementRepository {
     readonly source: string
   }): Promise<string>
   loadLivePrompts(): Promise<LivePrompts>
+  /**
+   * The newest describe+image pair carrying this preset_slug (D96/D103).
+   * Null when either half is missing — the caller falls back to the live
+   * default pair rather than mixing a bound half with a default half.
+   */
+  loadPromptsForPreset(presetSlug: string): Promise<LivePrompts | null>
   storeDescription(input: {
     readonly intakeFileId: string
     readonly leaseToken: string

@@ -67,6 +67,8 @@ export function claim(
     describedAt: null,
     descriptionCostUsd: null,
     descriptionMissingAt: null,
+    sourceStorageKey: null,
+    presetSlug: null,
     ...overrides,
   }
 }
@@ -97,6 +99,12 @@ export class MemoryEnhancementRepository implements EnhancementRepository {
   readonly attemptsById = new Map<string, number>()
 
   prompts = TEST_PROMPTS
+  /** D103: bound pairs by preset slug; null-ish slug falls back to `prompts`. */
+  presetPrompts = new Map<string, LivePrompts>()
+
+  async loadPromptsForPreset(presetSlug: string): Promise<LivePrompts | null> {
+    return this.presetPrompts.get(presetSlug) ?? null
+  }
 
   enqueue(item: EnhancementClaim): void {
     this.claims.push(item)

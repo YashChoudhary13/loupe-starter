@@ -39,6 +39,8 @@ interface ClaimRow {
   described_at: string | null
   description_cost_usd: number | string | null
   description_missing_at: string | null
+  source_storage_key: string | null
+  preset_slug: string | null
 }
 
 interface DescriptionRow {
@@ -137,6 +139,8 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
       describedAt: data.described_at,
       descriptionCostUsd: finiteNumber(data.description_cost_usd, 'description_cost_usd'),
       descriptionMissingAt: data.description_missing_at,
+      sourceStorageKey: data.source_storage_key ?? null,
+      presetSlug: data.preset_slug ?? null,
     }
   }
 
@@ -175,6 +179,42 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
       })
     }
     return data
+  }
+
+  async loadPromptsForPreset(presetSlug: string): Promise<LivePrompts | null> {
+    const { data, error } = await this.db
+      .from('prompts')
+      .select('id, name, kind, body, model, uses_composition, created_at')
+      .eq('preset_slug', presetSlug)
+      .in('kind', ['describe', 'image'])
+      .order('created_at', { ascending: false })
+    if (error) throw dbError('Could not load the bound prompt pair.', error)
+
+    // Newest revision per kind — the same rule promote_prompt_preset uses
+    // (D96), so a bound photograph and a promoted preset behave identically.
+    const pick = (kind: LivePrompt['kind']): LivePrompt | null => {
+      const row = ((data ?? []) as {
+        id: string
+        name: string
+        kind: LivePrompt['kind']
+        body: string
+        model: string
+        uses_composition: boolean | null
+      }[]).find((candidate) => candidate.kind === kind)
+      if (!row) return null
+      return {
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        body: row.body,
+        model: row.model,
+        usesComposition: row.uses_composition ?? true,
+      }
+    }
+    const describe = pick('describe')
+    const image = pick('image')
+    if (!describe || !image) return null
+    return { describe, image }
   }
 
   async loadLivePrompts(): Promise<LivePrompts> {

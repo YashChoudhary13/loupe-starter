@@ -118,6 +118,72 @@ describe('Phase 3B enhancement worker', () => {
     })
   })
 
+  it('D103: reads a browser-uploaded source from R2 and never calls Drive', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.enqueue(claim('uploaded', { sourceStorageKey: 'manual/u1/original.jpg' }))
+    const store = new MemoryObjectStore()
+    await store.putImmutable('manual/u1/original.jpg', Buffer.from(source), 'image/jpeg', {})
+    const driveClient = drive()
+
+    const result = await runEnhancementBatch(
+      {
+        drive: driveClient,
+        repository,
+        store,
+        describer: describer(),
+        enhancer: enhancer(),
+        config: CONFIG,
+      },
+      { maxItems: 1 },
+    )
+
+    expect(result).toMatchObject({ claimed: 1, enhanced: 1 })
+    expect(driveClient.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it('D103: a bound preset pair overrides the default prompts; a missing pair falls back whole', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.presetPrompts.set('rings--black-marble-mirror', {
+      describe: {
+        ...repository.prompts.describe,
+        id: 'bound-describe',
+        body: 'Describe this ring exactly.',
+        model: 'moonshotai/kimi-k3',
+      },
+      image: {
+        ...repository.prompts.image,
+        id: 'bound-image',
+        body: `Ring hero.\n\nPRODUCT\n{{PRODUCT_DESCRIPTION}}\n\nCOMPOSITION\n{{COMPOSITION_DETAIL}}\n\nOn black marble.`,
+      },
+    })
+    repository.enqueue(claim('bound', { presetSlug: 'rings--black-marble-mirror' }))
+    repository.enqueue(claim('unbound-missing-pair', { presetSlug: 'no-such-pair' }))
+    const descriptionClient = describer()
+
+    const result = await runEnhancementBatch(
+      {
+        drive: drive(),
+        repository,
+        store: new MemoryObjectStore(),
+        describer: descriptionClient,
+        enhancer: enhancer(),
+        config: CONFIG,
+      },
+      { maxItems: 2 },
+    )
+
+    expect(result).toMatchObject({ claimed: 2, enhanced: 2 })
+    const describeBodies = descriptionClient.describe.mock.calls.map(
+      (call) => call[2] as string,
+    )
+    expect(describeBodies).toContain('Describe this ring exactly.')
+    expect(describeBodies).toContain(repository.prompts.describe.body)
+    const boundCompletion = repository.completions.find((completion) =>
+      completion.promptText.includes('On black marble.'),
+    )
+    expect(boundCompletion).toBeDefined()
+  })
+
   it('describes, injects, stores immutable original/result/thumbnail and completes one row', async () => {
     const repository = new MemoryEnhancementRepository()
     const item = claim('normal')
