@@ -201,6 +201,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     ungroupedResult,
     openDraftsResult,
     redoJobsResult,
+    webhookAlertsResult,
     duplicateCandidates,
   ] = await Promise.all([
     db
@@ -249,6 +250,14 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       .in('status', ['queued', 'processing'])
       .order('created_at', { ascending: false })
       .limit(100),
+    db
+      .from('shopify_webhook_alerts')
+      .select(
+        'id, shopify_product_id, product_draft_id, topic, code, message, detail, created_at, updated_at',
+      )
+      .is('resolved_at', null)
+      .order('created_at', { ascending: false })
+      .limit(200),
     loadDuplicateCandidates(),
   ])
 
@@ -261,6 +270,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     ['ungrouped count', ungroupedResult.error],
     ['open draft count', openDraftsResult.error],
     ['redo jobs', redoJobsResult.error],
+    ['webhook alerts', webhookAlertsResult.error],
   ] as const) {
     if (error) throw new Error(`${label}: ${error.message}`)
   }
@@ -324,6 +334,17 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
   )
 
   const redoJobs = (redoJobsResult.data ?? []) as unknown as RedoJobRow[]
+  const webhookAlerts = (webhookAlertsResult.data ?? []) as {
+    id: number
+    shopify_product_id: string
+    product_draft_id: string | null
+    topic: string
+    code: string
+    message: string
+    detail: unknown
+    created_at: string
+    updated_at: string
+  }[]
 
   const entityIds = [
     ...intakes.map((row) => row.id),
@@ -614,6 +635,38 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     }
   })
 
+  /**
+   * Live drift, pushed by Shopify webhooks (D102) — real changes to
+   * Loupe-published products, seconds after they happen. One row per live
+   * finding; resolving is the durable operator judgement.
+   */
+  const webhookRows: TrackingRow[] = webhookAlerts.map((alert) => ({
+    rowId: `webhook-alert:${alert.id}`,
+    kind: 'reconciliation' as const,
+    entityId: alert.product_draft_id ?? alert.shopify_product_id,
+    label: alert.shopify_product_id,
+    statusLabel: alert.code === 'published_product_deleted' ? 'Deleted in Shopify' : 'Live drift',
+    tone: 'mismatch' as const,
+    group: 'attention' as const,
+    occurredAt: alert.updated_at,
+    reason: alert.message,
+    errorCode: alert.code,
+    errorClass: 'webhook',
+    rawDetail: safeDetail(alert.detail),
+    thumb: signed.get(thumbKeyByDraft.get(alert.product_draft_id ?? '') ?? '') ?? null,
+    events: events.get(alert.product_draft_id ?? '') ?? [],
+    canRetry: false,
+    canSkip: false,
+    canResume: false,
+    canResumeEnhancement: false,
+    canDiscard: false,
+    consoleHref: alert.product_draft_id ? `/console/drafts/${alert.product_draft_id}` : null,
+    driveHref: null,
+    duplicate: null,
+    canDismiss: true,
+    costUsd: null,
+  }))
+
   const issueRows: TrackingRow[] = issues.map((issue) => ({
     rowId: `reconciliation:${issue.id}`,
     kind: 'reconciliation',
@@ -681,7 +734,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
    * console's working set and Tracking stopped duplicating them — only their
    * attention/progress classifications surface here.
    */
-  const rows = [...issueRows, ...redoRows, ...draftRows, ...intakeRows]
+  const rows = [...webhookRows, ...issueRows, ...redoRows, ...draftRows, ...intakeRows]
     .filter((row) => row.group === 'attention' || row.group === 'progress')
     .sort((a, b) => {
       const groupRank = { attention: 0, draft: 1, progress: 2, complete: 3, hidden: 4 } as const

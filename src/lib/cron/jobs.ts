@@ -115,6 +115,17 @@ export async function runShopifyReconciliationCron() {
   const { promotePublishedInShopify } = await import('@/lib/reconciliation/promote')
   const { runShopifyReconciliation } = await import('@/lib/reconciliation/server')
 
+  // Keep the push channel alive (D102). Idempotent; a failure here changes
+  // nothing about the nightly check, which is the backstop for exactly the
+  // case where webhooks are broken.
+  let webhooks
+  try {
+    const { ensureShopifyWebhooks } = await import('@/lib/shopify/webhooks')
+    webhooks = await ensureShopifyWebhooks()
+  } catch (cause) {
+    webhooks = { error: cause instanceof Error ? cause.message : String(cause) }
+  }
+
   let promotion
   try {
     promotion = await promotePublishedInShopify('supabase-pg-cron')
@@ -154,5 +165,5 @@ export async function runShopifyReconciliationCron() {
     driveBacklog = { error: cause instanceof Error ? cause.message : String(cause) }
   }
 
-  return { promotion, reconciliation, driveBacklog }
+  return { webhooks, promotion, reconciliation, driveBacklog }
 }

@@ -154,6 +154,37 @@ function safeFailure(error: unknown): string {
   return text.slice(0, 2_000)
 }
 
+/**
+ * The webhook-sized reconciliation: one published draft, read back and
+ * compared with exactly the rules the nightly run uses (D90 ownership split,
+ * D102 trigger). No run row, no lease — the caller decides what to do with
+ * the issues.
+ */
+export async function reconcileSingleProduct(
+  db: SupabaseClient,
+  client: ShopifyClient,
+  draftId: string,
+): Promise<readonly ReconciliationIssue[]> {
+  const { data, error } = await db
+    .from('product_drafts')
+    .select(
+      'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value ), product_draft_images ( position, shopify_media_id )',
+    )
+    .eq('id', draftId)
+    .eq('status', 'published')
+    .maybeSingle()
+  if (error) throw new Error(`Could not load draft ${draftId}: ${error.message}`)
+  if (!data) return []
+
+  const { product, localIssues } = expectedProduct(data as PublishedDraftRow)
+  if (!product.shopifyProductId) {
+    return [...localIssues, ...comparePublishedProduct(product, null)]
+  }
+  const readback = await readProductsForReconciliation(client, [product.shopifyProductId])
+  const actual = readback.get(product.shopifyProductId) ?? null
+  return [...localIssues, ...comparePublishedProduct(product, actual)]
+}
+
 export async function runShopifyReconciliation(
   actor: string,
   client: ShopifyClient = new ShopifyClient(),

@@ -179,6 +179,25 @@ export async function dismissReconciliationIssueAction(input: {
   })
 }
 
+/**
+ * Resolves a live webhook alert (D102). Durable operator judgement: the row
+ * keeps its history, and the unique live index lets the same finding return
+ * as a NEW alert if Shopify reports the product drifting again.
+ */
+export async function resolveWebhookAlertAction(input: {
+  readonly alertId: number
+}): Promise<TrackingActionResult<TrackingSnapshot>> {
+  return withOperator(async (email) => {
+    const { error } = await supabaseServer()
+      .from('shopify_webhook_alerts')
+      .update({ resolved_at: new Date().toISOString(), resolved_by: email })
+      .eq('id', input.alertId)
+      .is('resolved_at', null)
+    if (error) throw new Error(error.message)
+    return loadTracking()
+  })
+}
+
 export async function runFullReconciliationAction(): Promise<
   TrackingActionResult<{
     snapshot: TrackingSnapshot

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   dismissReconciliationIssueAction,
+  resolveWebhookAlertAction,
   discardIntakeAction,
   refreshTrackingAction,
   resumeIntakeAction,
@@ -416,13 +417,22 @@ export function TrackingScreen({
                     : undefined
                 }
                 onDismiss={() => {
-                  // The issue id lives in rowId: `entityId` is the run id, so the
-                  // event trail hangs off the run rather than the finding.
-                  const issueId = Number(row.rowId.split(':')[1])
-                  if (!Number.isFinite(issueId)) return
+                  // The finding id lives in rowId; `entityId` carries the run or
+                  // draft the event trail hangs off. `webhook-alert:` rows are
+                  // live push findings (D102), `reconciliation:` the nightly ones.
+                  const findingId = Number(row.rowId.split(':')[1])
+                  if (!Number.isFinite(findingId)) return
+                  if (row.rowId.startsWith('webhook-alert:')) {
+                    void update(
+                      `dismiss:${row.rowId}`,
+                      () => resolveWebhookAlertAction({ alertId: findingId }),
+                      'Resolved. It returns if Shopify reports the product drifting again.',
+                    )
+                    return
+                  }
                   void update(
                     `dismiss:${row.rowId}`,
-                    () => dismissReconciliationIssueAction({ issueId }),
+                    () => dismissReconciliationIssueAction({ issueId: findingId }),
                     'Marked correct. It will stay hidden unless the value changes again.',
                   )
                 }}
