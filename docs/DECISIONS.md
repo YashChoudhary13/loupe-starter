@@ -2990,3 +2990,43 @@ that loses that race yields silently — the winner reports.
 The single global `busy` slot went with it: saves, deletes and uploads each carry their own
 scoped in-flight state, deletes run four-wide and optimistically, and uploads run three-wide
 with per-file progress. Publish remains the one deliberately exclusive act.
+
+---
+
+### D106 — The console re-reads the counters; a server action that cannot be reached is a visible failure
+
+*2026-08-17, from a live report: "second listing shows same SKU as previous, third one is not
+drafting and shows it's done."*
+
+Three separate defects, none of them in `next_sku()`. The database was correct throughout —
+BK392 and BK393 were reserved 2m14s apart and the counter stood at 393.
+
+**1. The preview froze at page load.** `ConsoleScreen` seeded `categories` — which carries
+`sku_counters.last_number` — once from the server render and never re-read it, while
+`refreshQueueAction()` returned only the queue. `predictIdentity` is `lastNumber + 1`, so
+every draft of a session predicted the same SKU. Two things move that counter without the
+browser doing anything: the D105 push reserves after the response, and D102 webhooks raise it
+whenever somebody creates a product in Shopify admin (six `webhook.sku_counter_raised` events
+on 2026-08-17 alone, NK/ER/CB). `refreshQueueAction` now returns `{ queue, categories }` and
+the console applies both. Three unsigned reads next to a snapshot that already presigns every
+thumbnail.
+
+**2. A rejected server action was silent.** Every action returns `{ ok: false }` with an
+operator sentence, but a POST that never completes REJECTS instead — offline, timed out, or a
+redeploy invalidating the generated action id. That threw past `handleResult`, so no error
+appeared and the saving state never cleared, while `ensureDraft` had already grouped the
+photographs and moved them out of Pending. `settled()` converts a rejection into the same
+`ActionResult` shape the server produces, vague about the cause and specific about the
+consequence: nothing was saved.
+
+**3. An unpushed draft looked finished.** Draft `1458d9b5` held only a `draft.created` event:
+no `reserved_sku`, no `shopify_product_id`, no `error`. The tile renders
+`reservedSku ?? categoryName`, so it read "Kada Bracelets" — identical to a completed draft —
+and Tracking ignored it because `error` was null. `isUnpushedDraft` now raises the existing
+`attention` line after `UNPUSHED_DRAFT_MINUTES`. Age, not status (hard rule 5): assembling
+with no Shopify product is the normal state for the seconds the background push takes, so
+flagging on status alone would mark every healthy draft the moment it was saved.
+
+**Rejected:** removing the predicted SKU entirely. Hard rule 8 requires the operator to see a
+resolved `SKU · title · handle` before publishing so a wrong category is visible; the fix is
+to keep the prediction honest, not to delete it.

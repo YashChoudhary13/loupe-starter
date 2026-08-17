@@ -33,6 +33,31 @@ export function tilesForQueueView(
 }
 
 /**
+ * How long an assembling draft may hold no Shopify product before the tile says
+ * so. A normal "Save draft" reserves and pushes within seconds (the push runs
+ * after the response, D60), so anything still empty after this never got saved —
+ * the click grouped the photograph and then died before `save_product_draft`.
+ */
+export const UNPUSHED_DRAFT_MINUTES = 2
+
+/**
+ * True when a draft exists in Loupe but has never reached Shopify.
+ *
+ * Age, not status (hard rule 5): a draft saved one second ago legitimately has
+ * no `shopify_product_id` yet, because the push runs after the response. The
+ * same draft still empty minutes later never got saved at all — and its tile
+ * renders `reservedSku ?? categoryName`, which makes it look exactly like a
+ * finished one while nothing exists in Shopify.
+ */
+export function isUnpushedDraft(
+  draft: { status: string; shopify_product_id: string | null; updated_at: string },
+  now: number = Date.now(),
+): boolean {
+  if (draft.status !== 'assembling' || draft.shopify_product_id !== null) return false
+  return (now - new Date(draft.updated_at).getTime()) / 60_000 >= UNPUSHED_DRAFT_MINUTES
+}
+
+/**
  * Jaipur has one stable UTC offset and no daylight-saving transition. Shifting
  * into IST before taking UTC midnight gives the exact start of the operator's
  * calendar day regardless of the Vercel runtime's own timezone.

@@ -125,8 +125,30 @@ async function withOperator<T>(run: (operator: Awaited<ReturnType<typeof require
   }
 }
 
-export async function refreshQueueAction(): Promise<ActionResult<QueueSnapshot>> {
-  return withOperator(() => loadQueue())
+export interface QueueRefresh {
+  readonly queue: QueueSnapshot
+  readonly categories: readonly CategoryOption[]
+}
+
+/**
+ * The queue AND the categories, because `CategoryOption.lastNumber` is
+ * `sku_counters.last_number` and the "will publish as" preview is that plus one.
+ *
+ * The counter moves without this browser doing anything: every Save draft
+ * reserves the next number server-side after the response, and D102 webhooks
+ * raise it whenever somebody creates a product in Shopify admin. Seeding
+ * `categories` once from the page render and never re-reading it froze the
+ * preview, so two drafts in a row were shown the same SKU while the database
+ * correctly issued different ones — the preview lied, never `next_sku()`.
+ *
+ * The extra cost is three small unsigned reads next to a queue snapshot that
+ * already presigns every thumbnail.
+ */
+export async function refreshQueueAction(): Promise<ActionResult<QueueRefresh>> {
+  return withOperator(async () => {
+    const [queue, catalog] = await Promise.all([loadQueue(), loadCatalog()])
+    return { queue, categories: catalog.categories }
+  })
 }
 
 export interface ShopifyTaxonomyOption {

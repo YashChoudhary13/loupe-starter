@@ -29,6 +29,59 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-17 — Console SKU preview, silent server-action failures, invisible unpushed drafts
+
+**Goal this session:** diagnose a live report — "second listing shows same SKU as previous,
+third one is not drafting and shows it's done" — and fix the causes.
+
+**Diagnosed (against production Supabase, not from the code alone):**
+- The database was never wrong. `1a3ce641` reserved **BK392** at 10:58:06, `ac2e072b`
+  reserved **BK393** at 11:00:33, `sku_counters.BK.last_number = 393`. No collision.
+- Draft `1458d9b5-15d5-42d9-830f-d546ba5fb66f`, created 11:02:04: `created_at == updated_at`,
+  `reserved_sku` NULL, `shopify_product_id` NULL, `error` NULL, and the only event on it is
+  `draft.created`. No `draft.saved`, no `publish.started` — `saveDraftAction` never completed
+  server-side, so nothing reached Shopify because nothing reached Postgres.
+- Six `webhook.sku_counter_raised` events on 2026-08-17 (NK 1074→1075→1076, ER 520→521→522,
+  CB 393→394→395), all `products/update`. Somebody is creating products in Shopify admin;
+  D102 correctly raises the counter, which means a cached `lastNumber` in the browser is
+  stale within minutes even if the operator saves nothing.
+
+**Built (D106):**
+- `actions.ts` → `refreshQueueAction` returns `{ queue, categories }`; `ConsoleScreen`
+  applies both, so `lastNumber` (and therefore the predicted SKU) tracks the counter. The
+  Refresh button now reuses `refreshQueue` instead of its own duplicate handler.
+- `ConsoleScreen.settled()` → turns a rejected server action into the same `ActionResult`
+  the server would have returned. Applied to `groupPhotosAction`, `saveDraftAction`,
+  `autosaveDraftAction`, `publishDraftAction`, `openDraftAction`, `refreshQueueAction`.
+- `queue-view.ts` → `isUnpushedDraft` + `UNPUSHED_DRAFT_MINUTES`; `queue.ts` raises the
+  existing tile `attention` line to "Not in Shopify — open it and press Save draft".
+
+**Verified:**
+- `tests/console-unpushed-draft.test.ts` — 4 tests, all pass. Covers the real stranded draft,
+  the grace window while a healthy background push runs, a pushed draft of any age, and the
+  publishing/failed/published statuses that own their own attention lines.
+- `npx tsc --noEmit` clean, `npx eslint src tests` clean, `npx next build` succeeds.
+- Full suite: **624 passed, 7 failed** — the same 7 pre-existing env-drift failures recorded
+  in the 2026-08-13 entry (schema prompt hashes, etc.), unchanged by this work.
+
+**Not finished / known broken:**
+- Draft `1458d9b5` is still stranded in production. It needs a human: reload `/console`, open
+  it, press Save draft. Nothing here repairs existing rows.
+- The root cause of the rejected POST itself is not established — `settled()` makes the
+  failure visible and keeps the operator's typing, it does not explain why that one request
+  died. If it recurs, the Details expander now carries the transport error.
+- The ER sequence is 2 ahead of Loupe's own drafts (counter 522, last Loupe draft ER520)
+  because of admin-created products. Correct behaviour, worth knowing before a cutover count.
+
+**Surprises:** the reported "duplicate SKU" never existed in the database — only in the
+preview. Checking `sku_counters` and `publish.reserved` events before touching any code is
+what separated a display bug from a counter bug.
+
+**Next session should start with:** confirming the stranded draft was saved, then watching
+whether any further draft lands with `draft.created` and no `draft.saved`.
+
+---
+
 ## 2026-08-13 — Overnight console/UX overhaul: shell, instant drafting, webhooks, SKU pool, prompt matrix, Upload section
 
 **Goal this session:** the owner's 12-point overnight list — kill every console wait, make

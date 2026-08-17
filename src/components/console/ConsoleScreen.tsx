@@ -143,6 +143,40 @@ function defaultVersionId(photo: PhotoSummary): string | null {
   return chosen?.id ?? null
 }
 
+/**
+ * A server action that cannot reject.
+ *
+ * Server-side every action already returns `{ ok: false }` with a sentence
+ * written for the operator (actions.ts · toActionError). A REJECTION is the
+ * other failure and nothing was catching it: the POST itself never completed —
+ * offline, timed out, or a redeploy invalidated the generated action id. That
+ * threw straight past `handleResult`, so no error appeared and the saving
+ * spinner never cleared, while `ensureDraft` had already grouped the
+ * photographs and moved them out of Pending. The result was a draft tile that
+ * looked finished with nothing in Shopify and nothing in `product_drafts`
+ * beyond the row itself.
+ *
+ * Vague about the cause, specific about the consequence, for the same reason
+ * `toActionError` is: an unknown failure must never imply the work was saved.
+ */
+async function settled<T>(call: Promise<ActionResult<T>>): Promise<ActionResult<T>> {
+  try {
+    return await call
+  } catch (cause) {
+    return {
+      ok: false,
+      error: {
+        kind: 'error',
+        message:
+          'The console could not reach the server, so nothing was saved. Check the connection, reload the page and try again.',
+        detail: cause instanceof Error ? cause.message : String(cause),
+        retryable: true,
+        blocks: [],
+      },
+    }
+  }
+}
+
 function formFromBundle(bundle: DraftBundle): EditorForm {
   const draft = bundle.draft
   return {
@@ -260,8 +294,14 @@ export function ConsoleScreen({
   const pipelineBusy = uploading + processing > 0
 
   const refreshQueue = useCallback(async () => {
-    const result = await refreshQueueAction()
-    if (result.ok) setQueue((current) => preserveThumbs(current, result.data))
+    const result = await settled(refreshQueueAction())
+    if (!result.ok) return
+    setQueue((current) => preserveThumbs(current, result.data.queue))
+    // Counters move under this page — every Save draft reserves the next number
+    // server-side after the response, and a webhook raises it when somebody
+    // creates a product in Shopify admin. A stale `lastNumber` shows the same
+    // predicted SKU on every draft of the session.
+    setCategories(result.data.categories)
   }, [])
 
   /**
@@ -489,7 +529,7 @@ export function ConsoleScreen({
       })
       return null
     }
-    const data = handleResult(await groupPhotosAction(form.categoryId, selectedPhotoIds))
+    const data = handleResult(await settled(groupPhotosAction(form.categoryId, selectedPhotoIds)))
     if (!data) return null
     setQueue(data.queue)
     setBundle(data.bundle)
@@ -554,7 +594,7 @@ export function ConsoleScreen({
     if (savingDraftIds.has(bundle.draft.id)) return
     const draftId = bundle.draft.id
     const timer = window.setTimeout(async () => {
-      const result = await autosaveDraftAction(saveRequest(bundle))
+      const result = await settled(autosaveDraftAction(saveRequest(bundle)))
       if (!result.ok) return // The operator keeps typing; Save draft reports properly.
       setSavedForm(formFromBundle(result.data.bundle))
       setBundle((current) =>
@@ -604,7 +644,7 @@ export function ConsoleScreen({
     setSelectedPhotoIds([])
     rememberSticky()
 
-    const result = await saveDraftAction(saveRequest(target))
+    const result = await settled(saveDraftAction(saveRequest(target)))
     setSavingDraftIds((current) => {
       const next = new Set(current)
       next.delete(draftId)
@@ -740,7 +780,7 @@ export function ConsoleScreen({
       setBusy(null)
       return
     }
-    const data = handleResult(await publishDraftAction(saveRequest(target)))
+    const data = handleResult(await settled(publishDraftAction(saveRequest(target))))
     if (data) {
       setQueue(data.queue)
       setLastPublish(data.summary)
@@ -755,7 +795,7 @@ export function ConsoleScreen({
     } else {
       // A failed publish keeps the draft open so the operator can fix and retry
       // onto the same reserved identity rather than rebuilding the product.
-      const refreshed = await openDraftAction(target.draft.id)
+      const refreshed = await settled(openDraftAction(target.draft.id))
       if (refreshed.ok) {
         setBundle(refreshed.data)
         setColours(refreshed.data.colours)
@@ -1167,10 +1207,7 @@ export function ConsoleScreen({
               </button>
               <button
                 type="button"
-                onClick={async () => {
-                  const result = await refreshQueueAction()
-                  if (result.ok) setQueue(result.data)
-                }}
+                onClick={() => void refreshQueue()}
                 className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-[#ebebeb]"
               >
                 Refresh

@@ -4,7 +4,7 @@ import { supabaseServer } from '@/lib/supabase/server'
 import { loadDuplicateCandidates } from '@/lib/duplicates/read-model'
 
 import { signKeys } from './images'
-import { startOfKolkataDayIso } from './queue-view'
+import { isUnpushedDraft, startOfKolkataDayIso } from './queue-view'
 import type {
   ColourSuggestion,
   ConsoleCatalog,
@@ -409,7 +409,9 @@ export async function loadQueue(): Promise<QueueSnapshot> {
           ? 'Publish failed — retry reuses the same product'
           : draft.status === 'publishing' && !leaseHeld
             ? 'Publish was interrupted — retry to finish it'
-            : null,
+            : isUnpushedDraft(draft)
+              ? 'Not in Shopify — open it and press Save draft'
+              : null,
       reservedSku: draft.reserved_sku,
     }
   }
