@@ -3,7 +3,7 @@ import 'server-only'
 import type { Operator } from '@/lib/auth/authorize'
 import { serverEnv } from '@/lib/env'
 import { googleDriveClient } from '@/lib/google/drive-server'
-import { loadPublishInput } from '@/lib/publish/publish-product'
+import { loadPublishInput, reserveIdentityForSave } from '@/lib/publish/publish-product'
 import { PublishBlockedError, validateDraftForPublish } from '@/lib/publish/validate'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { shopifyConfig } from '@/lib/shopify/config'
@@ -64,6 +64,20 @@ export async function publishDraftForOperator(
     processedFolderId: serverEnv.driveProcessedFolderId,
     signImageUrl: signForShopify,
   })
+}
+
+/**
+ * Save-time reservation (D107), production wiring. Runs inside the Save draft
+ * click so the response carries the SKU `next_sku()` actually issued; the
+ * background push then reuses it (hard rule 2).
+ */
+export async function reserveDraftIdentity(draftId: string, operator: Operator): Promise<void> {
+  await reserveIdentityForSave(
+    supabaseServer(),
+    new ShopifyClient({ config: shopifyConfig() }),
+    draftId,
+    operator.email,
+  )
 }
 
 /** Retryable housekeeping on its own, for a product that published but was not tidied. */

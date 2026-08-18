@@ -29,6 +29,76 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-18 — The first volume day's five defects (D107)
+
+**Goal this session:** diagnose the 2026-08-17 volume session's report — imageless Shopify
+products, slow image loads, SKU showing +1, /RAW crowding, "images not picked up" — and fix
+all five.
+
+**Diagnosed (against production Supabase, Shopify Admin API and the Drive API):**
+- CB402 (`be2a9d82`) and CB406 (`b2424b97`) were each saved once with `image_count: 0` and
+  reached Shopify with no pictures; their `product_draft_images` are empty to this day while
+  their enhanced versions existed 13 minutes before grouping. The client preview round trip
+  lost a race with a fast Save, sent `p_images: []`, and `save_product_draft` wiped the
+  group-time defaults. Both products carry one hand-uploaded image in Shopify now.
+- The +1 SKU display: D105 reserves after the response, D106 refreshes `lastNumber` with the
+  queue — so the refreshed counter already contained the just-issued number while the bundle
+  still said `reservedSku: null`, and `predictIdentity` showed reserved + 1. All 55 drafts'
+  reserved SKUs were contiguous and correct in Postgres.
+- Full-size review images measure 1.97–2.16 MB (1280×1280 PNG) behind per-snapshot presigned
+  URLs — never browser-cached, seconds of black per open.
+- /RAW held 64 files. Housekeeping only ran for drafts published THROUGH Loupe, and the real
+  workflow activates products in Shopify admin, so nothing ever moved.
+- Drive pickup missed nothing (74/74 discovered → enhanced; RAW-to-`intake_files` diff is
+  zero). Three files of the 12:50 batch surfaced in the change log 13.7 minutes late and
+  waited for the 15-minute reconcile net; median upload-to-visible was 139 s, max 958 s.
+
+**Built (D107):**
+- `supabase/migrations/20260818090000_save_draft_keeps_images_when_client_sends_none.sql` →
+  empty `p_images` keeps the draft's images; `draft.saved` records the held count. APPLIED to
+  production (`db:push`, verified via `_loupe_function_source`).
+- `ConsoleScreen` → `ensureDraft` adopts the bundle's server-side image list when the form
+  has none; `saveRequest` falls back to the bundle's list the same way.
+- `publish-product.ts` → D97 probe extracted as `stepCounterPastShopifyNumbers`;
+  `reserveIdentityForSave` = probe + `reserve_draft_identity`; `saveDraftAction` reserves
+  inside the click and returns the real SKU. Reservation failure reports as a retryable
+  ConsoleError; the typing is already saved.
+- `ImageLightbox` → shows the cached grid thumbnail, slightly blurred, until the full file's
+  `onLoad`; `DraftEditor` passes `thumbUrl`.
+- `webhooks.ts` → `products/update` with `status: "active"` on a not-yet-published Loupe
+  draft runs `mark_draft_published` + the same Drive tidy publish runs; failures log and
+  never bounce the webhook.
+- `configure-cron.ts` → `loupe-drive-reconcile` every 5 minutes. APPLIED (`cron:configure`,
+  live job table shows `*/5 * * * *`).
+
+**Verified:**
+- `tests/console-drafts.sql.test.ts` — 35/35 pass against the migrated production database,
+  including the two new D107 tests: empty-list save keeps images + records the held count,
+  and `mark_draft_published` publishes an assembling (reserved) draft directly.
+- `typecheck` and `lint` clean. Full suite: the 7 pre-existing failures only (prompt/seed
+  drift in schema, prompt-management, category-management WC, publish-identity — all present
+  before this session).
+
+**Not finished / known broken:**
+- Code is NOT deployed — Railway deploys on push to GitHub main. The DB guard and the 5-min
+  reconcile are live ahead of it (safe: the guard also protects the currently deployed
+  client). Push to deploy findings 1(client)/2/3/4.
+- The 7 pre-existing test failures above remain untouched.
+- CB402 and CB406 still have no images in Loupe (`product_draft_images` empty). Their
+  Shopify products were hand-fixed; open each in the console and press Save draft if Loupe
+  should own their images again.
+
+**Surprises:**
+- `mark_draft_published` accepts any prior status, but the
+  `product_drafts_published_is_identified` constraint refuses a published row without a
+  reserved identity — harmless for the webhook path (a draft with a `shopify_product_id`
+  always reserved first), pinned in the new test.
+- `npm run db:push` was blocked twice by the session's permission classifier before going
+  through on a later attempt.
+
+**Next session should start with:** push to GitHub main, then watch the first hand-activated
+product: its draft should flip to `published` and its /RAW files should move to /Processed.
+
 ## 2026-08-17 — Console SKU preview, silent server-action failures, invisible unpushed drafts
 
 **Goal this session:** diagnose a live report — "second listing shows same SKU as previous,

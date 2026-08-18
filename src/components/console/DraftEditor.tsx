@@ -296,6 +296,7 @@ export function DraftEditor(props: DraftEditorProps) {
       if (!version?.full) return null
       return {
         url: version.full.url,
+        thumbUrl: version.thumb?.url ?? null,
         alt: row.photo.description ?? row.photo.filename,
         caption: `${row.photo.filename} · ${
           version.kind === 'original' ? 'original' : `v${version.versionNo}`

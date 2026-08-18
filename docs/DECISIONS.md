@@ -3030,3 +3030,65 @@ flagging on status alone would mark every healthy draft the moment it was saved.
 **Rejected:** removing the predicted SKU entirely. Hard rule 8 requires the operator to see a
 resolved `SKU · title · handle` before publishing so a wrong category is visible; the fix is
 to keep the prediction honest, not to delete it.
+
+---
+
+### D107 — The saved SKU is reserved in the click; an empty image list means ignorance, not removal; activation in Shopify admin is a publish
+
+*2026-08-18, from the first high-volume day (55 drafts on 2026-08-17): "images not going to
+Shopify, images slow to load, SKU always showing +1, RAW keeps getting crowded, some images
+not picked up."*
+
+Five findings, five decisions. The database was correct throughout, again.
+
+**1. Save draft reserves the identity synchronously.** D105 moved the whole Shopify push —
+including `reserve_draft_identity` — behind `after()`, so the save response carried
+`reservedSku: null` while the queue refresh (D106) delivered a `lastNumber` that already
+included the just-issued number. `predictIdentity` therefore showed reserved + 1 on every
+draft, and the operator writes these numbers on physical tags. `saveDraftAction` now runs
+`reserveIdentityForSave` — the D97 counter probe followed by `reserve_draft_identity`,
+extracted so publish and save run the identical guard — inside the click, and the response
+carries the SKU `next_sku()` actually issued. Cost is one Shopify probe round trip (~450 ms)
+on first save only; the productSet stays in `after()`. A reservation failure reports and
+loses nothing: the typing was already saved.
+
+**2. `save_product_draft` keeps the images when `p_images` is empty.** CB402 and CB406
+reached Shopify with no pictures: the editor fills its image list from a preview round trip,
+a fast enough Save sends `[]`, and the delete-what-was-not-sent step wiped the correct
+group-time defaults `create_product_draft` had written. There is no console path that removes
+every image through save — removal goes through `detach_intake_file` — so an empty list can
+only be client ignorance and now leaves the rows untouched (migration
+`20260818090000`). The client also adopts the bundle's server-side image list whenever its
+own is still empty, so the editor never shows a grouped product as imageless. The
+`draft.saved` event records the images the draft holds after the save, not the length of
+what the client sent.
+
+**3. The lightbox shows the cached thumbnail while the full file downloads.** The full-size
+review is a ~2 MB PNG (measured 1.97–2.16 MB) behind a presigned URL that differs on every
+snapshot, so the browser almost never has it cached and every open was seconds of black. The
+~50 KB grid thumbnail — already on screen, already cached — now fills the frame, slightly
+blurred, until the full image's `onLoad` swaps it out. Rejected: a mid-size derivative per
+version. It fixes the same seconds for new images only after a worker change, a backfill and
+more R2 objects per version; the thumbnail swap is one component and covers every existing
+image today. Revisit if retailer-zoom quality checks still feel slow.
+
+**4. A product activated in Shopify admin publishes its Loupe draft.** The business finishes
+DRAFT-stage listings in admin (D90) and activates them there, so Loupe's `published` status —
+which gates the Drive tidy — was unreachable for the real workflow, and /RAW held 64 files
+with nothing ever moving them. The `products/update` webhook now treats `status: "active"` on
+a not-yet-published Loupe draft as the publish signal: `mark_draft_published` (idempotent,
+any prior status — pinned by test) followed by the same Drive housekeeping a Loupe publish
+runs. A tidy failure logs and never bounces the webhook; the product is published either way.
+
+**5. Drive reconcile runs every 5 minutes.** All 74 uploads on 2026-08-17 were picked up —
+"not getting picked up" was the latency tail: three files of one batch appeared in the change
+log 13.7 minutes late and waited for the 15-minute reconcile net (median upload-to-visible
+139 s, p90 204 s, max 958 s). The sweep is one page of a ~60-file folder, so its cadence is
+the cheap knob that bounds the worst case; Google's propagation delay itself is not ours to
+fix.
+
+**Rejected:** refetching the open bundle when the sync event lands (finding 1) — it shrinks
+the wrong-SKU window instead of closing it, and merges server state into a form the operator
+may be typing in. Also rejected: a client-side guard alone for finding 2 — the database rule
+protects every past and future caller, including the deployed clients still running during
+the rollout.

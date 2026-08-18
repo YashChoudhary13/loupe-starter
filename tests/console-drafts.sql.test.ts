@@ -642,6 +642,41 @@ describe('saving', () => {
     expect((await draftRow(draftId)).reserved_sku).toBeNull()
     expect(await eventNames(draftId)).toContain('draft.saved')
   })
+
+  /**
+   * D107. On 2026-08-17 two products (CB402, CB406) reached Shopify with no
+   * pictures: the console's preview round trip lost a race with a fast Save,
+   * the client sent `p_images: []`, and the delete-what-was-not-sent step
+   * destroyed the correct group-time defaults. An empty list now means "the
+   * client is not stating a selection" — removal has its own door
+   * (detach_intake_file), so an empty list can only be client ignorance.
+   */
+  it('keeps the existing images when the client sends none (D107)', async () => {
+    const { error: seedError } = await save()
+    expect(seedError?.message).toBeUndefined()
+    const before = await draftImages(draftId)
+    expect(before.length).toBeGreaterThan(0)
+
+    const { error } = await save({ p_images: [] })
+    expect(error?.message).toBeUndefined()
+
+    const after = await draftImages(draftId)
+    expect(after.map((image) => image.image_version_id)).toEqual(
+      before.map((image) => image.image_version_id),
+    )
+
+    // The event records what the draft HOLDS after the save, not the empty
+    // list the client sent — `image_count: 0` beside surviving rows would
+    // read as this very bug in the next investigation.
+    const { data: saved } = await db
+      .from('events')
+      .select('detail')
+      .eq('entity_id', draftId)
+      .eq('event', 'draft.saved')
+      .order('created_at', { ascending: false })
+      .limit(1)
+    expect((saved?.[0]?.detail as { image_count?: number }).image_count).toBe(before.length)
+  })
 })
 
 describe('the publish lease', () => {
@@ -911,6 +946,41 @@ describe('the invariants the console must not be able to route around', () => {
     expect(error?.hint).toMatch(/Unpublish or delete the product in Shopify first/)
 
     // And the photograph is still recorded as published, not returned to the queue.
+    expect((await intakeRow(photo.intakeFileId)).status).toBe('published')
+  })
+
+  /**
+   * The hand-activation webhook path (D107) calls mark_draft_published on a
+   * draft that is still `assembling` — the business finished the listing in
+   * Shopify admin and Loupe records reality. This pins the RPC's
+   * any-prior-status contract so a future status guard cannot silently break
+   * that path.
+   */
+  it('marks an assembling draft published directly — the hand-activation path (D107)', async () => {
+    const photo = await makePhoto(1107)
+    const { data, error: groupError } = await createDraft([photo.intakeFileId])
+    expect(groupError?.message).toBeUndefined()
+    const activatedDraftId = data as string
+
+    // Every draft the webhook can reach holds its identity already: the push
+    // that recorded its shopify_product_id reserved first, and the
+    // `product_drafts_published_is_identified` constraint refuses a published
+    // row without one. Mirror that state.
+    const { error: reserveError } = await db.rpc('reserve_draft_identity', {
+      p_draft_id: activatedDraftId,
+      p_actor: ACTOR,
+      p_require_publishable: false,
+    })
+    expect(reserveError?.message).toBeUndefined()
+
+    const { error } = await db.rpc('mark_draft_published', {
+      p_draft_id: activatedDraftId,
+      p_shopify_product_id: `gid://shopify/Product/activation-${RUN}`,
+      p_actor: ACTOR,
+    })
+    expect(error?.message).toBeUndefined()
+
+    expect((await draftRow(activatedDraftId)).status).toBe('published')
     expect((await intakeRow(photo.intakeFileId)).status).toBe('published')
   })
 })

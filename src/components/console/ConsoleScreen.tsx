@@ -297,10 +297,10 @@ export function ConsoleScreen({
     const result = await settled(refreshQueueAction())
     if (!result.ok) return
     setQueue((current) => preserveThumbs(current, result.data.queue))
-    // Counters move under this page — every Save draft reserves the next number
-    // server-side after the response, and a webhook raises it when somebody
-    // creates a product in Shopify admin. A stale `lastNumber` shows the same
-    // predicted SKU on every draft of the session.
+    // Counters move under this page — every Save draft reserves the next
+    // number inside the save request (D107), and a webhook raises it when
+    // somebody creates a product in Shopify admin. A stale `lastNumber` shows
+    // the same predicted SKU on every draft of the session.
     setCategories(result.data.categories)
   }, [])
 
@@ -534,6 +534,16 @@ export function ConsoleScreen({
     setQueue(data.queue)
     setBundle(data.bundle)
     setColours(data.bundle.colours)
+    // The form's image list normally arrives from the preview round trip,
+    // which a fast operator can outrun. Grouping already recorded the
+    // pipeline-chosen version of every photograph server-side, so a form that
+    // still has no images adopts the server's list rather than continuing to
+    // show — and save — an empty one (D107).
+    setForm((current) =>
+      current.images.length > 0
+        ? current
+        : { ...current, images: formFromBundle(data.bundle).images },
+    )
     return data.bundle
   }, [bundle, form.categoryId, selectedPhotoIds, handleResult])
 
@@ -550,6 +560,12 @@ export function ConsoleScreen({
           ? singleStock
           : variants.reduce((total, variant) => total + Math.max(0, variant.stock), 0)
       const weight = form.weight.trim()
+      // Same race as ensureDraft's adoption, for the request itself: an empty
+      // form list means the preview has not landed, while the bundle carries
+      // the group-time selection. Send the bundle's images rather than an
+      // empty list the operator never created. (The database refuses to treat
+      // an empty list as removal either way — D107.)
+      const images = form.images.length > 0 ? form.images : formFromBundle(target).images
       return {
         draftId: target.draft.id,
         expectedUpdatedAt: target.draft.updatedAt,
@@ -565,7 +581,7 @@ export function ConsoleScreen({
         stock: Number.isFinite(stock) ? stock : 0,
         variantKind: form.variantKind,
         variants,
-        images: form.images.map((image, index) => ({
+        images: images.map((image, index) => ({
           imageVersionId: image.imageVersionId,
           position: index,
           colourValue: form.variantKind === 'colour' ? image.colourValue : null,

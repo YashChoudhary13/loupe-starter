@@ -350,6 +350,80 @@ export async function reserveIdentity(
   }
 }
 
+/**
+ * D97's publish-time guard, callable on its own: step the counter past any
+ * number Shopify already uses, so the reservation that follows cannot collide
+ * with a product listed by hand since the last scan. A no-op for a draft that
+ * already holds its identity — that identity is frozen (hard rule 2), so
+ * moving the counter would not change it.
+ *
+ * Hard rule 1 is intact: the number still comes from the atomic counter, and
+ * Shopify is consulted only to rule candidates out. `raise_sku_counter` is
+ * monotone, so this can never walk a sequence backwards.
+ */
+export async function stepCounterPastShopifyNumbers(
+  db: SupabaseClient,
+  shopify: ShopifyClient,
+  input: Pick<PublishInput, 'draft' | 'category'>,
+  actor?: string | null,
+): Promise<void> {
+  if (input.draft.reserved_sku) return
+
+  const counter = await currentCounter(db, input.category.sku_prefix)
+  const numbering = await clearCounterOfShopifyNumbers(
+    shopify,
+    {
+      prefix: input.category.sku_prefix,
+      titlePattern: input.category.title_pattern,
+      titleSuffix: input.draft.title_suffix,
+      counterLastNumber: counter,
+    },
+    async (prefix, to) => {
+      const { error } = await db.rpc('raise_sku_counter', { p_prefix: prefix, p_to: to })
+      if (error) throw new Error(`Could not raise the ${prefix} counter to ${to}: ${error.message}`)
+    },
+  )
+  if (numbering.raisedTo !== null) {
+    // Direct insert, like sync-sku-counters — there is no record_event RPC,
+    // and stepping over somebody's hand-made numbers must leave a trace.
+    await db.from('events').insert({
+      entity_type: 'product_draft',
+      entity_id: input.draft.id,
+      event: 'publish.counter_advanced',
+      detail: {
+        prefix: input.category.sku_prefix,
+        raised_to: numbering.raisedTo,
+        next_free: numbering.nextFree,
+        skipped: numbering.skipped,
+      },
+      actor: actor ?? null,
+    })
+  }
+}
+
+/**
+ * Save-time identity (D107): probe, then reserve, inside the operator's click.
+ *
+ * Before this, "Save draft" answered with a PREDICTED SKU and the reservation
+ * happened after the response, in the background push — so the moment the
+ * category counter refreshed, the editor showed the reserved number plus one.
+ * The operator writes these numbers on physical tags; the save response must
+ * carry the identity `next_sku()` actually issued, not a guess (hard rule 8).
+ *
+ * The Shopify push still runs after the response. It finds this reservation
+ * and reuses it (hard rule 2), exactly as a retry always has.
+ */
+export async function reserveIdentityForSave(
+  db: SupabaseClient,
+  shopify: ShopifyClient,
+  draftId: string,
+  actor?: string,
+): Promise<ReservedIdentity> {
+  const input = await loadPublishInput(db, draftId)
+  await stepCounterPastShopifyNumbers(db, shopify, input, actor)
+  return reserveIdentity(db, draftId, actor, false)
+}
+
 export async function publishProduct(
   db: SupabaseClient,
   shopify: ShopifyClient,
@@ -383,53 +457,10 @@ export async function publishProduct(
   }
   const weightG = resolvedWeightG ?? 0
 
-  /**
-   * Step the counter past any number Shopify already uses, BEFORE reserving.
-   *
-   * Qimati lists products in Shopify admin without the console, and the counter
-   * only learned about those during reconciliation — so a product listed by hand
-   * since the last scan was invisible and the next draft collided with it. This
-   * closes that window on every publish. See D97.
-   *
-   * Hard rule 1 is intact: the number still comes from the atomic counter, and
-   * Shopify is consulted only to rule candidates out. `raise_sku_counter` is
-   * monotone, so this can never walk a sequence backwards.
-   *
-   * Skipped when the draft already holds a reservation — that identity is frozen
-   * (hard rule 2) and moving the counter would not change it.
-   */
-  if (!input.draft.reserved_sku) {
-    const counter = await currentCounter(db, input.category.sku_prefix)
-    const numbering = await clearCounterOfShopifyNumbers(
-      shopify,
-      {
-        prefix: input.category.sku_prefix,
-        titlePattern: input.category.title_pattern,
-        titleSuffix: input.draft.title_suffix,
-        counterLastNumber: counter,
-      },
-      async (prefix, to) => {
-        const { error } = await db.rpc('raise_sku_counter', { p_prefix: prefix, p_to: to })
-        if (error) throw new Error(`Could not raise the ${prefix} counter to ${to}: ${error.message}`)
-      },
-    )
-    if (numbering.raisedTo !== null) {
-      // Direct insert, like sync-sku-counters — there is no record_event RPC,
-      // and stepping over somebody's hand-made numbers must leave a trace.
-      await db.from('events').insert({
-        entity_type: 'product_draft',
-        entity_id: draftId,
-        event: 'publish.counter_advanced',
-        detail: {
-          prefix: input.category.sku_prefix,
-          raised_to: numbering.raisedTo,
-          next_free: numbering.nextFree,
-          skipped: numbering.skipped,
-        },
-        actor: options.actor ?? null,
-      })
-    }
-  }
+  // Step the counter past any number Shopify already uses, before reserving —
+  // D97, extracted into stepCounterPastShopifyNumbers so the save-time
+  // reservation (reserveIdentityForSave) runs the identical guard.
+  await stepCounterPastShopifyNumbers(db, shopify, input, options.actor)
 
   const identity = await reserveIdentity(db, draftId, options.actor, !asDraft)
 

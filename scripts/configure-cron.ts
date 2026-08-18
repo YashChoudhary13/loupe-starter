@@ -28,8 +28,13 @@ const JOBS: readonly CronJob[] = [
     timeoutMilliseconds: 30_000,
   },
   {
+    // Every 5 minutes, because this sweep is also the net that catches files
+    // the Drive change log reports late — measured 13.7 minutes late for
+    // three files on 2026-08-17, which read as "Loupe lost my photos". The
+    // scan is one page of a ~60-file folder, so the extra runs cost nothing;
+    // its cadence bounds the worst-case pickup delay.
     name: 'loupe-drive-reconcile',
-    schedule: '*/15 * * * *',
+    schedule: '*/5 * * * *',
     path: '/api/cron/reconcile',
     timeoutMilliseconds: 30_000,
   },

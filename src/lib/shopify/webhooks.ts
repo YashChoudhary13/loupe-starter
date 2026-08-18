@@ -1,7 +1,9 @@
 import 'server-only'
 
-import { reconcileSingleProduct } from '@/lib/reconciliation/server'
+import { tidyDriveForDraft } from '@/lib/console/housekeeping'
 import { serverEnv } from '@/lib/env'
+import { googleDriveClient } from '@/lib/google/drive-server'
+import { reconcileSingleProduct } from '@/lib/reconciliation/server'
 import { supabaseServer } from '@/lib/supabase/server'
 
 import { ShopifyClient } from './client'
@@ -130,8 +132,47 @@ export async function handleProductsUpdate(payload: ProductWebhookPayload): Prom
     .select('id, status')
     .eq('shopify_product_id', gid)
     .maybeSingle<{ id: string; status: string }>()
-  // Not Loupe's, or still the business finishing a draft listing (D90).
-  if (!draft || draft.status !== 'published') return
+  if (!draft) return
+
+  /**
+   * D107: the business finishes DRAFT-stage listings in Shopify admin (D90)
+   * and activates them THERE — Loupe's own publish is not the only door.
+   * Before this, only a Loupe publish moved a draft to `published`, so a
+   * hand-activated product left its draft `assembling` forever and its
+   * photographs crowded Drive /RAW with nothing ever tidying them.
+   *
+   * Activation is the signal. `mark_draft_published` is idempotent and takes
+   * any prior status, and the Drive tidy is the same one publish runs — safe
+   * to repeat, and one file's failure never stops the others. A tidy failure
+   * must not bounce the webhook into Shopify's retry storm: the product IS
+   * published either way, and the next activation event or a manual publish
+   * retry re-runs the housekeeping.
+   */
+  if (draft.status !== 'published') {
+    // Still the business finishing a draft listing (D90).
+    if ((payload.status ?? '').toLowerCase() !== 'active') return
+
+    const { error } = await db.rpc('mark_draft_published', {
+      p_draft_id: draft.id,
+      p_shopify_product_id: gid,
+      p_actor: 'shopify-webhook',
+    })
+    if (error) {
+      console.error('webhook activation could not mark the draft published:', error.message)
+      return
+    }
+    try {
+      await tidyDriveForDraft(draft.id, {
+        db,
+        drive: googleDriveClient(),
+        processedFolderId: serverEnv.driveProcessedFolderId,
+        actor: 'shopify-webhook',
+      })
+    } catch (cause) {
+      console.error('webhook drive housekeeping failed:', cause)
+    }
+    return
+  }
 
   try {
     const issues = await reconcileSingleProduct(db, new ShopifyClient(), draft.id)

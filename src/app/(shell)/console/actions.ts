@@ -12,6 +12,7 @@ import {
   describeBlocks,
   publishDraftForOperator,
   PublishInProgressError,
+  reserveDraftIdentity,
   type DriveHousekeepingOutcome,
 } from '@/lib/console/publish'
 import { pushDraftToShopifyInBackground } from '@/lib/console/shopify-push'
@@ -135,7 +136,7 @@ export interface QueueRefresh {
  * `sku_counters.last_number` and the "will publish as" preview is that plus one.
  *
  * The counter moves without this browser doing anything: every Save draft
- * reserves the next number server-side after the response, and D102 webhooks
+ * reserves the next number inside the save request (D107), and D102 webhooks
  * raise it whenever somebody creates a product in Shopify admin. Seeding
  * `categories` once from the page render and never re-reading it froze the
  * preview, so two drafts in a row were shown the same SKU while the database
@@ -598,6 +599,26 @@ export async function saveDraftAction(
 ): Promise<ActionResult<{ bundle: DraftBundle }>> {
   return withOperator(async (operator) => {
     await saveDraft(operator, request)
+
+    /**
+     * D107: the SKU, title and handle are reserved HERE, inside the click,
+     * so the bundle returned below carries the identity `next_sku()` actually
+     * issued instead of a prediction. The operator writes these numbers on
+     * physical tags; between the old post-response reservation and the queue
+     * refresh moving `lastNumber`, the editor used to show reserved + 1.
+     *
+     * The typing is already saved above, so a reservation failure loses
+     * nothing — it reports, and pressing Save draft again retries.
+     */
+    try {
+      await reserveDraftIdentity(request.draftId, operator)
+    } catch (cause) {
+      throw new ConsoleError(
+        'The typing was saved, but a SKU could not be reserved, so nothing went to Shopify yet. Press Save draft again.',
+        cause instanceof Error ? cause.message : String(cause),
+        true,
+      )
+    }
 
     /**
      * D60 (supersedes D7): Save Draft also puts the product in Shopify with

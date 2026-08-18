@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * The full-size review of a photograph.
@@ -26,6 +26,13 @@ import { useCallback, useEffect, useRef } from 'react'
 
 export interface LightboxImage {
   readonly url: string
+  /**
+   * The queue-grid thumbnail of the same version, shown while the full file
+   * downloads. The full image is a ~2 MB PNG behind a presigned URL that
+   * differs on every snapshot, so the browser almost never has it cached —
+   * without a placeholder every open is seconds of black.
+   */
+  readonly thumbUrl: string | null
   readonly alt: string
   readonly caption: string
 }
@@ -41,6 +48,8 @@ export interface ImageLightboxProps {
 export function ImageLightbox({ images, index, onClose, onIndexChange }: ImageLightboxProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const returnFocusTo = useRef<Element | null>(null)
+  /** Which full-size URL has finished downloading; keyed by URL, not index. */
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null)
   const open = index !== null && images.length > 0
   const current = open ? images[index] : undefined
 
@@ -124,14 +133,27 @@ export function ImageLightbox({ images, index, onClose, onIndexChange }: ImageLi
           <LightboxArrow side="left" onClick={() => step(-1)} />
         ) : null}
 
-        {/* eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL. */}
-        <img
-          src={current.url}
-          alt={current.alt}
-          className="max-h-full max-w-full object-contain"
-          // The backdrop closes; the image itself must not.
-          onClick={(event) => event.stopPropagation()}
-        />
+        <div className="relative h-full w-full">
+          {current.thumbUrl && loadedUrl !== current.url ? (
+            // eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL.
+            <img
+              src={current.thumbUrl}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 m-auto max-h-full max-w-full object-contain blur-[1.5px]"
+              onClick={(event) => event.stopPropagation()}
+            />
+          ) : null}
+          {/* eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL. */}
+          <img
+            src={current.url}
+            alt={current.alt}
+            onLoad={() => setLoadedUrl(current.url)}
+            className="absolute inset-0 m-auto max-h-full max-w-full object-contain"
+            // The backdrop closes; the image itself must not.
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
 
         {images.length > 1 ? <LightboxArrow side="right" onClick={() => step(1)} /> : null}
       </div>
