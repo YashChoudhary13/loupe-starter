@@ -29,6 +29,56 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-19 — Measurements as a third prompt axis (D108)
+
+**Goal this session:** let an operator ask for dimension callouts on the generated photograph,
+read off a ruler placed beside the piece in the raw upload.
+
+**Built:**
+- `src/lib/prompts/matrix.ts` → `PromptMeasurement`, `PROMPT_MEASUREMENTS` (`plain`,
+  `measured`), `promptMeasurement()`; `composeClientPair()` takes a third argument
+  (default `'plain'`). The measured describe rule is spliced in ahead of the JSON contract
+  so the output format stays the describer's last instruction; the measured image rule is
+  appended after `OUTPUT` so it can explicitly override that paragraph's no-text ban.
+- `src/lib/prompts/ensure-pair.ts` → `ensurePromptPair(category, setting, actor, measurement)`.
+- `src/app/(shell)/prompts/actions.ts` → `useCategorySettingAction` reads and validates the
+  `measurement` field.
+- `src/components/prompts/PromptMatrix.tsx` → "3 · Measurements" section; the preview and the
+  "Use for new batches" button carry the choice.
+- `tests/prompt-matrix.test.ts` → four new assertions (see below).
+
+**Verified:**
+```
+✓ tests/prompt-matrix.test.ts (7 tests)
+✓ tests/category-aware-prompt.test.ts (19)  ✓ tests/enhance-prompt-config.test.ts (5)
+✓ tests/prompt-version-preparation.test.ts (4)  ✓ tests/prompt-models.test.ts (3)
+Test Files 5 passed | Tests 38 passed
+npx tsc --noEmit → clean.  npx eslint (4 changed files) → clean.
+```
+All 130 measured combinations resolve through `resolveImagePrompt()` with a description
+injected — the worker's own gate — with no unresolved `{{TOKENS}}`, both bodies inside the
+20,000-character `create_prompt_version` limit, and slugs matching the deployed `preset_slug`
+check constraint `^[a-z0-9-]{1,64}(--[a-z0-9-]{1,64})?$`. A `plain` pair is asserted
+byte-identical to the two-argument call, so no stored pair is re-materialised.
+
+**Not finished / known broken:**
+- **Nothing has been run against a real photograph with a real ruler.** Every check above is
+  structural. The accuracy of the read figure and of the rendered digits is unproven.
+- `/upload`'s per-photo prompt binding still offers category × setting only; a measured batch
+  must be selected globally in `/prompts`. Adding the third axis there is `UploadScreen.tsx`
+  plus the upload action's input type.
+- `src/lib/prompts/presets.ts` has no label for measured slugs, so the Advanced list falls
+  back to the prompt's own name (`… · measured — image`). Same as every other matrix pair.
+
+**Surprises:** none structural. The `preset_slug` constraint already accepts a three-part slug
+because `-` is inside its character class, so `--measured` needed no migration.
+
+**Next session should start with:** shoot one piece per rough size band (a nose pin, a chain
+bracelet, a waist chain) with the ruler beside it, run a measured batch, and check every
+printed figure against the raw photograph with a real ruler before this is used at volume.
+
+---
+
 ## 2026-08-18 — The first volume day's five defects (D107)
 
 **Goal this session:** diagnose the 2026-08-17 volume session's report — imageless Shopify

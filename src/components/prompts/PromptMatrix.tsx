@@ -6,6 +6,7 @@ import { useCategorySettingAction } from '@/app/(shell)/prompts/actions'
 import {
   composeClientPair,
   PROMPT_CATEGORY_CORES,
+  PROMPT_MEASUREMENTS,
   promptSetting,
   settingsForCategory,
 } from '@/lib/prompts/matrix'
@@ -16,21 +17,28 @@ import { cn } from '@/lib/utils'
  *
  * Step 1: which kind of piece (the category core carries every hard-won
  * protection rule for that construction). Step 2: which scene (a pure
- * background/light paragraph from the owner's reference boards). The viewer
- * below shows the exact describer and image prompt the combination produces —
- * what "Use for new batches" will make current.
+ * background/light paragraph from the owner's reference boards). Step 3:
+ * whether the finished photograph carries dimension callouts read off a ruler
+ * placed beside the piece in the raw upload. The viewer below shows the exact
+ * describer and image prompt the combination produces — what "Use for new
+ * batches" will make current.
  */
 export function PromptMatrix({ activePairSlug }: { activePairSlug: string | null }) {
   const activeParts = activePairSlug?.split('--') ?? []
   const [categorySlug, setCategorySlug] = useState<string>(activeParts[0] ?? '')
   const [settingSlug, setSettingSlug] = useState<string>(activeParts[1] ?? '')
+  // An unmeasured pair has no third slug part, which is exactly what 'plain' is.
+  const [measurementSlug, setMeasurementSlug] = useState<string>(activeParts[2] ?? 'plain')
 
   const settings = categorySlug ? settingsForCategory(categorySlug) : []
   const pair = useMemo(
-    () => (categorySlug && settingSlug ? composeClientPair(categorySlug, settingSlug) : null),
-    [categorySlug, settingSlug],
+    () =>
+      categorySlug && settingSlug
+        ? composeClientPair(categorySlug, settingSlug, measurementSlug)
+        : null,
+    [categorySlug, settingSlug, measurementSlug],
   )
-  const isActive = pair !== null && activePairSlug === `${categorySlug}--${settingSlug}`
+  const isActive = pair !== null && activePairSlug === pair.slug
 
   return (
     <div className="flex flex-col gap-4">
@@ -107,6 +115,45 @@ export function PromptMatrix({ activePairSlug }: { activePairSlug: string | null
         </section>
       ) : null}
 
+      {categorySlug && settingSlug ? (
+        <section className="rounded-card bg-surface p-5">
+          <h2 className="loupe-label">3 · Measurements</h2>
+          <p className="mt-1 text-[11.5px] text-muted-foreground">
+            Whether the finished photograph carries dimension callouts. Measured needs a ruler
+            or scale bar lying beside the piece in the raw photograph, flat and in the same
+            plane; the describer reads it and the image stage prints those figures.
+          </p>
+          <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2">
+            {PROMPT_MEASUREMENTS.map((measurement) => (
+              <button
+                key={measurement.slug}
+                type="button"
+                aria-pressed={measurement.slug === measurementSlug}
+                onClick={() => setMeasurementSlug(measurement.slug)}
+                className={cn(
+                  'rounded-panel px-3.5 py-3 text-left transition-all duration-150',
+                  measurement.slug === measurementSlug
+                    ? 'bg-ink text-white shadow-sm'
+                    : 'bg-chip text-ink-soft hover:-translate-y-0.5 hover:bg-[#ebebeb]',
+                )}
+              >
+                <div className="text-[12.5px] font-medium">{measurement.label}</div>
+                <div
+                  className={cn(
+                    'mt-1 text-[10.5px] leading-snug',
+                    measurement.slug === measurementSlug
+                      ? 'text-white/70'
+                      : 'text-muted-foreground',
+                  )}
+                >
+                  {measurement.note}
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {pair ? (
         <section className="rounded-card bg-surface p-5">
           <div className="flex flex-wrap items-center gap-3">
@@ -127,6 +174,7 @@ export function PromptMatrix({ activePairSlug }: { activePairSlug: string | null
                 <form action={useCategorySettingAction}>
                   <input type="hidden" name="category" value={categorySlug} />
                   <input type="hidden" name="setting" value={settingSlug} />
+                  <input type="hidden" name="measurement" value={measurementSlug} />
                   <button
                     type="submit"
                     className="rounded-pill bg-ink px-4 py-2 text-[12px] font-medium text-white transition-colors hover:bg-[#242428]"

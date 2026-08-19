@@ -37,6 +37,16 @@ export interface PromptCategoryCore {
   readonly imageBody: string
 }
 
+export interface PromptMeasurement {
+  readonly slug: string
+  readonly label: string
+  readonly note: string
+  /** Inserted into the describer body immediately before its JSON contract. '' for none. */
+  readonly describeRule: string
+  /** Appended to the image body, after OUTPUT, so it can override OUTPUT's no-text rule. '' for none. */
+  readonly imageRule: string
+}
+
 export const PROMPT_SETTINGS: readonly PromptSetting[] = [
   {
     slug: 'ivory-seamless',
@@ -123,6 +133,49 @@ export const PROMPT_SETTINGS: readonly PromptSetting[] = [
       'waist-chain',
       'bag',
     ],
+  },
+]
+
+/**
+ * The third axis: whether the finished photograph carries dimension callouts.
+ *
+ * "Measured" is a contract with the photographer, not just with the model. The
+ * raw upload must show a ruler or printed scale bar lying beside the piece, in
+ * the same plane and at the same distance from the camera; the describer reads
+ * it and states the figures in millimetres inside its own description
+ * paragraph, so no pipeline field, database column or JSON key changes. The
+ * image stage then prints those exact figures as flat dimension lines and
+ * removes the ruler itself from the frame.
+ *
+ * Because the figures travel inside the description, a measurement the
+ * describer refused to make (tilted, blurred or unreadable scale) reaches the
+ * image stage as "not legible" and it draws nothing — an unmeasured photograph
+ * rather than an invented number.
+ */
+export const PROMPT_MEASUREMENTS: readonly PromptMeasurement[] = [
+  {
+    slug: 'plain',
+    label: 'No measurements',
+    note: 'The hero photograph on its own. Upload as usual; no ruler needed.',
+    describeRule: '',
+    imageRule: '',
+  },
+  {
+    slug: 'measured',
+    label: 'Measurements on the image',
+    note: 'Photograph each piece with a ruler beside it. Loupe reads the ruler and prints dimension callouts on the finished image.',
+    describeRule: `MEASUREMENT — a measuring scale (a ruler or a printed scale bar) is lying in Image 1 beside the product, as a size reference. It is a measuring aid and is NOT part of the product: never count it as a component, never enter it in the ledger, never let it change the presentation class, and never describe it as an object.
+
+Read it before you write. Find the printed unit by reading the numerals — cm or mm — rather than assuming one, and work out how far one printed division spans in the photograph. Then measure the product with that ratio, along the same plane the scale lies in. Measure the two or three dimensions a buyer would ask for on this kind of piece: for a flexible piece, its full end-to-end length and the largest component's height and width; for a rigid piece, its outer height and width and, where it applies, its inner diameter. Measure only the product; exclude packaging, cards, the scale and anything the piece rests on.
+
+End the description with one further sentence, inside the same single paragraph with no line break before it, in exactly this form and with nothing after it:
+"Measured against the scale: <part> <number> mm; <part> <number> mm."
+Use whole millimetres. Give a figure only when the scale is legible, lies flat in the same plane as the part being measured and sits at the same distance from the camera. When it is tilted, blurred, out of plane, cropped or its numerals cannot be read, write "Measured against the scale: not legible." instead and give no numbers at all. A confident wrong measurement is worse than none: it will be printed on the photograph a customer buys from.`,
+    imageRule: `MEASURING SCALE IN THE SOURCE — Image 1 was photographed with a ruler or scale bar beside the piece. It is a measuring aid; it is not part of the product and not part of the scene. It never appears in the output, and no rule edge, tick mark, numeral or fragment of it is reproduced anywhere in the frame.
+
+MEASUREMENT CALLOUTS — this is a dimensioned hero photograph. Over the finished image, draw the measurements listed at the end of the PRODUCT block as flat technical annotations laid on top of the photograph, never as objects standing inside the scene. One callout per measurement, at most three: a hairline straight dimension line with a small tick or arrowhead at each end, spanning exactly the part of the product that measurement names, held just outside the product's silhouette in clear background, with its figure printed beside it in a small clean sans-serif. Print each figure exactly as the PRODUCT block states it — same digits, same unit — and never round, convert, recompute or invent one. Use a single neutral colour that separates from the background, near-black on a light scene and white on a dark one. The callouts never cross the product, never overlap one another, never touch the frame edge, and never sit over a pendant, stone, motif, dial, artwork or hardware. Drawing them changes nothing about the product, the pose, the scene or the crop.
+
+These annotations are the only graphics and the only text permitted in the image, and this overrides the no-text rule in OUTPUT above. If the PRODUCT block says the scale was not legible, or carries no measurement sentence at all, draw no lines, no figures and no text whatsoever and output the clean photograph.`,
   },
 ]
 
@@ -949,6 +1002,10 @@ export function promptSetting(slug: string): PromptSetting | null {
   return PROMPT_SETTINGS.find((setting) => setting.slug === slug) ?? null
 }
 
+export function promptMeasurement(slug: string): PromptMeasurement | null {
+  return PROMPT_MEASUREMENTS.find((measurement) => measurement.slug === slug) ?? null
+}
+
 /** bestFor matches first, in declaration order, then everything else. */
 export function settingsForCategory(
   categorySlug: string,
@@ -960,14 +1017,19 @@ export function settingsForCategory(
 }
 
 /**
- * Pure composition of a category × setting pair — the exact bodies "Use for
- * new batches" materialises. Client-safe (this file has no imports), so the
- * prompts screen can preview what a combination produces before anything is
- * written; the server's ensure-pair reuses it as the single source of truth.
+ * Pure composition of a category x setting x measurement triple — the exact
+ * bodies "Use for new batches" materialises. Client-safe (this file has no
+ * imports), so the prompts screen can preview what a combination produces
+ * before anything is written; the server's ensure-pair reuses it as the single
+ * source of truth.
+ *
+ * An unmeasured pair keeps the two-part slug it has always had, so every pair
+ * already stored stays the same row and nothing is re-materialised.
  */
 export function composeClientPair(
   categorySlug: string,
   settingSlug: string,
+  measurementSlug: string = 'plain',
 ): {
   readonly slug: string
   readonly label: string
@@ -976,11 +1038,30 @@ export function composeClientPair(
 } | null {
   const core = categoryCore(categorySlug)
   const setting = promptSetting(settingSlug)
-  if (!core || !setting) return null
+  const measurement = promptMeasurement(measurementSlug)
+  if (!core || !setting || !measurement) return null
+
+  const measured = measurement.describeRule !== '' || measurement.imageRule !== ''
+  let describeBody = core.describeBody
+  if (measurement.describeRule) {
+    // Ahead of the JSON contract, so the last thing the describer reads is
+    // still the output format it must obey.
+    const jsonContract = 'Return ONLY raw JSON'
+    if (!describeBody.includes(jsonContract)) return null
+    describeBody = describeBody.replace(
+      jsonContract,
+      `${measurement.describeRule}\n\n${jsonContract}`,
+    )
+  }
+
   return {
-    slug: `${categorySlug}--${settingSlug}`,
-    label: `${core.label} · ${setting.label}`,
-    describeBody: core.describeBody,
-    imageBody: core.imageBody.replace('{{SETTING_DETAIL}}', setting.scene),
+    slug: measured ? `${categorySlug}--${settingSlug}--${measurementSlug}` : `${categorySlug}--${settingSlug}`,
+    label: measured
+      ? `${core.label} · ${setting.label} · measured`
+      : `${core.label} · ${setting.label}`,
+    describeBody,
+    imageBody:
+      core.imageBody.replace('{{SETTING_DETAIL}}', setting.scene) +
+      (measurement.imageRule ? `\n\n${measurement.imageRule}` : ''),
   }
 }

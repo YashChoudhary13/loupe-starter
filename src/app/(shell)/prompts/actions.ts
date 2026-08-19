@@ -157,7 +157,7 @@ export async function promptPresetAction(formData: FormData): Promise<void> {
 }
 
 /**
- * D104 — the category × setting picker's one button. Materialises the pair
+ * D104 — the category × setting × measurement picker's one button. Materialises the pair
  * (or a fresh revision of it, when the matrix improved since last use) through
  * create_prompt_version, then promotes both halves in one transaction.
  * Photographs uploaded from now on — Drive or Upload — use it; per-photo
@@ -167,16 +167,23 @@ export async function useCategorySettingAction(formData: FormData): Promise<void
   const operator = await requireOperatorForAction()
   const categorySlug = String(formData.get('category') ?? '').trim()
   const settingSlug = String(formData.get('setting') ?? '').trim()
+  const measurementSlug = String(formData.get('measurement') ?? 'plain').trim() || 'plain'
 
-  const { categoryCore, promptSetting } = await import('@/lib/prompts/matrix')
-  if (!categoryCore(categorySlug) || !promptSetting(settingSlug)) {
-    returnToPrompts('error', 'That category and setting combination does not exist.')
+  const { categoryCore, promptSetting, promptMeasurement } = await import(
+    '@/lib/prompts/matrix'
+  )
+  if (
+    !categoryCore(categorySlug) ||
+    !promptSetting(settingSlug) ||
+    !promptMeasurement(measurementSlug)
+  ) {
+    returnToPrompts('error', 'That category, setting and measurement combination does not exist.')
   }
 
   const { ensurePromptPair } = await import('@/lib/prompts/ensure-pair')
   let slug: string
   try {
-    slug = await ensurePromptPair(categorySlug, settingSlug, operator.email)
+    slug = await ensurePromptPair(categorySlug, settingSlug, operator.email, measurementSlug)
   } catch (cause) {
     returnToPrompts(
       'error',

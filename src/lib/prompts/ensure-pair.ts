@@ -9,7 +9,8 @@ import { composeClientPair } from './matrix'
  *
  * The matrix in matrix.ts is code: category cores carry every protection rule
  * and a single {{SETTING_DETAIL}} slot; settings carry pure scene paragraphs.
- * A pair only becomes prompt ROWS (slug `category--setting`) the first time an
+ * A pair only becomes prompt ROWS (slug `category--setting`, or
+ * `category--setting--measured` when dimension callouts are on) the first time an
  * operator uses that combination, through the same create_prompt_version RPC
  * every hand-written revision goes through — so validation, audit events and
  * immutability are identical. Re-ensuring after a matrix improvement writes a
@@ -75,10 +76,13 @@ export async function ensurePromptPair(
   categorySlug: string,
   settingSlug: string,
   actor: string,
+  measurementSlug: string = 'plain',
 ): Promise<string> {
-  const composed = composeClientPair(categorySlug, settingSlug)
+  const composed = composeClientPair(categorySlug, settingSlug, measurementSlug)
   if (!composed) {
-    throw new Error(`Unknown prompt combination: ${categorySlug} × ${settingSlug}`)
+    throw new Error(
+      `Unknown prompt combination: ${categorySlug} × ${settingSlug} × ${measurementSlug}`,
+    )
   }
 
   const existing = await newestPair(composed.slug)

@@ -3092,3 +3092,50 @@ the wrong-SKU window instead of closing it, and merges server state into a form 
 may be typing in. Also rejected: a client-side guard alone for finding 2 — the database rule
 protects every past and future caller, including the deployed clients still running during
 the rollout.
+
+---
+
+### D108 — Measurements are a third prompt axis, and the figures travel inside the description
+
+The prompt matrix becomes **category × setting × measurement**. The third choice has two
+values: `plain` (what every pair has always been) and `measured`.
+
+`measured` is a contract with the photographer as much as with the model: the raw upload must
+show a ruler or printed scale bar lying beside the piece, flat, in the same plane and at the
+same distance from the camera. The describer is then told to read the printed unit off the
+numerals, derive the millimetres-per-division ratio and measure the two or three dimensions a
+buyer asks for on that kind of piece. The image stage draws those figures as flat dimension
+callouts and removes the ruler itself from the frame.
+
+**The figures ride inside the description paragraph, not in a new JSON field.** The describer
+ends its paragraph with one fixed sentence, `Measured against the scale: <part> <number> mm;
+…`. That is the whole reason this is a prompt change and not a pipeline change:
+`parseStructuredDescription` accepts exactly two keys (`description`, `presentation`) and
+nothing else, and the description already reaches the image prompt through the PRODUCT block.
+A third JSON key would have meant a parser change, an `intake_files` column, a worker change,
+a redo-path change and a migration — for data whose only consumer is the next prompt.
+
+**A measurement that cannot be made is stated, not guessed.** An illegible, tilted or
+out-of-plane scale makes the describer write `Measured against the scale: not legible.` and
+the image rule then draws no lines, no figures and no text at all. The image prompt may print
+only the digits the PRODUCT block contains — never round, convert, recompute or invent one.
+A wrong number printed on the photograph a customer buys from is worse than an unmeasured
+photograph.
+
+**`plain` keeps the two-part slug** `category--setting`. Only a measured pair takes a third
+part, `category--setting--measured`. Every pair already stored therefore stays the same row
+and nothing is re-materialised; the existing `preset_slug` check constraint already admits
+the longer form, so no migration was needed.
+
+**Rejected:** a fourth "dimension shot" alongside the hero — one raw photograph produces one
+enhanced version, and a second output would need its own version row, its own cost ceiling
+and its own place in the console's image list. **Also rejected for now:** drawing the callouts
+deterministically (server-side overlay on the returned PNG) rather than asking the image model
+to render them. That is the accurate way to do it and is the upgrade path if the model's
+rendered digits drift; it is a worker change, not a prompt change, and it was not what was
+asked for.
+
+**Ceiling to watch:** two error sources compound — the describer reading the ruler (expect a
+few per cent, worse on very small pieces and any out-of-plane scale) and the image model
+rendering the digits. Check the first measured batch figure by figure against the raw
+photographs before trusting it at volume.
