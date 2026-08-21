@@ -37,6 +37,14 @@ describe('worker RPCs', () => {
     return id
   }
 
+  /** Every other queued job (the production backlog and earlier tests' leftovers) sorts after this reference's. */
+  async function parkOthers(refId: string) {
+    await db.query(
+      `update public.match_jobs set created_at = now() + interval '2 days' where status = 'queued' and reference_id is distinct from $1`,
+      [refId],
+    )
+  }
+
   async function claim(kinds: string[]) {
     const { rows } = await db.query<{
       job_id: string; kind: string; lease_token: string; reference_id: string | null; ref_sku: string | null
@@ -46,6 +54,7 @@ describe('worker RPCs', () => {
 
   it('claims sync, fences completion by token, enqueues embed, stores two views, indexes, and searches', async () => {
     const refId = await reference('NK9001')
+    await parkOthers(refId)
     const sync = await claim(['sync', 'embed'])
     expect(sync).toMatchObject({ kind: 'sync', reference_id: refId, ref_sku: 'NK9001' })
 
@@ -85,8 +94,11 @@ describe('worker RPCs', () => {
     await db.query(`select public.store_match_embedding($1, 'crop', $2, 'siglip2-test')`, [other, unit(3)])
     await db.query(`update public.match_references set status = 'indexed' where id = $1`, [other])
 
+    // The real index (thousands of catalogue references) is searched too; the
+    // stored vector must still come first with cosine 1, and an orthogonal one
+    // must score 0 wherever it lands.
     const search = await db.query<{ sku: string; score: number }>(
-      `select sku, score from public.match_search($1, 10)`, [unit(1)])
+      `select sku, score from public.match_search($1, 10000)`, [unit(1)])
     expect(search.rows[0]).toMatchObject({ sku: 'NK9001' })
     expect(search.rows[0]!.score).toBeCloseTo(1, 5)
     expect(search.rows.find((r) => r.sku === 'NK9002')!.score).toBeCloseTo(0, 5)
@@ -94,6 +106,7 @@ describe('worker RPCs', () => {
 
   it('retries a retryable failure up to four attempts, then fails the reference', async () => {
     const refId = await reference('NK9003')
+    await parkOthers(refId)
     for (let attempt = 1; attempt <= 4; attempt += 1) {
       const job = await claim(['sync'])
       expect(job).toMatchObject({ reference_id: refId })
@@ -109,6 +122,7 @@ describe('worker RPCs', () => {
 
   it('lets another worker take over an expired lease', async () => {
     const refId = await reference('NK9004')
+    await parkOthers(refId)
     const first = await claim(['sync'])
     expect(first!.reference_id).toBe(refId)
     // Expire the lease and make it the oldest work, so the next claim must reclaim it.

@@ -48,6 +48,7 @@ describe('matcher schema (D110/D111)', () => {
          from pg_attribute a join pg_class c on c.oid = a.attrelid
         where c.relname = 'match_embeddings' and a.attname = 'embedding'`,
     )
-    expect(col.rows[0]?.format_type).toBe('extensions.vector(1152)')
+    // format_type() qualifies the schema only when `extensions` is off the search_path.
+    expect(col.rows[0]?.format_type).toMatch(/^(extensions\.)?vector\(1152\)$/)
   })
 })
