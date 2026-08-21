@@ -26,6 +26,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ShopifyClient } from '@/lib/shopify/client'
 import { syncShopifySavedColours } from '@/lib/shopify/colour-options'
 import { registerAfterPublish } from '@/lib/match/register'
+import { supersedeAfterPublish } from '@/lib/match/supersede'
 import { ShopifyError } from '@/lib/shopify/errors'
 import {
   buildAltText,
@@ -668,7 +669,11 @@ export async function publishProduct(
     // D111: the published original becomes a matcher reference. Best effort —
     // the weekly sweep catches anything this misses, and a publish that already
     // happened is never failed by it.
-    if (!asDraft) await registerAfterPublish(db, options.actor ?? 'publish')
+    if (!asDraft) {
+      await registerAfterPublish(db, options.actor ?? 'publish')
+      // D112: a new SKU born from a restock archives the product it replaces.
+      await supersedeAfterPublish(db, shopify, draftId, options.actor ?? 'publish')
+    }
 
     return {
       draftId,
