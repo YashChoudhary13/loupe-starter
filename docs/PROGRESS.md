@@ -74,8 +74,9 @@ pass the gate as an operator would.  npx tsc --noEmit clean · eslint clean · n
 worker: 9 pytest; end to end against production data through a local server — identify answered
 in 2.8 s on this Mac's CPU with ten candidates and a stored preview; sync + embed left NK1130
 indexed (2 vectors, self-search rank 1); lease fencing and bounded retries proven in SQL.
-production data: 79 published originals registered (pending sync); Drive backfill running
-(see the log in the final report); 7 cron jobs active.
+production data: 158 published originals registered for 143 of 238 products — 79 from R2, 78 copied
+from Drive /Processed into references/ by the backfill (80 Drive files gone for good, 0 failures);
+157 sync jobs queued for the laptop; 7 cron jobs active.
 ```
 The seven pre-existing failures in the full suite (publish-identity ×3, prompt-management ×2, schema
 seed ×1, category-management WC seed ×1) are unchanged and unrelated.
