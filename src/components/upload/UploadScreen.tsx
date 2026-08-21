@@ -181,16 +181,16 @@ export function UploadScreen() {
         <div>
           <h1 className="text-[26px] font-medium tracking-[-0.025em]">Upload</h1>
           <div className="text-[12px] text-muted-foreground">
-            Raw photographs, straight into AI enhancement — no Drive folder needed.
+            Raw photographs — identified against the catalogue first, then enhanced. No Drive folder needed.
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {queuedCount > 0 ? (
             <Link
-              href="/tracking"
+              href="/identify"
               className="rounded-pill bg-chip px-3.5 py-2 text-[11.5px] font-medium text-ink-soft transition-colors hover:bg-[#ebebeb]"
             >
-              {queuedCount} in the pipeline — watch in Tracking
+              {queuedCount} waiting in Identify — decide there
             </Link>
           ) : null}
           <button
@@ -326,7 +326,7 @@ export function UploadScreen() {
                         </span>
                       ) : item.state === 'queued' ? (
                         <span className="rounded-pill bg-ink px-2.5 py-1 text-[10.5px] font-medium text-white">
-                          ✓ queued for AI
+                          ✓ waiting in Identify
                         </span>
                       ) : (
                         <span
