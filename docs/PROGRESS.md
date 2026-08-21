@@ -29,47 +29,74 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
-## 2026-08-21 — Originals are never purged (D109); SKU-matcher integration begins
+## 2026-08-21 — Originals are never purged (D109); the SKU matcher is wired in (D110–D113)
 
-**Goal this session:** stop retention from deleting original photographs (the matcher's references),
-then start the approved SKU-matching integration (`AI-Python/docs/LOUPE-INTEGRATION-PLAN.md`).
+**Goal this session:** stop retention from deleting original photographs, then build the approved
+SKU-matching integration (`AI-Python/docs/LOUPE-INTEGRATION-PLAN.md`, plan in
+`docs/superpowers/plans/2026-08-21-sku-matching-implementation.md`).
 
-**Built:**
-- `supabase/migrations/20260821160000_retention_keeps_originals.sql` → `retention_candidates()` never
-  returns `kind = 'original'`; `mark_versions_purged()` refuses to mark one. Applied to production
-  16:30 IST.
-- `src/lib/retention/protected-keys.ts` → `isProtectedKey()` for `originals/`, `manual/`,
-  `references/`, `identify/`.
-- `src/lib/retention/purge.ts` → skips protected keys (`protectedKept` in the result); takes `db` and
-  `store` by injection and is no longer `server-only`; `src/app/api/cron/retention/route.ts` wires the
-  real ones.
-- `src/lib/tracking/discard.ts` → the D64 discard keeps the original's bytes; only generated
-  versions and thumbnails are deleted.
-- `tests/retention-purge.test.ts` (5), `tests/retention.sql.test.ts` (2).
+**Built (all migrations applied to production as they were written):**
+- D109 `20260821160000` — `retention_candidates()` never returns an original; `mark_versions_purged()`
+  refuses one; `src/lib/retention/protected-keys.ts` makes `purge.ts` and the D64 discard skip
+  `originals/`, `manual/`, `references/`, `identify/`. Verified on production: 0 originals among
+  candidates at any age, 96 present.
+- D110 `…170000`/`…171000`/`…172000`/`…174000`/`…174500` — `intake_status` gains `identifying`,
+  `restock`, `restocked`; tables `match_events`, `match_references`, `match_embeddings` (pgvector
+  0.8.2, `extensions.vector(1152)`), `match_jobs`, `match_workers`, `restock_decisions`;
+  `discover_intake_file()` and `finalize_raw_image_upload()` land in `identifying` and call
+  `request_identification()`; `decide_identification()`, `finalize_identify_upload()`,
+  `confirm_identification()`. `/identify` (`src/components/identify/IdentifyScreen.tsx`) for both
+  surfaces; upload tiles hand off to it; sidebar links; tracking classifies the new statuses.
+- D111 `…173000`/`…175000` — worker RPCs (`claim_match_job`, `complete_match_job`, `fail_match_job`,
+  `store_match_embedding`, `match_search`, `record_match_candidates`, `worker_heartbeat`,
+  `match_job_source`, `record_match_thumb`); `/api/worker/{heartbeat,claim,complete,source/[jobId]}`
+  (`src/lib/match/worker-api.ts`, bearer `WORKER_SECRET`); `register_reference()`,
+  `register_published_originals()`, publish hooks in `publish-product.ts` and `promote.ts`,
+  `/api/cron/match-register` + `loupe-match-register` cron (Sunday 02:00 IST, scheduled against the
+  existing vault secrets); `scripts/import-catalogue-embeddings.ts` (3,665 images / 7,330 vectors /
+  2,939 SKUs imported as `bakeoff-v9`); `scripts/backfill-match-references.ts` (Drive → `references/`);
+  `worker/` — the Windows GPU worker (`loupe-worker`: sync, embed, identify; README, .bat files,
+  Dockerfile for a CPU fallback).
+- D112 `…176000` — restock paths: `begin/complete_restock_existing`, `fail_restock`,
+  `begin_new_sku_from_restock`, `pending_supersession`, `record_supersession`,
+  `reopen_identification`; `src/lib/shopify/inventory.ts` (`readProductStockBySku`,
+  `setAvailableQuantities`, `archiveProduct`); `src/lib/match/supersede.ts` at publish; `/restock`.
+- D113 `…176500` — the stale `intake_files_source_is_known` constraint that made the D103 upload
+  path impossible is gone.
 
 **Verified:**
 ```
-✓ tests/retention.sql.test.ts (2 tests)   ✓ tests/retention-purge.test.ts (5 tests)
-npx tsc --noEmit → clean.  eslint (changed files) → clean.
-production after db:push: retention_candidates(-365) → 80 generated, 0 original; 96 originals present.
-full suite: 637 passed, 7 failed — all 7 fail identically on the pristine HEAD (prompt-preset and
-SKU-counter drift between the tests and the live database: publish-identity ×3, prompt-management ×2,
-schema seed ×1, category-management WC seed ×1). Not touched by this change; recorded, not fixed.
+new tests: retention-purge (5), retention.sql (2), match-schema.sql (2), identification-gate.sql (3),
+worker-rpcs.sql (4), worker-api (7), identify-uploads.sql (3), reference-registration.sql (1),
+restock.sql (4), shopify-inventory (3); tracking-classify +2; intake-queue.sql / enhancement-queue.sql
+pass the gate as an operator would.  npx tsc --noEmit clean · eslint clean · next build clean
+(routes: /identify, /restock, /api/worker/*, /api/cron/match-register).
+worker: 9 pytest; end to end against production data through a local server — identify answered
+in 2.8 s on this Mac's CPU with ten candidates and a stored preview; sync + embed left NK1130
+indexed (2 vectors, self-search rank 1); lease fencing and bounded retries proven in SQL.
+production data: 79 published originals registered (pending sync); Drive backfill running
+(see the log in the final report); 7 cron jobs active.
 ```
-
-**Why now:** measured on 2026-08-21 — 175 of 271 originals already deleted from R2, Drive `/Processed`
-missing 82 of 238 files, 63 more originals due on the night of 24→25 Aug. See D109 and the plan.
+The seven pre-existing failures in the full suite (publish-identity ×3, prompt-management ×2, schema
+seed ×1, category-management WC seed ×1) are unchanged and unrelated.
 
 **Not finished / known broken:**
-- The seven pre-existing test failures above.
-- Everything after the retention fix (identify gate for uploads and Drive, local Windows worker, pgvector
-  search, restock workflow, confirmed-reference loop) is planned in
-  `docs/superpowers/plans/2026-08-21-sku-matching-implementation.md` and follows in this session.
+- **Railway has not deployed anything pushed today.** `/identify` and `/api/worker/*` still 404 on
+  production an hour after the push of `bb3910f`; the database already has the new functions and
+  statuses, so new Drive drops and uploads land in `identifying` *without* a screen to decide them
+  until the deploy lands. Check the Railway dashboard (build log / GitHub connection) first thing.
+- `WORKER_SECRET` must be set in Railway (the local value is in `.env.local`) and on the laptop.
+- The laptop worker is not installed yet (`worker/README.md`); until it runs, Identify shows
+  "Matcher has not started yet" and operators continue with *New product*.
+- Restock-existing with a new generated image is recorded (`wants_new_image`) but the generated
+  version is not attached to the existing product (D112, deferred).
+- Ready-image uploads are not gated (deliberate, D110).
 
-**Surprises:** D62's Drive backstop had silently failed; the `manual_uploads.target` column and
-D103 are applied in production but the raw-upload path has never been used (0 rows).
+**Surprises:** D62's Drive backstop had silently failed (82 of 238 files gone); D103's upload path
+never worked (D113); the M1 matmul runs on its matrix unit, so the laptop's GPU — not a VPS — is the
+right home for the model.
 
-**Next session should start with:** reading the implementation plan's checkbox state.
+**Next session should start with:** the Railway deploy status, then `worker/README.md` on the laptop.
 
 ---
 

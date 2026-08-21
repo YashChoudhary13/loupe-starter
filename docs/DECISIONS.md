@@ -3173,3 +3173,106 @@ for a saving that does not matter.
 
 Applied to production 2026-08-21 16:30 IST. Verified afterwards: `retention_candidates(-365)`
 returns 80 generated versions and no originals; 96 originals remain in R2.
+
+---
+
+### D110 — Every photograph is identified against the catalogue before any paid stage, and a human always decides
+
+*Owner decision, 2026-08-21, on `AI-Python/docs/LOUPE-INTEGRATION-PLAN.md`.*
+
+Drive discoveries and raw uploads now land in `identifying`, not `discovered`. `claim_intake_file()`
+only claims `discovered`, so the enhancement worker is untouched; nothing is spent on a photograph
+until an operator has said what it is. `request_identification()` creates one `match_events` row
+and one `identify` job per photograph; the **Identify** screen shows the ten candidates the matcher
+returned — in rank order, all styled alike, no score — and offers New product, Restock of <SKU>, or
+Can't tell. `decide_identification()` records that once: new product and can't tell go to
+`discovered` (enhancement starts, nudged immediately), restock parks the row in `restock` with a
+`restock_decisions` row. Ready-image uploads are not gated: they are finished catalogue images, not
+photographs of stock.
+
+The same screen takes a photograph from the warehouse floor (`manual_uploads.target = 'identify'`,
+`finalize_identify_upload()`): a match event with no intake row. **A confirmed identification
+becomes a reference for that SKU** (`confirm_identification()` → `match_references`, source
+`identify_confirmed`, pending sync); an unconfirmed match teaches the system nothing. This is the
+self-improving loop, and it is gated on the human click by construction.
+
+**Why no automatic decision, ever:** the score cannot separate a right top-1 from a wrong one
+(raw AUC 0.63), and on phone photographs of render-referenced SKUs rank 1 is right 11 % of the time
+(NIGHT3 §4a). Ten candidates and a person is the only honest interface.
+
+**Rejected:** gating uploads only and badging Drive photographs — the owner chose all sources, for
+the labelled pairs and the spend saved on restocks. **Cost of the gate:** enhancement of a Drive
+drop now starts when someone clicks, not within a minute; the Identify page polls while a photograph
+is queued and says plainly when the matcher is offline, and the operator can continue without
+candidates.
+
+---
+
+### D111 — The vision work runs on the owner's laptop behind a bearer API; Loupe owns every write; search lives in Postgres
+
+*Owner decision, 2026-08-21.*
+
+The SigLIP2-so400m/512 + u2net pipeline needs ~3 GB resident and a GPU to be pleasant (2.9 s per
+query on an M1, 10.8 s on a 2.2 GHz Xeon pair, measured). The owner's Windows laptop (RTX 3050)
+runs it as `worker/` (`loupe-worker`), which talks only to `/api/worker/{heartbeat,claim,complete,
+source}` with one shared `WORKER_SECRET`. It never holds a database, R2 or Drive credential: R2
+keys become presigned URLs in the claim, a Drive photograph is streamed through
+`/api/worker/source` with the lease token, and every completion is fenced by that UUID token
+(hard rule 6), so a crashed or stale worker is harmless and a lease expires back into the queue.
+
+Three job kinds: `sync` (the original to `LOUPE_LOCAL_ROOT/originals/<SKU>/` with a JSON sidecar
+and a SQLite index — the owner's own copy of every photograph), `embed` (two views per reference,
+nightly), `identify` (a query vector within seconds, daytime). Embeddings live in Postgres
+(`match_embeddings`, pgvector 0.8.2, `extensions.vector(1152)`) and `match_search()` is an exact
+cosine scan, max over views per SKU — milliseconds at this size, and it will stay so at a hundred
+times the catalogue. The legacy catalogue (3,665 images, 2,939 SKUs) was embedded once on a T4 and
+imported as index version `bakeoff-v9`; from here the index only ever grows, incrementally.
+
+Every published product's original becomes a reference (`register_reference()`, called after every
+publish and weekly by `loupe-match-register`); `scripts/backfill-match-references.ts` copied the
+originals that retention purged before D109 from Drive into `references/`.
+
+**Rejected:** a Python service on a VPS embedding queries on CPU — 10 s a query for €8.49/month is
+a fallback, not the design; the `Dockerfile` builds the same worker for that role if the laptop is
+too often offline. **Rejected:** the worker writing to the database directly — the route layer is
+where a result becomes a decision (ten candidates from a vector), and that is Loupe's.
+
+---
+
+### D112 — A restock is confirmed twice, then resolved one of two ways; a superseded product is archived and zeroed
+
+*Owner decision, 2026-08-21.*
+
+The **Restock** section lists photographs an operator marked as a restock in Identify, with the
+chosen SKU, the other candidates, and the product's live stock from Shopify. The operator confirms
+once more (or sends it back to Identify), then chooses:
+
+- **Restock existing** — types the new stock totals per variant; Loupe calls
+  `inventorySetQuantities` (absolute, `ignoreCompareQuantity`, reference
+  `loupe://restock/<decision>`), marks the row `restocked`, and registers the photograph as a
+  reference (source `restock`) — a real photograph of that exact piece taken here, the best
+  reference there is.
+- **New SKU, archive the old** — the photograph re-enters the pipeline, with a new generated image
+  (the operator picks a prompt pair from the existing matrix; the row goes to `discovered` carrying
+  the `preset_slug`, D103) or as it is (`enhanced`, the original selected — the ready-image shape).
+  At publish, `pending_supersession()` finds the decision; the old product is archived
+  (`productUpdate status: ARCHIVED`) and its stock set to 0, and `record_supersession()` stamps
+  `product_drafts.supersedes_sku`. Two active listings never carry the same piece.
+
+Loupe otherwise still never touches inventory (D54). Shopify writes sit between `begin_*` and
+`complete_*`; a failure is recorded on the decision (`fail_restock`) and the operator retries from
+the screen. **Deferred:** attaching a newly generated image to the *existing* product on the
+restock-existing path — it needs a media mutation on a live product and was not part of the first
+build; the decision carries `wants_new_image` so nothing is lost.
+
+---
+
+### D113 — The raw-upload path never worked in production: two source constraints, one stale
+
+*Found 2026-08-21 while testing D112.* D103 replaced the `intake_files.source` check by dropping
+`intake_files_source_check`, but the original constraint (20260803120000) is named
+`intake_files_source_is_known`. Both existed; the older one still refused `'upload'`, so
+`finalize_raw_image_upload()` could never insert a row — zero upload-sourced photographs ever, which
+PROGRESS had read as "not used yet". Fixed by `20260821176500_intake_source_admits_upload.sql`.
+Lesson recorded: a migration that replaces a constraint must name the constraint it replaces, and a
+test that exercises the new value would have caught this on 13 August.

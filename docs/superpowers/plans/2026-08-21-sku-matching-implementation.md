@@ -1,6 +1,8 @@
 # SKU Matching in Loupe — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Status 2026-08-21 evening: Tasks 1–10 built, tested and applied to production (see PROGRESS.md); Task 11 docs in the same session. Deferred: attaching a new generated image to an existing product on the restock-existing path (D112).
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Every photograph entering Loupe is identified against the catalogue before any money is spent on it; operators confirm new product / restock; confirmed photographs become references; the heavy vision work runs on the owner's Windows GPU laptop, Loupe owns every database write, and similarity search lives in Postgres.
 
@@ -76,7 +78,7 @@
 - Create: `supabase/migrations/20260821170000_intake_status_identifying_restock.sql`
 - Modify: `tests/schema.test.ts:92-103`
 
-- [ ] **Step 1: Update the schema test to expect the new values**
+- [x] **Step 1: Update the schema test to expect the new values**
 
 ```ts
   it('intake_status holds the full lifecycle', () => {
@@ -87,9 +89,9 @@
   })
 ```
 
-- [ ] **Step 2: Run it — expect FAIL (values absent)**: `npx vitest run tests/schema.test.ts -t "intake_status"`
+- [x] **Step 2: Run it — expect FAIL (values absent)**: `npx vitest run tests/schema.test.ts -t "intake_status"`
 
-- [ ] **Step 3: Write the migration**
+- [x] **Step 3: Write the migration**
 
 ```sql
 -- D110: a photograph is identified against the catalogue before any paid stage.
@@ -100,7 +102,7 @@ alter type public.intake_status add value if not exists 'restock';
 alter type public.intake_status add value if not exists 'restocked';
 ```
 
-- [ ] **Step 4: `npm run db:push`, rerun the test — PASS. Commit:** `feat: intake_status gains identifying, restock, restocked (D110)`
+- [x] **Step 4: `npm run db:push`, rerun the test — PASS. Commit:** `feat: intake_status gains identifying, restock, restocked (D110)`
 
 ---
 
@@ -113,7 +115,7 @@ alter type public.intake_status add value if not exists 'restocked';
 
 **Interfaces (produced):** tables below; later tasks reference these exact columns.
 
-- [ ] **Step 1: Migration**
+- [x] **Step 1: Migration**
 
 ```sql
 create extension if not exists vector with schema extensions;
@@ -244,11 +246,11 @@ alter table public.match_workers    enable row level security;
 alter table public.restock_decisions enable row level security;
 ```
 
-- [ ] **Step 2: `src/lib/tables.ts`** — append `'match_events', 'match_references', 'match_embeddings', 'match_jobs', 'match_workers', 'restock_decisions'`.
+- [x] **Step 2: `src/lib/tables.ts`** — append `'match_events', 'match_references', 'match_embeddings', 'match_jobs', 'match_workers', 'restock_decisions'`.
 
-- [ ] **Step 3: Test `tests/match-schema.sql.test.ts`** — connects with `pgClient()`, asserts `select relrowsecurity from pg_class where relname = 'match_events'` is true for all six, and `select extname from pg_extension where extname = 'vector'` exists.
+- [x] **Step 3: Test `tests/match-schema.sql.test.ts`** — connects with `pgClient()`, asserts `select relrowsecurity from pg_class where relname = 'match_events'` is true for all six, and `select extname from pg_extension where extname = 'vector'` exists.
 
-- [ ] **Step 4: `npm run db:push`; `npx vitest run tests/match-schema.sql.test.ts tests/schema.test.ts`; commit:** `feat: match tables, pgvector, restock decisions (D110)`
+- [x] **Step 4: `npm run db:push`; `npx vitest run tests/match-schema.sql.test.ts tests/schema.test.ts`; commit:** `feat: match tables, pgvector, restock decisions (D110)`
 
 ---
 
@@ -265,9 +267,9 @@ alter table public.restock_decisions enable row level security;
 
 Note on Drive photographs: the original is only in R2 after the enhancement worker downloads it. The gate therefore needs the bytes before enhancement. `request_identification` for a Drive row creates a `sync`-style `identify` job whose payload carries `drive_file_id`; the **worker API** (Task 4) resolves the bytes: for `source_storage_key`/`originals/` keys it presigns R2; for a Drive row it returns a short-lived Drive download URL obtained with the service account (`drive.files.get` `alt=media` via `googleDriveClient().download()` streamed through Loupe: `GET /api/worker/source/{job_id}` with the lease token). Keep Drive credentials in Loupe.
 
-- [ ] **Step 1: SQL test (red)** — insert an intake row via `discover_intake_file(...)` and assert `status = 'identifying'` and exactly one `match_jobs` row of kind `identify` with a `match_events` row `status = 'queued'`; calling it again changes nothing. Then `decide_identification(event, 'new_product', null, null, 'test')` → intake `discovered`, event `decided`; `decide_identification(event, 'restock', 'NK845', 3, 'test')` on a second row → intake `restock`, `restock_decisions` row `pending` with `sku = 'NK845'`; a decision on an already-decided event raises `55000`.
+- [x] **Step 1: SQL test (red)** — insert an intake row via `discover_intake_file(...)` and assert `status = 'identifying'` and exactly one `match_jobs` row of kind `identify` with a `match_events` row `status = 'queued'`; calling it again changes nothing. Then `decide_identification(event, 'new_product', null, null, 'test')` → intake `discovered`, event `decided`; `decide_identification(event, 'restock', 'NK845', 3, 'test')` on a second row → intake `restock`, `restock_decisions` row `pending` with `sku = 'NK845'`; a decision on an already-decided event raises `55000`.
 
-- [ ] **Step 2: Migration**
+- [x] **Step 2: Migration**
 
 ```sql
 create or replace function public.request_identification(
@@ -338,7 +340,7 @@ end $$;
 
 Revoke/grant both as usual.
 
-- [ ] **Step 3: `classify.ts`** — before the `skipped` branch:
+- [x] **Step 3: `classify.ts`** — before the `skipped` branch:
 
 ```ts
   if (row.status === 'identifying') {
@@ -357,7 +359,7 @@ Revoke/grant both as usual.
 
 Add the three cases to `tests/tracking-classify.test.ts` (one assertion each, mirroring the existing tests' shape).
 
-- [ ] **Step 4: `npm run db:push`; tests green; commit:** `feat: photographs wait in identifying until an operator decides (D110)`
+- [x] **Step 4: `npm run db:push`; tests green; commit:** `feat: photographs wait in identifying until an operator decides (D110)`
 
 **Deployment note:** from this deploy on, nothing enhances until someone clicks in Identify (Task 5). Deploy Tasks 3–6 together (one push) so the operators have the screen the moment the gate exists.
 
@@ -388,7 +390,7 @@ GET  /api/worker/source/{jobId}?token=<lease_token>                           �
 
 All bearer `WORKER_SECRET` (constant-time compare, same helper style as `src/lib/cron/auth.ts`).
 
-- [ ] **Step 1: SQL** — `claim_match_job(p_worker text, p_kinds text[], p_lease_seconds int)` (SKIP LOCKED, returns job + subject columns; bumps `attempts`; sets token/lease), `complete_match_job(p_job uuid, p_token uuid, p_result jsonb)` (token check; per kind: `sync` → reference `synced`, `local_path`, `synced_at`; `embed` → reference `indexed`, `embedded_at`, `indexed_at`, `index_version = to_char(now(),'YYYY-MM-DD')` — embeddings are stored by a separate call; `identify` → nothing here, the route runs the search first), `fail_match_job(p_job, p_token, p_error, p_retryable)` (retryable → back to `queued` up to 4 attempts, else `failed` + reference `failed`), `store_match_embedding(p_reference uuid, p_view text, p_embedding extensions.vector, p_model text)` (upsert), `match_search(p_embedding extensions.vector, p_limit int default 10) returns table (sku text, handle text, score real)`:
+- [x] **Step 1: SQL** — `claim_match_job(p_worker text, p_kinds text[], p_lease_seconds int)` (SKIP LOCKED, returns job + subject columns; bumps `attempts`; sets token/lease), `complete_match_job(p_job uuid, p_token uuid, p_result jsonb)` (token check; per kind: `sync` → reference `synced`, `local_path`, `synced_at`; `embed` → reference `indexed`, `embedded_at`, `indexed_at`, `index_version = to_char(now(),'YYYY-MM-DD')` — embeddings are stored by a separate call; `identify` → nothing here, the route runs the search first), `fail_match_job(p_job, p_token, p_error, p_retryable)` (retryable → back to `queued` up to 4 attempts, else `failed` + reference `failed`), `store_match_embedding(p_reference uuid, p_view text, p_embedding extensions.vector, p_model text)` (upsert), `match_search(p_embedding extensions.vector, p_limit int default 10) returns table (sku text, handle text, score real)`:
 
 ```sql
   select r.sku, max(r.handle) as handle, max(1 - (e.embedding <=> p_embedding))::real as score
@@ -399,11 +401,11 @@ All bearer `WORKER_SECRET` (constant-time compare, same helper style as `src/lib
 
 and `record_match_candidates(p_event uuid, p_candidates jsonb, p_model text, p_crop_box int[], p_latency_ms int)` (event → `matched`). `worker_heartbeat(p_worker, p_device, p_kinds, p_version)` upserts `match_workers`.
 
-- [ ] **Step 2: `worker-api.ts`** — pure handlers taking `{db, store, drive, presign}` by injection: `claimJob(input, deps)` → calls `claim_match_job`, resolves `source_url`: `storage_key`/`source_storage_key`/`originals/…` → `presign(key, 3600)`; `drive:<id>` → `${baseUrl}/api/worker/source/${job.id}?token=${lease}`. `completeJob(input, deps)`: for `identify` results → `match_search` → `record_match_candidates` → `complete_match_job`; for `embed` → two `store_match_embedding` → `complete_match_job`. Vector is passed as a string literal `'[0.1,0.2,…]'` (pgvector text input). Tests with fakes: wrong token → 409; identify completion writes exactly ten candidates ranked; embed completion stores two views.
+- [x] **Step 2: `worker-api.ts`** — pure handlers taking `{db, store, drive, presign}` by injection: `claimJob(input, deps)` → calls `claim_match_job`, resolves `source_url`: `storage_key`/`source_storage_key`/`originals/…` → `presign(key, 3600)`; `drive:<id>` → `${baseUrl}/api/worker/source/${job.id}?token=${lease}`. `completeJob(input, deps)`: for `identify` results → `match_search` → `record_match_candidates` → `complete_match_job`; for `embed` → two `store_match_embedding` → `complete_match_job`. Vector is passed as a string literal `'[0.1,0.2,…]'` (pgvector text input). Tests with fakes: wrong token → 409; identify completion writes exactly ten candidates ranked; embed completion stores two views.
 
-- [ ] **Step 3: routes** — thin; `runtime = 'nodejs'`; 401 without the secret; `maxDuration = 60`.
+- [x] **Step 3: routes** — thin; `runtime = 'nodejs'`; 401 without the secret; `maxDuration = 60`.
 
-- [ ] **Step 4: `db:push`; tests; commit:** `feat: worker API — claim, complete, heartbeat, source (D111)`
+- [x] **Step 4: `db:push`; tests; commit:** `feat: worker API — claim, complete, heartbeat, source (D111)`
 
 ---
 
@@ -419,16 +421,16 @@ and `record_match_candidates(p_event uuid, p_candidates jsonb, p_model text, p_c
 - `confirm_identification(p_match_event_id, p_decision, p_sku, p_rank, p_actor) returns void` — for `identify` events: `confirmed` (with sku/rank) or `none_of_these`; on `confirmed` inserts `match_references (sku, storage_key = query key, source 'identify_confirmed', match_event_id, status 'pending_sync', added_by)` + `match_jobs(sync)` + sets `match_events.reference_id`. **Reference only after confirmation — never at match time.**
 - `loadIdentifyQueue()` → `IdentifyItem[]`: `{matchEventId, intakeFileId|null, surface, filename, thumb: SignedImage|null, status, candidates: CandidateView[]|null, requestedAt, workerSeen: string|null}`; `CandidateView = {rank, sku, handle, title, thumbUrl, score}` — `title`/`thumbUrl` from `match_references` (`title`, `image_url`) for the SKU, else from `product_drafts` (title pattern + signed thumb of the selected version), else SKU only.
 
-- [ ] UI: two sections. **Waiting** — one card per `queued|matched` event: photo (signed thumb), ten candidate tiles in rank order (equal styling), buttons `New product` · `Restock of <pick>` (select from the ten or type a SKU) · `Can't tell — enhance anyway` (intake rows) / `It's this one` · `None of these` (identify rows). While `queued`: "Matching… worker last seen 12 s ago" (from `match_workers`); if no heartbeat for 2 min: "The matcher is offline — the photograph is safe; decide later or continue as new". **Camera** — `<input type="file" accept="image/*" capture="environment">`, presigned PUT via `beginManualUpload(operator, input, 'identify')`, `finalizeIdentifyUploadAction`, then the card appears in Waiting. The page re-reads on the live heartbeat events.
-- [ ] `db:push`; tests; `npm run typecheck && npm run lint`; commit: `feat: Identify — queue of waiting photographs and camera identification (D110)`
+- [x] UI: two sections. **Waiting** — one card per `queued|matched` event: photo (signed thumb), ten candidate tiles in rank order (equal styling), buttons `New product` · `Restock of <pick>` (select from the ten or type a SKU) · `Can't tell — enhance anyway` (intake rows) / `It's this one` · `None of these` (identify rows). While `queued`: "Matching… worker last seen 12 s ago" (from `match_workers`); if no heartbeat for 2 min: "The matcher is offline — the photograph is safe; decide later or continue as new". **Camera** — `<input type="file" accept="image/*" capture="environment">`, presigned PUT via `beginManualUpload(operator, input, 'identify')`, `finalizeIdentifyUploadAction`, then the card appears in Waiting. The page re-reads on the live heartbeat events.
+- [x] `db:push`; tests; `npm run typecheck && npm run lint`; commit: `feat: Identify — queue of waiting photographs and camera identification (D110)`
 
 ---
 
 ### Task 6: Upload screen + console counts
 
-- [ ] `UploadScreen.tsx`: tile state `queued` copy becomes "Waiting in Identify" with a link to `/identify`; header button text stays "Enhance" only for the upload step; the "in the pipeline" link points to `/identify` when any tile is queued.
-- [ ] `queue.ts` `loadPipelineActivity`: add `identifying` count → `PipelineActivity.identifying`; Sidebar shows the count next to Identify (reads the snapshot via the existing live update if present, else server-rendered).
-- [ ] Commit: `feat: upload tiles hand off to Identify`
+- [x] `UploadScreen.tsx`: tile state `queued` copy becomes "Waiting in Identify" with a link to `/identify`; header button text stays "Enhance" only for the upload step; the "in the pipeline" link points to `/identify` when any tile is queued.
+- [x] `queue.ts` `loadPipelineActivity`: add `identifying` count → `PipelineActivity.identifying`; Sidebar shows the count next to Identify (reads the snapshot via the existing live update if present, else server-rendered).
+- [x] Commit: `feat: upload tiles hand off to Identify`
 
 **Push Tasks 3–6 together.** Then in production: the next Drive drop or upload appears in Identify within a minute.
 
@@ -440,13 +442,13 @@ and `record_match_candidates(p_event uuid, p_candidates jsonb, p_model text, p_c
 
 **Interfaces (consumed):** the HTTP contract in Task 4.
 
-- [ ] **vision.py** — `load_model(device)`: `timm.create_model('vit_so400m_patch16_siglip_512', pretrained=False, num_classes=0)`, `load_file(weights)` stripping `visual.trunk.`, `strict=True`; fp16 on CUDA, fp32 on CPU. `generous_box`, `pad_to_square`, `view`, `embed(pils) -> np.ndarray (n,1152) L2-normalised` — copied verbatim from `AI-Python/loupe-audit/cpu_bench.py`. `get-weights.py` downloads the `visual.*` byte range of `timm/ViT-SO400M-16-SigLIP2-512/open_clip_model.safetensors` and writes `weights/siglip2_so400m_512_visual.safetensors` (reuse `AI-Python/loupe-audit/build_visual_safetensors.py` logic; 1.72 GB). u2net via `rembg.new_session('u2net', providers=['CUDAExecutionProvider','CPUExecutionProvider'])`.
-- [ ] **store.py** — `LOUPE_LOCAL_ROOT/originals/<sku or _unassigned>/<reference_id>.<ext>` + `<reference_id>.json` sidecar `{reference_id, sku, handle, title, intake_file_id, source, sha256, bytes, synced_at, loupe_storage_key}`; `index.sqlite` table `references(reference_id primary key, sku, handle, local_path, sha256, synced_at, embedded_at)`. `save(job, bytes) -> local_path`, `path_for(reference_id)`.
-- [ ] **jobs.py** — `handle_sync(job, api, store)`: GET `source_url` (stream, verify `sha256` when given) → `store.save` → `complete({local_path, sha256, bytes})`. `handle_embed(job, api, store, vision)`: open `store.path_for` (re-download if missing) → full + crop views → `embed` → `complete({embeddings:{full,crop}, model, crop_box})`. `handle_identify(job, api, vision)`: GET source → crop view → `embed` → `complete({embedding, model, crop_box, fallback_full_frame, timing_ms})`. Any exception → `fail(job, message, retryable)`.
-- [ ] **cli.py** — `loupe-worker run --kinds sync,identify [--daemon --poll 3] [--until-empty] [--device cuda|cpu] [--claim-delay 0]`; heartbeat every 30 s; graceful Ctrl-C; logs one line per job.
-- [ ] **tests** — `test_vision.py`: a synthetic image with a bright square on white gives a box around the square (+25 % margin) and `pad_to_square` output is square; `test_jobs.py`: a fake `api` object records `complete`/`fail` calls; a sync job writes the file and sidecar; an identify job posts a 1152-vector.
-- [ ] **README + .bat** — install (`py -3.11 -m venv .venv`, `pip install torch --index-url https://download.pytorch.org/whl/cu124`, `pip install -e .`), `get-weights.py`, `.env` with the four variables, Task Scheduler: daily 02:00 `run-nightly.bat` (`--kinds sync,embed --until-empty`), at logon `run-daytime.bat` (`--kinds sync,identify --daemon`). `Dockerfile` (python:3.12-slim, CPU torch) for the VPS fallback: `CMD ["loupe-worker","run","--kinds","identify","--daemon","--device","cpu","--claim-delay","5"]`.
-- [ ] Commit: `feat: loupe-worker — local sync, nightly embedding, identify on the owner's GPU (D111)`
+- [x] **vision.py** — `load_model(device)`: `timm.create_model('vit_so400m_patch16_siglip_512', pretrained=False, num_classes=0)`, `load_file(weights)` stripping `visual.trunk.`, `strict=True`; fp16 on CUDA, fp32 on CPU. `generous_box`, `pad_to_square`, `view`, `embed(pils) -> np.ndarray (n,1152) L2-normalised` — copied verbatim from `AI-Python/loupe-audit/cpu_bench.py`. `get-weights.py` downloads the `visual.*` byte range of `timm/ViT-SO400M-16-SigLIP2-512/open_clip_model.safetensors` and writes `weights/siglip2_so400m_512_visual.safetensors` (reuse `AI-Python/loupe-audit/build_visual_safetensors.py` logic; 1.72 GB). u2net via `rembg.new_session('u2net', providers=['CUDAExecutionProvider','CPUExecutionProvider'])`.
+- [x] **store.py** — `LOUPE_LOCAL_ROOT/originals/<sku or _unassigned>/<reference_id>.<ext>` + `<reference_id>.json` sidecar `{reference_id, sku, handle, title, intake_file_id, source, sha256, bytes, synced_at, loupe_storage_key}`; `index.sqlite` table `references(reference_id primary key, sku, handle, local_path, sha256, synced_at, embedded_at)`. `save(job, bytes) -> local_path`, `path_for(reference_id)`.
+- [x] **jobs.py** — `handle_sync(job, api, store)`: GET `source_url` (stream, verify `sha256` when given) → `store.save` → `complete({local_path, sha256, bytes})`. `handle_embed(job, api, store, vision)`: open `store.path_for` (re-download if missing) → full + crop views → `embed` → `complete({embeddings:{full,crop}, model, crop_box})`. `handle_identify(job, api, vision)`: GET source → crop view → `embed` → `complete({embedding, model, crop_box, fallback_full_frame, timing_ms})`. Any exception → `fail(job, message, retryable)`.
+- [x] **cli.py** — `loupe-worker run --kinds sync,identify [--daemon --poll 3] [--until-empty] [--device cuda|cpu] [--claim-delay 0]`; heartbeat every 30 s; graceful Ctrl-C; logs one line per job.
+- [x] **tests** — `test_vision.py`: a synthetic image with a bright square on white gives a box around the square (+25 % margin) and `pad_to_square` output is square; `test_jobs.py`: a fake `api` object records `complete`/`fail` calls; a sync job writes the file and sidecar; an identify job posts a 1152-vector.
+- [x] **README + .bat** — install (`py -3.11 -m venv .venv`, `pip install torch --index-url https://download.pytorch.org/whl/cu124`, `pip install -e .`), `get-weights.py`, `.env` with the four variables, Task Scheduler: daily 02:00 `run-nightly.bat` (`--kinds sync,embed --until-empty`), at logon `run-daytime.bat` (`--kinds sync,identify --daemon`). `Dockerfile` (python:3.12-slim, CPU torch) for the VPS fallback: `CMD ["loupe-worker","run","--kinds","identify","--daemon","--device","cpu","--claim-delay","5"]`.
+- [x] Commit: `feat: loupe-worker — local sync, nightly embedding, identify on the owner's GPU (D111)`
 
 ---
 
@@ -454,20 +456,20 @@ and `record_match_candidates(p_event uuid, p_candidates jsonb, p_model text, p_c
 
 **Files:** `supabase/migrations/20260821175000_reference_registration.sql`, `src/lib/match/register.ts`, `src/app/api/cron/match-register/route.ts`, `scripts/backfill-match-references.ts`, `scripts/configure-cron.ts` (job `loupe-match-register`, `30 20 * * 6`).
 
-- [ ] `register_reference(p_intake_file_id, p_sku, p_handle, p_title, p_storage_key, p_source, p_actor) returns uuid` — idempotent on `intake_file_id`; inserts `match_references(pending_sync)` + `match_jobs(sync)` + `events 'match.reference_added'`. `register_published_originals(p_limit int) returns int` — for published drafts whose intake files have an unpurged original and no reference: calls `register_reference` with `storage_key = originals/…`; returns count.
-- [ ] `publish-product.ts`: after `mark_draft_published` succeeds, `await registerDraftOriginals(draftId)` in a try/catch that only logs (publishing must not fail on this).
-- [ ] Cron route runs `register_published_originals(200)` weekly (and can be POSTed by hand).
-- [ ] `scripts/backfill-match-references.ts`: for each published intake file whose original is purged from R2 but whose Drive file exists (`runs/loupe-published-originals-20260821.csv` logic, re-derived live): download from Drive, `putImmutable('references/{sku}/{intake_id}.{ext}')`, `register_reference(..., storage_key = that key)`. Prints a table; `--dry-run` default.
-- [ ] Commit: `feat: published originals become matcher references; backfill from Drive (D111)`
+- [x] `register_reference(p_intake_file_id, p_sku, p_handle, p_title, p_storage_key, p_source, p_actor) returns uuid` — idempotent on `intake_file_id`; inserts `match_references(pending_sync)` + `match_jobs(sync)` + `events 'match.reference_added'`. `register_published_originals(p_limit int) returns int` — for published drafts whose intake files have an unpurged original and no reference: calls `register_reference` with `storage_key = originals/…`; returns count.
+- [x] `publish-product.ts`: after `mark_draft_published` succeeds, `await registerDraftOriginals(draftId)` in a try/catch that only logs (publishing must not fail on this).
+- [x] Cron route runs `register_published_originals(200)` weekly (and can be POSTed by hand).
+- [x] `scripts/backfill-match-references.ts`: for each published intake file whose original is purged from R2 but whose Drive file exists (`runs/loupe-published-originals-20260821.csv` logic, re-derived live): download from Drive, `putImmutable('references/{sku}/{intake_id}.{ext}')`, `register_reference(..., storage_key = that key)`. Prints a table; `--dry-run` default.
+- [x] Commit: `feat: published originals become matcher references; backfill from Drive (D111)`
 
 ---
 
 ### Task 9: Catalogue bootstrap
 
-- [ ] `AI-Python/loupe-audit/export_catalogue_embeddings.py` — from `bk9/…/siglip2_so400m_512.npz` + `products.csv`: JSONL rows `{sku, handle, title, image_url, filename, full: [1152], crop: [1152]}` (sku from `Variant SKU`; rows without a SKU keep `handle` as sku prefix `HANDLE:`… no: skip them and print the count).
-- [ ] `scripts/import-catalogue-embeddings.ts <file.jsonl>` — batched inserts into `match_references (source 'catalogue', status 'indexed', indexed_at now(), index_version 'bakeoff-v9')` and `match_embeddings`; idempotent on `(source, image_url)`.
-- [ ] Verify: `select count(*) from match_embeddings` = 7,332 (or the SKU-bearing subset); `match_search` on one stored vector returns its own SKU at rank 1.
-- [ ] Commit: `feat: catalogue embeddings imported as index version bakeoff-v9`
+- [x] `AI-Python/loupe-audit/export_catalogue_embeddings.py` — from `bk9/…/siglip2_so400m_512.npz` + `products.csv`: JSONL rows `{sku, handle, title, image_url, filename, full: [1152], crop: [1152]}` (sku from `Variant SKU`; rows without a SKU keep `handle` as sku prefix `HANDLE:`… no: skip them and print the count).
+- [x] `scripts/import-catalogue-embeddings.ts <file.jsonl>` — batched inserts into `match_references (source 'catalogue', status 'indexed', indexed_at now(), index_version 'bakeoff-v9')` and `match_embeddings`; idempotent on `(source, image_url)`.
+- [x] Verify: `select count(*) from match_embeddings` = 7,332 (or the SKU-bearing subset); `match_search` on one stored vector returns its own SKU at rank 1.
+- [x] Commit: `feat: catalogue embeddings imported as index version bakeoff-v9`
 
 ---
 
@@ -475,21 +477,21 @@ and `record_match_candidates(p_event uuid, p_candidates jsonb, p_model text, p_c
 
 **Files:** `supabase/migrations/20260821176000_restock.sql`, `src/lib/shopify/inventory.ts`, `src/app/(shell)/restock/{page.tsx,actions.ts}`, `src/components/restock/RestockScreen.tsx`, `src/lib/publish/publish-product.ts` (supersession), `src/components/console/DraftEditor.tsx` (read-only "Replaces NK845" line).
 
-- [ ] **inventory.ts** — `readVariantInventory(client, productId)` (variants with `id`, `title`, `inventoryItem.id`, `inventoryQuantity`), `setAvailableQuantities(client, locationId, items: {inventoryItemId, quantity}[], referenceDocumentUri)` via `inventorySetQuantities(input: {name: "available", reason: "received", ignoreCompareQuantity: true, referenceDocumentUri, quantities: […]})`, `archiveProduct(client, productId)` via `productUpdate(product: {id, status: ARCHIVED})` (API 2026-07). Tests with a fake `graphql`.
-- [ ] **Restock screen** — rows in `restock` status: photo, chosen SKU with its catalogue thumbnail, the other nine for reference, current Shopify stock per variant (read live, 15 s cache). Step 1 **Confirm it is NK845** (or "Not this one → back to Identify" which re-opens the event: `reopen_identification`). Step 2 choose path: **Restock existing SKU** → quantity inputs per variant prefilled with current; submit → `setAvailableQuantities` → `complete_restock_existing(p_decision, p_quantities, p_actor)` (intake → `restocked`; `register_reference(source 'restock', storage_key = query key)`; `match_events.reference_id`). **Create a new SKU, archive the old** → `begin_new_sku_from_restock(p_decision, p_wants_new_image, p_preset_slug, p_actor)`: intake row → `discovered` with `preset_slug` when a new image is wanted, else → `enhanced` with the original as the selected version (same mechanics as `finalize_manual_image_upload`); the console then shows it in Pending; when the operator creates the draft from it, `product_drafts.supersedes_sku` is set from the decision (console `createDraftFromPhotos` reads `restock_decisions` for the photo); the prefilled stock is old + arrived.
-- [ ] **Supersession at publish** — in `publishProduct` after the new product is live: `archiveProduct(old)` → `setAvailableQuantities(old variants, 0)` → `record_supersession(p_new_draft, p_old_product_id, p_actor)` (events `product.superseded`). Idempotent: an already-archived product is skipped. Failure here does not un-publish; it is recorded on the decision (`last_error`) and shows in Tracking as attention.
-- [ ] Step 3 **New generated image?** — for both paths: yes → preset picker built from `PROMPT_CATEGORY_CORES × settingsForCategory` (the same `composeClientPair` slugs the upload screen uses); for restock-existing the generated version, once `enhanced`, is attached to the existing product's media with `productCreateMedia` (one mutation, `src/lib/shopify/media.ts`) — this part is the last sub-step and may ship after the rest.
-- [ ] Tests: SQL for the three RPCs; unit for inventory input building.
-- [ ] Commit(s): `feat: Restock — confirm, restock existing or create new SKU and archive the old (D112)`
+- [x] **inventory.ts** — `readVariantInventory(client, productId)` (variants with `id`, `title`, `inventoryItem.id`, `inventoryQuantity`), `setAvailableQuantities(client, locationId, items: {inventoryItemId, quantity}[], referenceDocumentUri)` via `inventorySetQuantities(input: {name: "available", reason: "received", ignoreCompareQuantity: true, referenceDocumentUri, quantities: […]})`, `archiveProduct(client, productId)` via `productUpdate(product: {id, status: ARCHIVED})` (API 2026-07). Tests with a fake `graphql`.
+- [x] **Restock screen** — rows in `restock` status: photo, chosen SKU with its catalogue thumbnail, the other nine for reference, current Shopify stock per variant (read live, 15 s cache). Step 1 **Confirm it is NK845** (or "Not this one → back to Identify" which re-opens the event: `reopen_identification`). Step 2 choose path: **Restock existing SKU** → quantity inputs per variant prefilled with current; submit → `setAvailableQuantities` → `complete_restock_existing(p_decision, p_quantities, p_actor)` (intake → `restocked`; `register_reference(source 'restock', storage_key = query key)`; `match_events.reference_id`). **Create a new SKU, archive the old** → `begin_new_sku_from_restock(p_decision, p_wants_new_image, p_preset_slug, p_actor)`: intake row → `discovered` with `preset_slug` when a new image is wanted, else → `enhanced` with the original as the selected version (same mechanics as `finalize_manual_image_upload`); the console then shows it in Pending; when the operator creates the draft from it, `product_drafts.supersedes_sku` is set from the decision (console `createDraftFromPhotos` reads `restock_decisions` for the photo); the prefilled stock is old + arrived.
+- [x] **Supersession at publish** — in `publishProduct` after the new product is live: `archiveProduct(old)` → `setAvailableQuantities(old variants, 0)` → `record_supersession(p_new_draft, p_old_product_id, p_actor)` (events `product.superseded`). Idempotent: an already-archived product is skipped. Failure here does not un-publish; it is recorded on the decision (`last_error`) and shows in Tracking as attention.
+- [x] Step 3 **New generated image?** — for both paths: yes → preset picker built from `PROMPT_CATEGORY_CORES × settingsForCategory` (the same `composeClientPair` slugs the upload screen uses); for restock-existing the generated version, once `enhanced`, is attached to the existing product's media with `productCreateMedia` (one mutation, `src/lib/shopify/media.ts`) — this part is the last sub-step and may ship after the rest.
+- [x] Tests: SQL for the three RPCs; unit for inventory input building.
+- [x] Commit(s): `feat: Restock — confirm, restock existing or create new SKU and archive the old (D112)`
 
 ---
 
 ### Task 11: Docs and cron
 
-- [ ] `docs/DECISIONS.md`: D110 (identification gate for all sources; never auto-decide), D111 (laptop worker over a bearer API; Loupe owns writes; pgvector search), D112 (restock paths; supersession archives and zeroes the old product).
-- [ ] `scripts/configure-cron.ts`: `loupe-match-register` weekly; run `npm run cron:configure`.
-- [ ] `docs/PROGRESS.md` session entry; `CLAUDE.md` "What it does" paragraph gains the Identify gate and the worker.
-- [ ] Commit: `docs: D110–D112, cron, progress`
+- [x] `docs/DECISIONS.md`: D110 (identification gate for all sources; never auto-decide), D111 (laptop worker over a bearer API; Loupe owns writes; pgvector search), D112 (restock paths; supersession archives and zeroes the old product).
+- [x] `scripts/configure-cron.ts`: `loupe-match-register` weekly; run `npm run cron:configure`.
+- [x] `docs/PROGRESS.md` session entry; `CLAUDE.md` "What it does" paragraph gains the Identify gate and the worker.
+- [x] Commit: `docs: D110–D112, cron, progress`
 
 ---
 

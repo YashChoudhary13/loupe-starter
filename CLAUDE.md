@@ -38,6 +38,11 @@ operator groups images into products, picks category / material / colours, types
 publishes to Shopify. A tracking page surfaces what needs a human and what the pipeline is
 doing right now; Shopify webhooks (D102) push admin-side changes back into Loupe in seconds.
 
+Before any of that, every photograph is **identified against the catalogue** (D110): it waits in
+**Identify** with ten candidates until an operator says *new product* or *restock of <SKU>*; restocks
+are resolved in **Restock** (D112). The matching itself runs on the owner's Windows GPU laptop
+(`worker/`, D111) through `/api/worker/*`; Loupe owns every write and searches pgvector.
+
 Of the twelve fields on a product, only **two** need human judgement: **category** and **price**. Everything else is derived.
 
 ---
