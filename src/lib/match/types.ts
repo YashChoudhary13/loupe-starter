@@ -55,6 +55,8 @@ export interface IdentifyResult {
   readonly crop_box?: readonly number[] | null
   readonly fallback_full_frame?: boolean
   readonly timing_ms?: Readonly<Record<string, number>>
+  /** ≤ 64 KB WebP preview of the query, so the Identify screen can show a Drive photograph. */
+  readonly thumbnail_webp_base64?: string
 }
 
 export interface WorkerFailure {

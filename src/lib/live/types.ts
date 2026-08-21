@@ -99,6 +99,11 @@ export function shouldRefreshConsole(events: readonly LiveActivityEvent[]): bool
   return events.some((event) => CONSOLE_REFRESH_EVENTS.has(event.event))
 }
 
+/** D110: the Identify and Restock screens follow every matcher transition. */
+export function shouldRefreshIdentify(events: readonly LiveActivityEvent[]): boolean {
+  return events.some((event) => event.event.startsWith('match.') || event.event === 'intake.discovered')
+}
+
 export function shouldRefreshTracking(events: readonly LiveActivityEvent[]): boolean {
   return events.some(
     (event) =>

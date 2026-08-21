@@ -30,6 +30,8 @@ export interface WorkerApiDeps {
   readonly presign: (key: string, ttlSeconds: number) => Promise<string>
   /** Public origin of this deployment, for /api/worker/source links. */
   readonly baseUrl: string
+  /** Writes a small object (the query preview). Optional: tests omit it. */
+  readonly putObject?: (key: string, bytes: Buffer, contentType: string) => Promise<void>
   readonly now?: () => Date
 }
 
@@ -240,6 +242,21 @@ export async function completeJob(
   const candidates: Candidate[] = ((rows ?? []) as { sku: string; handle: string | null; score: number }[])
     .slice(0, CANDIDATE_COUNT)
     .map((r, i) => ({ rank: i + 1, sku: r.sku, handle: r.handle, score: Number(r.score) }))
+
+  // The worker's preview of the query: the only image Loupe ever has of a
+  // Drive photograph before enhancement. Best effort; never blocks the match.
+  if (result.thumbnail_webp_base64 && deps.putObject) {
+    try {
+      const bytes = Buffer.from(result.thumbnail_webp_base64, 'base64')
+      if (bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024) {
+        const thumbKey = `identify/thumbs/${eventId}.webp`
+        await deps.putObject(thumbKey, bytes, 'image/webp')
+        await deps.db.rpc('record_match_thumb', { p_job: input.jobId, p_token: input.leaseToken, p_thumb_key: thumbKey })
+      }
+    } catch (cause) {
+      console.error('query thumbnail not stored:', cause instanceof Error ? cause.message : cause)
+    }
+  }
 
   const { error: recordError } = await deps.db.rpc('record_match_candidates', {
     p_event: eventId,

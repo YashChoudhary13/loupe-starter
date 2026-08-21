@@ -108,7 +108,7 @@ function thumbKey(uploadId: string): string {
 export async function beginManualUpload(
   operator: Operator,
   input: BeginManualUploadInput,
-  target: 'ready' | 'raw' = 'ready',
+  target: 'ready' | 'raw' | 'identify' = 'ready',
 ): Promise<ManualUploadTicket> {
   const filename = validatedFilename(input.filename)
   const mimeType = validatedMimeType(input.mimeType)
@@ -320,6 +320,33 @@ export async function finalizeRawUpload(
     throw new ConsoleError(
       'The image is safely uploaded, but it could not join the enhancement queue. Try again.',
       error?.message ?? 'The database returned no intake id.',
+      true,
+    )
+  }
+  return data
+}
+
+/**
+ * D110: a photograph taken to identify stock. Same verification, but the result
+ * is a match event with no intake row — a question, not queue work.
+ */
+export async function finalizeIdentifyUpload(
+  operator: Operator,
+  uploadId: string,
+): Promise<string> {
+  const verified = await verifyUploadedObject(operator, uploadId)
+  if ('completed' in verified) return verified.completed
+
+  const { data, error } = await supabaseServer().rpc('finalize_identify_upload', {
+    p_upload_id: verified.upload.id,
+    p_thumb_key: verified.thumbnailKey,
+    p_phash: verified.phash,
+    p_actor: operator.email,
+  })
+  if (error || typeof data !== 'string') {
+    throw new ConsoleError(
+      'The photograph is safely uploaded, but it could not be sent for identification. Try again.',
+      error?.message ?? 'The database returned no match event id.',
       true,
     )
   }

@@ -12,6 +12,9 @@ export function workerDeps(): WorkerApiDeps {
   return {
     db: supabaseServer(),
     presign: (key, ttl) => consoleObjectStore().presignGet(key, ttl),
+    putObject: async (key, bytes, contentType) => {
+      await consoleObjectStore().putImmutable(key, bytes, contentType, { source: 'worker-query-thumb' })
+    },
     baseUrl: serverEnv.cronBaseUrl,
   }
 }
