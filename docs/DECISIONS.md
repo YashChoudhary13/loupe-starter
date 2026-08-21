@@ -3139,3 +3139,37 @@ asked for.
 few per cent, worse on very small pieces and any out-of-plane scale) and the image model
 rendering the digits. Check the first measured batch figure by figure against the raw
 photographs before trusting it at volume.
+
+---
+
+### D109 — Originals are never purged; retention keeps only to generated versions
+
+*Owner decision, 2026-08-21, on the findings in `AI-Python/docs/LOUPE-INTEGRATION-PLAN.md` §1.*
+
+D62 purged a photograph's original together with its generated versions seven days after the
+product reached Shopify, because "Google Drive `/Processed` still holds the untouched original".
+Measured on 2026-08-21 that backstop had failed: the database recorded 238 drive files moved to
+`/Processed`, 156 were there, 80 returned 404 and 2 were trashed; 175 of 271 originals had already
+been deleted from R2, and 63 more were due on the night of 24→25 August. Upload-sourced photographs
+(D103) never had a Drive copy at all. The original is the only real photograph of the piece and the
+reference the SKU matcher is built on, so it is now excluded at three independent points:
+
+- `retention_candidates()` never returns a row with `kind = 'original'`;
+- `mark_versions_purged()` refuses to mark one, so a stale deploy of the purge job cannot record an
+  original as gone;
+- `isProtectedKey()` (`src/lib/retention/protected-keys.ts`) makes `purge.ts` and the D64 discard
+  path skip any key under `originals/`, `manual/`, `references/` or `identify/`, whatever the
+  database says.
+
+Generated versions and thumbnails keep purging exactly as before. `runRetentionPurge()` takes its
+database and object store by injection and is no longer `server-only`, for the same reason the
+Drive housekeeping is built that way: the refusal has to be provable without a real bucket
+(`tests/retention-purge.test.ts`; the SQL side is `tests/retention.sql.test.ts`).
+
+Cost of keeping originals: ~4.3 GB a month at 300 products × 1.5 photographs × 9.6 MB, under
+$1/month on R2 after the free 10 GB. **Rejected:** purging originals after copying a resized
+reference elsewhere — cheaper still, but a second moving part in the one path that must not fail,
+for a saving that does not matter.
+
+Applied to production 2026-08-21 16:30 IST. Verified afterwards: `retention_candidates(-365)`
+returns 80 generated versions and no originals; 96 originals remain in R2.

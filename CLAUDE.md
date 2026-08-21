@@ -375,7 +375,7 @@ enhance(input: Buffer, prompt: string, opts): Promise<{ image: Buffer; costUsd: 
   `versions/{intake_file_id}/v{n}.png`, and
   `versions/{intake_file_id}/v{n}_thumb.webp`.
 - Generate a ~50 KB thumbnail beside every version. The queue grid uses thumbnails, never full images.
-- **Retention:** delete versions ~7 days after publish. Shopify serves the published image from its own CDN thereafter.
+- **Retention:** delete *generated* versions ~7 days after publish. Shopify serves the published image from its own CDN thereafter. **Originals are never deleted** — not by retention, not by discard (D109, 2026-08-21); they are the SKU matcher's references.
 
 ---
 

@@ -8,7 +8,9 @@ const handlePost = createCronPostHandler({
   expectedSecret: () => serverEnv.cronSecret,
   run: async () => {
     const { runRetentionPurge } = await import('@/lib/retention/purge')
-    return runRetentionPurge()
+    const { consoleObjectStore } = await import('@/lib/console/images')
+    const { supabaseServer } = await import('@/lib/supabase/server')
+    return runRetentionPurge({}, { db: supabaseServer(), store: consoleObjectStore() })
   },
 })
 

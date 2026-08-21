@@ -29,6 +29,50 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-21 — Originals are never purged (D109); SKU-matcher integration begins
+
+**Goal this session:** stop retention from deleting original photographs (the matcher's references),
+then start the approved SKU-matching integration (`AI-Python/docs/LOUPE-INTEGRATION-PLAN.md`).
+
+**Built:**
+- `supabase/migrations/20260821160000_retention_keeps_originals.sql` → `retention_candidates()` never
+  returns `kind = 'original'`; `mark_versions_purged()` refuses to mark one. Applied to production
+  16:30 IST.
+- `src/lib/retention/protected-keys.ts` → `isProtectedKey()` for `originals/`, `manual/`,
+  `references/`, `identify/`.
+- `src/lib/retention/purge.ts` → skips protected keys (`protectedKept` in the result); takes `db` and
+  `store` by injection and is no longer `server-only`; `src/app/api/cron/retention/route.ts` wires the
+  real ones.
+- `src/lib/tracking/discard.ts` → the D64 discard keeps the original's bytes; only generated
+  versions and thumbnails are deleted.
+- `tests/retention-purge.test.ts` (5), `tests/retention.sql.test.ts` (2).
+
+**Verified:**
+```
+✓ tests/retention.sql.test.ts (2 tests)   ✓ tests/retention-purge.test.ts (5 tests)
+npx tsc --noEmit → clean.  eslint (changed files) → clean.
+production after db:push: retention_candidates(-365) → 80 generated, 0 original; 96 originals present.
+full suite: 637 passed, 7 failed — all 7 fail identically on the pristine HEAD (prompt-preset and
+SKU-counter drift between the tests and the live database: publish-identity ×3, prompt-management ×2,
+schema seed ×1, category-management WC seed ×1). Not touched by this change; recorded, not fixed.
+```
+
+**Why now:** measured on 2026-08-21 — 175 of 271 originals already deleted from R2, Drive `/Processed`
+missing 82 of 238 files, 63 more originals due on the night of 24→25 Aug. See D109 and the plan.
+
+**Not finished / known broken:**
+- The seven pre-existing test failures above.
+- Everything after the retention fix (identify gate for uploads and Drive, local Windows worker, pgvector
+  search, restock workflow, confirmed-reference loop) is planned in
+  `docs/superpowers/plans/2026-08-21-sku-matching-implementation.md` and follows in this session.
+
+**Surprises:** D62's Drive backstop had silently failed; the `manual_uploads.target` column and
+D103 are applied in production but the raw-upload path has never been used (0 rows).
+
+**Next session should start with:** reading the implementation plan's checkbox state.
+
+---
+
 ## 2026-08-19 — Measurements as a third prompt axis (D108)
 
 **Goal this session:** let an operator ask for dimension callouts on the generated photograph,
