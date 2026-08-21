@@ -25,6 +25,20 @@ function intake(discoveredAt: string) {
 }
 
 describe('tracking age and failure classification', () => {
+  it('shows a photograph waiting in Identify as in progress, then as needing attention after a day (D110)', () => {
+    const fresh = { ...intake(new Date(NOW - 60_000).toISOString()), status: 'identifying' }
+    expect(classifyIntake(fresh, NOW)).toMatchObject({ group: 'progress', statusLabel: 'Identifying' })
+    const stale = { ...intake(new Date(NOW - STALE_UNGROUPED_MS).toISOString()), status: 'identifying' }
+    expect(classifyIntake(stale, NOW)).toMatchObject({ group: 'attention', statusLabel: 'Waiting to be identified' })
+  })
+
+  it('keeps a confirmed restock under attention until its stock change is done, then completes it', () => {
+    expect(classifyIntake({ ...intake(new Date(NOW - 60_000).toISOString()), status: 'restock' }, NOW))
+      .toMatchObject({ group: 'attention', statusLabel: 'Restock to confirm' })
+    expect(classifyIntake({ ...intake(new Date(NOW - 60_000).toISOString()), status: 'restocked' }, NOW))
+      .toMatchObject({ group: 'complete', statusLabel: 'Restocked' })
+  })
+
   it('retires healthy enhanced work from tracking — it lives in the console', () => {
     expect(classifyIntake(intake(new Date(NOW - STALE_UNGROUPED_MS + 1).toISOString()), NOW))
       .toMatchObject({ group: 'hidden', statusLabel: 'Enhanced' })

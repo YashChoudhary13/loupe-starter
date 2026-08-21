@@ -36,6 +36,19 @@ interface Completion {
   cost_usd: string
 }
 
+/**
+ * D110: discovery now parks a photograph in Identify. These tests are about the
+ * enhancement queue, so they pass the gate the way an operator would.
+ */
+async function passIdentification(client: { query: Client['query'] }, intakeId: string) {
+  await client.query(
+    `select public.decide_identification(e.id, 'new_product', null, null, 'test:gate')
+       from public.match_events as e
+      where e.intake_file_id = $1 and e.status <> 'decided'`,
+    [intakeId],
+  )
+}
+
 describe('Phase 3B enhancement SQL state machine', () => {
   let db: Client
   const source = 'phase3b-sql-integration'
@@ -80,6 +93,7 @@ describe('Phase 3B enhancement SQL state machine', () => {
         source,
       ],
     )
+    await passIdentification(db, discovery.rows[0]!.id)
     const claim = await db.query<Claim>(
       `select id, lease_token, attempts, product_description, presentation_class,
               presentation_fallback, presentation_fallback_reason,

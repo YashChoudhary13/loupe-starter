@@ -120,6 +120,44 @@ export function classifyIntake(
     }
   }
 
+  // D110: a photograph waits in Identify before any paid stage. Hard rule 5 —
+  // it is a problem only once nobody has decided for a day.
+  if (row.status === 'identifying') {
+    if (ageMs(row.discoveredAt, now) >= STALE_UNGROUPED_MS) {
+      const hours = Math.floor(ageMs(row.discoveredAt, now) / 3_600_000)
+      return {
+        group: 'attention',
+        tone: 'stalled',
+        statusLabel: 'Waiting to be identified',
+        reason: `Nobody has said whether this is a new product or a restock for ${hours} hours. Open Identify.`,
+      }
+    }
+    return {
+      group: 'progress',
+      tone: 'running',
+      statusLabel: 'Identifying',
+      reason: 'Matching against the catalogue; an operator decides next in Identify.',
+    }
+  }
+
+  if (row.status === 'restock') {
+    return {
+      group: 'attention',
+      tone: 'stalled',
+      statusLabel: 'Restock to confirm',
+      reason: 'Confirmed as a restock. The stock change is waiting in Restock.',
+    }
+  }
+
+  if (row.status === 'restocked') {
+    return {
+      group: 'complete',
+      tone: 'complete',
+      statusLabel: 'Restocked',
+      reason: 'Stock updated and the photograph kept as a matcher reference.',
+    }
+  }
+
   if (row.status === 'skipped') {
     return {
       group: 'progress',

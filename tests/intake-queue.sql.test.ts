@@ -33,6 +33,19 @@ interface SyncClaim {
   lease_expires_at: Date
 }
 
+/**
+ * D110: discovery now parks a photograph in Identify. These tests are about the
+ * enhancement queue, so they pass the gate the way an operator would.
+ */
+async function passIdentification(client: { query: Client['query'] }, intakeId: string) {
+  await client.query(
+    `select public.decide_identification(e.id, 'new_product', null, null, 'test:gate')
+       from public.match_events as e
+      where e.intake_file_id = $1 and e.status <> 'decided'`,
+    [intakeId],
+  )
+}
+
 describe('Phase 3A intake queue SQL state machine', () => {
   let db: Client
 
@@ -73,7 +86,7 @@ describe('Phase 3A intake queue SQL state machine', () => {
       [driveId, 'ring.jpg', 'md5-original', 1024, 'image/jpeg', source],
     )
     expect(first.rows).toEqual([
-      expect.objectContaining({ inserted: true, status: 'discovered', attempts: 0 }),
+      expect.objectContaining({ inserted: true, status: 'identifying', attempts: 0 }),
     ])
     const intakeId = first.rows[0]!.id
 
@@ -82,8 +95,9 @@ describe('Phase 3A intake queue SQL state machine', () => {
       [driveId, 'renamed.png', 'md5-changed', 2048, 'image/png', source],
     )
     expect(replay.rows).toEqual([
-      { id: intakeId, inserted: false, status: 'discovered', attempts: 0 },
+      { id: intakeId, inserted: false, status: 'identifying', attempts: 0 },
     ])
+    await passIdentification(db, intakeId)
 
     const unchanged = await db.query<{
       filename: string
@@ -142,7 +156,7 @@ describe('Phase 3A intake queue SQL state machine', () => {
       [`boundary-${randomUUID()}`, 'exactly-50mb.webp', 50_000_000, 'image/webp', source],
     )
     expect(boundary.rows[0]).toEqual(
-      expect.objectContaining({ inserted: true, status: 'discovered', attempts: 0 }),
+      expect.objectContaining({ inserted: true, status: 'identifying', attempts: 0 }),
     )
     await db.query(
       `delete from public.events
@@ -259,6 +273,7 @@ describe('Phase 3A intake queue SQL state machine', () => {
       [sweepDriveId, 'sweep.png', 2048, 'image/png', source],
     )
     const sweepId = sweepDiscovery.rows[0]!.id
+    await passIdentification(db, sweepId)
     const sweepClaim = await db.query<{ id: string; attempts: number; lease_token: string }>(
       `select id, attempts, lease_token from public.claim_intake_file(60)`,
     )
@@ -460,6 +475,12 @@ describe('Phase 3A intake queue SQL state machine', () => {
       }
 
       await pool.query(
+        `select public.decide_identification(e.id, 'new_product', null, null, 'test:gate')
+           from public.match_events as e
+          where e.intake_file_id = any($1::uuid[]) and e.status <> 'decided'`,
+        [ids],
+      )
+      await pool.query(
         `update public.intake_files
             set next_attempt_at = timestamptz '2000-01-01 00:00:00+00',
                 discovered_at = timestamptz '2000-01-01 00:00:00+00'
@@ -504,6 +525,8 @@ describe('Phase 3A intake queue SQL state machine', () => {
     } finally {
       if (ids.length > 0) {
         await pool.query(`delete from public.events where entity_id = any($1::uuid[])`, [ids])
+        // match_jobs cascade from match_events; match_events only nulls its intake link.
+        await pool.query(`delete from public.match_events where intake_file_id = any($1::uuid[])`, [ids])
         await pool.query(`delete from public.intake_files where id = any($1::uuid[])`, [ids])
       }
       await pool.end()

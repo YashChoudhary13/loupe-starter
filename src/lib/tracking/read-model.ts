@@ -530,7 +530,11 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       canSkip:
         row.product_draft_id === null &&
         row.provider_paused_at === null &&
-        !['enhancing', 'grouped', 'published', 'duplicate', 'skipped'].includes(row.status),
+        ![
+          'enhancing', 'grouped', 'published', 'duplicate', 'skipped',
+          // D110: decide these in Identify / Restock, not by holding them.
+          'identifying', 'restock', 'restocked',
+        ].includes(row.status),
       consoleHref: row.product_draft_id
         ? `/console/drafts/${row.product_draft_id}`
         : row.status === 'enhanced'
