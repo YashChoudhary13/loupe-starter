@@ -86,6 +86,11 @@ export const serverEnv = {
     return required('CRON_BASE_URL')
   },
 
+  /** Shared secret the vision worker presents to /api/worker/* (D111). */
+  get workerSecret(): string {
+    return validatedCronSecret(process.env.WORKER_SECRET)
+  },
+
   /** One billing route for both the describer and image generator. */
   get openRouterApiKey(): string {
     return required('OPENROUTER_API_KEY')
