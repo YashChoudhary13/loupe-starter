@@ -26,6 +26,12 @@ export const TABLES = [
   'shopify_reconciliation_dismissals',
   'shopify_webhook_alerts',
   'freed_skus',
+  'match_events',
+  'match_references',
+  'match_embeddings',
+  'match_jobs',
+  'match_workers',
+  'restock_decisions',
 ] as const
 
 export type TableName = (typeof TABLES)[number]
