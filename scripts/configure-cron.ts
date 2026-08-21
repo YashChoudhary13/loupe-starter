@@ -66,6 +66,14 @@ const JOBS: readonly CronJob[] = [
     path: '/api/cron/retention',
     timeoutMilliseconds: 285_000,
   },
+  {
+    // Sunday 02:00 Asia/Kolkata. Registers every published original the matcher
+    // does not have yet (D111); publish already does this, the sweep is the net.
+    name: 'loupe-match-register',
+    schedule: '30 20 * * 6',
+    path: '/api/cron/match-register',
+    timeoutMilliseconds: 120_000,
+  },
 ]
 
 function required(key: string): string {

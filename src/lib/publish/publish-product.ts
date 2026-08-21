@@ -25,6 +25,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { ShopifyClient } from '@/lib/shopify/client'
 import { syncShopifySavedColours } from '@/lib/shopify/colour-options'
+import { registerAfterPublish } from '@/lib/match/register'
 import { ShopifyError } from '@/lib/shopify/errors'
 import {
   buildAltText,
@@ -663,6 +664,11 @@ export async function publishProduct(
           `${error.message}. Reconcile by handle "${identity.handle}".`,
       )
     }
+
+    // D111: the published original becomes a matcher reference. Best effort —
+    // the weekly sweep catches anything this misses, and a publish that already
+    // happened is never failed by it.
+    if (!asDraft) await registerAfterPublish(db, options.actor ?? 'publish')
 
     return {
       draftId,

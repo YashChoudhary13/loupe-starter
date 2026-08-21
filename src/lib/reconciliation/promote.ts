@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { registerAfterPublish } from '@/lib/match/register'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { shopifyConfig } from '@/lib/shopify/config'
 import { readProductByHandle, type ProductReadback } from '@/lib/shopify/product-set'
@@ -116,6 +117,9 @@ export async function promotePublishedInShopify(
       })
     }
   }
+
+  // D111: products published from Shopify admin get their originals registered too.
+  if (promoted.length > 0) await registerAfterPublish(db, actor)
 
   return { checked: drafts.length, promoted, deleted, failures }
 }
