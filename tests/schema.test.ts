@@ -99,6 +99,9 @@ describe('closed vocabularies', () => {
       'failed',
       'duplicate',
       'skipped',
+      'identifying',
+      'restock',
+      'restocked',
     ])
   })
 
