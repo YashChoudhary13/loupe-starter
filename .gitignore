@@ -40,3 +40,11 @@ yarn-error.log*
 .vscode/*
 !.vscode/extensions.json
 carry-over.json
+
+# vision worker (D111)
+worker/.env
+worker/.venv/
+worker/weights/
+worker/logs/
+worker/**/__pycache__/
+worker/*.egg-info/
