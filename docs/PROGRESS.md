@@ -86,6 +86,10 @@ seed ×1, category-management WC seed ×1) are unchanged and unrelated.
   production an hour after the push of `bb3910f`; the database already has the new functions and
   statuses, so new Drive drops and uploads land in `identifying` *without* a screen to decide them
   until the deploy lands. Check the Railway dashboard (build log / GitHub connection) first thing.
+- **The gate is non-blocking for now** (`20260821190000`): the owner's three Drive uploads sat in
+  `identifying` with no deployed screen to release them; released by hand at 16:45 IST and enhanced
+  within a minute. New photographs land in `discovered` and still get a match event. Re-apply the
+  D110 bodies in a new migration once `/identify` answers on production.
 - `WORKER_SECRET` must be set in Railway (the local value is in `.env.local`) and on the laptop.
 - The laptop worker is not installed yet (`worker/README.md`); until it runs, Identify shows
   "Matcher has not started yet" and operators continue with *New product*.
