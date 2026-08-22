@@ -248,7 +248,7 @@ export async function completeJob(
   if (result.thumbnail_webp_base64 && deps.putObject) {
     try {
       const bytes = Buffer.from(result.thumbnail_webp_base64, 'base64')
-      if (bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024) {
+      if (bytes.byteLength > 0 && bytes.byteLength <= 512 * 1024) {
         const thumbKey = `identify/thumbs/${eventId}.webp`
         await deps.putObject(thumbKey, bytes, 'image/webp')
         await deps.db.rpc('record_match_thumb', { p_job: input.jobId, p_token: input.leaseToken, p_thumb_key: thumbKey })

@@ -31,16 +31,16 @@ const s3 = new S3Client({
 async function main(): Promise<void> {
   const db = pgClient()
   await db.connect()
-  const { rows } = await db.query<{ event_id: string; thumb_key: string; drive_file_id: string; filename: string }>(
+  const { rows } = await db.query<{ event_id: string; thumb_key: string | null; drive_file_id: string; filename: string }>(
     `select e.id as event_id, e.thumb_key, f.drive_file_id, f.filename
        from public.match_events e join public.intake_files f on f.id = e.intake_file_id
       where e.surface = 'drive' and e.status in ('queued', 'matched')
-        and e.thumb_key is not null and f.drive_file_id is not null
+        and f.drive_file_id is not null
       order by e.created_at`,
   )
-  await db.end()
-  console.log(`${rows.length} Drive preview(s) to regenerate at ${EDGE}px${apply ? '' : ' (dry run; pass --apply)'}`)
-  if (!apply) return
+  const missing = rows.filter((r) => !r.thumb_key).length
+  console.log(`${rows.length} Drive preview(s) to (re)render at ${EDGE}px — ${missing} have no thumbnail yet${apply ? '' : ' (dry run; pass --apply)'}`)
+  if (!apply) { await db.end(); return }
 
   const drive = googleDriveClient()
   let done = 0
@@ -53,15 +53,19 @@ async function main(): Promise<void> {
         .resize(EDGE, EDGE, { fit: 'inside', withoutEnlargement: true })
         .webp({ quality: 82 })
         .toBuffer()
+      const key = r.thumb_key ?? `identify/thumbs/${r.event_id}.webp`
       await s3.send(
         new PutObjectCommand({
           Bucket: process.env.R2_BUCKET,
-          Key: r.thumb_key,
+          Key: key,
           Body: webp,
           ContentType: 'image/webp',
           CacheControl: 'private, max-age=31536000',
         }),
       )
+      if (!r.thumb_key) {
+        await db.query(`update public.match_events set thumb_key = $1 where id = $2 and thumb_key is null`, [key, r.event_id])
+      }
       done += 1
       bytes += webp.byteLength
       process.stdout.write(`\r  ${done}/${rows.length}  ${(bytes / done / 1024).toFixed(0)} KB avg  (${r.filename})            `)
@@ -70,6 +74,7 @@ async function main(): Promise<void> {
     }
   }
   console.log(`\nregenerated ${done} of ${rows.length}; ${(bytes / 1e6).toFixed(1)} MB total`)
+  await db.end()
 }
 
 main().catch((error: unknown) => {
