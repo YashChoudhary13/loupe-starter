@@ -29,6 +29,34 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-23 — Restock can save a photo as a reference only
+
+**Goal this session:** let an operator who handled a restock by hand still save the photograph as a
+matcher reference for the (corrected) SKU, and confirm today's photographs kept their originals.
+
+**Built:**
+- `20260823090000_save_restock_reference.sql` — `save_restock_reference(decision, sku, key, actor)`:
+  complete_restock_existing minus the Shopify/inventory write, with an operator-supplied SKU. Registers
+  the original as a reference (source 'restock'), queues sync/embed, completes the decision, marks the
+  photograph 'restocked'. Idempotent.
+- `saveReferenceOnly` action + `saveReferenceOnlyAction` wrapper; Restock card gains a third option
+  "Just save as reference" with an editable SKU field (prefilled with the matched SKU).
+
+**Verified:**
+- Today's drafts kept their originals: all 58 assembling drafts have an original; every grouped photo
+  from the last two days (77 drive + 15 manual) has its original present in R2. (The "77 missing" first
+  seen was a join artifact — counting image_version rows, not files.)
+- Tests: restock 7/7 (new case asserts corrected-SKU reference, sync job queued, decision completed,
+  photo restocked, event linked, idempotent), typecheck + lint clean. Pushed 338aa7a.
+
+**Not finished / known broken:**
+- The new button reaches operators only after Railway deploys 338aa7a; the RPC is already live.
+
+**Next session should start with:** the laptop worker (Railway WORKER_SECRET + install) so matching and
+sync leave the interim Mac.
+
+---
+
 ## 2026-08-22 — Deploy landed; the Mac carried the matcher while the laptop was off; the gate blocks again
 
 **Goal this session:** connect the vision worker to production and keep the SKU matcher useful while the
