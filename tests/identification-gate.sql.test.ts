@@ -45,8 +45,7 @@ describe('identification gate', () => {
   it('parks a Drive discovery in identifying with exactly one event and one identify job, idempotently', async () => {
     const { driveId, row } = await discover()
     expect(row.inserted).toBe(true)
-    // 'identifying' when the gate blocks; 'discovered' while 20260821190000 keeps it non-blocking.
-    expect(['identifying', 'discovered']).toContain(row.status)
+    expect(row.status).toBe('identifying')
 
     const replay = await db.query<{ inserted: boolean; status: string }>(
       `select inserted, status from public.discover_intake_file($1, 'IMG_1.jpg', 'md5', 1234, 'image/jpeg', 'test')`,
