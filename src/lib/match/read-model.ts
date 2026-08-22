@@ -14,6 +14,8 @@ import type { Candidate } from './types'
 export interface IdentifyCandidate extends Candidate {
   readonly title: string | null
   readonly thumbUrl: string | null
+  /** Full-size image for the lightbox; null when only a thumbnail survives. */
+  readonly fullUrl: string | null
 }
 
 export interface IdentifyItem {
@@ -25,6 +27,8 @@ export interface IdentifyItem {
   readonly requestedAt: string
   readonly matchedAt: string | null
   readonly thumb: SignedImage | null
+  /** The photograph itself (R2 original or the identify upload); null for a Drive photo not yet copied. */
+  readonly full: SignedImage | null
   readonly candidates: readonly IdentifyCandidate[] | null
 }
 
@@ -48,7 +52,11 @@ interface EventRow {
   created_at: string
   matched_at: string | null
   candidates: Candidate[] | null
-  intake_files: { filename: string; source_storage_key: string | null } | null
+  intake_files: {
+    filename: string
+    source_storage_key: string | null
+    image_versions: { kind: string; storage_key: string; purged_at: string | null }[] | null
+  } | null
 }
 
 interface ReferenceRow {
@@ -56,6 +64,12 @@ interface ReferenceRow {
   title: string | null
   image_url: string | null
   source: string
+}
+
+/** Where the full photograph lives: its own R2 key, or for a Drive photo the original Loupe copied at enhancement. */
+function fullQueryKey(e: EventRow): string | null {
+  if (!e.query_storage_key.startsWith('drive:')) return e.query_storage_key
+  return e.intake_files?.image_versions?.find((v) => v.kind === 'original' && !v.purged_at)?.storage_key ?? null
 }
 
 /** The raw upload's own thumbnail sits beside its source object (manual-upload/server.ts). */
@@ -71,7 +85,7 @@ export async function loadIdentifyQueue(): Promise<IdentifySnapshot> {
     db
       .from('match_events')
       .select(
-        'id, surface, intake_file_id, query_storage_key, thumb_key, status, created_at, matched_at, candidates, intake_files ( filename, source_storage_key )',
+        'id, surface, intake_file_id, query_storage_key, thumb_key, status, created_at, matched_at, candidates, intake_files ( filename, source_storage_key, image_versions ( kind, storage_key, purged_at ) )',
       )
       .in('status', ['queued', 'matched'])
       .order('created_at', { ascending: false })
@@ -89,7 +103,8 @@ export async function loadIdentifyQueue(): Promise<IdentifySnapshot> {
   const display = await candidateDisplay(skus)
 
   const thumbKeys = events.map((e) => e.thumb_key ?? uploadThumbKey(e.intake_files?.source_storage_key ?? null))
-  const signed = await signKeys([...thumbKeys, ...display.thumbKeys])
+  const fullKeys = events.map(fullQueryKey)
+  const signed = await signKeys([...thumbKeys, ...fullKeys, ...display.keys])
 
   const items: IdentifyItem[] = events.map((e, i) => ({
     matchEventId: e.id,
@@ -100,11 +115,13 @@ export async function loadIdentifyQueue(): Promise<IdentifySnapshot> {
     requestedAt: e.created_at,
     matchedAt: e.matched_at,
     thumb: (thumbKeys[i] ? signed.get(thumbKeys[i]!) : null) ?? null,
+    full: (fullKeys[i] ? signed.get(fullKeys[i]!) : null) ?? null,
     candidates: e.candidates
       ? e.candidates.map((c) => {
           const d = display.bySku.get(c.sku)
           const thumbUrl = d?.imageUrl ?? (d?.thumbKey ? (signed.get(d.thumbKey)?.url ?? null) : null)
-          return { ...c, title: d?.title ?? null, thumbUrl }
+          const fullUrl = d?.imageUrl ?? (d?.fullKey ? (signed.get(d.fullKey)?.url ?? null) : null)
+          return { ...c, title: d?.title ?? null, thumbUrl, fullUrl }
         })
       : null,
   }))
@@ -123,11 +140,12 @@ export async function loadIdentifyQueue(): Promise<IdentifySnapshot> {
  * published (if retention has not purged it yet), else the SKU alone.
  */
 async function candidateDisplay(skus: readonly string[]): Promise<{
-  bySku: Map<string, { title: string | null; imageUrl: string | null; thumbKey: string | null }>
-  thumbKeys: string[]
+  bySku: Map<string, Display>
+  /** R2 keys to presign: thumbnails and full versions of the Loupe-published fallbacks. */
+  keys: string[]
 }> {
-  const bySku = new Map<string, { title: string | null; imageUrl: string | null; thumbKey: string | null }>()
-  if (skus.length === 0) return { bySku, thumbKeys: [] }
+  const bySku = new Map<string, Display>()
+  if (skus.length === 0) return { bySku, keys: [] }
   const db = supabaseServer()
 
   const { data: refs, error: refError } = await db
@@ -139,30 +157,40 @@ async function candidateDisplay(skus: readonly string[]): Promise<{
   for (const r of (refs ?? []) as ReferenceRow[]) {
     const current = bySku.get(r.sku)
     if (current?.imageUrl) continue
-    bySku.set(r.sku, { title: r.title ?? current?.title ?? null, imageUrl: r.image_url ?? null, thumbKey: null })
+    bySku.set(r.sku, { title: r.title ?? current?.title ?? null, imageUrl: r.image_url ?? null, thumbKey: null, fullKey: null })
   }
 
   const missing = skus.filter((s) => !bySku.get(s)?.imageUrl)
-  if (missing.length === 0) return { bySku, thumbKeys: [] }
+  if (missing.length === 0) return { bySku, keys: [] }
 
   const { data: drafts, error: draftError } = await db
     .from('product_drafts')
-    .select('reserved_sku, product_draft_images ( position, image_versions ( thumb_key, purged_at ) )')
+    .select('reserved_sku, product_draft_images ( position, image_versions ( thumb_key, storage_key, purged_at ) )')
     .in('reserved_sku', missing)
   if (draftError) throw new Error(`product_drafts: ${draftError.message}`)
-  const thumbKeys: string[] = []
+  const keys: string[] = []
   for (const d of (drafts ?? []) as unknown as {
     reserved_sku: string
-    product_draft_images: { position: number; image_versions: { thumb_key: string | null; purged_at: string | null } | null }[]
+    product_draft_images: { position: number; image_versions: { thumb_key: string | null; storage_key: string; purged_at: string | null } | null }[]
   }[]) {
     const first = [...(d.product_draft_images ?? [])]
       .sort((a, b) => a.position - b.position)
       .find((img) => img.image_versions?.thumb_key && !img.image_versions.purged_at)
     const thumbKey = first?.image_versions?.thumb_key ?? null
     if (!thumbKey) continue
-    thumbKeys.push(thumbKey)
+    const fullKey = first?.image_versions?.storage_key ?? null
+    keys.push(thumbKey)
+    if (fullKey) keys.push(fullKey)
     const current = bySku.get(d.reserved_sku)
-    bySku.set(d.reserved_sku, { title: current?.title ?? null, imageUrl: null, thumbKey })
+    bySku.set(d.reserved_sku, { title: current?.title ?? null, imageUrl: null, thumbKey, fullKey })
   }
-  return { bySku, thumbKeys }
+  return { bySku, keys }
+}
+
+interface Display {
+  title: string | null
+  /** Catalogue CDN image — already full size, used for thumbnail and lightbox alike. */
+  imageUrl: string | null
+  thumbKey: string | null
+  fullKey: string | null
 }

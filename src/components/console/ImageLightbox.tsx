@@ -43,9 +43,11 @@ export interface ImageLightboxProps {
   readonly index: number | null
   readonly onClose: () => void
   readonly onIndexChange: (index: number) => void
+  /** One action for the image on screen (Identify: pick this candidate); omitted when there is none. */
+  readonly action?: { readonly label: string; readonly onClick: () => void } | null
 }
 
-export function ImageLightbox({ images, index, onClose, onIndexChange }: ImageLightboxProps) {
+export function ImageLightbox({ images, index, onClose, onIndexChange, action }: ImageLightboxProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const returnFocusTo = useRef<Element | null>(null)
   /** Which full-size URL has finished downloading; keyed by URL, not index. */
@@ -117,12 +119,24 @@ export function ImageLightbox({ images, index, onClose, onIndexChange }: ImageLi
             {index + 1} of {images.length}
           </span>
         ) : null}
+        {action ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              action.onClick()
+            }}
+            className="ml-auto shrink-0 rounded-pill bg-white px-3.5 py-1.5 text-[12px] font-medium text-black transition-colors hover:bg-white/90 focus:outline-none focus-visible:shadow-[0_0_0_2px_white]"
+          >
+            {action.label}
+          </button>
+        ) : null}
         <button
           // Inside the editor's <form>, whose submit publishes the product.
           type="button"
           ref={closeRef}
           onClick={onClose}
-          className="ml-auto shrink-0 rounded-pill bg-white/10 px-3.5 py-1.5 text-[12px] text-white transition-colors hover:bg-white/20 focus:outline-none focus-visible:shadow-[0_0_0_2px_white]"
+          className={`${action ? '' : 'ml-auto '}shrink-0 rounded-pill bg-white/10 px-3.5 py-1.5 text-[12px] text-white transition-colors hover:bg-white/20 focus:outline-none focus-visible:shadow-[0_0_0_2px_white]`}
         >
           Close · Esc
         </button>

@@ -9,6 +9,7 @@ import {
   finalizeIdentifyUploadAction,
   refreshIdentifyAction,
 } from '@/app/(shell)/identify/actions'
+import { ImageLightbox, type LightboxImage } from '@/components/console/ImageLightbox'
 import { Notice } from '@/components/console/primitives'
 import { putUploadedObject } from '@/components/upload/put-object'
 import { LIVE_ACTIVITY_EVENT, shouldRefreshIdentify, type LiveActivityUpdate } from '@/lib/live/types'
@@ -204,7 +205,29 @@ function IdentifyCard({
 }) {
   const [picked, setPicked] = useState<IdentifyCandidate | null>(null)
   const [typed, setTyped] = useState('')
+  const [view, setView] = useState<number | null>(null)
   const isIntake = item.intakeFileId !== null
+  // Lightbox order: the photograph first, then the candidates that have an image.
+  const shown = (item.candidates ?? []).filter((c) => c.thumbUrl)
+  const lightbox: { images: LightboxImage[]; candidates: (IdentifyCandidate | null)[] } = {
+    images: [
+      ...(item.thumb
+        ? [{ url: item.full?.url ?? item.thumb.url, thumbUrl: item.thumb.url, alt: item.filename, caption: `${item.filename} — your photograph` }]
+        : []),
+      ...shown.map((c) => ({
+        url: c.fullUrl ?? c.thumbUrl!,
+        thumbUrl: c.thumbUrl,
+        alt: c.sku,
+        caption: `#${c.rank} ${c.sku}${c.title ? ` — ${c.title}` : ''}`,
+      })),
+    ],
+    candidates: [...(item.thumb ? [null] : []), ...shown],
+  }
+  const viewed = view === null ? null : (lightbox.candidates[view] ?? null)
+  const pick = (c: IdentifyCandidate) => {
+    setPicked(picked?.rank === c.rank ? null : c)
+    setTyped('')
+  }
   const chosenSku = picked?.sku ?? typed.trim().toUpperCase() ?? ''
   const chosenRank = picked?.rank ?? null
   const sourceLabel = item.surface === 'drive' ? 'Drive' : item.surface === 'upload' ? 'Upload' : 'Photographed'
@@ -214,8 +237,10 @@ function IdentifyCard({
       <div className="flex gap-4">
         <div className="size-[132px] shrink-0 overflow-hidden rounded-[16px] bg-chip">
           {item.thumb ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.thumb.url} alt="" className="size-full object-cover" />
+            <button type="button" onClick={() => setView(0)} aria-label="View the photograph full size" className="size-full cursor-zoom-in">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={item.thumb.url} alt="" className="size-full object-cover" />
+            </button>
           ) : (
             <div className="grid size-full place-items-center px-2 text-center text-[10px] text-muted-foreground">
               {item.status === 'queued' ? 'preview arrives with the match' : 'no preview'}
@@ -237,32 +262,43 @@ function IdentifyCard({
             </div>
           ) : (
             <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-10">
-              {(item.candidates ?? []).map((c) => (
-                <button
-                  key={c.rank}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setPicked(picked?.rank === c.rank ? null : c)
-                    setTyped('')
-                  }}
-                  aria-pressed={picked?.rank === c.rank}
-                  title={c.title ?? c.handle ?? c.sku}
-                  className={cn(
-                    'flex flex-col items-stretch gap-1 rounded-[14px] border-2 p-1 text-left transition-colors',
-                    picked?.rank === c.rank ? 'border-ink' : 'border-transparent hover:border-[#d6d6d6]',
-                  )}
-                >
-                  <div className="aspect-square overflow-hidden rounded-[10px] bg-chip">
-                    {c.thumbUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.thumbUrl} alt="" className="size-full object-cover" loading="lazy" />
-                    ) : null}
+              {(item.candidates ?? []).map((c) => {
+                const at = lightbox.candidates.indexOf(c)
+                return (
+                  <div
+                    key={c.rank}
+                    className={cn(
+                      'flex flex-col items-stretch gap-1 rounded-[14px] border-2 p-1 transition-colors',
+                      picked?.rank === c.rank ? 'border-ink' : 'border-transparent hover:border-[#d6d6d6]',
+                    )}
+                  >
+                    {/* The picture opens full size; the label underneath picks. */}
+                    <button
+                      type="button"
+                      disabled={at < 0}
+                      onClick={() => setView(at)}
+                      aria-label={`View ${c.sku} full size`}
+                      className="aspect-square overflow-hidden rounded-[10px] bg-chip enabled:cursor-zoom-in"
+                    >
+                      {c.thumbUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.thumbUrl} alt="" className="size-full object-cover" loading="lazy" />
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => pick(c)}
+                      aria-pressed={picked?.rank === c.rank}
+                      title={c.title ?? c.handle ?? c.sku}
+                      className="min-w-0 text-left"
+                    >
+                      <div className="truncate text-[10.5px] font-medium">{c.sku}</div>
+                      <div className="truncate text-[9.5px] text-muted-foreground">{c.title ?? c.handle ?? ''}</div>
+                    </button>
                   </div>
-                  <div className="truncate text-[10.5px] font-medium">{c.sku}</div>
-                  <div className="truncate text-[9.5px] text-muted-foreground">{c.title ?? c.handle ?? ''}</div>
-                </button>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -327,6 +363,23 @@ function IdentifyCard({
           </div>
         </div>
       </div>
+      <ImageLightbox
+        images={lightbox.images}
+        index={view}
+        onClose={() => setView(null)}
+        onIndexChange={setView}
+        action={
+          viewed && !busy
+            ? {
+                label: picked?.rank === viewed.rank ? `Picked ${viewed.sku} · unpick` : `It's ${viewed.sku}`,
+                onClick: () => {
+                  pick(viewed)
+                  setView(null)
+                },
+              }
+            : null
+        }
+      />
     </section>
   )
 }
