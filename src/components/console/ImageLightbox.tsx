@@ -148,7 +148,7 @@ export function ImageLightbox({ images, index, onClose, onIndexChange, action }:
         ) : null}
 
         <div className="relative h-full w-full">
-          {current.thumbUrl && loadedUrl !== current.url ? (
+          {current.thumbUrl && current.thumbUrl !== current.url && loadedUrl !== current.url ? (
             // eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL.
             <img
               src={current.thumbUrl}

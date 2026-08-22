@@ -60,11 +60,11 @@ def open_image(data: bytes) -> Image.Image:
     return im.convert("RGB")
 
 
-def thumbnail_webp_base64(image: Image.Image, edge: int = 256) -> str:
+def thumbnail_webp_base64(image: Image.Image, edge: int = 1536) -> str:
     small = image.copy()
     small.thumbnail((edge, edge), Image.BICUBIC)
     buffer = io.BytesIO()
-    small.save(buffer, "WEBP", quality=70)
+    small.save(buffer, "WEBP", quality=82)
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 

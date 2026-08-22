@@ -212,7 +212,7 @@ function IdentifyCard({
   const lightbox: { images: LightboxImage[]; candidates: (IdentifyCandidate | null)[] } = {
     images: [
       ...(item.thumb
-        ? [{ url: item.full?.url ?? item.thumb.url, thumbUrl: item.thumb.url, alt: item.filename, caption: `${item.filename} — your photograph` }]
+        ? [{ url: item.thumb.url, thumbUrl: item.thumb.url, alt: item.filename, caption: `${item.filename} — your photograph` }]
         : []),
       ...shown.map((c) => ({
         url: c.fullUrl ?? c.thumbUrl!,

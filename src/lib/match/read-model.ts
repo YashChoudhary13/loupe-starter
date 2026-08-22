@@ -27,8 +27,6 @@ export interface IdentifyItem {
   readonly requestedAt: string
   readonly matchedAt: string | null
   readonly thumb: SignedImage | null
-  /** The photograph itself (R2 original or the identify upload); null for a Drive photo not yet copied. */
-  readonly full: SignedImage | null
   readonly candidates: readonly IdentifyCandidate[] | null
 }
 
@@ -52,11 +50,7 @@ interface EventRow {
   created_at: string
   matched_at: string | null
   candidates: Candidate[] | null
-  intake_files: {
-    filename: string
-    source_storage_key: string | null
-    image_versions: { kind: string; storage_key: string; purged_at: string | null }[] | null
-  } | null
+  intake_files: { filename: string; source_storage_key: string | null } | null
 }
 
 interface ReferenceRow {
@@ -64,12 +58,6 @@ interface ReferenceRow {
   title: string | null
   image_url: string | null
   source: string
-}
-
-/** Where the full photograph lives: its own R2 key, or for a Drive photo the original Loupe copied at enhancement. */
-function fullQueryKey(e: EventRow): string | null {
-  if (!e.query_storage_key.startsWith('drive:')) return e.query_storage_key
-  return e.intake_files?.image_versions?.find((v) => v.kind === 'original' && !v.purged_at)?.storage_key ?? null
 }
 
 /** The raw upload's own thumbnail sits beside its source object (manual-upload/server.ts). */
@@ -85,7 +73,7 @@ export async function loadIdentifyQueue(): Promise<IdentifySnapshot> {
     db
       .from('match_events')
       .select(
-        'id, surface, intake_file_id, query_storage_key, thumb_key, status, created_at, matched_at, candidates, intake_files ( filename, source_storage_key, image_versions ( kind, storage_key, purged_at ) )',
+        'id, surface, intake_file_id, query_storage_key, thumb_key, status, created_at, matched_at, candidates, intake_files ( filename, source_storage_key )',
       )
       .in('status', ['queued', 'matched'])
       .order('created_at', { ascending: false })
@@ -103,8 +91,7 @@ export async function loadIdentifyQueue(): Promise<IdentifySnapshot> {
   const display = await candidateDisplay(skus)
 
   const thumbKeys = events.map((e) => e.thumb_key ?? uploadThumbKey(e.intake_files?.source_storage_key ?? null))
-  const fullKeys = events.map(fullQueryKey)
-  const signed = await signKeys([...thumbKeys, ...fullKeys, ...display.keys])
+  const signed = await signKeys([...thumbKeys, ...display.keys])
 
   const items: IdentifyItem[] = events.map((e, i) => ({
     matchEventId: e.id,
@@ -115,7 +102,6 @@ export async function loadIdentifyQueue(): Promise<IdentifySnapshot> {
     requestedAt: e.created_at,
     matchedAt: e.matched_at,
     thumb: (thumbKeys[i] ? signed.get(thumbKeys[i]!) : null) ?? null,
-    full: (fullKeys[i] ? signed.get(fullKeys[i]!) : null) ?? null,
     candidates: e.candidates
       ? e.candidates.map((c) => {
           const d = display.bySku.get(c.sku)
