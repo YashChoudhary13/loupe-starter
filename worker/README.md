@@ -43,3 +43,10 @@ are the laptop's own record of what it holds.
 
 `Dockerfile` builds the same worker for CPU (`--kinds identify --claim-delay 5`): it answers Identify in ~10 s when
 the laptop is offline and steps back when the laptop is online (the 5 s delay lets the GPU worker claim first).
+
+## CPU fallback on a Mac
+
+Same package, `--device cpu`, about 4 s per identify and 5 s per embed on an M1. Torch and onnxruntime each
+ship their own libomp on macOS, so run with `KMP_DUPLICATE_LIB_OK=TRUE` or the process aborts with
+`OMP: Error #15` before the model loads. When a second machine later takes over, `npm run match:resync -- --apply`
+queues a sync of every already-indexed original for it; that never re-embeds.

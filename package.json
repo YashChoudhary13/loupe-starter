@@ -32,7 +32,8 @@
     "verify:phase5": "NODE_OPTIONS=--conditions=react-server tsx scripts/verify-phase5-live.ts",
     "verify:phase6": "NODE_OPTIONS=--conditions=react-server tsx scripts/verify-phase6-live.ts",
     "match:backfill": "NODE_OPTIONS=--conditions=react-server tsx scripts/backfill-match-references.ts",
-    "match:import-catalogue": "tsx scripts/import-catalogue-embeddings.ts"
+    "match:import-catalogue": "tsx scripts/import-catalogue-embeddings.ts",
+    "match:resync": "tsx scripts/requeue-sync.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1097.0",

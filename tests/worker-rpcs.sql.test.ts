@@ -104,6 +104,32 @@ describe('worker RPCs', () => {
     expect(search.rows.find((r) => r.sku === 'NK9002')!.score).toBeCloseTo(0, 5)
   })
 
+  it('re-syncing an indexed reference keeps it indexed and queues no embed', async () => {
+    const refId = await reference('NK9003')
+    await parkOthers(refId)
+    const sync = await claim(['sync'])
+    await db.query(`select public.complete_match_job($1, $2, $3::jsonb)`, [
+      sync!.job_id, sync!.lease_token, JSON.stringify({ local_path: '/mac/NK9003/a.jpg', sha256: 'abc' }),
+    ])
+    const embed = await claim(['embed'])
+    await db.query(`select public.store_match_embedding($1, 'full', $2, 'siglip2-test')`, [refId, unit(4)])
+    await db.query(`select public.store_match_embedding($1, 'crop', $2, 'siglip2-test')`, [refId, unit(5)])
+    await db.query(`select public.complete_match_job($1, $2, '{}'::jsonb)`, [embed!.job_id, embed!.lease_token])
+
+    // The laptop fetches its own copy later.
+    await db.query(`insert into public.match_jobs (kind, reference_id) values ('sync', $1)`, [refId])
+    const again = await claim(['sync'])
+    expect(again).toMatchObject({ kind: 'sync', reference_id: refId })
+    await db.query(`select public.complete_match_job($1, $2, $3::jsonb)`, [
+      again!.job_id, again!.lease_token, JSON.stringify({ local_path: 'D:/loupe/NK9003/a.jpg', sha256: 'abc' }),
+    ])
+    const after = await db.query<{ status: string; local_path: string; embeds: string }>(
+      `select r.status, r.local_path,
+              (select count(*) from public.match_jobs j where j.reference_id = r.id and j.kind = 'embed' and j.status in ('queued', 'claimed')) as embeds
+         from public.match_references r where r.id = $1`, [refId])
+    expect(after.rows[0]).toEqual({ status: 'indexed', local_path: 'D:/loupe/NK9003/a.jpg', embeds: '0' })
+  })
+
   it('retries a retryable failure up to four attempts, then fails the reference', async () => {
     const refId = await reference('NK9003')
     await parkOthers(refId)
