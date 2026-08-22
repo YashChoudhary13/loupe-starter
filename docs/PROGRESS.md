@@ -29,6 +29,55 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-22 — Deploy landed; the Mac carried the matcher while the laptop was off; the gate blocks again
+
+**Goal this session:** connect the vision worker to production and keep the SKU matcher useful while the
+RTX 3050 laptop is off.
+
+**Built:**
+- `worker/loupe_worker/jobs.py` — a failed failure report no longer kills the loop (`8f8c7dc`).
+- `20260822070000_resync_keeps_indexed.sql` + `scripts/requeue-sync.ts` (`npm run match:resync -- --apply`) —
+  a second machine fetches its copy of already-indexed originals without dropping them from the index or
+  re-embedding. `worker/README.md` gains the macOS note (`KMP_DUPLICATE_LIB_OK=TRUE`).
+- Identify: click any image to see it full size (`40aa944`) — reuses `ImageLightbox`, adds a header action
+  that picks the candidate on screen; the read model now signs the full-size object beside each thumbnail.
+- `20260822080000_gate_blocking_again.sql` — the D110 gate blocks again: photographs wait in `identifying`.
+- `20260822081000_restock_decision_after_enhancement.sql` — a restock decided on an enhanced or grouped
+  photograph detaches it from its draft (D64), deletes an emptied draft that never reached Shopify with its
+  number freed (D101), and leaves a Shopify-backed draft for the operator (`empty_draft_left` in the event).
+
+**Verified:**
+- Railway deploy live: `/identify` 307-to-login, `/api/worker/heartbeat` 401 without a bearer.
+  `WORKER_SECRET` is NOT set in Railway: a side-effect-free probe with the `.env.local` value answers 401.
+- Interim Mac CPU worker through a local Loupe server against production (`yash-mac-cpu`): 337 jobs —
+  34 identify (30 photographs matched, ~3.5 s each; 1 orphan whose intake file was deleted failed),
+  158 sync (1.97 GB into `~/Desktop/Qimati/loupe-local/originals/<SKU>/`), 145 embed (~5.5 s each).
+  `match_references`: 3,823 indexed, none pending. An identify+sync daemon keeps running on the Mac.
+- Identify full-size sources on production data: 30 of 31 waiting photographs have their R2 original,
+  300 of 300 candidates a full-size image.
+- Tests: worker-rpcs 5/5, restock 6/6, identification-gate 3/3, worker pytest 10/10; typecheck and lint clean.
+- The CB022 restock decided at 12:30 IST on an already-grouped photograph recorded the decision but stayed
+  invisible (Restock lists `intake_files` in `restock`); repaired by hand (`match.decided_repair`), now listed.
+
+**Not finished / known broken:**
+- Laptop still off: set `WORKER_SECRET` in Railway and in `worker/.env`, install per `worker/README.md`,
+  then `npm run match:resync -- --apply` so it fetches the 158 originals.
+- An emptied draft that already has a Shopify draft product is not deleted automatically (CB412 today):
+  delete the draft product in Shopify admin and reconciliation removes the Loupe draft — or add that step
+  to restock completion.
+- The 27 remaining matched photographs from 2026-08-21 were enhanced and grouped before anyone decided;
+  "new product" on them is a no-op (already a draft), a restock now detaches them.
+- The orphan match event (intake deleted) stays `queued`; hidden by the read model, harmless.
+
+**Surprises:** Next dev's hot reload of a momentarily invalid package.json answered 500 on every route, and
+the worker died reporting the failure of a failure (fixed). macOS loads two libomp copies (torch and
+onnxruntime) — the worker aborts before the model loads without `KMP_DUPLICATE_LIB_OK=TRUE`.
+
+**Next session should start with:** the laptop — Railway secret, install, `match:resync` — then decide
+whether restock completion should delete a Shopify-backed empty draft itself.
+
+---
+
 ## 2026-08-21 — Originals are never purged (D109); the SKU matcher is wired in (D110–D113)
 
 **Goal this session:** stop retention from deleting original photographs, then build the approved
