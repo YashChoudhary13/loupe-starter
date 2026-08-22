@@ -7,6 +7,7 @@ import {
   refreshRestockAction,
   reopenIdentificationAction,
   restockExistingAction,
+  saveReferenceOnlyAction,
 } from '@/app/(shell)/restock/actions'
 import { Notice } from '@/components/console/primitives'
 import { LIVE_ACTIVITY_EVENT, shouldRefreshIdentify, type LiveActivityUpdate } from '@/lib/live/types'
@@ -65,7 +66,7 @@ export function RestockScreen({ initialSnapshot }: { initialSnapshot: RestockSna
       <div>
         <h1 className="text-[26px] font-medium tracking-[-0.025em]">Restock</h1>
         <div className="text-[12px] text-muted-foreground">
-          Photographs confirmed as existing products. Set the stock, or make a new SKU and retire the old one.
+          Photographs confirmed as existing products. Set the stock, make a new SKU, or just save the photo as a reference to its SKU.
         </div>
       </div>
 
@@ -91,6 +92,9 @@ export function RestockScreen({ initialSnapshot }: { initialSnapshot: RestockSna
             )
           }
           onReopen={() => void run(item.decisionId, () => reopenIdentificationAction({ intakeFileId: item.intakeFileId }))}
+          onSaveReference={(sku) =>
+            void run(item.decisionId, () => saveReferenceOnlyAction({ intakeFileId: item.intakeFileId, decisionId: item.decisionId, sku }))
+          }
         />
       ))}
     </main>
@@ -103,16 +107,19 @@ function RestockCard({
   onRestock,
   onNewSku,
   onReopen,
+  onSaveReference,
 }: {
   item: RestockItem
   busy: boolean
   onRestock: (productId: string, quantities: { inventoryItemId: string; label: string; before: number; after: number }[]) => void
   onNewSku: (productId: string | null, wantsNewImage: boolean, categorySlug: string | null, settingSlug: string | null) => void
   onReopen: () => void
+  onSaveReference: (sku: string) => void
 }) {
   const product: ProductStock | null = item.stock?.[0] ?? null
   const [totals, setTotals] = useState<Record<string, string>>({})
-  const [path, setPath] = useState<'existing' | 'new' | null>(null)
+  const [path, setPath] = useState<'existing' | 'new' | 'reference' | null>(null)
+  const [refSku, setRefSku] = useState(item.sku)
   const [wantsImage, setWantsImage] = useState(true)
   const [categorySlug, setCategorySlug] = useState('')
   const [settingSlug, setSettingSlug] = useState('')
@@ -193,7 +200,41 @@ function RestockCard({
             >
               Create a new SKU, archive {item.sku}
             </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setPath(path === 'reference' ? null : 'reference')}
+              className={cn('rounded-pill px-4 py-2 text-[12px] font-medium', path === 'reference' ? 'bg-ink text-white' : 'bg-chip text-ink hover:bg-[#e7e7e7]', 'disabled:opacity-50')}
+            >
+              Just save as reference
+            </button>
           </div>
+
+          {path === 'reference' ? (
+            <div className="mt-3 rounded-panel bg-chip p-3">
+              <div className="loupe-label mb-2">Save this photograph to the matcher, no stock change</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[12px] text-muted-foreground">Reference for SKU</span>
+                <input
+                  value={refSku}
+                  onChange={(e) => setRefSku(e.target.value.toUpperCase())}
+                  aria-label="SKU to save the reference under"
+                  className="w-32 rounded-pill bg-surface px-3 py-1.5 font-mono text-[12px] uppercase outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
+                />
+              </div>
+              <div className="mt-2 text-[11.5px] text-muted-foreground">
+                Adds the photograph to the index for {refSku.trim() || item.sku} so future photos of it match. Nothing is sent to Shopify; the photograph leaves Restock.
+              </div>
+              <button
+                type="button"
+                disabled={busy || !refSku.trim()}
+                onClick={() => onSaveReference(refSku.trim())}
+                className="mt-3 rounded-pill bg-ink px-4 py-2 text-[12px] font-medium text-white hover:bg-[#242428] disabled:opacity-50"
+              >
+                {busy ? 'Saving…' : `Save photo as a reference to ${refSku.trim() || item.sku}`}
+              </button>
+            </div>
+          ) : null}
 
           {path === 'existing' && product ? (
             <div className="mt-3 rounded-panel bg-chip p-3">

@@ -3,7 +3,7 @@
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
 import { ConsoleError } from '@/lib/console/mutations'
 import { nudgeEnhanceCron } from '@/lib/cron/jobs'
-import { newSkuFromRestock, reopenIdentification, restockExisting, type RestockQuantity } from '@/lib/match/restock-actions'
+import { newSkuFromRestock, reopenIdentification, restockExisting, saveReferenceOnly, type RestockQuantity } from '@/lib/match/restock-actions'
 import { loadRestockQueue, type RestockSnapshot } from '@/lib/match/restock-read-model'
 
 export type RestockActionResult<T> =
@@ -47,6 +47,17 @@ export async function newSkuFromRestockAction(input: {
   return withOperator(async (operator) => {
     await newSkuFromRestock(operator, input)
     if (input.wantsNewImage) await nudgeEnhanceCron()
+    return loadRestockQueue()
+  })
+}
+
+export async function saveReferenceOnlyAction(input: {
+  readonly intakeFileId: string
+  readonly decisionId: string
+  readonly sku: string | null
+}): Promise<RestockActionResult<RestockSnapshot>> {
+  return withOperator(async (operator) => {
+    await saveReferenceOnly(operator, input)
     return loadRestockQueue()
   })
 }

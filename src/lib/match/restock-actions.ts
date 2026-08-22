@@ -134,6 +134,22 @@ export async function newSkuFromRestock(
   if (error) throw new ConsoleError(error.hint || error.message, error.message, false)
 }
 
+export async function saveReferenceOnly(
+  operator: Operator,
+  input: { intakeFileId: string; decisionId: string; sku: string | null },
+): Promise<void> {
+  const db = supabaseServer()
+  const intake = await loadIntake(input.intakeFileId)
+  const { storageKey } = await materialiseOriginal(intake)
+  const { error } = await db.rpc('save_restock_reference', {
+    p_decision_id: input.decisionId,
+    p_sku: input.sku,
+    p_reference_key: storageKey,
+    p_actor: operator.email,
+  })
+  if (error) throw new ConsoleError(error.hint || error.message, error.message, false)
+}
+
 export async function reopenIdentification(operator: Operator, intakeFileId: string): Promise<void> {
   const { error } = await supabaseServer().rpc('reopen_identification', { p_intake_file_id: intakeFileId, p_actor: operator.email })
   if (error) throw new ConsoleError(error.hint || error.message, error.message, false)

@@ -155,6 +155,34 @@ describe('restock workflow', () => {
     expect(decided.rows[0]!.detail.empty_draft_left).toBe(g.draftId)
   })
 
+  it('save as reference only: registers the corrected SKU, completes the decision, no inventory path', async () => {
+    const r = await restockPhotograph() // decided as a restock of NK845 in Identify
+    const decisionId = (await db.query<{ id: string }>(`select id from public.restock_decisions where intake_file_id = $1`, [r.intakeId])).rows[0]!.id
+    const refId = await db.query<{ id: string }>(
+      `select public.save_restock_reference($1, 'CB999', $2, $3) as id`,
+      [decisionId, `originals/${r.intakeId}.jpg`, actor],
+    )
+    // The reference is under the corrected SKU, sourced as a restock, waiting to sync.
+    const ref = await db.query<{ sku: string; source: string; status: string; storage_key: string }>(
+      `select sku, source, status, storage_key from public.match_references where intake_file_id = $1`, [r.intakeId])
+    expect(ref.rows[0]).toMatchObject({ sku: 'CB999', source: 'restock', status: 'pending_sync', storage_key: `originals/${r.intakeId}.jpg` })
+    // One sync job was queued for it.
+    const jobs = await db.query(`select 1 from public.match_jobs where reference_id = $1 and kind = 'sync'`, [refId.rows[0]!.id])
+    expect(jobs.rowCount).toBe(1)
+    // Decision completed, photograph restocked, match_event linked. No restock_decisions row is left pending.
+    const decision = await db.query<{ status: string; sku: string }>(`select status, sku from public.restock_decisions where intake_file_id = $1`, [r.intakeId])
+    expect(decision.rows[0]).toEqual({ status: 'completed', sku: 'CB999' })
+    const file = await db.query<{ status: string }>(`select status from public.intake_files where id = $1`, [r.intakeId])
+    expect(file.rows[0]!.status).toBe('restocked')
+    const event = await db.query<{ reference_id: string }>(`select reference_id from public.match_events where id = $1`, [r.eventId])
+    expect(event.rows[0]!.reference_id).toBe(refId.rows[0]!.id)
+    // Idempotent: a second call returns the same reference and changes nothing.
+    const again = await db.query<{ id: string }>(
+      `select public.save_restock_reference((select id from public.restock_decisions where intake_file_id = $1), 'CB999', $2, $3) as id`,
+      [r.intakeId, `originals/${r.intakeId}.jpg`, actor])
+    expect(again.rows[0]!.id).toBe(refId.rows[0]!.id)
+  })
+
   it('not this one: back to Identify with a fresh match event', async () => {
     const p = await restockPhotograph()
     const reopened = await db.query<{ id: string }>(`select public.reopen_identification($1, $2) as id`, [p.intakeId, actor])
