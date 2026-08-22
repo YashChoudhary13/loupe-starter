@@ -87,3 +87,14 @@ def test_a_crash_fails_the_job_instead_of_the_loop(tmp_path):
     job = {"id": "job-5", "kind": "identify", "lease_token": "t", "event": {"id": "evt-2", "surface": "upload", "source_url": "x"}}
     run_job(job, api, LocalStore(tmp_path), BrokenVision())
     assert api.failed[0][0] == "job-5" and api.failed[0][2] is False
+
+
+def test_a_failed_failure_report_does_not_kill_the_loop(tmp_path):
+    class DownApi(FakeApi):
+        def fail(self, job, message, retryable):
+            raise RuntimeError("Loupe answered 500")
+
+    api = DownApi(jpeg_bytes())
+    job = {"id": "job-3", "kind": "sync", "lease_token": "t", "reference": {"id": "ref-3", "sku": "NK845", "filename": "a.jpg", "sha256": "not-it", "source_url": "x"}}
+    run_job(job, api, LocalStore(tmp_path), None)  # must return, not raise
+    assert not api.completed

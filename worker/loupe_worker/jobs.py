@@ -72,7 +72,16 @@ def run_job(job: dict[str, Any], api: LoupeApi, store: LocalStore, vision: Visio
             log.warning("job %s: lease lost, leaving it to its new owner", job["id"])
             return
         log.error("job %s (%s) failed: %s", job["id"], kind, exc)
-        api.fail(job, str(exc), exc.retryable)
+        _report_failure(api, job, str(exc), exc.retryable)
     except Exception as exc:  # noqa: BLE001 — a bad image must not kill the loop
         log.exception("job %s (%s) crashed", job["id"], kind)
-        api.fail(job, f"{type(exc).__name__}: {exc}", retryable=False)
+        _report_failure(api, job, f"{type(exc).__name__}: {exc}", retryable=False)
+
+
+def _report_failure(api: LoupeApi, job: dict[str, Any], message: str, retryable: bool) -> None:
+    """Loupe being unreachable while we report a failure must not kill the loop:
+    the lease expires on its own and the job becomes claimable again."""
+    try:
+        api.fail(job, message, retryable)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("job %s: could not report the failure (%s); its lease will expire", job["id"], exc)
