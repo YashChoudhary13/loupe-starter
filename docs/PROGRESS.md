@@ -29,6 +29,39 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-24 — Worn-on-foot anklet images: new core + top-seller batch script
+
+**Goal this session:** add "worn on a foot" images to the top-selling anklet listings, and make
+worn a first-class anklet pose for future uploads.
+
+**Built:**
+- `src/lib/prompts/matrix.ts` → new core `anklet-worn` ("Anklets — worn on foot"): one bare lower
+  leg/foot, chain resting on the ankle bone with natural slack, dangles under gravity, clasp at
+  the back, skin-texture and anatomy guards, single-anklet rule. The OUTPUT section explicitly
+  permits one lower leg and foot — the only anklet core that allows skin (hand-chain precedent).
+  Shares `ANKLET_DESCRIBE_BODY` with the product-only anklet core; `settingsForCategory()`
+  aliases it to `anklet` for scene ordering.
+- `scripts/anklet-worn-batch.ts` (`npm run anklet:worn`) — one-off backfill for LIVE products:
+  anklets collection in BEST_SELLING order (--limit, default 50), first image → `anklet-worn ×
+  --setting` (default sunlit-stone) via OpenRouter `gpt-image-2`, result APPENDED to product
+  media with alt "Worn view (AI-styled)". Idempotent: skips any product already carrying a
+  "Worn view" alt. Dry run by default, `--apply` to write, `--sku` for a single product.
+  PRODUCT block stripped (no describe stage) — SOURCE AUTHORITY carries identity.
+
+**Verified:** matrix test 7/7 (15 cores × 10 settings); tsc clean; live dry run resolved the
+"anklets" collection and listed **43** active anklets ("43 would be enhanced, 0 skipped").
+
+**Not finished / known broken:**
+- `--apply` NOT run — the owner confirms before live media writes (~43 images ≈ $8 at gpt-image-2
+  pricing, plus worn-view quality unproven; test `--apply --sku AK<top seller>` first).
+- The worn image is appended last; Shopify shows it in gallery order. Reordering to position 2
+  would need productReorderMedia — skipped until someone asks.
+
+**Next session should start with:** `npm run anklet:worn -- --apply --sku <one top seller>`,
+eyeball the result on the live listing, then `--apply` the rest.
+
+---
+
 ## 2026-08-24 — Necklace pose is now a choice: draped macro or hanging
 
 **Goal this session:** a day of side-by-side enhancement tests showed one pose cannot serve all

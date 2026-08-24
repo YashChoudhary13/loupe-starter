@@ -3304,3 +3304,17 @@ core — before the setting — and pairs materialise as `necklace-hanging--<set
 unchanged D104 path. The two cores share one describeBody: inspection is pose-independent.
 Ceiling: if a third necklace pose ever appears, reconsider a real pose axis instead of a third core.
 
+---
+
+### D116 — Worn views are a category core plus a backfill script, not a pipeline change
+
+*2026-08-24.* Worn-on-foot anklet images serve two paths with one prompt. Future uploads: a new
+`anklet-worn` core (operator picks it like any core; rows materialise per D104). Existing
+listings: `scripts/anklet-worn-batch.ts` reads the anklets collection best-sellers straight from
+Shopify, enhances the first image with the same composed core, and appends the result via
+stagedUploadsCreate → productCreateMedia with alt "Worn view (AI-styled)" — the alt doubles as
+the idempotency marker. No schema, no queue, no worker involvement: a backfill of ~50 images is a
+script, not a pipeline feature. The core permits skin (one lower leg and foot only), which the
+other anklet core still bans; if worn views spread to more categories, lift the worn-view OUTPUT
+language into a shared fragment then.
+

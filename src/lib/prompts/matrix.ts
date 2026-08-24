@@ -200,6 +200,30 @@ Choose exactly one presentation class, from the necklace classes only: necklace-
 Return ONLY raw JSON with exactly these fields and no markdown:
 {"description":"<one factual 80-200 word paragraph>","presentation":"<necklace-pendant|necklace-station|necklace-multistrand|necklace-lariat|flat-curve>"}`
 
+const ANKLET_DESCRIBE_BODY = `You are the visual-inspection stage of a reference-faithful product photo edit. The source photograph is the sole authority for WHAT THE PRODUCT IS. Produce a factual identity record of ONLY the anklet; ignore display cards, packaging, hands, surfaces, shadows, labels and any hardware that is not physically part of the product.
+
+Describe the object, not the photograph. The piece was laid down casually for one snapshot: its outline in the frame is an accident of that moment and will be re-posed later by a photographer. Never state how it happens to be lying or what overall shape it forms — no "laid out straight", "a loose loop", "an open circle", "a shallow V". Never locate anything by where it sits in the picture — no "at the top centre", "along the top edge", "down the left side", "upper right", "at the bottom". Reporting the accidental pose corrupts the posing stage that reads this record.
+
+This is an ankle-worn anklet. Name it as exactly that: never call it a bracelet or a necklace, and never hedge between categories — "anklet or bracelet" sends the posing stage hunting for the wrong scale.
+
+Inspect the image closely before answering. In one paragraph, cover in this order: item type and exact item quantity; metal colour and finish; construction and topology, including strand count, chain type and link gauge, branches and connections; the length of the chain run stated as an approximate multiple of the largest component's width, and the extender's length as an approximate fraction of the main chain; whether a working closure is visible; a component ledger of the distinct charms, drops, bells, coins, tassels, stations, discs, motifs, beads and individually separated stones, ordered by their sequence ALONG THE STRAND starting from the clasp end and moving toward the far end, preserving irregular spacing and every asymmetry — and stating whether decoration runs the full length or occupies one decorated run with plainer chain elsewhere; each component's shape, colour, cut, relative size and mounting method; and clasp, extender and terminal-tag count and type.
+
+Rules:
+- 80 to 200 words. One paragraph. No headings or bullet points inside the description.
+- The two length proportions are required even when a count is withheld. They are what stops the next stage rendering an ankle-length chain as a wrist bracelet or a necklace, and they are the most valuable facts in this record. If the paragraph is running long, drop finish adjectives before dropping them.
+- Count each component type twice before answering. Give an exact count only when both counts agree and every instance is clearly resolvable. If they disagree, or a component is too small, faint or obscured to resolve, describe the components and their order WITHOUT a total. A confident wrong count is worse than no count: with no number the image stage follows the photograph, which is correct.
+- Never replace a resolvable count with "several", "multiple" or "scattered". Do not count ordinary chain links or fabricate a count for a continuous pavé field.
+- State the item quantity plainly. One anklet is one anklet: never describe a single piece as a pair, and never assume an unseen matching partner exists.
+- Distinguish a drilled, dangling or jump-ring-mounted charm from a prong, bezel or glued setting. Distinguish solid-metal motifs from gemstones. Report faint, colourless and clear stones as carefully as coloured ones.
+- Preserve side-specific order and every visible asymmetry. Do not describe an idealised or symmetrical version.
+- If part of the product is obscured, say only that it is partly obscured and report what is visible. Never name or describe what obscures it. Never infer a hidden component, material or gemstone species. Use factual visual terms such as "clear faceted element" when material is uncertain.
+- No claims about beauty, quality, luxury or value. Do not describe the background, packaging, lighting, photography or the surface the piece rests on.
+
+The presentation class is fixed for this inspection: a flexible ankle chain is flat-arc. Never return a necklace class — those mean neck length — and never angled-band, which means a rigid bangle or kada.
+
+Return ONLY raw JSON with exactly these fields and no markdown:
+{"description":"<one factual 80-200 word paragraph>","presentation":"flat-arc"}`
+
 export const PROMPT_CATEGORY_CORES: readonly PromptCategoryCore[] = [
   {
     slug: 'necklace',
@@ -404,29 +428,7 @@ OUTPUT — one opaque, photorealistic square premium retail image. No people, sk
     slug: 'anklet',
     label: 'Anklets',
     note: 'Guards ankle scale in both directions and refuses to invent a second anklet to complete a pair.',
-    describeBody: `You are the visual-inspection stage of a reference-faithful product photo edit. The source photograph is the sole authority for WHAT THE PRODUCT IS. Produce a factual identity record of ONLY the anklet; ignore display cards, packaging, hands, surfaces, shadows, labels and any hardware that is not physically part of the product.
-
-Describe the object, not the photograph. The piece was laid down casually for one snapshot: its outline in the frame is an accident of that moment and will be re-posed later by a photographer. Never state how it happens to be lying or what overall shape it forms — no "laid out straight", "a loose loop", "an open circle", "a shallow V". Never locate anything by where it sits in the picture — no "at the top centre", "along the top edge", "down the left side", "upper right", "at the bottom". Reporting the accidental pose corrupts the posing stage that reads this record.
-
-This is an ankle-worn anklet. Name it as exactly that: never call it a bracelet or a necklace, and never hedge between categories — "anklet or bracelet" sends the posing stage hunting for the wrong scale.
-
-Inspect the image closely before answering. In one paragraph, cover in this order: item type and exact item quantity; metal colour and finish; construction and topology, including strand count, chain type and link gauge, branches and connections; the length of the chain run stated as an approximate multiple of the largest component's width, and the extender's length as an approximate fraction of the main chain; whether a working closure is visible; a component ledger of the distinct charms, drops, bells, coins, tassels, stations, discs, motifs, beads and individually separated stones, ordered by their sequence ALONG THE STRAND starting from the clasp end and moving toward the far end, preserving irregular spacing and every asymmetry — and stating whether decoration runs the full length or occupies one decorated run with plainer chain elsewhere; each component's shape, colour, cut, relative size and mounting method; and clasp, extender and terminal-tag count and type.
-
-Rules:
-- 80 to 200 words. One paragraph. No headings or bullet points inside the description.
-- The two length proportions are required even when a count is withheld. They are what stops the next stage rendering an ankle-length chain as a wrist bracelet or a necklace, and they are the most valuable facts in this record. If the paragraph is running long, drop finish adjectives before dropping them.
-- Count each component type twice before answering. Give an exact count only when both counts agree and every instance is clearly resolvable. If they disagree, or a component is too small, faint or obscured to resolve, describe the components and their order WITHOUT a total. A confident wrong count is worse than no count: with no number the image stage follows the photograph, which is correct.
-- Never replace a resolvable count with "several", "multiple" or "scattered". Do not count ordinary chain links or fabricate a count for a continuous pavé field.
-- State the item quantity plainly. One anklet is one anklet: never describe a single piece as a pair, and never assume an unseen matching partner exists.
-- Distinguish a drilled, dangling or jump-ring-mounted charm from a prong, bezel or glued setting. Distinguish solid-metal motifs from gemstones. Report faint, colourless and clear stones as carefully as coloured ones.
-- Preserve side-specific order and every visible asymmetry. Do not describe an idealised or symmetrical version.
-- If part of the product is obscured, say only that it is partly obscured and report what is visible. Never name or describe what obscures it. Never infer a hidden component, material or gemstone species. Use factual visual terms such as "clear faceted element" when material is uncertain.
-- No claims about beauty, quality, luxury or value. Do not describe the background, packaging, lighting, photography or the surface the piece rests on.
-
-The presentation class is fixed for this inspection: a flexible ankle chain is flat-arc. Never return a necklace class — those mean neck length — and never angled-band, which means a rigid bangle or kada.
-
-Return ONLY raw JSON with exactly these fields and no markdown:
-{"description":"<one factual 80-200 word paragraph>","presentation":"flat-arc"}`,
+    describeBody: ANKLET_DESCRIBE_BODY,
     imageBody: `Create one persuasive luxury e-commerce hero photograph by editing Image 1, the supplied product reference. Photograph the real anklet at its most flattering; improve only its presentation, never its design.
 
 PRIORITY ORDER — first preserve product identity, then pose the piece at its true ankle size, then apply the scene and photographic polish. If styling conflicts with product fidelity, product fidelity wins.
@@ -464,6 +466,42 @@ COMMERCIAL RETOUCHING — remove the display card, packaging, hands, tags, stick
 FINAL IDENTITY CHECK — before output, verify the item count, open/closed topology, strand count, chain construction, component ledger and sequence, all connection and mounting types, hardware count, asymmetry and relative scale against Image 1. Correct the presentation rather than changing any of those facts. Confirm too that the result still reads as ankle size: a generous relaxed circle of individually resolvable links, components legible but modest against the loop, the clasp and extender present at their true fraction and gauge, every dangle on its real attachment, exactly the source's number of anklets, nothing that would pass for a bracelet or a necklace.
 
 OUTPUT — one opaque, photorealistic square premium retail image. No people, skin, mannequins, hands, text, watermarks, borders, halos, malformed metal or duplicated components, and no prop, box, stand or object beyond those the scene paragraph itself names.`,
+  },
+  {
+    slug: 'anklet-worn',
+    label: 'Anklets — worn on foot',
+    note: 'Photographs the anklet fastened on a real bare ankle — the only anklet core that permits skin. Chain drapes with natural slack; every charm hangs under gravity.',
+    describeBody: ANKLET_DESCRIBE_BODY,
+    imageBody: `Create one persuasive luxury e-commerce lifestyle photograph by editing Image 1, the supplied product reference. Photograph the real anklet worn on a real ankle at its most flattering; improve only its presentation, never its design.
+
+PRIORITY ORDER — first preserve product identity, then fasten the piece naturally on the ankle as described below, then apply the scene and photographic polish. If styling conflicts with product fidelity, product fidelity wins.
+
+PRODUCT
+{{PRODUCT_DESCRIPTION}}
+
+SOURCE AUTHORITY — NON-NEGOTIABLE. Image 1 is the sole visual authority; the PRODUCT record is a factual inspection aid. Preserve the exact same physical item and quantity: strand count; chain-link construction and gauge; exact component count, order, side placement and relative spacing; charm, drop, bell, coin, disc, bead and stone shapes, colours, cuts and mounting methods; metal colour, finish, proportions and every visible asymmetry. One anklet in the source is ONE anklet worn — never invent a second piece, a matching pair or a second foot. If the text conflicts with the visible source, follow Image 1. If a detail is obscured, preserve the visible ambiguity rather than inventing it.
+
+WORN ON A REAL ANKLE — THIS IS THE MOST IMPORTANT INSTRUCTION IN THIS BRIEF. The anklet is fastened around the bare ankle of one adult woman and photographed there. One lower leg and one bare foot appear, from just below mid-calf down, and nothing else of the person: no second foot or leg unless Image 1 itself shows a pair of anklets, no hands, no face, no torso. The skin is natural, warm-toned and realistic, with true texture — pores, fine creases at the ankle, believable bone and tendon structure — never plastic, never mannequin-smooth. Toenails are clean and bare or carry sheer neutral polish. No footwear, no toe rings, no other jewellery.
+
+HOW IT SITS — the chain encircles the ankle just above the ankle bone and rests on it under gravity: taut nothing, pinched nothing. It follows the ankle's contour with a natural slight droop at the front or outer side, the clasp sitting to the back or side exactly as fastened. Every dangling charm, drop, bell, coin or tassel hangs straight down under gravity from its own attachment, evenly spread along the visible run, none twisted, none resting on top of the chain. A decorated run sits where the source's component order puts it. The extender's spare length hangs at the back as it truly would. The chain touches the skin along its run and lifts slightly where the ankle curves away — it visibly wraps a three-dimensional ankle rather than lying printed on it.
+
+POSE AND FRAMING — the foot is relaxed and elegant: heel gently raised or foot softly pointed, photographed from a slight three-quarter outer angle at ankle height, so the anklet's most decorated run faces the camera. The ankle and anklet fill the middle of the frame, the anklet's visible run spanning roughly half the frame width, every charm on the camera side fully visible and uncropped. The leg exits the top of the frame; toes may be softly cropped at the bottom edge. No mirror, no second angle, no inset.
+
+FORM AND SCALE LOCK — an anklet is ankle-sized: it wraps an adult ankle once with a couple of centimetres of ease. Reproduce the photographed chain itself, including its link geometry, at the same link-size-to-charm ratio, so many small links run around the ankle. Never thicken links, never enlarge a charm independently, never stretch the piece into a calf chain or shrink it into a tight band. Every component keeps its exact size relative to the chain and to the ankle.
+
+ART DIRECTION — premium jewellery lifestyle photography: sun-warmed, intimate and aspirational, while remaining a truthful photograph of this exact product on a real ankle. The anklet is the hero; the foot is its setting. A customer should see at a glance exactly how the piece sits when worn.
+
+SCENE AND BACKGROUND — {{SETTING_DETAIL}} Take from that scene only its surfaces, palette, backdrop elements, light character and shadow behaviour, as the environment around and beneath the foot. The foot may rest on a surface the scene names; everything else the scene places in the frame is backdrop only — clearly out of focus, never touching the anklet, never competing with it. Nothing else is in the frame.
+
+CAMERA AND CROP — the low-distortion character of an 85-100mm macro lens at ankle height, close enough that individual links resolve. The anklet and the skin directly around it are pin-sharp; the rest of the foot and leg soften gently; the scene falls into creamy optical softness. Never crop a charm on the camera side of the ankle.
+
+LIGHTING — warm directional daylight, as from low sun or a bright window, placed as the scene describes: a clean travelling highlight along the chain, each charm and bead carrying its own small specular point, and existing faceted stones showing crisp facets and believable internal colour — clear stones bright and colourless, never milky or grey. The chain and charms cast fine, slightly elongated shadows onto the skin, which is what makes the piece read as truly worn. Skin renders with soft natural sheen, never oiled, never waxy. The chain stays clearly visible against the skin along its whole run.
+
+COMMERCIAL RETOUCHING — remove any display card, packaging, tags, stickers, dust and unrelated branding from the product. Preserve real engraving, texture, antiquing and plating colour. Keep skin natural: no beauty-retouch plastic finish, no changed skin tone, no added tan lines, tattoos, mehndi or marks.
+
+FINAL IDENTITY CHECK — before output, verify the item count, strand count, chain construction, component ledger and sequence, every connection and mounting type, asymmetry and relative scale against Image 1. Correct the presentation rather than changing any of those facts. Confirm as well that exactly one anklet is worn (unless the source truly shows two), that every dangle hangs under gravity, that the clasp and extender sit believably, that only one lower leg and foot appear with no other body part, and that the piece wraps a believable three-dimensional ankle.
+
+OUTPUT — one opaque, photorealistic square premium retail image showing one bare lower leg and foot wearing the anklet. No face, hands, torso or second person; no mannequin; no text, watermarks, borders, halos, malformed anatomy, extra toes, malformed metal or duplicated components; no footwear or other jewellery; and no object beyond the scene elements the scene paragraph itself names.`,
   },
   {
     slug: 'hand-chain',
@@ -1051,7 +1089,12 @@ export function settingsForCategory(
   categorySlug: string,
 ): readonly PromptSetting[] {
   // The hanging necklace core flatters the same scenes as the draped one.
-  const key = categorySlug === 'necklace-hanging' ? 'necklace' : categorySlug
+  const key =
+    categorySlug === 'necklace-hanging'
+      ? 'necklace'
+      : categorySlug === 'anklet-worn'
+        ? 'anklet'
+        : categorySlug
   return [
     ...PROMPT_SETTINGS.filter((setting) => setting.bestFor.includes(key)),
     ...PROMPT_SETTINGS.filter((setting) => !setting.bestFor.includes(key)),
