@@ -29,6 +29,76 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-24 — Necklace pose is now a choice: draped macro or hanging
+
+**Goal this session:** a day of side-by-side enhancement tests showed one pose cannot serve all
+necklaces — solid pendants want the close draped macro, but drops, Y-tails, dangle rows,
+both-ends connector centrepieces and layered strands want gravity. Make pose selectable where
+the operator already picks the category, before the setting.
+
+**Built:**
+- `src/lib/prompts/matrix.ts` → new core `necklace-hanging` ("Necklaces — hanging"): straight-on
+  suspended pose, tight crop (centrepiece 1/5-1/3 frame width or charm run filling the middle
+  band), per-attachment gravity rules (bail pendant vertical; Y-tail vertical; dangle charms each
+  straight down, evenly spaced; both-ends connector spans the arms, never re-hung from one point),
+  nested-V rule for layered strands with four separated top exits, offset shadow on the backdrop,
+  clear-stone fire line ("icy, never milky/grey/yellow-tinted"), chain-swap guard. Derived from
+  the pre-D114 hanging core (recovered from git) plus today's test learnings.
+- Existing `necklace` core relabelled "Necklaces — draped" and given the connector guard and the
+  clear-stone line.
+- `describeBody` shared between the two necklace cores via `NECKLACE_DESCRIBE_BODY` const —
+  inspection is pose-independent.
+- `settingsForCategory()` aliases `necklace-hanging` → `necklace` for bestFor ordering.
+
+**Verified:** `npx vitest run tests/prompt-matrix.test.ts` → 7 passed (now 14 cores × 10 settings,
+counted dynamically); `npx tsc --noEmit` clean. Upload/Restock pickers map
+`PROMPT_CATEGORY_CORES`, so both necklace poses appear automatically, ahead of the setting choice.
+
+**Not finished / known broken:**
+- Rows materialise per D104 on first use of `necklace-hanging × <setting>`; nothing re-runs.
+- Bracelet learnings NOT yet folded into the chain-bracelet core (fastened-oval layout, per-strand
+  bead counts, snake-chain guard). Do next if bracelet outputs show the same drift.
+
+**Next session should start with:** enhance one drop necklace and one dangle necklace under
+necklace-hanging × ivory-seamless; verify gravity pose, tight crop and stone fire against the
+2026-08-24 ChatGPT references.
+
+---
+
+## 2026-08-23 — Necklace image core re-staged as a close draped macro
+
+**Goal this session:** necklace hero images came out with the pendant too small and the chain
+barely visible; restage the necklace core to match the owner's reference set (pendant large,
+chain draped on the scene surface with a soft shadow, arms leaving the top edge).
+
+**Built:**
+- `src/lib/prompts/matrix.ts` → necklace `imageBody` rewritten. The mid-air "narrow V at true
+  neck length" brief is replaced by CLOSE AND LARGE (pendant about a quarter to a third of the
+  frame width, only the lower part of the necklace in shot), DRAPED ON THE SCENE (resting on the
+  setting's surface, contact shadow, chain follows folds/rims), THE CURVE (relaxed U/V, never
+  taut, loop or pile), shallow-DoF camera at a 20-40° downward angle, warm directional window
+  light. SCENE AND BACKGROUND now says the surface IS what the chain lies on; the old "never laid
+  on any of it" rule is gone. Identity, count, scale-lock, retouching and OUTPUT sections unchanged.
+  `describeBody` untouched. Core `note` updated.
+
+**Verified:** `npx vitest run tests/prompt-matrix.test.ts` → 7 passed (every core × setting ×
+measurement still composes through the worker contract; one `{{SETTING_DETAIL}}`, one PRODUCT
+block). No other code touched.
+
+**Not finished / known broken:**
+- Prompt ROWS are not refreshed by this change on its own. Per D104 a necklace × setting pair
+  re-materialises as a new revision the next time an operator uses it (/upload, restock, or the
+  prompts screen "Use for new batches"); bound and default pairs then follow by D96. Nothing
+  already enhanced is re-run.
+- Two reference scenes have no matching setting yet — a white ceramic dish, and a clear ribbed
+  glass cake-stand base. Add as settings only if the existing ten don't land the look.
+
+**Next session should start with:** enhance one NK photo under necklace × ivory-seamless and one
+under cream-silk-window; check pendant size, contact shadow and chain visibility against the
+reference images before touching the prompt again.
+
+---
+
 ## 2026-08-23 — Restock can save a photo as a reference only
 
 **Goal this session:** let an operator who handled a restock by hand still save the photograph as a

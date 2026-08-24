@@ -3276,3 +3276,31 @@ build; the decision carries `wants_new_image` so nothing is lost.
 PROGRESS had read as "not used yet". Fixed by `20260821176500_intake_source_admits_upload.sql`.
 Lesson recorded: a migration that replaces a constraint must name the constraint it replaces, and a
 test that exercises the new value would have caught this on 13 August.
+
+---
+
+### D114 — The necklace core stages a close draped macro, not a mid-air V
+
+*2026-08-23.* The hanging-V brief produced images where the pendant was a small object in an
+empty field and the fine chain was effectively invisible — the owner's words: "not visible at
+all". The owner's reference set (CaitlynMinimalist-style editorial shots) all share one staging:
+pendant large and pin-sharp, chain draped on a real surface with a soft contact shadow, both arms
+leaving the top of the frame, warm window light. The necklace `imageBody` now asks for exactly
+that, and the scene paragraph's surface is what the chain lies on rather than a backdrop behind a
+floating piece. "Chain exits the top edge" is kept as the cue that this is neck-length, since the
+close crop no longer shows true length. Other cores are unchanged; the anklet, bracelet and
+waist-chain briefs were never the complaint.
+
+---
+
+### D115 — Necklace pose is an operator choice: two cores, not a pose axis
+
+*2026-08-24.* One pose cannot serve all necklaces: a solid pendant sells in the close draped
+macro (D114), but drops, dangle rows, both-ends connectors and layered strands need gravity — a
+flat-lay scatters them at random angles. Rather than adding a fourth matrix axis (which would
+reverse D104's "cores are self-staging" and touch the pair-slug format), the pose ships as a
+second category core, `necklace-hanging`. The operator picks it exactly where they pick every
+core — before the setting — and pairs materialise as `necklace-hanging--<setting>` through the
+unchanged D104 path. The two cores share one describeBody: inspection is pose-independent.
+Ceiling: if a third necklace pose ever appears, reconsider a real pose axis instead of a third core.
+
