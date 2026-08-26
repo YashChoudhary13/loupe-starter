@@ -4,6 +4,7 @@ export type MatchJobKind = 'sync' | 'embed' | 'identify'
 
 export const EMBEDDING_DIM = 1152
 export const CANDIDATE_COUNT = 10
+export const COLOUR_DIM = 15
 
 export interface Candidate {
   readonly rank: number
@@ -47,12 +48,14 @@ export interface EmbedResult {
   readonly embeddings: { readonly full: readonly number[]; readonly crop: readonly number[] }
   readonly model: string
   readonly crop_box?: readonly number[] | null
+  readonly colour?: readonly number[] | null
 }
 
 export interface IdentifyResult {
   readonly embedding: readonly number[]
   readonly model: string
   readonly crop_box?: readonly number[] | null
+  readonly colour?: readonly number[] | null
   readonly fallback_full_frame?: boolean
   readonly timing_ms?: Readonly<Record<string, number>>
   /** ≤ 64 KB WebP preview of the query, so the Identify screen can show a Drive photograph. */

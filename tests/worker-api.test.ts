@@ -68,7 +68,7 @@ describe('completeJob', () => {
     const rows = Array.from({ length: 12 }, (_, i) => ({ sku: `SK${i}`, handle: `sk-${i}`, score: 1 - i / 100 }))
     const { deps, calls } = fakeDeps({
       match_job_event: () => 'evt-1',
-      match_search: () => rows,
+      match_search_colour: () => rows,
       record_match_candidates: () => null,
       complete_match_job: () => null,
     })
@@ -79,7 +79,7 @@ describe('completeJob', () => {
     expect(outcome.candidates).toHaveLength(10)
     expect(outcome.candidates![0]).toEqual({ rank: 1, sku: 'SK0', handle: 'sk-0', score: 1 })
     expect(outcome.candidates![9]!.rank).toBe(10)
-    expect(calls.map((c) => c.fn)).toEqual(['match_job_event', 'match_search', 'record_match_candidates', 'complete_match_job'])
+    expect(calls.map((c) => c.fn)).toEqual(['match_job_event', 'match_search_colour', 'record_match_candidates', 'complete_match_job'])
     expect(calls[2]!.args.p_latency_ms).toBe(1235)
     expect(String(calls[1]!.args.p_embedding)).toMatch(/^\[1\.0000000,0\.0000000,/)
   })

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
   CANDIDATE_COUNT,
+  COLOUR_DIM,
   EMBEDDING_DIM,
   type Candidate,
   type ClaimedJob,
@@ -160,6 +161,13 @@ function vectorLiteral(values: readonly number[], label: string): string {
   return `[${values.map((v) => v.toFixed(7)).join(',')}]`
 }
 
+/** A colour signature literal, or null when absent/malformed (search falls back to cosine). */
+function colourLiteral(values: readonly number[] | null | undefined): string | null {
+  if (!values || values.length !== COLOUR_DIM) return null
+  if (!values.every((v) => typeof v === 'number' && Number.isFinite(v))) return null
+  return `[${values.map((v) => v.toFixed(6)).join(',')}]`
+}
+
 export async function completeJob(
   input: {
     jobId: string
@@ -217,6 +225,11 @@ export async function completeJob(
       })
       if (error) throw rpcError('store_match_embedding', error)
     }
+    const colour = colourLiteral(result.colour)
+    if (colour) {
+      const { error } = await deps.db.rpc('set_reference_colour', { p_reference: referenceId, p_colour: colour })
+      if (error) throw rpcError('set_reference_colour', error)
+    }
     const { error } = await deps.db.rpc('complete_match_job', {
       p_job: input.jobId,
       p_token: input.leaseToken,
@@ -236,11 +249,13 @@ export async function completeJob(
   if (eventError) throw rpcError('match_job_event', eventError)
   if (!eventId) throw new WorkerApiError('lease lost or job has no event', 409)
 
-  const { data: rows, error: searchError } = await deps.db.rpc('match_search', {
+  const { data: rows, error: searchError } = await deps.db.rpc('match_search_colour', {
     p_embedding: literal,
+    p_colour: colourLiteral(result.colour),
     p_limit: CANDIDATE_COUNT,
+    p_alpha: deps.colourAlpha ?? 1,
   })
-  if (searchError) throw rpcError('match_search', searchError)
+  if (searchError) throw rpcError('match_search_colour', searchError)
   const candidates: Candidate[] = ((rows ?? []) as { sku: string; handle: string | null; score: number }[])
     .slice(0, CANDIDATE_COUNT)
     .map((r, i) => ({ rank: i + 1, sku: r.sku, handle: r.handle, score: Number(r.score) }))
