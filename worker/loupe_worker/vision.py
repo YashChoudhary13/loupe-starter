@@ -17,6 +17,8 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
+from .colour import colour_signature
+
 CROP_MARGIN, VIEW_PX, MODEL_PX, DIM = 0.25, 768, 512, 1152
 TIMM_ARCH = "vit_so400m_patch16_siglip_512"
 
@@ -108,6 +110,9 @@ class Vision:
         return f.cpu().numpy()
 
     def generous_box(self, im: Image.Image):
+        """(box, fallback, alpha_small, small): alpha_small is the 768px foreground mask
+        (None on fallback), small the 768px image it came from, so the colour signature is
+        taken over the same foreground as the crop."""
         from rembg import remove
 
         W, H = im.size
@@ -117,21 +122,21 @@ class Vision:
         frac = float(alpha.mean())
         b = box_from_alpha(alpha)
         if b is None or frac < 0.002 or (b[2] - b[0]) < 16 or (b[3] - b[1]) < 16:
-            return (0, 0, W, H), True
+            return (0, 0, W, H), True, None, small
         x0, y0, x1, y1 = [v / s for v in b]
         bw, bh = x1 - x0, y1 - y0
         x0, x1 = max(0, x0 - CROP_MARGIN * bw), min(W, x1 + CROP_MARGIN * bw)
         y0, y1 = max(0, y0 - CROP_MARGIN * bh), min(H, y1 + CROP_MARGIN * bh)
         box = (int(x0), int(y0), int(math.ceil(x1)), int(math.ceil(y1)))
         if box[2] - box[0] < 16 or box[3] - box[1] < 16:
-            return (0, 0, W, H), True
-        return box, False
+            return (0, 0, W, H), True, alpha, small
+        return box, False, alpha, small
 
-    def embed_reference(self, data: bytes) -> tuple[np.ndarray, np.ndarray, tuple, bool]:
+    def embed_reference(self, data: bytes):
         im = open_image(data)
-        box, fallback = self.generous_box(im)
+        box, fallback, alpha, small = self.generous_box(im)
         full, crop = self.embed([view(im), view(im.crop(box))])
-        return full, crop, box, fallback
+        return full, crop, box, fallback, colour_signature(small, alpha)
 
     def embed_query(self, data: bytes) -> dict:
         t = {}
@@ -139,13 +144,13 @@ class Vision:
         im = open_image(data)
         t["decode"] = time.time() - t0
         t1 = time.time()
-        box, fallback = self.generous_box(im)
+        box, fallback, alpha, small = self.generous_box(im)
         t["box"] = time.time() - t1
         t2 = time.time()
         (vector,) = self.embed([view(im.crop(box))])
         t["embed"] = time.time() - t2
         t["total"] = time.time() - t0
-        return {"embedding": vector, "crop_box": box, "fallback_full_frame": fallback,
+        return {"embedding": vector, "crop_box": box, "fallback_full_frame": fallback, "colour": colour_signature(small, alpha),
                 "timing_ms": {k: round(v * 1000) for k, v in t.items()}, "thumbnail_webp_base64": thumbnail_webp_base64(im)}
 
 
