@@ -34,6 +34,8 @@
     "match:backfill": "NODE_OPTIONS=--conditions=react-server tsx scripts/backfill-match-references.ts",
     "match:import-catalogue": "tsx scripts/import-catalogue-embeddings.ts",
     "match:resync": "tsx scripts/requeue-sync.ts",
+    "match:colour-export": "tsx scripts/export-colour-manifest.ts",
+    "match:colour-import": "tsx scripts/import-colour.ts",
     "anklet:worn": "tsx scripts/anklet-worn-batch.ts"
   },
   "dependencies": {
