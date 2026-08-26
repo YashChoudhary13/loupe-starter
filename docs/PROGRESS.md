@@ -29,6 +29,53 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-27 — The material contract: one shared block for every category
+
+**Goal this session:** a week of hand-written ChatGPT prompts had accumulated fixes the matrix
+never received. Audited what actually shipped versus what only lived in chat, and closed the gap.
+
+**Audit result (before):** the necklace work (D114/D115) was in — 20-40° draped staging, close
+crop, hanging pose, connector guard, clear-stone line on the two necklace cores. Not in: the
+clear-stone line on any other core, white-metal handling anywhere, chain-swap guard outside
+`necklace-hanging`, image-stage outline fidelity, per-strand counting, and any dark or
+white-metal-friendly scene.
+
+**Built:**
+- `src/lib/prompts/matrix.ts` → `MATERIAL_TRUTH`, one shared image-stage block spliced into every
+  core immediately before OUTPUT by `withMaterialTruth()` in `composeClientPair`. Covers: stone
+  rendering (clear stones icy not milky/grey; coloured stones luminous; pearls lustrous),
+  metal colour including white metals (silver/rhodium/steel read as real white metal, never flat
+  grey, chrome or plastic; no yellow cast), separation from the scene in brightness *and*
+  temperature, chain construction fidelity (never substitute a generic cable chain), outline
+  fidelity (an irregular pendant stays irregular), and per-strand counting with a
+  never-cross/never-merge rule plus tidy clasp-and-extender placement.
+- Three new settings: `charcoal-plaster` (dark plain ground so clear stones fire),
+  `white-ceramic-dish` (the one pale ground that still separates from gold; rim gives a chain a
+  curve), `warm-greige` (the ground for silver — a white metal must never be shot on grey).
+  Settings now 13, so 15 × 13 = 195 combinations.
+- Per-strand describer bullet added to the five describers where strands are possible only
+  (necklace, anklet, chain-bracelet, waist-chain, indian-jewellery) — not to rings/earrings/watch,
+  where the rule is meaningless.
+
+**Verified:** `tests/prompt-matrix.test.ts` → 9 passed, including a new D117 test asserting the
+block appears exactly once in all 195 combinations, before OUTPUT, under the 20,000-char limit,
+and a test that the three new grounds exist. `npx tsc --noEmit` clean. Full suite: 678 passed,
+the same 7 pre-existing env-drift failures as 2026-08-13 (confirmed identical by running them
+against a clean tree) — not regressions.
+
+**Not finished / known broken:**
+- Rows materialise per D104 on first use; nothing already enhanced re-runs.
+- The chain-bracelet core still stages near-overhead with a 5-15° rake. Today's bracelet QA
+  suggested a stronger rake reads better, but that would partly reverse the deliberate
+  "show the whole piece so it reads wrist-sized" choice, so it was left alone rather than
+  silently changed. Worth a decision, not a drive-by edit.
+
+**Next session should start with:** enhance one clear-stone piece (earrings or a pavé necklace)
+under `charcoal-plaster` and one silver piece under `warm-greige`, and check the stones fire and
+the white metal separates before rolling the new grounds out widely.
+
+---
+
 ## 2026-08-24 — Worn-on-foot anklet images: new core + top-seller batch script
 
 **Goal this session:** add "worn on a foot" images to the top-selling anklet listings, and make
@@ -129,6 +176,40 @@ block). No other code touched.
 **Next session should start with:** enhance one NK photo under necklace × ivory-seamless and one
 under cream-silk-window; check pendant size, contact shadow and chain visibility against the
 reference images before touching the prompt again.
+
+---
+
+## 2026-08-27 — Colour-aware re-rank (off by default); published-product registration; duplicate-SKU finding
+
+**Goal this session:** build colour re-rank; vectorise the "new images"; investigate the CB022/CB412
+duplicate.
+
+**Built:**
+- Colour re-rank (ships off, `MATCH_COLOUR_ALPHA=1.0`): `worker/loupe_worker/colour.py` (15-bin foreground
+  histogram), `match_references.colour vector(15)`, `match_search_colour(embedding, colour, limit, alpha)`,
+  worker computes+posts colour on embed and identify (`vision.py`, `jobs.py`, `worker-api.ts`), alpha via
+  `serverEnv.matchColourAlpha` through worker-route deps.
+- Backfill tooling: `scripts/export-colour-manifest.ts` → `worker/backfill_colour.py` → `scripts/import-colour.ts`
+  (local, ~1h) and `kaggle/colour_backfill.py` (T4). `docs/COLOUR-RERANK.md`.
+
+**Verified (measured):**
+- The premise "new images not vectorised" was wrong: index fully embedded, worker live, 0 pending. The real
+  gap was **registration** — 95 published products unreferenced (weekly cron); registered 77 now.
+- Colour separates what cosine cannot: necklace-1096 green vs white distractors L2≈0.42 vs cosine 0.87-0.93
+  (overlapping). NK1096's three catalogue images ARE different colourways (green/white/red isolated).
+- End to end: local backfill set colour on 15 refs; SQL blend test (alpha<1 breaks a cosine tie, alpha=1
+  pure cosine); worker embed posts a 15-vec.
+
+**Not finished / known broken:**
+- Colour NOT enabled: alpha needs tuning on real colour-variant phone photos (paired eval) before lowering
+  `MATCH_COLOUR_ALPHA`. Backfill of the 3,823 pre-feature refs still to run (15 done).
+- 5099d99 shipped vision.py broken (embed crashed 'unpack expected 5 got 4'); fixed in a1c0cf0.
+- **Duplicate SKU:** photo IMG20260821174201 became new product CB412 (published 08-24) AND was flagged a
+  restock of CB022 — same bracelet, two live SKUs. CB412 should be archived; a restock decision on a photo
+  should retire its abandoned draft (process gap). Awaiting the user's go (touches a live Shopify listing).
+
+**Next session should start with:** run the colour backfill; collect colour-variant photos to tune alpha;
+resolve CB412.
 
 ---
 
