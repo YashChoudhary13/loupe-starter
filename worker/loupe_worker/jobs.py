@@ -34,9 +34,9 @@ def handle_embed(job: dict[str, Any], api: LoupeApi, store: LocalStore, vision: 
         # Not on this disk (another worker synced it, or the file was moved): fetch, and keep a copy.
         data = api.download(reference["source_url"])
         path, _ = store.save(job, data)
-    full, crop, box, fallback = vision.embed_reference(path.read_bytes())
+    full, crop, box, fallback, colour = vision.embed_reference(path.read_bytes())
     api.complete(job, {"embeddings": {"full": _vec(full), "crop": _vec(crop)}, "model": MODEL_ID,
-                       "crop_box": list(box), "fallback_full_frame": fallback})
+                       "crop_box": list(box), "fallback_full_frame": fallback, "colour": colour})
     store.mark_embedded(reference["id"])
     log.info("embedded %s %s (box=%s%s)", reference.get("sku"), reference["id"], box, ", full frame" if fallback else "")
 
@@ -47,7 +47,7 @@ def handle_identify(job: dict[str, Any], api: LoupeApi, vision: Vision) -> None:
     result = vision.embed_query(data)
     outcome = api.complete(job, {"embedding": _vec(result["embedding"]), "model": MODEL_ID, "crop_box": list(result["crop_box"]),
                                  "fallback_full_frame": result["fallback_full_frame"], "timing_ms": result["timing_ms"],
-                                 "thumbnail_webp_base64": result["thumbnail_webp_base64"]})
+                                 "colour": result["colour"], "thumbnail_webp_base64": result["thumbnail_webp_base64"]})
     top = (outcome.get("candidates") or [{}])[0].get("sku")
     log.info("identified event %s in %d ms -> top %s", event["id"], result["timing_ms"]["total"], top)
 

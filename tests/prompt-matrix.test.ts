@@ -64,6 +64,39 @@ describe('the prompt matrix (13 cores × 10 settings)', () => {
     }
   })
 
+  it('D117 — every composed image body carries the shared material contract, once, before OUTPUT', () => {
+    for (const core of PROMPT_CATEGORY_CORES) {
+      for (const setting of PROMPT_SETTINGS) {
+        const pair = composeClientPair(core.slug, setting.slug)!
+        const body = pair.imageBody
+        const where = `${core.slug} × ${setting.slug}`
+
+        // Present exactly once — a second copy would mean the splice ran twice.
+        expect(body.split('MATERIAL TRUTH —').length - 1, where).toBe(1)
+
+        // The promises that kept failing in production, on every category.
+        expect(body, where).toContain('never milky')
+        expect(body, where).toContain('White metals')
+        expect(body, where).toContain('substitute a plain generic cable chain')
+        expect(body, where).toContain('SHAPE IS NOT IDEALISED')
+        expect(body, where).toContain('STRANDS ARE COUNTED SEPARATELY')
+
+        // OUTPUT stays last so the measurement rule can still override it.
+        expect(body.indexOf('MATERIAL TRUTH —'), where).toBeLessThan(
+          body.lastIndexOf('\n\nOUTPUT —'),
+        )
+        expect(body.length, where).toBeLessThanOrEqual(20_000)
+      }
+    }
+  })
+
+  it('the dark and white-metal grounds exist — pale-only settings are what made stones read grey', () => {
+    const slugs = PROMPT_SETTINGS.map((setting) => setting.slug)
+    expect(slugs).toContain('charcoal-plaster')
+    expect(slugs).toContain('white-ceramic-dish')
+    expect(slugs).toContain('warm-greige')
+  })
+
   it('every setting scene is pure environment — no pose or product claims sneak in', () => {
     for (const setting of PROMPT_SETTINGS) {
       expect(setting.scene, setting.slug).not.toMatch(/\{\{/u)

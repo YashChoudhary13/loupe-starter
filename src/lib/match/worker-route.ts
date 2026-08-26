@@ -16,6 +16,7 @@ export function workerDeps(): WorkerApiDeps {
       await consoleObjectStore().putImmutable(key, bytes, contentType, { source: 'worker-query-thumb' })
     },
     baseUrl: serverEnv.cronBaseUrl,
+    colourAlpha: serverEnv.matchColourAlpha,
   }
 }
 

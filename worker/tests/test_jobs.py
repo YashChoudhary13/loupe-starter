@@ -28,11 +28,11 @@ class FakeVision:
     device = "cpu"
 
     def embed_reference(self, data):
-        return np.ones(1152) / np.sqrt(1152), np.ones(1152) / np.sqrt(1152), (0, 0, 10, 10), False
+        return np.ones(1152) / np.sqrt(1152), np.ones(1152) / np.sqrt(1152), (0, 0, 10, 10), False, [0.1] * 15
 
     def embed_query(self, data):
         return {"embedding": np.ones(1152) / np.sqrt(1152), "crop_box": (0, 0, 10, 10), "fallback_full_frame": False,
-                "timing_ms": {"total": 12}, "thumbnail_webp_base64": "AA=="}
+                "colour": [0.1] * 15, "timing_ms": {"total": 12}, "thumbnail_webp_base64": "AA=="}
 
 
 def jpeg_bytes():
@@ -67,6 +67,7 @@ def test_embed_posts_two_views_of_1152(tmp_path):
     run_job(job, api, store, FakeVision())
     result = api.completed[0][1]
     assert len(result["embeddings"]["full"]) == 1152 and len(result["embeddings"]["crop"]) == 1152
+    assert len(result["colour"]) == 15
     assert result["model"] == "siglip2-so400m-512/crop"
 
 

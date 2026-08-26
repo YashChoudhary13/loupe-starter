@@ -32,6 +32,8 @@ export interface WorkerApiDeps {
   readonly baseUrl: string
   /** Writes a small object (the query preview). Optional: tests omit it. */
   readonly putObject?: (key: string, bytes: Buffer, contentType: string) => Promise<void>
+  /** Colour re-rank weight for identify search; 1.0 = pure cosine. Optional (defaults to 1). */
+  readonly colourAlpha?: number
   readonly now?: () => Date
 }
 

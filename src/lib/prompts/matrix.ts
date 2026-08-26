@@ -47,6 +47,29 @@ export interface PromptMeasurement {
   readonly imageRule: string
 }
 
+/**
+ * D117 — the material contract every category shares.
+ *
+ * Stone rendering, metal colour (including white metals), scene separation,
+ * chain construction, outline fidelity and per-strand counting are the same
+ * promise whatever the product is, so they live once here and are spliced into
+ * every core's image body at composition time, immediately before OUTPUT.
+ * Fifteen hand-maintained copies would have drifted apart within a month.
+ */
+const MATERIAL_TRUTH = `MATERIAL TRUTH — these rules outrank the scene and the styling, and apply to every category.
+
+STONES — every existing stone keeps its own colour and character, and none is ever added, removed, resized or recoloured. Clear and colourless stones must read icy, bright and brilliant: a crisp white specular point, a bright table and believable internal fire, never milky, chalky, grey, flat, plastic or tinted with the gold around them. Coloured stones keep their exact hue and stay luminous and saturated rather than sinking dark or muddy; a black stone stays clearly black; pearls and opaque cabochons keep a soft directional lustre rather than a hard glint. Where the scene is pale, hold the stones brighter than the scene so they still separate; where it is dark, let them fire against it. Never invent stones, glitter, starbursts, bloom or clipped highlights.
+
+METAL COLOUR — reproduce the metal Image 1 actually shows and never convert one metal into another. Yellow gold reads as rich saturated warm gold with bright liquid highlights and warm darker reflections, never flat pale yellow and never washed out. White metals — silver, rhodium plate, stainless steel, platinum — read as genuine white precious metal: bright but controlled highlights that keep their shape rather than flaring to pure white, real light-to-mid grey tones across the rounded surfaces, and soft neutral-grey reflections in the shadowed edges, with no yellow, brass or rose cast anywhere; they must never come out flat grey, dull pewter, mirror chrome or white plastic. Rose gold keeps its warm pink cast. A two-tone piece keeps each part its own colour exactly as photographed.
+
+SEPARATION FROM THE SCENE — the piece must stay clearly readable against whatever the scene provides, along its whole run including the finest chain. Keep the background apart from the metal in both brightness and temperature: a pale warm surface must never swallow yellow gold, and a grey surface must never swallow a white metal. If the scene as described would let any part of the piece disappear, adjust the scene's own tone and the lighting to restore that separation — never the product.
+
+CHAIN CONSTRUCTION — reproduce the photographed chain itself, whatever it is: flat curb, cable, satellite, box, rolo, snake, rope, wheat, herringbone, ball, figaro, paperclip or a textured variant. Match its link geometry, its gauge and the number of links that run between components. Never substitute a plain generic cable chain for a distinctive one, never coarsen or thicken links, and never use fewer, larger links to fill the frame. A flat ribbon chain lies face up and carries one continuous band of light; a snake chain shows one unbroken highlight along its tube rather than link-by-link sparkle.
+
+SHAPE IS NOT IDEALISED — reproduce the real outline of every rigid component exactly as photographed, including irregularity. A pendant, medallion, motif or setting that is asymmetric, slightly off-round, hand-formed or unevenly curved stays that way; never smooth, straighten, symmetrise or tidy it into a perfect oval, circle, heart or geometric shape. If the source outline is a little irregular, the finished outline must be equally irregular in the same places.
+
+STRANDS ARE COUNTED SEPARATELY — when the piece has more than one strand, treat each strand as its own object. Count its components separately, keep every component on the strand it truly belongs to in that strand's own count, order and spacing, and never move, merge, split or redistribute components between strands. Render exactly the photographed number of strands, no more and no fewer. Strands run alongside each other for their whole visible length with clear background between them at every point: they never cross, touch, tangle, converge or merge into one thicker line. Where the piece is fastened, the clasp and its extender sit together and lie tidily along the outside of the run rather than sprawling across the composition.`
+
 export const PROMPT_SETTINGS: readonly PromptSetting[] = [
   {
     slug: 'ivory-seamless',
@@ -134,6 +157,35 @@ export const PROMPT_SETTINGS: readonly PromptSetting[] = [
       'bag',
     ],
   },
+  {
+    slug: 'charcoal-plaster',
+    label: 'Charcoal plaster, hard light',
+    note: 'The dark plain ground for clear stones and pavé. Nothing competes, and colourless stones finally fire instead of reading grey.',
+    scene: `A single seamless wall and floor of warm charcoal-grey matte plaster, smooth with only a faint fine grain, completely plain — no veining, no pattern, no props, no visible seam — darkening gently toward the corners. One hard, small key light enters from the upper left at a low angle, raking across surfaces so engraving, prongs and link edges stand up in relief and every facet catches a crisp specular point, with gentle fill so the plaster keeps its detail and never goes black. Shadows are clean, directional and slightly elongated. Quiet, modern and expensive; the metal and the stones are the only bright things in the frame.`,
+    bestFor: [
+      'earrings',
+      'rings',
+      'necklace-hanging',
+      'nose-pin',
+      'chain-bracelet',
+      'kada-bracelet',
+      'indian-jewellery',
+    ],
+  },
+  {
+    slug: 'white-ceramic-dish',
+    label: 'White ceramic dish',
+    note: 'Glossy white dish on ivory. The rim gives a chain something to drape over, and pure white is the one pale ground that still separates from gold.',
+    scene: `A glossy white ceramic dish with a softly rounded rim and a shallow bowl, standing on a soft ivory matte surface, the dish filling most of the frame with its rim curving through the upper part of the picture. The glaze is smooth and unpatterned, bright white without clipping, catching one soft highlight along the rim. Light is warm window daylight from the upper left, clearly directional but soft, so the bowl carries a gentle gradient from lit edge to shaded and the piece casts a soft, slightly elongated contact shadow onto the glaze. Calm, tactile and editorial; no fabric, no folds, no second prop.`,
+    bestFor: ['necklace', 'chain-bracelet', 'anklet', 'hair-accessory', 'nose-pin'],
+  },
+  {
+    slug: 'warm-greige',
+    label: 'Warm greige sweep',
+    note: 'Warm putty neutral — the ground that makes silver and white metals look precious. Never photograph a white metal on grey.',
+    scene: `A seamless sweep of soft warm greige — a putty, oatmeal-toned neutral, gently warm rather than cool — smooth and completely plain, with a soft gradient a little brighter behind the product and falling off gently toward the corners, and no visible horizon or seam. Light is a broad diffused key from the upper left with gentle opposite fill, warm in character but colour-accurate, so cool white metal reads bright and clean against the warm ground while yellow gold stays rich rather than blending in. One soft, low, slightly offset contact shadow grounds the piece. Understated, warm and gallery-quiet; nothing else appears in the frame.`,
+    bestFor: ['necklace', 'necklace-hanging', 'earrings', 'rings', 'chain-bracelet', 'watch'],
+  },
 ]
 
 /**
@@ -189,6 +241,7 @@ Rules:
 - 80 to 200 words. One paragraph. No headings or bullet points inside the description.
 - The two length proportions are required even when a count is withheld. They are what stops the next stage rendering a neck-length necklace as a bracelet, and they are the most valuable facts in this record. If the paragraph is running long, drop finish adjectives before dropping them.
 - Count each component type twice before answering. Give an exact count only when both counts agree and every instance is clearly resolvable. If they disagree, or a component is too small, faint or obscured to resolve, describe the components and their order WITHOUT a total. A confident wrong count is worse than no count: with no number the image stage follows the photograph, which is correct.
+- When the piece has more than one strand, inspect each strand separately and say so: how many strands there are, each strand's own chain type and gauge, and each strand's own components in their own count and order along that strand. Never pool the components of two strands into one list, and never assume the strands match — one strand often carries everything while the other is plain.
 - Never replace a resolvable count with "several", "multiple" or "scattered". Do not count ordinary chain links or fabricate a count for a continuous pavé field.
 - Distinguish a drilled, dangling or jump-ring-mounted charm from a prong, bezel or glued setting. Distinguish solid-metal motifs from gemstones. Report faint, colourless and clear stones as carefully as coloured ones.
 - Preserve side-specific order and every visible asymmetry. Do not describe an idealised or symmetrical version.
@@ -212,6 +265,7 @@ Rules:
 - 80 to 200 words. One paragraph. No headings or bullet points inside the description.
 - The two length proportions are required even when a count is withheld. They are what stops the next stage rendering an ankle-length chain as a wrist bracelet or a necklace, and they are the most valuable facts in this record. If the paragraph is running long, drop finish adjectives before dropping them.
 - Count each component type twice before answering. Give an exact count only when both counts agree and every instance is clearly resolvable. If they disagree, or a component is too small, faint or obscured to resolve, describe the components and their order WITHOUT a total. A confident wrong count is worse than no count: with no number the image stage follows the photograph, which is correct.
+- When the piece has more than one strand, inspect each strand separately and say so: how many strands there are, each strand's own chain type and gauge, and each strand's own components in their own count and order along that strand. Never pool the components of two strands into one list, and never assume the strands match — one strand often carries everything while the other is plain.
 - Never replace a resolvable count with "several", "multiple" or "scattered". Do not count ordinary chain links or fabricate a count for a continuous pavé field.
 - State the item quantity plainly. One anklet is one anklet: never describe a single piece as a pair, and never assume an unseen matching partner exists.
 - Distinguish a drilled, dangling or jump-ring-mounted charm from a prong, bezel or glued setting. Distinguish solid-metal motifs from gemstones. Report faint, colourless and clear stones as carefully as coloured ones.
@@ -317,6 +371,7 @@ Rules:
 - 80 to 200 words. One paragraph. No headings or bullet points inside the description.
 - The two length proportions are required even when a count is withheld. They are what stops the next stage rendering a waist-length chain as a necklace or anklet, and they are the most valuable facts in this record. If the paragraph is running long, drop finish adjectives before dropping them.
 - Count each component type twice before answering. Give an exact count only when both counts agree and every instance is clearly resolvable. If they disagree, or a component is too small, faint or obscured to resolve, describe the components and their order WITHOUT a total. A confident wrong count is worse than no count: with no number the image stage follows the photograph, which is correct.
+- When the piece has more than one strand, inspect each strand separately and say so: how many strands there are, each strand's own chain type and gauge, and each strand's own components in their own count and order along that strand. Never pool the components of two strands into one list, and never assume the strands match — one strand often carries everything while the other is plain.
 - Never replace a resolvable count with "several", "multiple" or "scattered". Do not count ordinary chain links or fabricate a count for a continuous pavé field.
 - Distinguish a freely dangling charm, coin or tassel from a station fixed in line with the chain, and a jump-ring mounting from a prong, bezel or glued setting. Distinguish solid-metal motifs from gemstones.
 - Preserve side-specific order and every visible asymmetry. Do not describe an idealised or symmetrical version.
@@ -378,6 +433,7 @@ Rules:
 - 80 to 200 words. One paragraph. No headings or bullet points inside the description.
 - The two length proportions are required even when a count is withheld. They are what stops the next stage rendering a wrist-length bracelet as a neck-length necklace, and they are the most valuable facts in this record. If the paragraph is running long, drop finish adjectives before dropping them.
 - Count each component type twice before answering. Give an exact count only when both counts agree and every instance is clearly resolvable. If they disagree, or a component is too small, faint or obscured to resolve, describe the components and their order WITHOUT a total. A confident wrong count is worse than no count: with no number the image stage follows the photograph, which is correct.
+- When the piece has more than one strand, inspect each strand separately and say so: how many strands there are, each strand's own chain type and gauge, and each strand's own components in their own count and order along that strand. Never pool the components of two strands into one list, and never assume the strands match — one strand often carries everything while the other is plain.
 - Never replace a resolvable count with "several", "multiple" or "scattered". Do not count ordinary chain links or fabricate a count for a continuous pavé field.
 - Distinguish a drilled, dangling or jump-ring-mounted charm from a prong, bezel or glued setting. Distinguish solid-metal motifs from gemstones. Report faint, colourless and clear stones as carefully as coloured ones.
 - Preserve side-specific order and every visible asymmetry. Do not describe an idealised or symmetrical version.
@@ -956,6 +1012,7 @@ Rules:
 - The piece count is the single most important fact in this record. Give it plainly and early. Never describe a set as one object, and never assume a piece that is not visible exists because sets usually include one.
 - Name the traditional work by its own name when it is clearly identifiable, and describe it factually when it is not. Kundan, meena and jadau are construction facts, not decoration that can be simplified.
 - Count each component type twice before answering. Give an exact count only when both counts agree and every instance is clearly resolvable. If they disagree, or a stone or drop is too small, faint or obscured to resolve, describe the components and their arrangement WITHOUT a total. A confident wrong count is worse than no count: with no number the image stage follows the photograph, which is correct.
+- When the piece has more than one strand, inspect each strand separately and say so: how many strands there are, each strand's own chain type and gauge, and each strand's own components in their own count and order along that strand. Never pool the components of two strands into one list, and never assume the strands match — one strand often carries everything while the other is plain.
 - Never replace a resolvable count with "several", "multiple" or "scattered". Do not count ordinary chain links or fabricate a count for a continuous pavé field.
 - Distinguish a drilled, dangling or jump-ring-mounted element from a prong, bezel, foil-backed kundan or glued setting. Distinguish solid-metal motifs and enamel fields from gemstones.
 - Preserve every visible asymmetry and every difference between the two earrings. Do not describe an idealised or symmetrical version.
@@ -1111,6 +1168,18 @@ export function settingsForCategory(
  * An unmeasured pair keeps the two-part slug it has always had, so every pair
  * already stored stays the same row and nothing is re-materialised.
  */
+/**
+ * Splices the shared material contract in immediately before OUTPUT, so OUTPUT
+ * stays the last thing the model reads (and a measurement rule can still
+ * override its no-text clause by being appended after it).
+ */
+function withMaterialTruth(imageBody: string): string {
+  const anchor = '\n\nOUTPUT —'
+  const at = imageBody.lastIndexOf(anchor)
+  if (at === -1) return `${imageBody}\n\n${MATERIAL_TRUTH}`
+  return `${imageBody.slice(0, at)}\n\n${MATERIAL_TRUTH}${imageBody.slice(at)}`
+}
+
 export function composeClientPair(
   categorySlug: string,
   settingSlug: string,
@@ -1146,7 +1215,7 @@ export function composeClientPair(
       : `${core.label} · ${setting.label}`,
     describeBody,
     imageBody:
-      core.imageBody.replace('{{SETTING_DETAIL}}', setting.scene) +
+      withMaterialTruth(core.imageBody).replace('{{SETTING_DETAIL}}', setting.scene) +
       (measurement.imageRule ? `\n\n${measurement.imageRule}` : ''),
   }
 }

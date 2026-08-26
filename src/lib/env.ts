@@ -91,6 +91,13 @@ export const serverEnv = {
     return validatedCronSecret(process.env.WORKER_SECRET)
   },
 
+  /** Colour re-rank weight for identify search: 1.0 = pure cosine (off), lower gives
+   * colour more say. Off by default until tuned on real photos (docs/COLOUR-RERANK.md). */
+  get matchColourAlpha(): number {
+    const raw = Number.parseFloat(process.env.MATCH_COLOUR_ALPHA ?? '1')
+    return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 1
+  },
+
   /** One billing route for both the describer and image generator. */
   get openRouterApiKey(): string {
     return required('OPENROUTER_API_KEY')

@@ -166,6 +166,28 @@ describe('worker RPCs', () => {
     await db.query('rollback to savepoint stale')
   })
 
+  it('colour re-rank: alpha<1 lets colour break a cosine tie; alpha=1 is pure cosine', async () => {
+    const c = (i: number) => `[${Array.from({ length: 15 }, (_, k) => (k === i ? 1 : 0)).join(',')}]`
+    const a = await reference('CB9001')
+    const b = await reference('CB9002')
+    // Identical embeddings => equal cosine. Different colours.
+    for (const id of [a, b]) {
+      await db.query(`select public.store_match_embedding($1, 'full', $2, 'siglip2-test')`, [id, unit(7)])
+      await db.query(`update public.match_references set status = 'indexed' where id = $1`, [id])
+    }
+    await db.query(`update public.match_references set colour = $2::extensions.vector(15) where id = $1`, [a, c(14)]) // far
+    await db.query(`update public.match_references set colour = $2::extensions.vector(15) where id = $1`, [b, c(0)])  // matches query
+    const q = unit(7)
+    // alpha = 0.5: colour decides -> CB9002 (matching colour) first
+    const blended = await db.query<{ sku: string }>(
+      `select sku from public.match_search_colour($1, $2, 10, 0.5) where sku in ('CB9001','CB9002') order by score desc`, [q, c(0)])
+    expect(blended.rows[0]!.sku).toBe('CB9002')
+    // alpha = 1.0: pure cosine, colour ignored -> a tie, and a null-colour query also ties (no throw)
+    const pure = await db.query(`select sku, score from public.match_search_colour($1, null, 10, 1.0) where sku in ('CB9001','CB9002')`, [q])
+    expect(pure.rows.length).toBe(2)
+    expect(new Set(pure.rows.map((r: { score: number }) => Number(r.score))).size).toBe(1)
+  })
+
   it('records candidates on a queued event and leaves a decided one alone', async () => {
     const { rows } = await db.query<{ id: string }>(
       `insert into public.match_events (surface, query_storage_key) values ('identify', 'identify/x.jpg') returning id`)
