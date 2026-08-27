@@ -52,6 +52,19 @@ describe('product tags', () => {
       'loupe-test',
     ])
   })
+
+  it('adds the material tag the theme badge reads, but never a custom material', () => {
+    expect(buildProductTags('earrings', [], '304')).toEqual(['earrings', 'NEWEST', '304'])
+    expect(buildProductTags('Necklace', ['loupe-test'], ' 316L ')).toEqual([
+      'Necklace',
+      'NEWEST',
+      '316L',
+      'loupe-test',
+    ])
+    expect(buildProductTags('kada', [], 'Brass')).toEqual(['kada', 'NEWEST', 'Brass'])
+    expect(buildProductTags('kada', [], 'Sterling Silver')).toEqual(['kada', 'NEWEST'])
+    expect(buildProductTags('kada', [], null)).toEqual(['kada', 'NEWEST'])
+  })
 })
 
 describe('Shopify customer choices', () => {

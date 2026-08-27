@@ -29,6 +29,46 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-08-28 — Description wording and the missing material tag
+
+**Goal this session:** the 28 products published on 27 Aug carried the pre-copy-pass bullets
+("Made with premium … skin-friendly", "Waterproof", "(rare in most brands)") and no material tag,
+so the theme's card badge never showed. Bring Loupe's template up to the owner-approved wording
+and write the material tag on publish.
+
+**Built:**
+- `src/lib/publish/description.ts` → six bullets now match the live catalogue after the
+  2026-08-28 pass: `Premium <material> – highly durable, rust-resistant and ready for everyday
+  wear` for 304/316L, `Premium Brass – warm-toned, durable and easy to care for` for Brass,
+  `Premium <custom> – durable and ready for everyday wear` for a one-off material (no
+  rust claim for an unknown metal). Bullets 2–6 carry the 27 Aug wordings (water-resistant with
+  the remove-before-swimming caveat; "Finished in 18KT Gold Tone"; "not standard plating";
+  no "ensures", no "(rare in most brands)"). `(Surgical Grade)` dropped from the 316L descriptor.
+  New `isControlledMaterial()`.
+- `src/lib/publish/publish-product.ts` → `buildProductTags(categoryTag, extraTags, material)`
+  appends `304` / `316L` / `Brass` when the material is one of the three controlled names;
+  custom materials are not tags. Wired at the single `productSet` call.
+
+**Verified:** `npx vitest run tests/product-description.test.ts tests/shopify-product-images.test.ts`
+→ 30 passed (new: brass first line, banned-word sweep, material-tag cases incl. custom and
+null). `npx tsc --noEmit` clean, eslint clean on the four files. Not yet verified against a real
+publish — the next product published through the console is the proof: it should carry three
+tags and the new first bullet.
+
+**Not finished / known broken:**
+- Existing Shopify products were corrected outside Loupe (Qimati SEO body pass, 28 Aug); the
+  reconciliation view may show them as admin-side edits.
+- Brass bullets 4–5 still describe PVD and gold tone, same as the live catalogue; whether brass
+  should say "gold-colour finish" instead is an open owner decision, not changed here.
+
+**Surprises:** CLAUDE.md said tags were category + NEWEST only; the live theme has read a
+material tag for its card badge since 24 Aug. CLAUDE.md updated in this session.
+
+**Next session should start with:** publish one product through the console and confirm the
+badge appears on its collection card.
+
+---
+
 ## 2026-08-27 — The material contract: one shared block for every category
 
 **Goal this session:** a week of hand-written ChatGPT prompts had accumulated fixes the matrix

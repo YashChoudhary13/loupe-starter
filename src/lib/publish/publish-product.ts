@@ -42,7 +42,7 @@ import {
 } from '@/lib/shopify/product-set'
 import { publishToSalesChannels } from '@/lib/shopify/publications'
 
-import { buildDescriptionHtml } from './description'
+import { buildDescriptionHtml, isControlledMaterial } from './description'
 import { assertHandleIsWritable, classifyHandleOwnership } from './handle-ownership'
 import { paiseToShopifyPrice } from './identity'
 import { clearCounterOfShopifyNumbers } from './shopify-numbering'
@@ -70,11 +70,21 @@ export const PRODUCT_TYPE = 'Jewellery'
  */
 export const NEWEST_TAG = 'NEWEST'
 
+/**
+ * Category tag, NEWEST, then the material tag when it is one of the three
+ * controlled names. The theme's product-card badge ("Material badge (Qimati)")
+ * and the material collections read the tags `304` / `316L` / `Brass`, so a
+ * product published without one shows no badge. A custom material is not a
+ * store tag and is deliberately not written as one.
+ */
 export function buildProductTags(
   categoryTag: string,
   extraTags: readonly string[] = [],
+  material: string | null = null,
 ): readonly string[] {
-  return [categoryTag, NEWEST_TAG, ...extraTags]
+  const clean = material?.trim().replace(/\s+/g, ' ') ?? ''
+  const materialTags = isControlledMaterial(clean) ? [clean] : []
+  return [categoryTag, NEWEST_TAG, ...materialTags, ...extraTags]
 }
 
 /**
@@ -585,7 +595,7 @@ export async function publishProduct(
       handle: identity.handle,
       title: identity.title,
       productType: PRODUCT_TYPE,
-      tags: buildProductTags(identity.shopifyTag, options.extraTags),
+      tags: buildProductTags(identity.shopifyTag, options.extraTags, input.materialName),
       descriptionHtml,
       material: input.materialName,
       categoryId: input.category.shopify_taxonomy_category_id,

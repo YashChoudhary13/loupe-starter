@@ -91,6 +91,12 @@ Necklace 970, Earrings 453, Chain Bracelet 353 and Anklets 087 in the live catal
 The exact all-caps casing is load-bearing: a near-miss (`Newest`, `newest`, `New`)
 publishes successfully and drops the product out of its collection silently.
 
+⚠️ **A third tag, the material — `304`, `316L` or `Brass` — is written automatically** from the
+selected material (2026-08-28). The theme's product-card badge ("Material badge (Qimati)",
+top-right of the image) and the material collections read exactly these tags; the 28
+products published on 27 Aug 2026 had no badge for this reason and were re-tagged by hand.
+A custom material is not a store tag and is never written as one.
+
 Titles take an **optional free-text suffix**: `(Adjustable)`, `(Huggies)`, `(Single Piece)`, `(Light Rose gold)`. Title is *not* purely category + number.
 
 `product_type` is currently `jewelery` / `Jewelery` / blank. Write `Jewellery` consistently on new products.
