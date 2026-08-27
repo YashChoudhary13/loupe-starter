@@ -3318,3 +3318,19 @@ script, not a pipeline feature. The core permits skin (one lower leg and foot on
 other anklet core still bans; if worn views spread to more categories, lift the worn-view OUTPUT
 language into a shared fragment then.
 
+---
+
+### D117 — Material truth is one shared block spliced into every core, not fifteen copies
+
+*2026-08-27.* Stone rendering, metal colour, chain construction, outline fidelity and per-strand
+counting are the same promise whatever the product is, and every one of them had failed in
+production on some category that never received the fix. Fifteen hand-maintained copies would
+have drifted within a month — the audit that prompted this found the clear-stone rule present on
+exactly two of fifteen cores. So `MATERIAL_TRUTH` lives once and `withMaterialTruth()` splices it
+into each composed image body immediately before OUTPUT, keeping OUTPUT last so a measurement
+rule appended after it can still override its no-text clause. Cores keep only what is genuinely
+category-specific: pose, scale contract, count rules, final check. The block is image-stage only;
+the describer equivalent (per-strand inspection) went to the five describers where strands can
+occur, not to rings or watches where it is noise. Ceiling: the block is appended verbatim to every
+category, so anything added to it must be true of bags and watches as well as chains.
+
