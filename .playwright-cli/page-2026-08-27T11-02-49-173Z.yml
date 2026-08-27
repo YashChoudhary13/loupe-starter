@@ -1,0 +1,10 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: L
+      - generic [ref=e6]: Loupe
+    - heading "Sign in" [level=1] [ref=e7]
+    - paragraph [ref=e8]: Loupe publishes to a real Shopify store, so access is by named account. Sign in with the Google account that was set up for you.
+    - link "Continue with Google" [ref=e9] [cursor=pointer]:
+      - /url: /api/auth/google/start
+    - paragraph [ref=e15]: Access is decided by the operator list, not by email domain — a personal Gmail address is expected here.
