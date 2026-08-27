@@ -1,4 +1,8 @@
-import { parseSku } from '@/lib/publish/identity'
+import {
+  KNOWN_MALFORMED_SKU_CORRECTIONS,
+  malformedSkuCorrection,
+  parseSku,
+} from '@/lib/publish/identity'
 
 export interface ShopifySkuVariant {
   readonly sku: string | null
@@ -46,11 +50,7 @@ export interface SkuCounterPlanRow {
  * reviewable: a broad heuristic could silently discard a real high SKU, while
  * allowing one of these through would permanently raise a monotone counter.
  */
-export const EXCLUDED_MALFORMED_SKUS = new Map<string, string>([
-  ['NK7801', 'NK801'],
-  ['BK3367', 'BK337'],
-  ['AK0834', 'AK084'],
-])
+export const EXCLUDED_MALFORMED_SKUS = KNOWN_MALFORMED_SKU_CORRECTIONS
 
 /**
  * Derives the true maximum for every prefix after removing only the explicitly
@@ -70,8 +70,7 @@ export function scanSkuVariants(variants: readonly ShopifySkuVariant[]): SkuCoun
       continue
     }
 
-    const normalisedSku = sku.toUpperCase()
-    const correctedSku = EXCLUDED_MALFORMED_SKUS.get(normalisedSku)
+    const correctedSku = malformedSkuCorrection(sku)
     if (correctedSku) {
       excludedMalformed.push({ sku, title: variant.title, correctedSku })
       continue

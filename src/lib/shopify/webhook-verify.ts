@@ -6,6 +6,8 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
+import { malformedSkuCorrection } from '@/lib/publish/identity'
+
 import { shopifyConfig } from './config'
 
 export function verifyShopifyWebhookHmac(rawBody: string, hmacHeader: string | null): boolean {
@@ -33,11 +35,15 @@ export function productGid(payload: ProductWebhookPayload): string | null {
   return null
 }
 
-/** `NK1007` → { prefix: 'NK', number: 1007 }. Anything else → null. */
+/**
+ * `NK1007` → { prefix: 'NK', number: 1007 }. Anything else → null.
+ * Known catalogue typos also return null, matching the full Shopify scan.
+ */
 export function parseWebhookSku(sku: string | null | undefined): {
   prefix: string
   number: number
 } | null {
+  if (malformedSkuCorrection(sku)) return null
   const match = /^([A-Z]{2,4})0*([0-9]{1,9})$/u.exec(sku?.trim() ?? '')
   if (!match) return null
   return { prefix: match[1]!, number: Number(match[2]) }

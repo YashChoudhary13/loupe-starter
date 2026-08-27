@@ -83,6 +83,24 @@ export function parseSku(sku: string): { prefix: string; number: number } | null
   return { prefix: match[1].toUpperCase(), number: Number.parseInt(match[2], 10) }
 }
 
+/**
+ * Confirmed catalogue typos which must never advance a SKU sequence.
+ *
+ * This lives beside SKU parsing so every ingestion path — full reconciliation
+ * and Shopify webhooks alike — applies the same exception list. Keeping a
+ * second list in the webhook handler is how NK7801, BK3367 and AK0834 escaped
+ * the nightly scan's protection and corrupted the live counters.
+ */
+export const KNOWN_MALFORMED_SKU_CORRECTIONS = new Map<string, string>([
+  ['NK7801', 'NK801'],
+  ['BK3367', 'BK337'],
+  ['AK0834', 'AK084'],
+])
+
+export function malformedSkuCorrection(sku: string | null | undefined): string | null {
+  return KNOWN_MALFORMED_SKU_CORRECTIONS.get(sku?.trim().toUpperCase() ?? '') ?? null
+}
+
 /** Paise → the decimal rupee string Shopify's `MoneyInput` wants. Never a float. */
 export function paiseToShopifyPrice(paise: number): string {
   if (!Number.isInteger(paise)) {

@@ -7,6 +7,7 @@ import { supabaseServer } from '@/lib/supabase/server'
 
 import { classifyDraft, classifyIntake } from './classify'
 import { sumUsd, usd } from './cost'
+import { queryBatches } from './query-batches'
 import { draftCoverKeys, preferredThumbKey } from './thumbs'
 import type {
   ReconciliationSummary,
@@ -309,17 +310,22 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
    * that value, not the subject, so a different value later is new drift and
    * surfaces again. See D93.
    */
-  const dismissalsResult = allIssues.length
-    ? await db
+  const issueDraftIds = [...new Set(allIssues.map((row) => row.product_draft_id))]
+  const dismissalResults = await Promise.all(
+    queryBatches(issueDraftIds).map((draftIds) =>
+      db
         .from('shopify_reconciliation_dismissals')
         .select('product_draft_id, code, field, actual')
-        .in('product_draft_id', [...new Set(allIssues.map((row) => row.product_draft_id))])
-    : { data: [], error: null }
-  if (dismissalsResult.error) {
-    throw new Error(`reconciliation dismissals: ${dismissalsResult.error.message}`)
+        .in('product_draft_id', draftIds),
+    ),
+  )
+  const dismissalError = dismissalResults.find((result) => result.error)?.error
+  if (dismissalError) {
+    throw new Error(`reconciliation dismissals: ${dismissalError.message}`)
   }
+  const dismissalRows = dismissalResults.flatMap((result) => result.data ?? [])
   const dismissedKeys = new Set(
-    (dismissalsResult.data ?? []).map((row) =>
+    dismissalRows.map((row) =>
       reconciliationKey(
         row.product_draft_id as string,
         row.code as string,
@@ -357,55 +363,75 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
   const draftIdsNeedingCover = [
     ...new Set([...drafts.map((row) => row.id), ...issues.map((issue) => issue.product_draft_id)]),
   ]
-  const [eventsResult, versionsResult, draftImagesResult, draftIntakesResult] = await Promise.all([
-    entityIds.length
-      ? db
+  const [eventResults, versionResults, draftImageResults, draftIntakeResults] = await Promise.all([
+    Promise.all(
+      queryBatches(entityIds).map((ids) =>
+        db
           .from('events')
           .select('id, entity_id, event, detail, actor, created_at')
-          .in('entity_id', entityIds)
+          .in('entity_id', ids)
           .order('created_at', { ascending: false })
-          .limit(2_000)
-      : Promise.resolve({ data: [], error: null }),
-    intakes.length
-      ? db
+          .limit(2_000),
+      ),
+    ),
+    Promise.all(
+      queryBatches(intakes.map((row) => row.id)).map((intakeIds) =>
+        db
           .from('image_versions')
           .select('intake_file_id, version_no, is_selected, thumb_key, purged_at, cost_usd')
-          .in('intake_file_id', intakes.map((row) => row.id))
-      : Promise.resolve({ data: [], error: null }),
-    draftIdsNeedingCover.length
-      ? db
+          .in('intake_file_id', intakeIds),
+      ),
+    ),
+    Promise.all(
+      queryBatches(draftIdsNeedingCover).map((draftIds) =>
+        db
           .from('product_draft_images')
           .select('product_draft_id, position, image_versions ( thumb_key, purged_at )')
-          .in('product_draft_id', draftIdsNeedingCover)
-          .order('position', { ascending: true })
-      : Promise.resolve({ data: [], error: null }),
+          .in('product_draft_id', draftIds)
+          .order('position', { ascending: true }),
+      ),
+    ),
     /**
      * Draft membership, independent of the 500-row recency window above. A draft
      * that has been sitting for a while can own photographs that fell out of
      * that window, and summing only what happened to be in it would under-report
      * the draft's spend without saying so.
      */
-    draftIdsNeedingCover.length
-      ? db
+    Promise.all(
+      queryBatches(draftIdsNeedingCover).map((draftIds) =>
+        db
           .from('intake_files')
           .select('id, product_draft_id, description_cost_usd')
-          .in('product_draft_id', draftIdsNeedingCover)
-      : Promise.resolve({ data: [], error: null }),
+          .in('product_draft_id', draftIds),
+      ),
+    ),
   ])
-  if (eventsResult.error) throw new Error(`tracking events: ${eventsResult.error.message}`)
-  if (versionsResult.error) throw new Error(`tracking thumbnails: ${versionsResult.error.message}`)
-  if (draftImagesResult.error) {
-    throw new Error(`tracking draft covers: ${draftImagesResult.error.message}`)
+  const eventError = eventResults.find((result) => result.error)?.error
+  const versionError = versionResults.find((result) => result.error)?.error
+  const draftImageError = draftImageResults.find((result) => result.error)?.error
+  const draftIntakeError = draftIntakeResults.find((result) => result.error)?.error
+  if (eventError) throw new Error(`tracking events: ${eventError.message}`)
+  if (versionError) throw new Error(`tracking thumbnails: ${versionError.message}`)
+  if (draftImageError) {
+    throw new Error(`tracking draft covers: ${draftImageError.message}`)
   }
-  if (draftIntakesResult.error) {
-    throw new Error(`tracking draft costs: ${draftIntakesResult.error.message}`)
+  if (draftIntakeError) {
+    throw new Error(`tracking draft costs: ${draftIntakeError.message}`)
   }
 
-  const events = eventMap((eventsResult.data ?? []) as EventRow[])
-  const draftIntakes = (draftIntakesResult.data ?? []) as DraftIntakeRow[]
+  // Each event batch is newest-first and capped independently. Re-sort and cap
+  // after merging to preserve the old global "latest 2,000" contract.
+  const eventRows = eventResults
+    .flatMap((result) => (result.data ?? []) as EventRow[])
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+    .slice(0, 2_000)
+  const events = eventMap(eventRows)
+  const draftIntakes = draftIntakeResults.flatMap(
+    (result) => (result.data ?? []) as DraftIntakeRow[],
+  )
 
   const versionsByIntake = new Map<string, VersionRow[]>()
-  for (const row of (versionsResult.data ?? []) as VersionRow[]) {
+  for (const row of versionResults.flatMap((result) => (result.data ?? []) as VersionRow[])) {
     const list = versionsByIntake.get(row.intake_file_id) ?? []
     list.push(row)
     versionsByIntake.set(row.intake_file_id, list)
@@ -418,12 +444,17 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     .map((row) => row.id)
     .filter((id) => !versionsByIntake.has(id))
   if (missingVersionIntakeIds.length > 0) {
-    const extra = await db
-      .from('image_versions')
-      .select('intake_file_id, version_no, is_selected, thumb_key, purged_at, cost_usd')
-      .in('intake_file_id', missingVersionIntakeIds)
-    if (extra.error) throw new Error(`tracking draft costs: ${extra.error.message}`)
-    for (const row of (extra.data ?? []) as VersionRow[]) {
+    const extras = await Promise.all(
+      queryBatches(missingVersionIntakeIds).map((intakeIds) =>
+        db
+          .from('image_versions')
+          .select('intake_file_id, version_no, is_selected, thumb_key, purged_at, cost_usd')
+          .in('intake_file_id', intakeIds),
+      ),
+    )
+    const extraError = extras.find((result) => result.error)?.error
+    if (extraError) throw new Error(`tracking draft costs: ${extraError.message}`)
+    for (const row of extras.flatMap((result) => (result.data ?? []) as VersionRow[])) {
       const list = versionsByIntake.get(row.intake_file_id) ?? []
       list.push(row)
       versionsByIntake.set(row.intake_file_id, list)
@@ -437,7 +468,9 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
   )
 
   const thumbKeyByDraft = draftCoverKeys(
-    ((draftImagesResult.data ?? []) as unknown as DraftImageRow[]).map((row) => ({
+    (draftImageResults.flatMap(
+      (result) => (result.data ?? []) as unknown as DraftImageRow[],
+    )).map((row) => ({
       draftId: row.product_draft_id,
       position: row.position,
       thumbKey: row.image_versions?.thumb_key ?? null,

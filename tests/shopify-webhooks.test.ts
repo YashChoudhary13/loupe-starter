@@ -48,6 +48,12 @@ describe('webhook SKU parsing', () => {
       expect(parseWebhookSku(bad)).toBeNull()
     }
   })
+
+  it('does not let confirmed catalogue typos advance live counters', () => {
+    expect(parseWebhookSku('NK7801')).toBeNull()
+    expect(parseWebhookSku('BK3367')).toBeNull()
+    expect(parseWebhookSku('AK0834')).toBeNull()
+  })
 })
 
 describe('product gid resolution', () => {
