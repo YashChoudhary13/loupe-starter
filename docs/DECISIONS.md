@@ -3334,3 +3334,19 @@ the describer equivalent (per-strand inspection) went to the five describers whe
 occur, not to rings or watches where it is noise. Ceiling: the block is appended verbatim to every
 category, so anything added to it must be true of bags and watches as well as chains.
 
+---
+
+### D118 — Loupe writes the SEO title and meta description on publish
+
+*2026-08-28.* Shopify's fallback for an empty SEO title is the bare product title ("Earrings 548"),
+which is what the 28 products published on 27 Aug went live with. The catalogue-wide generator of
+26 Aug (Qimati SEO changelog) established one pattern for all 3,000+ products —
+`Wholesale <material> <Category> — <n> | Qimati` and a ≤160-character meta description naming
+material, finish, design number, the per-unit note (earrings sold as a pair, anklets singly) and
+the ₹1,000 prepaid minimum. `src/lib/publish/seo.ts` renders that pattern from the category
+prefix, the padded SKU number and the selected material, and `productSet` receives it as `seo`.
+
+Two rules baked in: title and description are always sent together (Shopify's `SEOInput` replaces
+the whole object — a description-only update nulls the title), and a custom material gets no
+finish or rust claim because Loupe cannot know what it is coated with.
+

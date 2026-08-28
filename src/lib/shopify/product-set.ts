@@ -111,6 +111,8 @@ export interface ProductSetArgs {
    * product rather than leaving it alone.
    */
   readonly files?: readonly ProductSetFile[]
+  /** Search title and meta description; omitted leaves Shopify's fallback (the product title). */
+  readonly seo?: { readonly title: string; readonly description: string }
 }
 
 export interface AltText {
@@ -437,6 +439,7 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
     // it before it reaches this boundary, so pasted storefront markup cannot
     // leak into a product.
     descriptionHtml: args.descriptionHtml,
+    ...(args.seo ? { seo: { title: args.seo.title, description: args.seo.description } } : {}),
     ...(args.categoryId ? { category: args.categoryId } : {}),
     // NO metafields, ever. The list is declarative, so naming only material
     // tries to delete whatever else is on the product — and Shopify links a

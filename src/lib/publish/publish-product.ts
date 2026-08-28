@@ -43,6 +43,7 @@ import {
 import { publishToSalesChannels } from '@/lib/shopify/publications'
 
 import { buildDescriptionHtml, isControlledMaterial } from './description'
+import { buildSeo } from './seo'
 import { assertHandleIsWritable, classifyHandleOwnership } from './handle-ownership'
 import { paiseToShopifyPrice } from './identity'
 import { clearCounterOfShopifyNumbers } from './shopify-numbering'
@@ -597,6 +598,12 @@ export async function publishProduct(
       productType: PRODUCT_TYPE,
       tags: buildProductTags(identity.shopifyTag, options.extraTags, input.materialName),
       descriptionHtml,
+      seo: buildSeo({
+        skuPrefix: input.category.sku_prefix,
+        skuNumber: identity.skuNumber,
+        material: input.materialName,
+        categoryName: input.category.name,
+      }),
       material: input.materialName,
       categoryId: input.category.shopify_taxonomy_category_id,
       optionName: hasOptionRows ? optionName : null,

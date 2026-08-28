@@ -97,6 +97,10 @@ top-right of the image) and the material collections read exactly these tags; th
 products published on 27 Aug 2026 had no badge for this reason and were re-tagged by hand.
 A custom material is not a store tag and is never written as one.
 
+**SEO title and meta description are written on publish** (D118, 2026-08-28):
+`Wholesale <material> <Category> — <n> | Qimati` plus a ≤160-character description. Always send
+title and description together — Shopify's `SEOInput` replaces the whole object.
+
 Titles take an **optional free-text suffix**: `(Adjustable)`, `(Huggies)`, `(Single Piece)`, `(Light Rose gold)`. Title is *not* purely category + number.
 
 `product_type` is currently `jewelery` / `Jewelery` / blank. Write `Jewellery` consistently on new products.

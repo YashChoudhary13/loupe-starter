@@ -64,8 +64,14 @@ tags and the new first bullet.
 **Surprises:** CLAUDE.md said tags were category + NEWEST only; the live theme has read a
 material tag for its card badge since 24 Aug. CLAUDE.md updated in this session.
 
-**Next session should start with:** publish one product through the console and confirm the
-badge appears on its collection card.
+- `src/lib/publish/seo.ts` → `buildSeo()` writes the catalogue's SEO title and meta description
+  on publish (D118); `ProductSetArgs.seo` added and passed through `buildInput`. The 28 products
+  already live without SEO fields were backfilled from the Qimati SEO side on 28 Aug.
+  `tests/product-seo.test.ts` → 5 tests (steel, brass, anklet, custom material, unknown prefix).
+
+**Next session should start with:** publish one product through the console and confirm three
+things on the live store: the material badge on its collection card, three tags, and an SEO title
+of the form `Wholesale 304 Stainless Steel Earrings — 565 | Qimati`.
 
 ---
 
