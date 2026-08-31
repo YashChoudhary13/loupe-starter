@@ -1,0 +1,467 @@
+- generic [ref=f13e2]:
+  - complementary [ref=f13e3]:
+    - generic [ref=f13e4]:
+      - generic [ref=f13e5]: L
+      - generic [ref=f13e6]: Loupe
+      - button "Collapse navigation" [expanded] [ref=f13e7]
+    - navigation [ref=f13e10]:
+      - generic [ref=f13e11]: Workspace
+      - link "Console" [ref=f13e12] [cursor=pointer]:
+        - /url: /console
+      - link "Upload" [ref=f13e16] [cursor=pointer]:
+        - /url: /upload
+      - link "Identify" [ref=f13e20] [cursor=pointer]:
+        - /url: /identify
+      - link "Restock" [ref=f13e24] [cursor=pointer]:
+        - /url: /restock
+      - link "Tracking" [ref=f13e27] [cursor=pointer]:
+        - /url: /tracking
+        - text: Tracking
+        - generic [ref=f13e30]: "9"
+      - link "Prompts" [ref=f13e31] [cursor=pointer]:
+        - /url: /prompts
+    - generic [ref=f13e35]:
+      - generic [ref=f13e37]:
+        - generic [ref=f13e38]: lokendrasingh861981
+        - generic [ref=f13e39]: lokendrasingh861981@gmail.com
+      - button "Sign out" [ref=f13e40]: ⏻
+  - main [ref=f13e41]:
+    - generic [ref=f13e42]:
+      - generic [ref=f13e43]:
+        - heading "Tracking" [level=1] [ref=f13e44]
+        - paragraph [ref=f13e45]: Thursday 27 August
+      - generic [ref=f13e46]:
+        - button "Full reconciliation" [ref=f13e47]
+        - generic [ref=f13e48]:
+          - generic [ref=f13e49]: "36"
+          - generic [ref=f13e50]: photos uploaded
+        - generic [ref=f13e51]:
+          - generic [ref=f13e52]: "0"
+          - generic [ref=f13e53]: products listed
+        - generic [ref=f13e54]:
+          - generic [ref=f13e56]: "31"
+          - generic [ref=f13e57]: need attention
+        - generic [ref=f13e58]:
+          - generic [ref=f13e59]: "29"
+          - generic [ref=f13e60]: queue items
+    - generic [ref=f13e61]:
+      - generic [ref=f13e62]:
+        - generic "Tracking view" [ref=f13e63]:
+          - button "Needs attention31" [pressed] [ref=f13e64]
+          - button "In progress17" [ref=f13e65]
+        - generic [ref=f13e66]:
+          - generic [ref=f13e67]:
+            - generic [ref=f13e68]: Status
+            - combobox "Status" [ref=f13e69]:
+              - option "Any status" [selected]
+              - option "Failed"
+              - option "Stalled"
+              - option "Running"
+              - option "Mismatch"
+              - option "Complete"
+          - generic [ref=f13e70]:
+            - generic [ref=f13e71]: Error
+            - combobox "Error" [ref=f13e72]:
+              - option "Any error" [selected]
+              - option "description failed"
+              - option "field mismatch"
+              - option "image request rejected"
+              - option "publish failed"
+              - option "variant count mismatch"
+          - generic [ref=f13e73]:
+            - generic [ref=f13e74]: Age
+            - combobox "Age" [ref=f13e75]:
+              - option "Any age" [selected]
+              - option "Over 1 hour"
+              - option "Over 24 hours"
+          - generic [ref=f13e76]:
+            - generic [ref=f13e77]: Search filename or reason
+            - searchbox "Search filename or reason" [ref=f13e78]
+      - generic [ref=f13e79]:
+        - article [ref=f13e80]:
+          - generic [ref=f13e83]:
+            - generic [ref=f13e84]:
+              - generic [ref=f13e85]: gid://shopify/Product/10153955459369
+              - generic [ref=f13e86]: Shopify mismatch
+              - generic [ref=f13e87]: 4m ago
+            - paragraph [ref=f13e88]: Earrings 530 variant 1 carries SKU ER530, not the RS242 Loupe reserved.
+            - generic [ref=f13e89]:
+              - link "Open in console" [ref=f13e90] [cursor=pointer]:
+                - /url: /console/drafts/0dfdb304-56d7-4333-965a-9b603548b0a3
+              - button "This is correct" [ref=f13e91]
+              - group [ref=f13e92]:
+                - generic "Details" [ref=f13e93] [cursor=pointer]
+        - article [ref=f13e94]:
+          - generic [ref=f13e97]:
+            - generic [ref=f13e98]:
+              - generic [ref=f13e99]: gid://shopify/Product/10153854665001
+              - generic [ref=f13e100]: Shopify mismatch
+              - generic [ref=f13e101]: 4m ago
+            - paragraph [ref=f13e102]: Rings 237 has 6 Shopify variants; Loupe's draft has 2.
+            - generic [ref=f13e103]:
+              - link "Open in console" [ref=f13e104] [cursor=pointer]:
+                - /url: /console/drafts/5074ccd9-dec6-4526-a3e0-595cfb60732d
+              - button "This is correct" [ref=f13e105]
+              - group [ref=f13e106]:
+                - generic "Details" [ref=f13e107] [cursor=pointer]
+        - article [ref=f13e108]:
+          - generic [ref=f13e111]:
+            - generic [ref=f13e112]:
+              - generic [ref=f13e113]: gid://shopify/Product/10153854665001
+              - generic [ref=f13e114]: Shopify mismatch
+              - generic [ref=f13e115]: 4m ago
+            - paragraph [ref=f13e116]: Rings 237 variant 2 is Color "Green"; Loupe's draft says Color "Red".
+            - generic [ref=f13e117]:
+              - link "Open in console" [ref=f13e118] [cursor=pointer]:
+                - /url: /console/drafts/5074ccd9-dec6-4526-a3e0-595cfb60732d
+              - button "This is correct" [ref=f13e119]
+              - group [ref=f13e120]:
+                - generic "Details" [ref=f13e121] [cursor=pointer]
+        - article [ref=f13e122]:
+          - generic [ref=f13e125]:
+            - generic [ref=f13e126]:
+              - generic [ref=f13e127]: gid://shopify/Product/10145152532777
+              - generic [ref=f13e128]: Shopify mismatch
+              - generic [ref=f13e129]: 4m ago
+            - paragraph [ref=f13e130]: Rings 231 variant 1 carries SKU RS231, not the ER465 Loupe reserved.
+            - generic [ref=f13e131]:
+              - link "Open in console" [ref=f13e132] [cursor=pointer]:
+                - /url: /console/drafts/7d3bb103-9226-4b0d-9b36-35d1dbf64cd5
+              - button "This is correct" [ref=f13e133]
+              - group [ref=f13e134]:
+                - generic "Details" [ref=f13e135] [cursor=pointer]
+        - article [ref=f13e136]:
+          - generic [ref=f13e139]:
+            - generic [ref=f13e140]:
+              - generic [ref=f13e141]: gid://shopify/Product/10145152532777
+              - generic [ref=f13e142]: Shopify mismatch
+              - generic [ref=f13e143]: 4m ago
+            - paragraph [ref=f13e144]: Rings 231 variant 2 carries SKU RS231, not the ER465 Loupe reserved.
+            - generic [ref=f13e145]:
+              - link "Open in console" [ref=f13e146] [cursor=pointer]:
+                - /url: /console/drafts/7d3bb103-9226-4b0d-9b36-35d1dbf64cd5
+              - button "This is correct" [ref=f13e147]
+              - group [ref=f13e148]:
+                - generic "Details" [ref=f13e149] [cursor=pointer]
+        - article [ref=f13e150]:
+          - generic [ref=f13e153]:
+            - generic [ref=f13e154]:
+              - generic [ref=f13e155]: gid://shopify/Product/10145152532777
+              - generic [ref=f13e156]: Shopify mismatch
+              - generic [ref=f13e157]: 4m ago
+            - paragraph [ref=f13e158]: Rings 231 variant 3 carries SKU RS231, not the ER465 Loupe reserved.
+            - generic [ref=f13e159]:
+              - link "Open in console" [ref=f13e160] [cursor=pointer]:
+                - /url: /console/drafts/7d3bb103-9226-4b0d-9b36-35d1dbf64cd5
+              - button "This is correct" [ref=f13e161]
+              - group [ref=f13e162]:
+                - generic "Details" [ref=f13e163] [cursor=pointer]
+        - article [ref=f13e164]:
+          - generic [ref=f13e167]:
+            - generic [ref=f13e168]:
+              - generic [ref=f13e169]: IMG-20260827-WA0021.jpg
+              - generic [ref=f13e170]: Failed
+              - generic "Description + image generation for this photograph, as billed by the provider" [ref=f13e171]: $0.0132
+              - generic [ref=f13e172]: 29m ago
+            - paragraph [ref=f13e173]: The image model rejected this photograph.
+            - generic [ref=f13e174]:
+              - link "Open in Drive" [ref=f13e175] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=18IC6EgOGURRRAuDZ0Sb6_q3LCvzAOijU
+              - button "Skip" [ref=f13e176]
+              - group [ref=f13e177]:
+                - generic "Details" [ref=f13e178] [cursor=pointer]
+        - article [ref=f13e179]:
+          - generic [ref=f13e182]:
+            - generic [ref=f13e183]:
+              - generic [ref=f13e184]: IMG20260822155739.jpg
+              - generic [ref=f13e185]: Restock to confirm
+              - generic [ref=f13e186]: 4d ago
+            - paragraph [ref=f13e187]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e188]:
+              - link "Open in Drive" [ref=f13e189] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1Bg91w_hWerAS_qa0kTgoxSGc6A_oe2to
+              - group [ref=f13e190]:
+                - generic "Details" [ref=f13e191] [cursor=pointer]
+        - article [ref=f13e192]:
+          - generic [ref=f13e195]:
+            - generic [ref=f13e196]:
+              - generic [ref=f13e197]: IMG20260822153956.jpg
+              - generic [ref=f13e198]: Restock to confirm
+              - generic [ref=f13e199]: 4d ago
+            - paragraph [ref=f13e200]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e201]:
+              - link "Open in Drive" [ref=f13e202] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=18Lvxk4asCzgg5zxTJitLaTg1Gs8dHXzA
+              - group [ref=f13e203]:
+                - generic "Details" [ref=f13e204] [cursor=pointer]
+        - article [ref=f13e205]:
+          - generic [ref=f13e208]:
+            - generic [ref=f13e209]:
+              - generic [ref=f13e210]: IMG20260822133900.jpg
+              - generic [ref=f13e211]: Restock to confirm
+              - generic [ref=f13e212]: 4d ago
+            - paragraph [ref=f13e213]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e214]:
+              - link "Open in Drive" [ref=f13e215] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1vMeCUJVSE4ULrI8mvEsgVxd5aDmdu4hX
+              - group [ref=f13e216]:
+                - generic "Details" [ref=f13e217] [cursor=pointer]
+        - article [ref=f13e218]:
+          - generic [ref=f13e221]:
+            - generic [ref=f13e222]:
+              - generic [ref=f13e223]: IMG20260822133900.jpg
+              - generic [ref=f13e224]: Restock to confirm
+              - generic [ref=f13e225]: 4d ago
+            - paragraph [ref=f13e226]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e227]:
+              - link "Open in Drive" [ref=f13e228] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1fIccoZniwmynIMPiF1BfuMTv-gfR9I0C
+              - group [ref=f13e229]:
+                - generic "Details" [ref=f13e230] [cursor=pointer]
+        - article [ref=f13e231]:
+          - generic [ref=f13e234]:
+            - generic [ref=f13e235]:
+              - generic [ref=f13e236]: IMG20260822154023.jpg
+              - generic [ref=f13e237]: Waiting to be identified
+              - generic [ref=f13e238]: 5d ago
+            - paragraph [ref=f13e239]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e240]:
+              - link "Open in Drive" [ref=f13e241] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1BZhxye3no-srx3fc4Bzx2XSHmlCV-Eej
+              - group [ref=f13e242]:
+                - generic "Details" [ref=f13e243] [cursor=pointer]
+        - article [ref=f13e244]:
+          - generic [ref=f13e247]:
+            - generic [ref=f13e248]:
+              - generic [ref=f13e249]: IMG20260822155543.jpg
+              - generic [ref=f13e250]: Waiting to be identified
+              - generic [ref=f13e251]: 5d ago
+            - paragraph [ref=f13e252]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e253]:
+              - link "Open in Drive" [ref=f13e254] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1ORzgkP4Fn9NTSVMLId0rvw7nWCRE9yvY
+              - group [ref=f13e255]:
+                - generic "Details" [ref=f13e256] [cursor=pointer]
+        - article [ref=f13e257]:
+          - generic [ref=f13e260]:
+            - generic [ref=f13e261]:
+              - generic [ref=f13e262]: IMG20260822154251.jpg
+              - generic [ref=f13e263]: Waiting to be identified
+              - generic [ref=f13e264]: 5d ago
+            - paragraph [ref=f13e265]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e266]:
+              - link "Open in Drive" [ref=f13e267] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1ARMJf3oQOQ4jTAxVwLsOSXJG_tJFKibX
+              - group [ref=f13e268]:
+                - generic "Details" [ref=f13e269] [cursor=pointer]
+        - article [ref=f13e270]:
+          - generic [ref=f13e273]:
+            - generic [ref=f13e274]:
+              - generic [ref=f13e275]: IMG20260822154222.jpg
+              - generic [ref=f13e276]: Waiting to be identified
+              - generic [ref=f13e277]: 5d ago
+            - paragraph [ref=f13e278]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e279]:
+              - link "Open in Drive" [ref=f13e280] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1gmZJ8DjEEtP2y7GG7CgCMhcNdkPsKdYt
+              - group [ref=f13e281]:
+                - generic "Details" [ref=f13e282] [cursor=pointer]
+        - article [ref=f13e283]:
+          - generic [ref=f13e286]:
+            - generic [ref=f13e287]:
+              - generic [ref=f13e288]: IMG20260822155225.jpg
+              - generic [ref=f13e289]: Waiting to be identified
+              - generic [ref=f13e290]: 5d ago
+            - paragraph [ref=f13e291]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e292]:
+              - link "Open in Drive" [ref=f13e293] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1xGwFNvPG-oJiI6PpX9z0iIQKouNDe0iq
+              - group [ref=f13e294]:
+                - generic "Details" [ref=f13e295] [cursor=pointer]
+        - article [ref=f13e296]:
+          - generic [ref=f13e299]:
+            - generic [ref=f13e300]:
+              - generic [ref=f13e301]: IMG20260822155501.jpg
+              - generic [ref=f13e302]: Waiting to be identified
+              - generic [ref=f13e303]: 5d ago
+            - paragraph [ref=f13e304]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e305]:
+              - link "Open in Drive" [ref=f13e306] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1NRxscNutqcvWjdKqJyjeX_OHRJeiTB7Y
+              - group [ref=f13e307]:
+                - generic "Details" [ref=f13e308] [cursor=pointer]
+        - article [ref=f13e309]:
+          - generic [ref=f13e312]:
+            - generic [ref=f13e313]:
+              - generic [ref=f13e314]: IMG20260822155833.jpg
+              - generic [ref=f13e315]: Waiting to be identified
+              - generic [ref=f13e316]: 5d ago
+            - paragraph [ref=f13e317]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e318]:
+              - link "Open in Drive" [ref=f13e319] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1F0b9opbM-1arGapanpfiYfuwiZVe6Wji
+              - group [ref=f13e320]:
+                - generic "Details" [ref=f13e321] [cursor=pointer]
+        - article [ref=f13e322]:
+          - generic [ref=f13e325]:
+            - generic [ref=f13e326]:
+              - generic [ref=f13e327]: IMG20260822161029.jpg
+              - generic [ref=f13e328]: Waiting to be identified
+              - generic [ref=f13e329]: 5d ago
+            - paragraph [ref=f13e330]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e331]:
+              - link "Open in Drive" [ref=f13e332] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1RmcsYZWwiKXIDr2jUBYWrP63uvnJAZwa
+              - group [ref=f13e333]:
+                - generic "Details" [ref=f13e334] [cursor=pointer]
+        - article [ref=f13e335]:
+          - generic [ref=f13e338]:
+            - generic [ref=f13e339]:
+              - generic [ref=f13e340]: IMG20260822160414.jpg
+              - generic [ref=f13e341]: Waiting to be identified
+              - generic [ref=f13e342]: 5d ago
+            - paragraph [ref=f13e343]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e344]:
+              - link "Open in Drive" [ref=f13e345] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1tLGOv8I2yYvAqXDkWiyRXFGX23xDmbf0
+              - group [ref=f13e346]:
+                - generic "Details" [ref=f13e347] [cursor=pointer]
+        - article [ref=f13e348]:
+          - generic [ref=f13e351]:
+            - generic [ref=f13e352]:
+              - generic [ref=f13e353]: IMG20260822160945.jpg
+              - generic [ref=f13e354]: Waiting to be identified
+              - generic [ref=f13e355]: 5d ago
+            - paragraph [ref=f13e356]: Nobody has said whether this is a new product or a restock for 120 hours. Open Identify.
+            - generic [ref=f13e357]:
+              - link "Open in Drive" [ref=f13e358] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1bZ-mxthaHvKnAb8z4QYALexnZMABA6yE
+              - group [ref=f13e359]:
+                - generic "Details" [ref=f13e360] [cursor=pointer]
+        - article [ref=f13e361]:
+          - generic [ref=f13e364]:
+            - generic [ref=f13e365]:
+              - generic [ref=f13e366]: IMG20260822135838.jpg
+              - generic [ref=f13e367]: Restock to confirm
+              - generic [ref=f13e368]: 5d ago
+            - paragraph [ref=f13e369]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e370]:
+              - link "Open in Drive" [ref=f13e371] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1fVES3CxQeDP-0Xz2ByQZx2CMIXvzE-ZC
+              - group [ref=f13e372]:
+                - generic "Details" [ref=f13e373] [cursor=pointer]
+        - article [ref=f13e374]:
+          - generic [ref=f13e377]:
+            - generic [ref=f13e378]:
+              - generic [ref=f13e379]: IMG20260822130309.jpg
+              - generic [ref=f13e380]: Restock to confirm
+              - generic [ref=f13e381]: 5d ago
+            - paragraph [ref=f13e382]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e383]:
+              - link "Open in Drive" [ref=f13e384] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1NaVcVpDzUrgphjurd9u9Emh_5Jwf970O
+              - group [ref=f13e385]:
+                - generic "Details" [ref=f13e386] [cursor=pointer]
+        - article [ref=f13e387]:
+          - generic [ref=f13e390]:
+            - generic [ref=f13e391]:
+              - generic [ref=f13e392]: IMG20260822124909.jpg
+              - generic [ref=f13e393]: Restock to confirm
+              - generic [ref=f13e394]: 5d ago
+            - paragraph [ref=f13e395]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e396]:
+              - link "Open in Drive" [ref=f13e397] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=16-lVF9wGw6uEUKntlLS52Hg3_A9Ts7bl
+              - group [ref=f13e398]:
+                - generic "Details" [ref=f13e399] [cursor=pointer]
+        - article [ref=f13e400]:
+          - generic [ref=f13e403]:
+            - generic [ref=f13e404]:
+              - generic [ref=f13e405]: IMG_20260822_134203.jpg
+              - generic [ref=f13e406]: Waiting to be identified
+              - generic [ref=f13e407]: 5d ago
+            - paragraph [ref=f13e408]: Nobody has said whether this is a new product or a restock for 121 hours. Open Identify.
+            - generic [ref=f13e409]:
+              - link "Open in Drive" [ref=f13e410] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1o-4mRaQYdVXVlAQFwpvRL1f2XcBlY3s3
+              - group [ref=f13e411]:
+                - generic "Details" [ref=f13e412] [cursor=pointer]
+        - article [ref=f13e413]:
+          - generic [ref=f13e416]:
+            - generic [ref=f13e417]:
+              - generic [ref=f13e418]: IMG20260822140614.jpg
+              - generic [ref=f13e419]: Restock to confirm
+              - generic [ref=f13e420]: 5d ago
+            - paragraph [ref=f13e421]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e422]:
+              - link "Open in Drive" [ref=f13e423] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1WnBlDbcJFzRneGLKf5j0Ce6IIectQukE
+              - group [ref=f13e424]:
+                - generic "Details" [ref=f13e425] [cursor=pointer]
+        - article [ref=f13e426]:
+          - generic [ref=f13e429]:
+            - generic [ref=f13e430]:
+              - generic [ref=f13e431]: IMG_20260822_140807.jpg
+              - generic [ref=f13e432]: Waiting to be identified
+              - generic [ref=f13e433]: 5d ago
+            - paragraph [ref=f13e434]: Nobody has said whether this is a new product or a restock for 122 hours. Open Identify.
+            - generic [ref=f13e435]:
+              - link "Open in Drive" [ref=f13e436] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1L1bfJPv_y_6g9z88qZeeRLjsk-OxO5Yd
+              - group [ref=f13e437]:
+                - generic "Details" [ref=f13e438] [cursor=pointer]
+        - article [ref=f13e439]:
+          - generic [ref=f13e442]:
+            - generic [ref=f13e443]:
+              - generic [ref=f13e444]: IMG20260822125420.jpg
+              - generic [ref=f13e445]: Waiting to be identified
+              - generic [ref=f13e446]: 5d ago
+            - paragraph [ref=f13e447]: Nobody has said whether this is a new product or a restock for 122 hours. Open Identify.
+            - generic [ref=f13e448]:
+              - link "Open in Drive" [ref=f13e449] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1SvDOYnYInB_ucQELpdLvPjhLw5OSDCRC
+              - group [ref=f13e450]:
+                - generic "Details" [ref=f13e451] [cursor=pointer]
+        - article [ref=f13e452]:
+          - generic [ref=f13e455]:
+            - generic [ref=f13e456]:
+              - generic [ref=f13e457]: IMG20260821174201.jpg
+              - generic [ref=f13e458]: Restock to confirm
+              - generic "Description + image generation for this photograph, as billed by the provider" [ref=f13e459]: $0.1008
+              - generic [ref=f13e460]: 5d ago
+            - paragraph [ref=f13e461]: Confirmed as a restock. The stock change is waiting in Restock.
+            - generic [ref=f13e462]:
+              - link "Open in Drive" [ref=f13e463] [cursor=pointer]:
+                - /url: https://drive.google.com/open?id=1mLSeAeqFro-SGIW3GsE_euCVFxoDaHVz
+              - group [ref=f13e464]:
+                - generic "Details" [ref=f13e465] [cursor=pointer]
+        - article [ref=f13e466]:
+          - generic [ref=f13e469]:
+            - generic [ref=f13e470]:
+              - generic [ref=f13e471]: NK1007
+              - generic [ref=f13e472]: Publish failed
+              - generic "Description + image generation across every photograph in this product, as billed by the provider" [ref=f13e473]: $0.1004
+              - generic [ref=f13e474]: 19d ago
+            - paragraph [ref=f13e475]: "productSet rejected the product \"necklace-1007\": input.productOptions: At least one value for the option linked to the 'shopify.color-pattern' metafield is invalid"
+            - generic [ref=f13e476]:
+              - link "Open in console" [ref=f13e477] [cursor=pointer]:
+                - /url: /console/drafts/b0bd0bbd-e5a5-4304-ae2b-2826d8567da0
+              - group [ref=f13e478]:
+                - generic "Details" [ref=f13e479] [cursor=pointer]
+        - article [ref=f13e480]:
+          - generic [ref=f13e483]:
+            - generic [ref=f13e484]:
+              - generic [ref=f13e485]: RS228
+              - generic [ref=f13e486]: Publish failed
+              - generic "Description + image generation across every photograph in this product, as billed by the provider" [ref=f13e487]: $0.0974
+              - generic [ref=f13e488]: 20d ago
+            - paragraph [ref=f13e489]: "productSet rejected the product \"rings-228\": input: This metafield is connected to an option. To make changes, edit the option. Metafield Namespace: shopify, Metafield Key: ring-size, Metafield Owner: Product"
+            - generic [ref=f13e490]:
+              - link "Open in console" [ref=f13e491] [cursor=pointer]:
+                - /url: /console/drafts/afa6aad8-f543-4ae3-9962-a68fe7767ffe
+              - group [ref=f13e492]:
+                - generic "Details" [ref=f13e493] [cursor=pointer]
+      - generic [ref=f13e494]:
+        - generic [ref=f13e495]: Showing 31 of 48 tracked items
+        - generic [ref=f13e496]: "Shopify: 325/330 matched · 11 issues"
+        - button "Refresh" [ref=f13e497]
