@@ -68,14 +68,11 @@ automatically on every push to `main`, and leave every future session knowing wh
 **Not finished / known broken:**
 - ~~Google OAuth redirect URI~~ — owner added `https://loupe.qimati-eng.site/api/auth/google/callback`
   to client `445284879940-…` the same day.
-- **R2 CORS** still allows only the Railway origin. `npm run r2:cors` needs `R2_API_TOKEN`
-  (Cloudflare account API token, *Workers R2 Storage: Edit*), which is in no `.env`; the S3 keys
-  in `.env` cannot do it either — `GetBucketCors` via the S3 API returns `AccessDenied` (they are
-  object-scoped, not bucket-admin). Either add the token to the server `.env` and run
-  `npm run r2:cors` in `~/loupe/current`, or paste this in the Cloudflare dashboard (R2 →
-  `loupe-images` → Settings → CORS policy): origin `https://loupe.qimati-eng.site`, methods
-  `PUT, HEAD`, header `Content-Type`, expose `ETag`, max-age 3600. Drag-and-drop upload on the
-  new domain is blocked by the browser until then; Drive intake is unaffected.
+- ~~R2 CORS~~ — owner set it in the Cloudflare dashboard the same day. Verified with an
+  `OPTIONS` preflight on the bucket: origin `https://loupe.qimati-eng.site` → `204`,
+  `Access-Control-Allow-Methods: PUT, HEAD`, `Allow-Headers: content-type`, `Max-Age: 3600`;
+  the Railway origin now gets `403`. (For the record: `npm run r2:cors` needs `R2_API_TOKEN`,
+  and the S3 keys in `.env` cannot do it — `GetBucketCors` returns `AccessDenied`.)
 - The Railway service is still running and still has its own three webhook subscriptions in
   Shopify. Stop Railway once sign-in works on the new domain; Shopify drops the dead
   subscriptions on its own after repeated delivery failures.
@@ -91,9 +88,8 @@ byte-identically under `@next/env` (checked all 32 keys, no `$` expansion, servi
 base64 as the code recommends). The repo is public, so server host/user/password stay in the
 gitignored `.env.server` and CLAUDE.md points at it rather than embedding the IP.
 
-**Next session should start with:** confirm the owner added the OAuth redirect URI and the R2
-CORS origin, sign in at `https://loupe.qimati-eng.site`, upload one photo through `/upload`, then
-stop the Railway service.
+**Next session should start with:** ask whether Railway has been stopped and `worker/.env` on
+the GPU laptop repointed; if a photo has not yet gone through `/upload` on the new domain, do one.
 
 
 ## 2026-08-28 — Description wording and the missing material tag
