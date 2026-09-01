@@ -66,15 +66,16 @@ automatically on every push to `main`, and leave every future session knowing wh
 - `/health` on the new host: service account and OAuth client id/secret accepted.
 
 **Not finished / known broken:**
-- **Google OAuth redirect URI** `https://loupe.qimati-eng.site/api/auth/google/callback` must be
-  added to OAuth client `445284879940-…` in the Google Cloud console by hand — until then sign-in
-  on the new domain fails with `redirect_uri_mismatch`. Railway still serves sign-in meanwhile.
-- **R2 CORS** still allows only the Railway origin: `npm run r2:cors` needs `R2_API_TOKEN`
-  (Cloudflare API token with R2 edit), which is in no `.env`. Either add the token to the server
-  `.env` and run it in `~/loupe/current`, or set the rule in the Cloudflare dashboard on bucket
-  `loupe-images`: origin `https://loupe.qimati-eng.site`, methods `PUT, HEAD`, header
-  `Content-Type`, expose `ETag`, max-age 3600. Drag-and-drop upload on the new domain is blocked
-  by the browser until then; Drive intake is unaffected.
+- ~~Google OAuth redirect URI~~ — owner added `https://loupe.qimati-eng.site/api/auth/google/callback`
+  to client `445284879940-…` the same day.
+- **R2 CORS** still allows only the Railway origin. `npm run r2:cors` needs `R2_API_TOKEN`
+  (Cloudflare account API token, *Workers R2 Storage: Edit*), which is in no `.env`; the S3 keys
+  in `.env` cannot do it either — `GetBucketCors` via the S3 API returns `AccessDenied` (they are
+  object-scoped, not bucket-admin). Either add the token to the server `.env` and run
+  `npm run r2:cors` in `~/loupe/current`, or paste this in the Cloudflare dashboard (R2 →
+  `loupe-images` → Settings → CORS policy): origin `https://loupe.qimati-eng.site`, methods
+  `PUT, HEAD`, header `Content-Type`, expose `ETag`, max-age 3600. Drag-and-drop upload on the
+  new domain is blocked by the browser until then; Drive intake is unaffected.
 - The Railway service is still running and still has its own three webhook subscriptions in
   Shopify. Stop Railway once sign-in works on the new domain; Shopify drops the dead
   subscriptions on its own after repeated delivery failures.
