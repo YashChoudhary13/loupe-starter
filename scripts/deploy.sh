@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Production deploy for Loupe on the Qimati VPS (see "Production server" in CLAUDE.md).
 #
-# Runs ON THE SERVER as `ubuntu`. GitHub Actions triggers it on every push to main
-# (.github/workflows/deploy.yml) through the forced command on the CI key in
-# ~/.ssh/authorized_keys, which first fast-forwards ~/loupe/repo to origin/main.
+# Runs ON THE SERVER as `ubuntu`. Two things call it, both after fast-forwarding
+# ~/loupe/repo to origin/main: the cron poller scripts/autodeploy.sh (every minute) and,
+# when GitHub Actions is available, .github/workflows/deploy.yml through the forced
+# command on the CI key in ~/.ssh/authorized_keys.
 # Manual run:  ssh ubuntu@<server> 'cd ~/loupe/repo && git pull -q && bash scripts/deploy.sh'
 #
 # Layout:
@@ -21,6 +22,12 @@ REPO=$ROOT/repo
 SHA=$(git -C "$REPO" rev-parse --short HEAD)
 RELEASE=$ROOT/releases/$(date -u +%Y%m%d-%H%M%S)-$SHA
 PORT=3000
+
+# One deploy at a time; the Actions job and the cron poller may both arrive for the same push.
+exec 9>"$ROOT/deploy.lock"; flock 9
+case "$(readlink "$ROOT/current" 2>/dev/null || true)" in
+  *-"$SHA") echo "==> $SHA already live"; exit 0 ;;
+esac
 
 echo "==> building $SHA in $RELEASE"
 mkdir -p "$RELEASE"
