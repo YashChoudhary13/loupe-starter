@@ -41,8 +41,12 @@ automatically on every push to `main`, and leave every future session knowing wh
   keep last 3 releases.
 - `deploy/loupe.service`, `deploy/loupe.nginx.conf` → systemd unit and nginx site (source of
   truth in git; reinstalled on every deploy).
-- `.github/workflows/deploy.yml` → SSHes to the server on push to `main`; the key is bound to a
-  forced command in `authorized_keys`, so it can only pull and run `deploy.sh`.
+- `scripts/autodeploy.sh` + server crontab (`* * * * *`) → the deploy trigger that works: polls
+  `origin/main`, pulls and runs `deploy.sh` when it moves. Log: `~/loupe/shared/autodeploy.log`.
+- `.github/workflows/deploy.yml` → same over SSH (forced-command key), but the first run failed
+  with "The job was not started because your account is locked due to a billing issue" — the
+  GitHub account needs its billing fixed before Actions does anything. `deploy.sh` locks and
+  skips an already-live sha so both triggers can coexist.
 - Server: 2 GB swapfile, `~/loupe/{repo,releases,shared,current}`, `~/loupe/shared/.env`
   (Railway's variables with `AUTH_BASE_URL`/`CRON_BASE_URL` = `https://loupe.qimati-eng.site`),
   Let's Encrypt cert via certbot webroot, CI key installed. Repo secrets `DEPLOY_SSH_KEY`,
@@ -50,7 +54,8 @@ automatically on every push to `main`, and leave every future session knowing wh
 - CLAUDE.md "Production server" section, D119, worker docstring/README URL updates.
 
 **Verified:**
-- First manual `deploy.sh` run: `==> live: 870cf7e`, `real 1m12s` for npm ci + build + switch.
+- First manual `deploy.sh` run: `==> live: 870cf7e`, `real 1m12s` for npm ci + build + switch;
+  second run `==> live: b8629c7` after installing the crontab poller.
 - `curl https://loupe.qimati-eng.site/` → `307 → /console`; `http://` → `301 https://`.
 - `npm run cron:configure` on the server: `Cron target: https://loupe.qimati-eng.site`, all 7
   pg_cron jobs listed active. nginx access log 09:59–10:00 UTC shows `pg_net/0.20.4` POSTs to
@@ -75,6 +80,8 @@ automatically on every push to `main`, and leave every future session knowing wh
   subscriptions on its own after repeated delivery failures.
 - `worker/.env` on the GPU laptop still has `LOUPE_BASE_URL` = Railway; change it to
   `https://loupe.qimati-eng.site`.
+- GitHub Actions is billing-locked on the account (github.com/settings/billing); deploys work
+  without it via the poller, so this is cosmetic until fixed.
 - SSH password auth is still enabled on the server; the Mac and CI use keys, so it can be turned
   off (`PasswordAuthentication no`) whenever the owner is happy no other machine needs it.
 

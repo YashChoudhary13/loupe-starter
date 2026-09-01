@@ -5,8 +5,8 @@ Internal tool for Qimati (qimati.in), a wholesale jewellery Shopify store in Jai
 **Stack:** Next.js (App Router) + TypeScript · Supabase Postgres · Cloudflare R2 · **self-hosted VPS**
 
 ⚠️ **Production is `https://loupe.qimati-eng.site` on the Qimati VPS, deployed automatically on
-every push to `main`** (`YashChoudhary13/loupe-starter`) by `.github/workflows/deploy.yml`, which
-SSHes to the server and runs `scripts/deploy.sh`. It moved off Railway on 2026-09-01 (D119);
+every push to `main`** (`YashChoudhary13/loupe-starter`): a crontab poller on the server
+(`scripts/autodeploy.sh`, every minute) pulls `main` and runs `scripts/deploy.sh`. It moved off Railway on 2026-09-01 (D119);
 `loupe-starter-production.up.railway.app` is dead — never point anything at it. An idle Vercel
 project and a `.vercel/` link also exist and are *not* production.
 
@@ -29,15 +29,20 @@ project and a `.vercel/` link also exist and are *not* production.
   values are baked in at build time, so changing one needs a redeploy, not just a restart.
 - **Process:** `systemd` unit `loupe` from `deploy/loupe.service`. `sudo systemctl status loupe`,
   logs `journalctl -u loupe -f` (journald, rotates).
-- **Deploy:** push to `main` → Actions job → `scripts/deploy.sh` on the server: `npm ci`,
+- **Deploy:** push to `main` → within a minute the crontab poller `scripts/autodeploy.sh` sees
+  `origin/main` move → `scripts/deploy.sh` on the server: `npm ci`,
   `next build` into a fresh release (~75 s measured), reinstall the unit + nginx config from `deploy/`,
   atomic symlink switch, restart, health check on :3000, automatic rollback if it never answers.
   A failed build leaves the running release untouched. Manual: `ssh … 'cd ~/loupe/repo &&
   git pull -q && bash scripts/deploy.sh'`. Tests are not a gate (see D119).
 - **`deploy/` is the source of truth** for the unit and nginx config — `deploy.sh` reinstalls them
   every run, so change them in git, never by hand on the server.
-- **CI key:** repo secrets `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` / `DEPLOY_HOST`; the key's
-  `authorized_keys` entry is a forced command (pull `main`, run `deploy.sh`) and can do nothing else.
+- **GitHub Actions** (`.github/workflows/deploy.yml`) does the same over SSH and is only a
+  visible status check: the account was billing-locked on 2026-09-01 so the job never starts.
+  Repo secrets `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` / `DEPLOY_HOST` are set; the key's
+  `authorized_keys` entry is a forced command (pull `main`, run `deploy.sh`) and can do nothing
+  else. `deploy.sh` holds a lock and skips a sha that is already live, so the two paths never
+  collide. Deploy log on the server: `~/loupe/shared/autodeploy.log`.
 - **Everything that knows the public URL** (repoint all of it if the domain ever changes):
   `AUTH_BASE_URL` + `CRON_BASE_URL` in the server `.env`, the `loupe_cron_base_url` vault secret
   (`npm run cron:configure` on the server), Shopify webhook callbacks (shopify-reconcile

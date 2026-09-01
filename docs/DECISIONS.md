@@ -3355,9 +3355,15 @@ finish or rust claim because Loupe cannot know what it is coated with.
 
 *2026-09-01.* Loupe now runs on the same box as the packaging and LinkedIn apps
 (`loupe.qimati-eng.site`, Cloudflare → nginx → Next.js on `127.0.0.1:3000`, `systemd` unit
-`loupe`), replacing `loupe-starter-production.up.railway.app`. A deploy is a GitHub Actions job
-that SSHes in with a key whose `authorized_keys` entry is a forced command — pull `main`, run
-`scripts/deploy.sh` — so the CI secret can do exactly one thing. `deploy.sh` builds each push into
+`loupe`), replacing `loupe-starter-production.up.railway.app`. A deploy is triggered by a crontab
+poller on the server (`scripts/autodeploy.sh`, every minute: fetch, and if `origin/main` moved,
+reset and run `scripts/deploy.sh`) — chosen over GitHub Actions because the GitHub account turned
+out to be billing-locked (the first workflow run reported "The job was not started because your
+account is locked due to a billing issue") and a poller needs nothing from GitHub but a public
+clone. The Actions job (`.github/workflows/deploy.yml`) stays as a status check for when billing
+is fixed; it SSHes in with a key whose `authorized_keys` entry is a forced command — pull `main`,
+run `deploy.sh` — so the CI secret can do exactly one thing, and `deploy.sh` locks and skips a
+sha that is already live so the two paths cannot collide. `deploy.sh` builds each push into
 its own `~/loupe/releases/<stamp>-<sha>` and swaps a `current` symlink, so a failed `next build`
 never touches the running release, and a release that does not answer on :3000 within 60 s is
 rolled back automatically.
