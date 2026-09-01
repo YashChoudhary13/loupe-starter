@@ -3,8 +3,8 @@ loupe-worker run --kinds sync,identify --daemon        (daytime: answer Identify
 loupe-worker run --kinds sync,embed --until-empty       (nightly: bring the index up to date)
 
 Configuration from the environment (or worker/.env):
-  LOUPE_BASE_URL   https://loupe-starter-production.up.railway.app
-  WORKER_SECRET    the same value as WORKER_SECRET in Railway
+  LOUPE_BASE_URL   https://loupe.qimati-eng.site
+  WORKER_SECRET    the same value as WORKER_SECRET on the server
   WORKER_ID        a name for this machine, e.g. yash-laptop
   LOUPE_LOCAL_ROOT where originals are kept, e.g. D:\\loupe
   LOUPE_WEIGHTS    path to siglip2_so400m_512_visual.safetensors (default: worker/weights/)

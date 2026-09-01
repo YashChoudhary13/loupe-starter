@@ -1,0 +1,19 @@
+# Installed to /etc/systemd/system/loupe.service by scripts/deploy.sh on every deploy.
+# Logs: journalctl -u loupe -f
+[Unit]
+Description=Loupe — Qimati listing console (Next.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/loupe/current
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3000 -H 127.0.0.1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

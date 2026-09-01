@@ -2,15 +2,47 @@
 
 Internal tool for Qimati (qimati.in), a wholesale jewellery Shopify store in Jaipur. It replaces a manual process where one person enhanced photos across five ChatGPT tabs and hand-typed every Shopify listing.
 
-**Stack:** Next.js (App Router) + TypeScript · Supabase Postgres · Cloudflare R2 · **Railway**
+**Stack:** Next.js (App Router) + TypeScript · Supabase Postgres · Cloudflare R2 · **self-hosted VPS**
 
-⚠️ **Production is Railway, deployed by pushing to GitHub** (`YashChoudhary13/loupe-starter`) —
-not Vercel. Confirmed 2026-08-05: the Supabase `cron.job` rows call
-`https://loupe-starter-production.up.railway.app` (the `loupe_cron_base_url` vault secret), so
-Railway runs every worker. **Runtime environment variables live in the Railway dashboard**;
-changing them anywhere else has no effect on production. A `.vercel/` link and an idle Vercel
-project also exist and are *not* production — earlier drafts of this file said "Vercel" and cost a
-session's worth of debugging.
+⚠️ **Production is `https://loupe.qimati-eng.site` on the Qimati VPS, deployed automatically on
+every push to `main`** (`YashChoudhary13/loupe-starter`) by `.github/workflows/deploy.yml`, which
+SSHes to the server and runs `scripts/deploy.sh`. It moved off Railway on 2026-09-01 (D119);
+`loupe-starter-production.up.railway.app` is dead — never point anything at it. An idle Vercel
+project and a `.vercel/` link also exist and are *not* production.
+
+### Production server — read before touching deployment
+
+- **Access:** host IP, user and password are in the gitignored `.env.server` (`SERVER_IP`,
+  `SERVER_USER`, `SERVER_PASSWORD`) — never commit them or paste the IP into tracked files; the
+  repository is public. This Mac's SSH key is installed, so `ssh $SERVER_USER@$SERVER_IP` works
+  without the password. Ubuntu 26.04, 2 vCPU, 3.7 GB RAM + 2 GB swap, passwordless sudo.
+- **Neighbours:** `packaging.qimati-eng.site` (:8787) and `linkedin.qimati-eng.site` (:8788) run
+  on the same box as `systemd` units `qimati` and `inpulse`. Do not touch their nginx sites,
+  units or directories.
+- **Domain:** `loupe.qimati-eng.site`, Cloudflare-proxied A record → nginx (`deploy/loupe.nginx.conf`,
+  TLS from certbot, auto-renewed) → Next.js on `127.0.0.1:3000`.
+- **Layout:** `~/loupe/repo` = checkout of `main` (source only) · `~/loupe/releases/<stamp>-<sha>/`
+  = one built tree per deploy (last 3 kept) · `~/loupe/current` → the release being served ·
+  `~/loupe/shared/.env` = runtime variables, symlinked into every release.
+- **Environment variables live ONLY in `~/loupe/shared/.env`** (`.env.railway` here is the
+  local mirror — change both). After editing: `sudo systemctl restart loupe`. `NEXT_PUBLIC_*`
+  values are baked in at build time, so changing one needs a redeploy, not just a restart.
+- **Process:** `systemd` unit `loupe` from `deploy/loupe.service`. `sudo systemctl status loupe`,
+  logs `journalctl -u loupe -f` (journald, rotates).
+- **Deploy:** push to `main` → Actions job → `scripts/deploy.sh` on the server: `npm ci`,
+  `next build` into a fresh release (~75 s measured), reinstall the unit + nginx config from `deploy/`,
+  atomic symlink switch, restart, health check on :3000, automatic rollback if it never answers.
+  A failed build leaves the running release untouched. Manual: `ssh … 'cd ~/loupe/repo &&
+  git pull -q && bash scripts/deploy.sh'`. Tests are not a gate (see D119).
+- **`deploy/` is the source of truth** for the unit and nginx config — `deploy.sh` reinstalls them
+  every run, so change them in git, never by hand on the server.
+- **CI key:** repo secrets `DEPLOY_SSH_KEY` / `DEPLOY_KNOWN_HOSTS` / `DEPLOY_HOST`; the key's
+  `authorized_keys` entry is a forced command (pull `main`, run `deploy.sh`) and can do nothing else.
+- **Everything that knows the public URL** (repoint all of it if the domain ever changes):
+  `AUTH_BASE_URL` + `CRON_BASE_URL` in the server `.env`, the `loupe_cron_base_url` vault secret
+  (`npm run cron:configure` on the server), Shopify webhook callbacks (shopify-reconcile
+  re-registers them), the R2 CORS origin (`npm run r2:cors`), the Google OAuth redirect URI
+  (Google Cloud console, by hand) and `LOUPE_BASE_URL` in `worker/.env` on the GPU laptop.
 **Volume:** ~300 products/month, 1–2 images each
 
 ---

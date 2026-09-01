@@ -3350,3 +3350,29 @@ Two rules baked in: title and description are always sent together (Shopify's `S
 the whole object — a description-only update nulls the title), and a custom material gets no
 finish or rust claim because Loupe cannot know what it is coated with.
 
+
+### D119 — Production moved from Railway to the Qimati VPS, deployed by push to `main`
+
+*2026-09-01.* Loupe now runs on the same box as the packaging and LinkedIn apps
+(`loupe.qimati-eng.site`, Cloudflare → nginx → Next.js on `127.0.0.1:3000`, `systemd` unit
+`loupe`), replacing `loupe-starter-production.up.railway.app`. A deploy is a GitHub Actions job
+that SSHes in with a key whose `authorized_keys` entry is a forced command — pull `main`, run
+`scripts/deploy.sh` — so the CI secret can do exactly one thing. `deploy.sh` builds each push into
+its own `~/loupe/releases/<stamp>-<sha>` and swaps a `current` symlink, so a failed `next build`
+never touches the running release, and a release that does not answer on :3000 within 60 s is
+rolled back automatically.
+
+Choices worth knowing: the build runs on the server rather than in Actions because `next start`
+loads `~/loupe/shared/.env` itself, which keeps one copy of the 32 runtime secrets (Railway's
+variables exported to the gitignored `.env.railway`, mirrored to the server) instead of a second
+copy in GitHub. A 2 GB swapfile was added because `next build` needs more than the ~2 GB the box
+has free. Tests are not a deploy gate — 7 fail on env drift (PROGRESS 2026-08-13) and a red gate
+would have blocked every push. Logs go to journald (`journalctl -u loupe`) rather than the
+append-only files the sibling services use, so they rotate. Server access details stay in the
+gitignored `.env.server`, never in tracked files, because the repository is public.
+
+Everything that must know Loupe's public URL was repointed at cutover: `AUTH_BASE_URL` /
+`CRON_BASE_URL` in the server `.env`, the `loupe_cron_base_url` vault secret (`npm run
+cron:configure`), the Shopify webhook callbacks (re-registered by shopify-reconcile), the R2 CORS
+origin (`npm run r2:cors`), the Google OAuth redirect URI (Google Cloud console) and
+`LOUPE_BASE_URL` in `worker/.env` on the GPU laptop.

@@ -18,7 +18,7 @@ py -3.11 -m venv .venv
 pip install torch --index-url https://download.pytorch.org/whl/cu124
 pip install -e .
 python get-weights.py            rem 1.72 GB, resumable
-copy .env.example .env           rem then fill WORKER_SECRET (same as Railway) and LOUPE_LOCAL_ROOT
+copy .env.example .env           rem then fill WORKER_SECRET (same as the server .env) and LOUPE_LOCAL_ROOT
 mkdir logs
 loupe-worker run --kinds identify --max-jobs 1
 ```

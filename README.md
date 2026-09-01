@@ -4,7 +4,7 @@ Internal tool for [qimati.in](https://qimati.in), a wholesale jewellery Shopify 
 Jaipur. It replaces a manual process where one person enhanced photos across five ChatGPT tabs
 and hand-typed every Shopify listing.
 
-**Next.js 16 (App Router) · TypeScript strict · Tailwind v4 · Supabase Postgres · Cloudflare R2 · Vercel**
+**Next.js 16 (App Router) · TypeScript strict · Tailwind v4 · Supabase Postgres · Cloudflare R2 · self-hosted VPS (see CLAUDE.md)**
 
 > **Phase 1 of 5 is complete.** Database schema, seed data and the atomic SKU counter exist.
 > There is no operator interface yet — the only page is `/health`. Shopify, Google Drive, R2,

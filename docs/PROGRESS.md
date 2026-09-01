@@ -29,6 +29,65 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-01 — Ops: production moved from Railway to the Qimati VPS (D119)
+
+**Goal this session:** host Loupe on the Qimati VPS at `loupe.qimati-eng.site`, deploy
+automatically on every push to `main`, and leave every future session knowing where production is.
+
+**Built:**
+- `scripts/deploy.sh` → server-side deploy: `git archive` of `main` into
+  `~/loupe/releases/<stamp>-<sha>`, `npm ci`, `next build`, reinstall unit + nginx config from
+  `deploy/`, atomic `current` symlink switch, restart, health check on :3000, rollback on failure,
+  keep last 3 releases.
+- `deploy/loupe.service`, `deploy/loupe.nginx.conf` → systemd unit and nginx site (source of
+  truth in git; reinstalled on every deploy).
+- `.github/workflows/deploy.yml` → SSHes to the server on push to `main`; the key is bound to a
+  forced command in `authorized_keys`, so it can only pull and run `deploy.sh`.
+- Server: 2 GB swapfile, `~/loupe/{repo,releases,shared,current}`, `~/loupe/shared/.env`
+  (Railway's variables with `AUTH_BASE_URL`/`CRON_BASE_URL` = `https://loupe.qimati-eng.site`),
+  Let's Encrypt cert via certbot webroot, CI key installed. Repo secrets `DEPLOY_SSH_KEY`,
+  `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST` set with `gh secret set`.
+- CLAUDE.md "Production server" section, D119, worker docstring/README URL updates.
+
+**Verified:**
+- First manual `deploy.sh` run: `==> live: 870cf7e`, `real 1m12s` for npm ci + build + switch.
+- `curl https://loupe.qimati-eng.site/` → `307 → /console`; `http://` → `301 https://`.
+- `npm run cron:configure` on the server: `Cron target: https://loupe.qimati-eng.site`, all 7
+  pg_cron jobs listed active. nginx access log 09:59–10:00 UTC shows `pg_net/0.20.4` POSTs to
+  `/api/cron/{watch,enhance,sweep,reconcile}` all `200` — Supabase is driving the new host.
+- `POST /api/cron/shopify-reconcile` on the server → `{"ok":true,"webhooks":{"created":
+  ["PRODUCTS_CREATE","PRODUCTS_UPDATE","PRODUCTS_DELETE"]},"reconciliation":{"totalProducts":355,
+  "matchedProducts":345,"issueCount":21}}` in 11 s — webhooks now point at the new domain.
+- `/health` on the new host: service account and OAuth client id/secret accepted.
+
+**Not finished / known broken:**
+- **Google OAuth redirect URI** `https://loupe.qimati-eng.site/api/auth/google/callback` must be
+  added to OAuth client `445284879940-…` in the Google Cloud console by hand — until then sign-in
+  on the new domain fails with `redirect_uri_mismatch`. Railway still serves sign-in meanwhile.
+- **R2 CORS** still allows only the Railway origin: `npm run r2:cors` needs `R2_API_TOKEN`
+  (Cloudflare API token with R2 edit), which is in no `.env`. Either add the token to the server
+  `.env` and run it in `~/loupe/current`, or set the rule in the Cloudflare dashboard on bucket
+  `loupe-images`: origin `https://loupe.qimati-eng.site`, methods `PUT, HEAD`, header
+  `Content-Type`, expose `ETag`, max-age 3600. Drag-and-drop upload on the new domain is blocked
+  by the browser until then; Drive intake is unaffected.
+- The Railway service is still running and still has its own three webhook subscriptions in
+  Shopify. Stop Railway once sign-in works on the new domain; Shopify drops the dead
+  subscriptions on its own after repeated delivery failures.
+- `worker/.env` on the GPU laptop still has `LOUPE_BASE_URL` = Railway; change it to
+  `https://loupe.qimati-eng.site`.
+- SSH password auth is still enabled on the server; the Mac and CI use keys, so it can be turned
+  off (`PasswordAuthentication no`) whenever the owner is happy no other machine needs it.
+
+**Surprises:** the build is fast (~75 s) on 2 vCPU once swap exists. `.env.railway` parses
+byte-identically under `@next/env` (checked all 32 keys, no `$` expansion, service-account JSON is
+base64 as the code recommends). The repo is public, so server host/user/password stay in the
+gitignored `.env.server` and CLAUDE.md points at it rather than embedding the IP.
+
+**Next session should start with:** confirm the owner added the OAuth redirect URI and the R2
+CORS origin, sign in at `https://loupe.qimati-eng.site`, upload one photo through `/upload`, then
+stop the Railway service.
+
+
 ## 2026-08-28 — Description wording and the missing material tag
 
 **Goal this session:** the 28 products published on 27 Aug carried the pre-copy-pass bullets
