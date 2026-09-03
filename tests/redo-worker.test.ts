@@ -23,6 +23,10 @@ const config: EnhancementConfig = {
   imageQuality: 'medium',
   maxCostUsdPerImage: 0.2,
   maxCostUsdPerDescription: 0.02,
+  checkEnabled: false,
+  checkModel: 'google/gemini-3.6-flash',
+  maxCostUsdPerCheck: 0.02,
+  maxRenderAttempts: 2,
 }
 
 function redoClaim(overrides: Partial<RedoClaim> = {}): RedoClaim {

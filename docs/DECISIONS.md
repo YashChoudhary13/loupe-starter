@@ -3382,3 +3382,58 @@ Everything that must know Loupe's public URL was repointed at cutover: `AUTH_BAS
 cron:configure`), the Shopify webhook callbacks (re-registered by shopify-reconcile), the R2 CORS
 origin (`npm run r2:cors`), the Google OAuth redirect URI (Google Cloud console) and
 `LOUPE_BASE_URL` in `worker/.env` on the GPU laptop.
+
+---
+
+### D120 — Model refresh, render checker and art director (owner-directed, 2026-09-03)
+
+The owner asked for the pipeline to reach the quality of the manual ChatGPT prompt sessions
+with minimal human input, within roughly $0.10 per image. Two research passes (verified against
+OpenRouter pricing, the Roboflow Vision Evals, the Photoroom product-fidelity benchmark and the
+LMArena / Artificial Analysis editing arenas, all fetched 2026-09-03) drove four changes:
+
+1. **Matrix pair defaults moved to `google/gemini-3.5-flash` (describe) and
+   `google/gemini-3.1-flash-image` (image).** Gemini 3.5 Flash ranks #1 of 36 on Roboflow
+   Vision Evals with 80.6% counting — kimi-k3, the previous default, counts at 46% — at
+   roughly half Sol's real cost. Nano Banana 2 scored the best exact-product accuracy on the
+   only real SKU-fidelity benchmark (Photoroom: 29.0% vs GPT Image 2's 27.2%) at about half
+   the observed render cost and ~5x faster. The curated lists were refreshed to match
+   (dropped qwen3.7-flash, gpt-5.4-mini, gpt-image-1-mini, seedream-4.5, flux.2-max; added
+   qwen3.8-flash, gemini-3.5-flash, seedream-5-0-lite, seedream-5-0-pro); every previously
+   accepted production model stays selectable.
+
+2. **A render checker after every fresh generation** (`src/lib/enhance/check.ts`, worker
+   integration). Even the best editor preserves the exact product in under a third of renders
+   (Photoroom), so a vision model (`CHECK_MODEL`, default `google/gemini-3.6-flash` — 80.2%
+   counting, ~$0.006/call) compares render to source and returns a strict-JSON verdict over a
+   nine-code failure vocabulary distilled from docs/PROMPT-DIRECTIONS.md §8. A failed verdict
+   earns ONE bounded regeneration with deterministic correction lines appended
+   (`MAX_RENDER_ATTEMPTS`, default 2); the second render completes either way with the verdict
+   recorded in R2 metadata and an `enhancement.render_check` event. The checker is fail-open:
+   its own errors are recorded and the render accepted unchecked — a checker outage must never
+   stop the queue. The render is held in memory until its verdict is known, so the immutable
+   v1 key only ever holds the accepted render; `prompt-sha256` metadata deliberately stays the
+   BASE prompt's hash (the job's identity) and `render-attempt` + `check-codes` let recovery
+   reconstruct the exact retry bytes. Rejected: recording the verdict in new DB columns (an
+   events row and R2 metadata carry it without a migration), and blocking a photograph on a
+   failing verdict (the operator's redo flow already exists for that).
+
+3. **An "Auto — art director picks" setting choice on /upload**
+   (`src/lib/prompts/art-director.ts`). D1 stands — the operator still picks the category —
+   but the scene may be delegated to `ART_DIRECTOR_MODEL` (default
+   `google/gemini-3.5-flash-lite`, ~$0.0007/call) applying an explicit priority-ordered rubric
+   encoded from the manual sessions (dark pieces to pale grounds, clear-stone rings to black
+   marble, bridal work to velvet, everything else to the house charcoal so the grid reads as
+   one shoot). The model advises, code decides: any invalid answer or failure falls back to
+   `charcoal-plaster` and never blocks an upload.
+
+4. **The `charcoal-plaster` setting's scene became the house catalogue ground** — the
+   charcoal clay plaster with a warm circular light pool and one hard diagonal window-light
+   band that the manual sessions converged on. Re-ensuring a pair materialises the new
+   revision through the normal create_prompt_version path.
+
+Expected per-image cost on the default path: ~$0.075–0.09 all four stages included
+(art director ~$0.001 + describe ~$0.010–0.016 + render $0.067 + check ~$0.006), versus
+$0.10–0.11 for the previous two-stage Sol + GPT Image 2 pipeline. Acceptance per D43/D87
+convention still requires a fresh five-product live run before Phase 3C-style claims are made;
+nothing here is that evidence yet.

@@ -234,6 +234,7 @@ export function UploadScreen() {
             className="rounded-pill bg-chip px-3.5 py-2 text-[12px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
           >
             <option value="">Pick a setting…</option>
+            <option value="auto">Auto — art director picks</option>
             {settingsForCategory(defaults.categorySlug).map((setting) => (
               <option key={setting.slug} value={setting.slug}>
                 {setting.label}
@@ -375,6 +376,7 @@ export function UploadScreen() {
                         className="min-w-0 flex-1 rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink outline-none focus:shadow-[0_0_0_2px_var(--ink)_inset]"
                       >
                         <option value="">Pick a setting…</option>
+                        <option value="auto">Auto — art director picks</option>
                         {settings.map((setting) => (
                           <option key={setting.slug} value={setting.slug} title={setting.note}>
                             {setting.label}
@@ -387,7 +389,11 @@ export function UploadScreen() {
                   <div className="text-[10.5px] text-muted-foreground">
                     {PROMPT_CATEGORY_CORES.find((core) => core.slug === item.categorySlug)?.label}
                     {item.settingSlug
-                      ? ` · ${promptSetting(item.settingSlug)?.label ?? item.settingSlug}`
+                      ? ` · ${
+                          item.settingSlug === 'auto'
+                            ? 'Auto — art director picks'
+                            : promptSetting(item.settingSlug)?.label ?? item.settingSlug
+                        }`
                       : ''}
                   </div>
                 ) : (

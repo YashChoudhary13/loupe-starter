@@ -295,6 +295,26 @@ export async function finalizeManualUpload(
 }
 
 /**
+ * D120: the art director needs the uploaded bytes before the prompt binding is
+ * decided. Returns null instead of throwing — a missing or unfinished object
+ * makes the caller fall back to the default setting, never fail the upload.
+ */
+export async function readRawUploadImage(
+  operator: Operator,
+  uploadId: string,
+): Promise<{ readonly image: Buffer; readonly mimeType: string } | null> {
+  try {
+    const upload = await loadOwnedUpload(uploadId, operator)
+    if (upload.status === 'completed') return null
+    const store = objectStore()
+    if (!(await store.head(upload.storage_key))) return null
+    return { image: await store.get(upload.storage_key), mimeType: upload.mime_type }
+  } catch {
+    return null
+  }
+}
+
+/**
  * D103: the raw-pipeline finalise. Same verification, but the row lands in
  * `discovered` carrying its prompt binding, and the enhancement worker reads
  * the source straight from R2.

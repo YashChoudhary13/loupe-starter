@@ -6,7 +6,7 @@ import {
   sweepFailedFilesOutOfRaw,
   terminalFailures,
 } from '@/lib/enhance/failed-housekeeping'
-import type { ImageEnhancer, JewelleryDescriber } from '@/lib/enhance/openrouter'
+import type { ImageEnhancer, JewelleryDescriber, RenderChecker } from '@/lib/enhance/openrouter'
 import { runEnhancementBatch, type EnhancementOutcome } from '@/lib/enhance/worker'
 
 import { claim, MemoryEnhancementRepository, MemoryObjectStore, TEST_DESCRIPTION } from './helpers/enhancement'
@@ -20,6 +20,10 @@ const CONFIG: EnhancementConfig = {
   imageQuality: 'medium',
   maxCostUsdPerImage: 0.2,
   maxCostUsdPerDescription: 0.02,
+  checkEnabled: false,
+  checkModel: 'google/gemini-3.6-flash',
+  maxCostUsdPerCheck: 0.02,
+  maxRenderAttempts: 2,
 }
 
 let source: Buffer
@@ -37,6 +41,17 @@ beforeAll(async () => {
     .png()
     .toBuffer()
 })
+
+function passChecker(): RenderChecker {
+  return {
+    check: vi.fn(async () => ({
+      verdict: { pass: true, failures: [] },
+      costUsd: 0.006,
+      model: 'google/gemini-3.6-flash',
+      requestId: 'check-1',
+    })),
+  }
+}
 
 function drive() {
   return { downloadFile: vi.fn(async () => Buffer.from(source)) }
@@ -95,6 +110,7 @@ describe('four photographs per tick, in parallel', () => {
       store: new MemoryObjectStore(),
       describer: describer(),
       enhancer,
+      checker: passChecker(),
       config: CONFIG,
     })
 
@@ -114,6 +130,7 @@ describe('four photographs per tick, in parallel', () => {
       store: new MemoryObjectStore(),
       describer: describer(),
       enhancer,
+      checker: passChecker(),
       config: CONFIG,
     })
 
@@ -136,6 +153,7 @@ describe('four photographs per tick, in parallel', () => {
       store: new MemoryObjectStore(),
       describer: describer(),
       enhancer,
+      checker: passChecker(),
       config: CONFIG,
     })
 

@@ -160,8 +160,8 @@ export const PROMPT_SETTINGS: readonly PromptSetting[] = [
   {
     slug: 'charcoal-plaster',
     label: 'Charcoal plaster, hard light',
-    note: 'The dark plain ground for clear stones and pavé. Nothing competes, and colourless stones finally fire instead of reading grey.',
-    scene: `A single seamless wall and floor of warm charcoal-grey matte plaster, smooth with only a faint fine grain, completely plain — no veining, no pattern, no props, no visible seam — darkening gently toward the corners. One hard, small key light enters from the upper left at a low angle, raking across surfaces so engraving, prongs and link edges stand up in relief and every facet catches a crisp specular point, with gentle fill so the plaster keeps its detail and never goes black. Shadows are clean, directional and slightly elongated. Quiet, modern and expensive; the metal and the stones are the only bright things in the frame.`,
+    note: 'The house catalogue ground (D120): dark plain plaster with a warm light pool and one diagonal window band. Clear stones and gold both fire against it.',
+    scene: `A seamless ground and wall of deep charcoal-grey clay plaster with a fine natural stone texture, softly lit by a warm circular pool of light centred behind the piece that fades into darker charcoal toward the corners. One hard, narrow diagonal band of window light rakes across the surface just behind the piece, and one hard, small key from the upper left at a low angle makes engraving, prongs and link edges stand up in relief while every facet catches a crisp specular point; gentle fill keeps the plaster's detail so it never goes black. Shadows are clean, directional and slightly elongated. No props, no fabric, no flowers, no objects. Quiet, modern and expensive; the metal and the stones are the only bright things in the frame.`,
     bestFor: [
       'earrings',
       'rings',

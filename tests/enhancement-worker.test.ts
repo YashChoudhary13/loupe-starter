@@ -6,6 +6,7 @@ import { EnhancementError } from '@/lib/enhance/errors'
 import type {
   ImageEnhancer,
   JewelleryDescriber,
+  RenderChecker,
 } from '@/lib/enhance/openrouter'
 import { EnhancementRepositoryError } from '@/lib/enhance/repository'
 import { runEnhancementBatch } from '@/lib/enhance/worker'
@@ -26,6 +27,12 @@ const CONFIG: EnhancementConfig = {
   imageQuality: 'medium',
   maxCostUsdPerImage: 0.2,
   maxCostUsdPerDescription: 0.02,
+  // Checker off by default in this suite: the pre-D120 behaviour under test.
+  // The dedicated D120 describe block below turns it on explicitly.
+  checkEnabled: false,
+  checkModel: 'google/gemini-3.6-flash',
+  maxCostUsdPerCheck: 0.02,
+  maxRenderAttempts: 2,
 }
 
 let source: Buffer
@@ -81,6 +88,27 @@ function enhancer(costUsd = 0.083): ImageEnhancer & { enhance: ReturnType<typeof
   }
 }
 
+function checker(
+  verdicts: readonly ({ pass: boolean; failures: { code: 'count' | 'gauge'; detail: string }[] } | Error)[] = [
+    { pass: true, failures: [] },
+  ],
+): RenderChecker & { check: ReturnType<typeof vi.fn> } {
+  let call = 0
+  return {
+    check: vi.fn(async () => {
+      const verdict = verdicts[Math.min(call, verdicts.length - 1)]
+      call += 1
+      if (verdict instanceof Error) throw verdict
+      return {
+        verdict,
+        costUsd: 0.006,
+        model: 'google/gemini-3.6-flash',
+        requestId: `check-${call}`,
+      }
+    }),
+  }
+}
+
 describe('Phase 3B enhancement worker', () => {
   it('uses the models selected on the two current prompt versions', async () => {
     const repository = new MemoryEnhancementRepository()
@@ -105,6 +133,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: descriptionClient,
         enhancer: imageClient,
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -132,6 +161,7 @@ describe('Phase 3B enhancement worker', () => {
         store,
         describer: describer(),
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -167,6 +197,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: descriptionClient,
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 2 },
@@ -199,6 +230,7 @@ describe('Phase 3B enhancement worker', () => {
         store,
         describer: descriptionClient,
         enhancer: imageClient,
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -256,6 +288,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: descriptionClient,
         enhancer: enhancer(),
+        checker: checker(),
         config: { ...CONFIG, injectDescription: false },
       },
       { maxItems: 1 },
@@ -293,6 +326,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: failedDescriber,
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -329,6 +363,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: descriptionClient,
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -372,6 +407,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: invalidDescriber,
         enhancer: imageClient,
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -409,6 +445,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: expensiveDescriber,
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -436,6 +473,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: describer(),
         enhancer: enhancer(0.25),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -470,6 +508,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: describer(),
         enhancer: refused,
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -510,6 +549,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: describer(),
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -544,6 +584,7 @@ describe('Phase 3B enhancement worker', () => {
         store,
         describer: describer(),
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -563,6 +604,7 @@ describe('Phase 3B enhancement worker', () => {
         store,
         describer: describer(),
         enhancer: replayEnhancer,
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -593,6 +635,7 @@ describe('Phase 3B enhancement worker', () => {
         store,
         describer: describer(),
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -616,6 +659,7 @@ describe('Phase 3B enhancement worker', () => {
         store,
         describer: describer(),
         enhancer: replayEnhancer,
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -651,6 +695,7 @@ describe('Phase 3B enhancement worker', () => {
           store,
           describer: describer(),
           enhancer: enhancer(),
+          checker: checker(),
           config: CONFIG,
         }),
       ),
@@ -693,6 +738,7 @@ describe('Phase 3B enhancement worker', () => {
           store,
           describer: describer(),
           enhancer: staleEnhancer,
+          checker: checker(),
           config: CONFIG,
         },
         { maxItems: 1 },
@@ -731,6 +777,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: describer(),
         enhancer: quotaEnhancer,
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 2 },
@@ -791,6 +838,7 @@ describe('Phase 3B enhancement worker', () => {
         store: new MemoryObjectStore(),
         describer: quotaDescriber,
         enhancer: enhancer(),
+        checker: checker(),
         config: CONFIG,
       },
       { maxItems: 1 },
@@ -803,5 +851,140 @@ describe('Phase 3B enhancement worker', () => {
       code: 'describe_provider_quota_exhausted',
       stage: 'describe',
     })
+  })
+})
+
+describe('D120 render checker', () => {
+  function deps(overrides: {
+    readonly repository: MemoryEnhancementRepository
+    readonly store?: MemoryObjectStore
+    readonly enhancerClient?: ReturnType<typeof enhancer>
+    readonly checkerClient: ReturnType<typeof checker>
+    readonly config?: EnhancementConfig
+  }) {
+    return {
+      drive: drive(),
+      repository: overrides.repository,
+      store: overrides.store ?? new MemoryObjectStore(),
+      describer: describer(),
+      enhancer: overrides.enhancerClient ?? enhancer(),
+      checker: overrides.checkerClient,
+      config: overrides.config ?? { ...CONFIG, checkEnabled: true },
+    }
+  }
+
+  it('accepts a passing render after exactly one generation and records the verdict', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.enqueue(claim('check-pass'))
+    const store = new MemoryObjectStore()
+    const imageClient = enhancer()
+    const checkerClient = checker([{ pass: true, failures: [] }])
+
+    const result = await runEnhancementBatch(
+      deps({ repository, store, enhancerClient: imageClient, checkerClient }),
+      { maxItems: 1 },
+    )
+
+    expect(result.enhanced).toBe(1)
+    expect(imageClient.enhance).toHaveBeenCalledTimes(1)
+    expect(checkerClient.check).toHaveBeenCalledTimes(1)
+    const object = store.objects.get('versions/check-pass/v1.png')
+    expect(object?.metadata['check-verdict']).toBe('pass')
+    expect(object?.metadata['render-attempt']).toBe('1')
+    const event = repository.systemEvents.find((row) => row.event === 'enhancement.render_check')
+    expect(event?.detail).toMatchObject({ verdict: 'pass', render_attempts: 1 })
+  })
+
+  it('retries once with deterministic correction lines when the verdict fails', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.enqueue(claim('check-retry'))
+    const store = new MemoryObjectStore()
+    const imageClient = enhancer(0.05)
+    const checkerClient = checker([
+      { pass: false, failures: [{ code: 'count', detail: 'one stone missing' }] },
+      { pass: true, failures: [] },
+    ])
+
+    const result = await runEnhancementBatch(
+      deps({ repository, store, enhancerClient: imageClient, checkerClient }),
+      { maxItems: 1 },
+    )
+
+    expect(result.enhanced).toBe(1)
+    expect(imageClient.enhance).toHaveBeenCalledTimes(2)
+    const retryPrompt = imageClient.enhance.mock.calls[1]?.[2] as string
+    expect(retryPrompt).toContain('RENDER CORRECTIONS')
+    expect(retryPrompt).toContain('COUNT —')
+    // The stored prompt text is the exact bytes of the accepted retry render.
+    expect(repository.completions[0]?.promptText).toBe(retryPrompt)
+    // Both paid renders are reported, not just the accepted one.
+    expect(repository.completions[0]?.costUsd).toBeCloseTo(0.1, 10)
+    const object = store.objects.get('versions/check-retry/v1.png')
+    expect(object?.metadata['render-attempt']).toBe('2')
+    expect(object?.metadata['check-verdict']).toBe('pass')
+  })
+
+  it('stops after the attempt budget and records the failing verdict for the operator', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.enqueue(claim('check-fail-twice'))
+    const store = new MemoryObjectStore()
+    const imageClient = enhancer()
+    const checkerClient = checker([
+      { pass: false, failures: [{ code: 'gauge', detail: 'chain too thick' }] },
+    ])
+
+    const result = await runEnhancementBatch(
+      deps({ repository, store, enhancerClient: imageClient, checkerClient }),
+      { maxItems: 1 },
+    )
+
+    // The photograph still completes: a failed verdict is operator information,
+    // never a lost render.
+    expect(result.enhanced).toBe(1)
+    expect(imageClient.enhance).toHaveBeenCalledTimes(2)
+    expect(checkerClient.check).toHaveBeenCalledTimes(2)
+    const object = store.objects.get('versions/check-fail-twice/v1.png')
+    expect(object?.metadata['check-verdict']).toBe('fail')
+    expect(object?.metadata['check-codes']).toBe('gauge')
+    const event = repository.systemEvents.find((row) => row.event === 'enhancement.render_check')
+    expect(event?.detail).toMatchObject({ verdict: 'fail', render_attempts: 2 })
+  })
+
+  it('fails open when the checker itself errors: the render is accepted unchecked', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.enqueue(claim('check-error'))
+    const store = new MemoryObjectStore()
+    const imageClient = enhancer()
+    const checkerClient = checker([new Error('checker outage')])
+
+    const result = await runEnhancementBatch(
+      deps({ repository, store, enhancerClient: imageClient, checkerClient }),
+      { maxItems: 1 },
+    )
+
+    expect(result.enhanced).toBe(1)
+    expect(imageClient.enhance).toHaveBeenCalledTimes(1)
+    const object = store.objects.get('versions/check-error/v1.png')
+    expect(object?.metadata['check-verdict']).toBe('skipped')
+    const event = repository.systemEvents.find((row) => row.event === 'enhancement.render_check')
+    expect(event?.detail).toMatchObject({ verdict: 'skipped' })
+    expect((event?.detail as { check_error?: string }).check_error).toContain('checker outage')
+  })
+
+  it('makes no check calls when the checker is disabled', async () => {
+    const repository = new MemoryEnhancementRepository()
+    repository.enqueue(claim('check-disabled'))
+    const checkerClient = checker()
+
+    const result = await runEnhancementBatch(
+      deps({ repository, checkerClient, config: { ...CONFIG, checkEnabled: false } }),
+      { maxItems: 1 },
+    )
+
+    expect(result.enhanced).toBe(1)
+    expect(checkerClient.check).not.toHaveBeenCalled()
+    expect(
+      repository.systemEvents.some((row) => row.event === 'enhancement.render_check'),
+    ).toBe(false)
   })
 })

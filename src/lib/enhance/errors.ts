@@ -5,6 +5,7 @@ export type EnhancementErrorStage =
   | 'input'
   | 'describe'
   | 'image'
+  | 'check'
   | 'storage'
   | 'database'
   | 'fencing'

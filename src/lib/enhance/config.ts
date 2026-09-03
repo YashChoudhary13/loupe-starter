@@ -31,6 +31,17 @@ export interface EnhancementConfig {
   readonly imageQuality: ImageQuality
   readonly maxCostUsdPerImage: number
   readonly maxCostUsdPerDescription: number
+  /**
+   * D120 — the render checker. When enabled, every fresh generation is
+   * verified against its source photograph; a failed verdict earns bounded
+   * regeneration with targeted correction lines. The checker is fail-open:
+   * its own errors are recorded and the render accepted unchecked.
+   */
+  readonly checkEnabled: boolean
+  readonly checkModel: string
+  readonly maxCostUsdPerCheck: number
+  /** Total renders allowed per photograph including the first (1 disables retry). */
+  readonly maxRenderAttempts: number
 }
 
 type Environment = Readonly<Record<string, string | undefined>>
@@ -98,5 +109,22 @@ export function enhancementConfig(env: Environment = process.env): EnhancementCo
       'MAX_COST_USD_PER_DESCRIPTION',
       0.05,
     ),
+    checkEnabled: booleanValue(env, 'CHECK_ENABLED', true),
+    checkModel: resolveOpenRouterModel(value(env, 'CHECK_MODEL', 'google/gemini-3.6-flash')),
+    maxCostUsdPerCheck: positiveNumber(env, 'MAX_COST_USD_PER_CHECK', 0.02),
+    maxRenderAttempts: renderAttempts(env),
   }
+}
+
+/**
+ * Bounded 1..3: 1 disables retry entirely, 3 is already double the researched
+ * budget. Anything outside that band is a typo, not an intention.
+ */
+function renderAttempts(env: Environment): number {
+  const raw = env['MAX_RENDER_ATTEMPTS']?.trim()
+  const parsed = raw ? Number(raw) : 2
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3) {
+    throw new Error(`MAX_RENDER_ATTEMPTS must be an integer from 1 to 3, got "${raw ?? ''}".`)
+  }
+  return parsed
 }

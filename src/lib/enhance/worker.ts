@@ -3,6 +3,13 @@ import { createHash } from 'node:crypto'
 import type { DriveDownloader } from '@/lib/google/drive-types'
 import { perceptualHash } from '@/lib/duplicates/phash'
 
+import {
+  type CheckFailureCode,
+  checkPrompt,
+  parseCheckCodes,
+  retryPromptFor,
+  serialiseCheckCodes,
+} from './check'
 import type { EnhancementConfig } from './config'
 import {
   classifyWorkerError,
@@ -19,6 +26,7 @@ import type {
   DescriptionResult,
   ImageEnhancer,
   JewelleryDescriber,
+  RenderChecker,
 } from './openrouter'
 import { resolveImagePrompt } from './prompt'
 import type { PresentationClass } from './presentation'
@@ -105,6 +113,8 @@ export interface EnhancementWorkerDependencies {
   readonly store: ImmutableObjectStore
   readonly describer: JewelleryDescriber
   readonly enhancer: ImageEnhancer
+  /** D120 — verifies each fresh render; consulted only when config.checkEnabled. */
+  readonly checker: RenderChecker
   readonly config: EnhancementConfig
   readonly now?: () => number
 }
@@ -115,6 +125,10 @@ interface RecoveredGeneration {
   readonly model: string
   readonly width: number
   readonly height: number
+  /** D120 — which render attempt produced the stored object (1 when unset). */
+  readonly renderAttempt: number
+  readonly checkVerdict: 'pass' | 'fail' | 'skipped'
+  readonly checkCodes: readonly CheckFailureCode[]
 }
 
 function md5(input: Buffer): string {
@@ -238,12 +252,20 @@ async function recoverGeneration(
     )
   }
 
+  // D120 metadata is optional: objects written before the checker existed
+  // recover as a single unchecked attempt.
+  const recoveredAttempt = Number(object.metadata['render-attempt'] ?? '1')
+  const recoveredVerdict = object.metadata['check-verdict']
   return {
     image: await store.get(object.key),
     costUsd: numberMetadata(object, 'cost-usd'),
     model: actualModel,
     width: numberMetadata(object, 'width'),
     height: numberMetadata(object, 'height'),
+    renderAttempt: Number.isInteger(recoveredAttempt) && recoveredAttempt > 1 ? recoveredAttempt : 1,
+    checkVerdict:
+      recoveredVerdict === 'pass' || recoveredVerdict === 'fail' ? recoveredVerdict : 'skipped',
+    checkCodes: parseCheckCodes(object.metadata['check-codes'] ?? ''),
   }
 }
 
@@ -262,7 +284,7 @@ async function processClaim(
   dependencies: EnhancementWorkerDependencies,
   breaker: QuotaBreaker = { tripped: null },
 ): Promise<EnhancementOutcome> {
-  const { drive, repository, store, describer, enhancer, config } = dependencies
+  const { drive, repository, store, describer, enhancer, checker, config } = dependencies
   let descriptionCalled = false
   let descriptionInjected = false
   let descriptionMissing = claim.descriptionMissingAt !== null
@@ -460,33 +482,99 @@ async function processClaim(
       // provably cannot pay for. A 402 is refused before generation, so the
       // wasted calls cost nothing either way.
       if (breaker.tripped) throw breaker.tripped
-      const result = await enhancer.enhance(
-        prepared.buffer,
-        prepared.mediaType,
-        resolvedPrompt.text,
-        {
+
+      // D120 — generate, verify, retry once bounded. The render is held in
+      // memory until its verdict is known, so R2 only ever holds the accepted
+      // render at the immutable v1 key. The retry prompt is a deterministic
+      // function of (base prompt, failure codes); metadata records the attempt
+      // and codes so recovery can reconstruct the exact bytes sent.
+      let attempt = 1
+      let promptText = resolvedPrompt.text
+      let totalRenderCostUsd = 0
+      let checkCostUsd = 0
+      let checkVerdict: 'pass' | 'fail' | 'skipped' = 'skipped'
+      let checkCodes: readonly CheckFailureCode[] = []
+      // The codes the CURRENT promptText was built with — distinct from the
+      // final verdict's codes, because a retry that then passes clears the
+      // verdict but its prompt was still built from the first failure.
+      let retryCodes: readonly CheckFailureCode[] = []
+      let checkFailures: readonly { code: CheckFailureCode; detail: string }[] = []
+      let checkError: string | null = null
+      let checkCeilingBreached = false
+      let result
+      let generatedImage: Buffer
+      let actual
+      for (;;) {
+        result = await enhancer.enhance(prepared.buffer, prepared.mediaType, promptText, {
           model: prompts.image.model,
           size: config.imageSize,
           quality: config.imageQuality,
-        },
-      )
-      const generatedImage = await normaliseGeneratedImage(result.image, expected)
-      const actual = await readImageDimensions(generatedImage)
+        })
+        generatedImage = await normaliseGeneratedImage(result.image, expected)
+        actual = await readImageDimensions(generatedImage)
+        totalRenderCostUsd += result.costUsd
+
+        if (!config.checkEnabled) break
+        try {
+          const checked = await checker.check(
+            prepared.buffer,
+            prepared.mediaType,
+            generatedImage,
+            checkPrompt(productDescription),
+            { model: config.checkModel },
+          )
+          checkCostUsd += checked.costUsd
+          // The verdict is already paid for, so a ceiling breach is recorded
+          // rather than discarded — unlike the describe ceiling, refusing here
+          // would spend more to know less.
+          if (checked.costUsd > config.maxCostUsdPerCheck) checkCeilingBreached = true
+          if (checked.verdict.pass) {
+            checkVerdict = 'pass'
+            checkCodes = []
+            checkFailures = []
+            break
+          }
+          checkVerdict = 'fail'
+          checkFailures = checked.verdict.failures
+          checkCodes = checked.verdict.failures.map((failure) => failure.code)
+        } catch (error) {
+          // Fail-open: a checker fault must never stop the queue or fail the
+          // photograph. The render is accepted unchecked and the fault recorded.
+          checkVerdict = 'skipped'
+          checkError = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+          break
+        }
+
+        if (attempt >= config.maxRenderAttempts) break
+        attempt += 1
+        retryCodes = checkCodes
+        promptText = retryPromptFor(resolvedPrompt.text, retryCodes)
+        if (breaker.tripped) throw breaker.tripped
+      }
 
       const metadata = {
         'intake-id': claim.id,
         'version-no': '1',
         'source-sha256': sourceSha256,
+        // Deliberately the BASE resolved prompt's hash even for a retry render:
+        // it is the identity of the job, which recovery compares. The retry
+        // suffix is reconstructed from render-attempt + check-codes.
         'prompt-sha256': promptSha256,
         model: result.model,
         'requested-model': prompts.image.model,
         'image-size': config.imageSize,
         'image-quality': config.imageQuality,
-        'cost-usd': result.costUsd.toString(),
+        'cost-usd': totalRenderCostUsd.toString(),
         width: actual.width.toString(),
         height: actual.height.toString(),
         'description-injected': String(descriptionInjected),
         'description-missing': String(descriptionMissing),
+        'render-attempt': String(attempt),
+        'check-verdict': checkVerdict,
+        // The codes the stored render's prompt was built with, so recovery can
+        // reconstruct the exact bytes sent. The final verdict's codes travel in
+        // the enhancement.render_check event.
+        'check-codes': serialiseCheckCodes(retryCodes),
         ...(result.generationId ? { 'generation-id': result.generationId } : {}),
       }
       const thumbnail = await makeThumbnail(generatedImage)
@@ -501,12 +589,40 @@ async function processClaim(
         'prompt-sha256': promptSha256,
       })
 
+      // Per-photograph audit of what verification saw and spent. Best-effort:
+      // an event write must never fail a completed enhancement.
+      if (config.checkEnabled) {
+        await repository
+          .recordSystemEvent({
+            event: 'enhancement.render_check',
+            detail: {
+              intake_file_id: claim.id,
+              verdict: checkVerdict,
+              codes: checkCodes,
+              failures: checkFailures,
+              render_attempts: attempt,
+              render_cost_usd: totalRenderCostUsd,
+              check_cost_usd: checkCostUsd,
+              check_model: config.checkModel,
+              ...(checkError ? { check_error: checkError } : {}),
+              ...(checkCeilingBreached
+                ? { check_cost_ceiling_breached: config.maxCostUsdPerCheck }
+                : {}),
+            },
+            actor: SOURCE,
+          })
+          .catch(() => undefined)
+      }
+
       generated = {
         image: generatedImage,
-        costUsd: result.costUsd,
+        costUsd: totalRenderCostUsd,
         model: result.model,
         width: actual.width,
         height: actual.height,
+        renderAttempt: attempt,
+        checkVerdict,
+        checkCodes: retryCodes,
       }
     }
 
@@ -533,7 +649,12 @@ async function processClaim(
       generatedWidth: generated.width,
       generatedHeight: generated.height,
       model: generated.model,
-      promptText: resolvedPrompt.text,
+      // The exact bytes sent for the accepted render: the base resolved prompt,
+      // plus the deterministic correction suffix when it took a retry.
+      promptText:
+        generated.renderAttempt > 1
+          ? retryPromptFor(resolvedPrompt.text, generated.checkCodes)
+          : resolvedPrompt.text,
       costUsd: generated.costUsd,
       maxCostUsd: config.maxCostUsdPerImage,
       descriptionInjected,

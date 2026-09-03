@@ -22,6 +22,7 @@ export function runProductionEnhancementBatch() {
     }),
     describer: openRouter,
     enhancer: openRouter,
+    checker: openRouter,
     config: enhancementConfig(),
   })
 }

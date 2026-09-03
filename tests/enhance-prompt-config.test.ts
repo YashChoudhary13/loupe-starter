@@ -23,6 +23,10 @@ describe('Phase 3B two-call configuration', () => {
       imageQuality: 'medium',
       maxCostUsdPerImage: 0.2,
       maxCostUsdPerDescription: 0.05,
+      checkEnabled: true,
+      checkModel: 'google/gemini-3.6-flash',
+      maxCostUsdPerCheck: 0.02,
+      maxRenderAttempts: 2,
     })
     expect(resolveOpenRouterModel('anthropic/example')).toBe('anthropic/example')
   })

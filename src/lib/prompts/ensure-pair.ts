@@ -18,8 +18,13 @@ import { composeClientPair } from './matrix'
  * bound photographs and promoted defaults follow automatically.
  */
 
-const DESCRIBE_MODEL = 'moonshotai/kimi-k3'
-const IMAGE_MODEL = 'openai/gpt-image-2'
+// D120 (2026-09-03): owner-directed model refresh from the September 2026
+// research. Gemini 3.5 Flash ranked #1 of 36 on Roboflow Vision Evals with
+// 80.6% counting (kimi-k3: 46%); Nano Banana 2 scored best exact-product
+// accuracy on the Photoroom fidelity benchmark (29.0% vs GPT Image 2's 27.2%)
+// at roughly half the observed render cost.
+const DESCRIBE_MODEL = 'google/gemini-3.5-flash'
+const IMAGE_MODEL = 'google/gemini-3.1-flash-image'
 
 async function newestPair(slug: string): Promise<{
   describe: { id: string; body: string } | null

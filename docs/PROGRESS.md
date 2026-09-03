@@ -29,6 +29,59 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-03 — D120: model refresh, render checker, art director
+
+**Goal this session:** move the pipeline onto the September 2026 research picks and add the
+two missing automation stages — a post-generation verification loop and an automatic setting
+chooser — so an upload needs only a category tap and a final approval.
+
+**Built:**
+- `src/lib/prompts/models.ts` → curated lists refreshed against OpenRouter pricing and the
+  2026 benchmarks (11 describers / 9 image models); recommendations in each note.
+- `src/lib/prompts/ensure-pair.ts` → matrix pair defaults now `google/gemini-3.5-flash` +
+  `google/gemini-3.1-flash-image` (D120).
+- `src/lib/prompts/matrix.ts` → `charcoal-plaster` scene replaced with the house catalogue
+  ground (warm light pool + diagonal window band from the manual prompt sessions).
+- `src/lib/enhance/check.ts` (new) → failure-code vocabulary, checker prompt, deterministic
+  retry-prompt builder, strict verdict parser.
+- `src/lib/enhance/openrouter.ts` → `RenderChecker` interface + two-image `check()` call.
+- `src/lib/enhance/worker.ts` → generate→check→bounded-retry loop; verdict in R2 metadata
+  (`render-attempt`, `check-verdict`, `check-codes`) + `enhancement.render_check` event;
+  fail-open on checker faults; recovery reconstructs retry prompt bytes from metadata.
+- `src/lib/enhance/config.ts` → `CHECK_ENABLED` (default true), `CHECK_MODEL`,
+  `MAX_COST_USD_PER_CHECK`, `MAX_RENDER_ATTEMPTS` (1–3, default 2).
+- `src/lib/prompts/art-director.ts` (new) + `readRawUploadImage` + upload action/UI →
+  "Auto — art director picks" setting option on /upload, rubric-driven, falls back to
+  `charcoal-plaster`, never blocks an upload.
+
+**Verified:** `npm run build` succeeds. 124 tests green across the 12 enhancement-related
+suites, including 5 new D120 worker tests (pass verdict single render; fail→retry with
+deterministic RENDER CORRECTIONS suffix and exact `prompt_text`; attempt budget respected with
+verdict recorded; checker fail-open; disabled = zero check calls) and 8 new
+`tests/render-check.test.ts` cases (verdict parsing, retry determinism, art-director rubric
+accept/reject/fallback with mocked fetch).
+
+**Not finished / known broken:**
+- No live acceptance run yet: the D43/D87 convention needs a fresh five-product run on the new
+  describer + image model before quality claims are made. Pilot 30–50 SKUs before trusting.
+- Seedream tier: docs recommend ≤600-word prompts; matrix image bodies exceed that, so a
+  Seedream-bound trimmed variant is future work if that tier is adopted.
+- Restock flow still requires a manual setting (no Auto option there yet).
+- `bytedance-seed/seedream-5-0-*` slugs taken from the research pass; unverified against a
+  live OpenRouter call.
+- Checker/art-director spend is recorded in events, not in the console money views.
+
+**Surprises:** `charcoal-plaster` already existed in the matrix with a different scene — the
+manual sessions' house ground had never been ported. Also `config.describeModel`/`imageModel`
+are referenced by nothing in src outside config itself; the prompt rows are the only live
+selector, exactly as CLAUDE.md warns.
+
+**Next session should start with:** push to `main` when the owner says go (auto-deploys), then
+enhance one real photograph with `CHECK_ENABLED=true` and read its
+`enhancement.render_check` event to smoke-test the checker against live OpenRouter.
+
+---
+
 ## 2026-09-01 — Ops: production moved from Railway to the Qimati VPS (D119)
 
 **Goal this session:** host Loupe on the Qimati VPS at `loupe.qimati-eng.site`, deploy

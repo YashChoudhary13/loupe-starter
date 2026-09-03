@@ -2,6 +2,10 @@ import type {
   DescribeReasoningEffort,
   ImageQuality,
 } from './config'
+import {
+  type CheckVerdict,
+  parseCheckVerdict,
+} from './check'
 import { EnhancementError } from './errors'
 import {
   parseStructuredDescription,
@@ -51,6 +55,28 @@ export interface ImageEnhancer {
     prompt: string,
     options: EnhanceOptions,
   ): Promise<EnhancementResult>
+}
+
+export interface CheckOptions {
+  readonly model: string
+}
+
+export interface CheckResult {
+  readonly verdict: CheckVerdict
+  readonly costUsd: number
+  readonly model: string
+  readonly requestId: string | null
+}
+
+/** D120 — verifies a generated render against its source photograph. */
+export interface RenderChecker {
+  check(
+    source: Buffer,
+    sourceMediaType: 'image/jpeg' | 'image/png',
+    render: Buffer,
+    prompt: string,
+    options: CheckOptions,
+  ): Promise<CheckResult>
 }
 
 interface OpenRouterUsage {
@@ -145,7 +171,7 @@ function imageGenerationParameters(options: EnhanceOptions): Record<string, unkn
   return { aspect_ratio: '1:1' }
 }
 
-function costOf(usage: OpenRouterUsage | undefined, stage: 'describe' | 'image'): number {
+function costOf(usage: OpenRouterUsage | undefined, stage: 'describe' | 'image' | 'check'): number {
   const cost = typeof usage?.cost === 'string' ? Number(usage.cost) : usage?.cost
   if (typeof cost !== 'number' || !Number.isFinite(cost) || cost < 0) {
     throw new EnhancementError(
@@ -253,7 +279,7 @@ function openRouterFailure(
   )
 }
 
-export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
+export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer, RenderChecker {
   constructor(
     private readonly apiKey: string,
     private readonly fetchImpl: typeof fetch = fetch,
@@ -371,6 +397,82 @@ export class OpenRouterClient implements JewelleryDescriber, ImageEnhancer {
       text: structured.description,
       presentation: structured.presentation,
       costUsd: costOf(parsed.usage, 'describe'),
+      model: parsed.model?.trim() || options.model,
+      requestId: parsed.id?.trim() || null,
+    }
+  }
+
+  /**
+   * D120 — the verification call. Source photograph first, render second, one
+   * strict-JSON verdict back. Errors here are the CHECKER's problem, never the
+   * photograph's: callers treat any thrown EnhancementError as fail-open and
+   * accept the render unchecked.
+   */
+  async check(
+    source: Buffer,
+    sourceMediaType: 'image/jpeg' | 'image/png',
+    render: Buffer,
+    prompt: string,
+    options: CheckOptions,
+  ): Promise<CheckResult> {
+    let response: Response
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: this.headers(),
+        signal: AbortSignal.timeout(120_000),
+        body: JSON.stringify({
+          model: options.model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: dataUrl(source, sourceMediaType) } },
+                { type: 'image_url', image_url: { url: dataUrl(render, 'image/png') } },
+              ],
+            },
+          ],
+          ...(supportsReasoningControl(options.model)
+            ? { reasoning: { effort: 'minimal', exclude: true } }
+            : {}),
+          max_completion_tokens: 1_500,
+          stream: false,
+        }),
+      })
+    } catch (error) {
+      throw new EnhancementError('The render checker could not be reached.', {
+        stage: 'check',
+        code: 'check_network_error',
+        retryable: false,
+        detail: error,
+      })
+    }
+
+    const body = await bodyOf(response)
+    if (!response.ok) {
+      throw new EnhancementError('The render checker call failed.', {
+        stage: 'check',
+        code: response.status === 402 ? 'check_provider_quota_exhausted' : 'check_provider_failed',
+        retryable: false,
+        detail: { status: response.status, body },
+      })
+    }
+
+    const parsed = body as ChatResponse
+    const rawResult = responseText(parsed)
+    if (!rawResult) {
+      throw new EnhancementError('The render checker returned no result.', {
+        stage: 'check',
+        code: 'check_empty_result',
+        retryable: false,
+        detail: { request_id: parsed.id },
+      })
+    }
+
+    return {
+      verdict: parseCheckVerdict(rawResult),
+      costUsd: costOf(parsed.usage, 'check'),
       model: parsed.model?.trim() || options.model,
       requestId: parsed.id?.trim() || null,
     }

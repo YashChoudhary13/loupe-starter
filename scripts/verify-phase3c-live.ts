@@ -352,6 +352,7 @@ async function main(): Promise<void> {
       store,
       describer,
       enhancer,
+      checker: delegate,
       config: workerConfig,
     })
     outcomes.push(result)
@@ -592,6 +593,7 @@ async function main(): Promise<void> {
     store,
     describer,
     enhancer,
+    checker: delegate,
     config: workerConfig,
   })
   invariant(

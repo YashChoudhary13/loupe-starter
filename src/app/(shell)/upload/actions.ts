@@ -6,9 +6,11 @@ import { nudgeEnhanceCron } from '@/lib/cron/jobs'
 import {
   beginManualUpload,
   finalizeRawUpload,
+  readRawUploadImage,
   type BeginManualUploadInput,
   type ManualUploadTicket,
 } from '@/lib/manual-upload/server'
+import { AUTO_SETTING, defaultSettingFor, pickSetting } from '@/lib/prompts/art-director'
 import { ensurePromptPair } from '@/lib/prompts/ensure-pair'
 import { categoryCore, promptSetting } from '@/lib/prompts/matrix'
 
@@ -72,15 +74,25 @@ export async function finalizeRawUploadAction(input: {
 }): Promise<UploadActionResult<{ intakeFileId: string; presetSlug: string | null }>> {
   return withOperator(async (operator) => {
     let presetSlug: string | null = null
-    if (input.categorySlug && input.settingSlug) {
-      if (!categoryCore(input.categorySlug) || !promptSetting(input.settingSlug)) {
+    let settingSlug = input.settingSlug
+    // D120 — "Auto" delegates the scene choice to the art director. It never
+    // blocks the upload: any failure inside pickSetting resolves to the house
+    // ground, and a category is still required (D1 — nothing guesses that).
+    if (input.categorySlug && settingSlug === AUTO_SETTING) {
+      const source = await readRawUploadImage(operator, input.uploadId)
+      settingSlug = source
+        ? (await pickSetting(source.image, source.mimeType, input.categorySlug)).settingSlug
+        : defaultSettingFor(input.categorySlug)
+    }
+    if (input.categorySlug && settingSlug) {
+      if (!categoryCore(input.categorySlug) || !promptSetting(settingSlug)) {
         throw new ConsoleError(
           'That prompt combination no longer exists. Pick the category and setting again.',
-          `${input.categorySlug} × ${input.settingSlug}`,
+          `${input.categorySlug} × ${settingSlug}`,
           false,
         )
       }
-      presetSlug = await ensurePromptPair(input.categorySlug, input.settingSlug, operator.email)
+      presetSlug = await ensurePromptPair(input.categorySlug, settingSlug, operator.email)
     }
 
     const intakeFileId = await finalizeRawUpload(operator, input.uploadId, presetSlug)
