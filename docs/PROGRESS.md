@@ -29,6 +29,45 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-04 — D121: /models section, Tracking triage, pair model-staleness fix
+
+**Goal this session:** explain and fix "tracking still shows kimi-k3", make Tracking worth
+opening, and add a Models section where each pipeline stage is a dropdown.
+
+**Built:**
+- `src/lib/prompts/ensure-pair.ts` → pairs refresh when body OR model is stale (the kimi
+  root cause: D120's model change alone never re-materialised an existing pair).
+- `supabase/migrations/20260904090000_pipeline_model_config.sql` + `src/lib/config/models.ts`
+  → `app_config` store for the four stage models; curated-validated, fail-open reads,
+  `pipeline.model_changed` audit events. Applied to the live database (105/105 migrations).
+- `src/app/(shell)/models/*` + `src/components/models/PipelineDiagram.tsx` + sidebar item →
+  the pipeline drawn Upload → Art director → Describer → Image model → Checker → Approve,
+  model stages with dropdown + save; human steps as quiet chips.
+- Wiring: ensure-pair, enhance server (checker), art-director all read `configuredModel()`.
+- Tracking: `read-model` exposes `describerModel`, `imageModel`, `checkVerdict` (from the
+  photograph's own render_check events; worker now binds those to `intake_file`);
+  `TrackingItem.tsx` extracted with model chips, verdict chip and pipeline stage dots;
+  `TrackingScreen` renders triaged attention sections, a progress stage-count strip, and
+  real empty states.
+
+**Verified:** `npm run build` compiles; tsc clean; worker + render-check suites green
+(31 tests). `npm run db:push`: `apply 20260904090000_pipeline_model_config.sql … ok`.
+
+**Not finished / known broken:**
+- Existing pairs refresh on their next categorised upload, not retroactively; a photograph
+  already bound to an old pair re-enhances with it until re-uploaded or its pair is re-ensured.
+- /models diagram not yet screenshotted against docs/DESIGN.md mockups.
+- Restock flow still has no Auto setting option.
+
+**Surprises:** `events` for a row are keyed by entity_id, so moving render_check events onto
+the intake entity made them appear in Tracking Details with zero read-model work.
+
+**Next session should start with:** push to `main`, hard-refresh /tracking and /models on
+production, upload one categorised photo and confirm its row shows describe · gemini-3.5-flash,
+render · gemini-3.1-flash-image and a check verdict chip.
+
+---
+
 ## 2026-09-03 — D120: model refresh, render checker, art director
 
 **Goal this session:** move the pipeline onto the September 2026 research picks and add the

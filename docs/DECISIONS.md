@@ -3437,3 +3437,32 @@ Expected per-image cost on the default path: ~$0.075–0.09 all four stages incl
 $0.10–0.11 for the previous two-stage Sol + GPT Image 2 pipeline. Acceptance per D43/D87
 convention still requires a fresh five-product live run before Phase 3C-style claims are made;
 nothing here is that evidence yet.
+
+---
+
+### D121 — Models section, triaged Tracking, and model-staleness pair refresh (2026-09-04)
+
+Three changes after the owner found kimi-k3 still running post-D120 and asked for a usable
+Tracking page plus a visual place to choose models.
+
+1. **ensure-pair refreshes a pair when its MODEL is stale, not only its body.** The D120
+   refresh changed nothing for existing category × setting pairs because `ensurePromptPair`
+   compared bodies alone — the exact bug the owner observed as "tracking still shows kimi".
+   A pair now re-materialises when body OR model differs from the newest stored revision.
+
+2. **`/models` — the pipeline as a diagram, each stage a curated dropdown.** A new
+   `app_config` key-value table (RLS enabled, zero policies) stores the four stage choices
+   (`art_director_model`, `describe_model`, `image_model`, `check_model`), validated against
+   the curated lists on write AND read, audited as `pipeline.model_changed` events, and read
+   with code-default fallback so configuration can never stop the pipeline. Describe/image
+   choices apply to pairs materialised after the change; checker and art director read
+   per-call and apply immediately. Rejected: putting these in env (a deploy per model change)
+   and free-text model input (an uncurated slug reaching a provider).
+
+3. **Tracking triage.** Needs-attention renders as ordered sections (Provider paused →
+   Failures → Possible duplicates → Stalled → On hold → Shopify drift) instead of one flat
+   list; In-progress gets a stage-count strip and per-row pipeline dots (Queued → Describe →
+   Render → Check). Rows now show which models actually ran (`description_model`, the
+   visible version's `model`) and the D120 check verdict as a chip. Check events moved from
+   the system stream onto the photograph's own audit trail (`recordSystemEvent` gained an
+   optional entity binding) so the row's Details show its verification history.

@@ -37,6 +37,7 @@ interface IntakeRow {
   described_at: string | null
   product_draft_id: string | null
   description_cost_usd: string | number | null
+  description_model: string | null
 }
 
 interface RedoJobRow {
@@ -81,6 +82,7 @@ interface VersionRow {
   intake_file_id: string
   version_no: number
   is_selected: boolean
+  model: string | null
   thumb_key: string | null
   /** Set once retention has deleted the R2 object. The key still reads. */
   purged_at: string | null
@@ -208,7 +210,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     db
       .from('intake_files')
       .select(
-        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, provider_paused_at, provider_pause_code, provider_pause_message, provider_pause_detail, discovered_at, updated_at, enhanced_at, described_at, product_draft_id, description_cost_usd',
+        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, provider_paused_at, provider_pause_code, provider_pause_message, provider_pause_detail, discovered_at, updated_at, enhanced_at, described_at, product_draft_id, description_cost_usd, description_model',
       )
       .order('updated_at', { ascending: false })
       .limit(500),
@@ -378,7 +380,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       queryBatches(intakes.map((row) => row.id)).map((intakeIds) =>
         db
           .from('image_versions')
-          .select('intake_file_id, version_no, is_selected, thumb_key, purged_at, cost_usd')
+          .select('intake_file_id, version_no, is_selected, model, thumb_key, purged_at, cost_usd')
           .in('intake_file_id', intakeIds),
       ),
     ),
@@ -426,6 +428,27 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
     .slice(0, 2_000)
   const events = eventMap(eventRows)
+
+  // D121 — the latest check verdict per photograph, read from the raw event
+  // detail before truncation. eventRows are newest-first, so first wins.
+  const checkVerdictByIntake = new Map<string, 'pass' | 'fail' | 'skipped'>()
+  for (const row of eventRows) {
+    if (row.event !== 'enhancement.render_check' || !row.entity_id) continue
+    if (checkVerdictByIntake.has(row.entity_id)) continue
+    const verdict = (row.detail as { verdict?: unknown } | null)?.verdict
+    if (verdict === 'pass' || verdict === 'fail' || verdict === 'skipped') {
+      checkVerdictByIntake.set(row.entity_id, verdict)
+    }
+  }
+
+  /** The model that generated the photograph's visible render, newest wins. */
+  function imageModelFor(intakeId: string): string | null {
+    const versions = versionsByIntake.get(intakeId) ?? []
+    const chosen =
+      versions.find((version) => version.is_selected) ??
+      [...versions].sort((left, right) => right.version_no - left.version_no)[0]
+    return chosen?.model ?? null
+  }
   const draftIntakes = draftIntakeResults.flatMap(
     (result) => (result.data ?? []) as DraftIntakeRow[],
   )
@@ -448,7 +471,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       queryBatches(missingVersionIntakeIds).map((intakeIds) =>
         db
           .from('image_versions')
-          .select('intake_file_id, version_no, is_selected, thumb_key, purged_at, cost_usd')
+          .select('intake_file_id, version_no, is_selected, model, thumb_key, purged_at, cost_usd')
           .in('intake_file_id', intakeIds),
       ),
     )
@@ -554,6 +577,9 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
         null,
       thumb: (thumbKey ? signed.get(thumbKey) : null) ?? null,
       events: events.get(row.id) ?? [],
+      describerModel: row.description_model,
+      imageModel: imageModelFor(row.id),
+      checkVerdict: checkVerdictByIntake.get(row.id) ?? null,
       canRetry: row.status === 'failed' && row.error_class === 'retryable',
       // Held work is the operator's to pick back up or throw away. Both are
       // refused in SQL for anything grouped, published or in flight.

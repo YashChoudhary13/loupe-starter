@@ -449,10 +449,12 @@ export class SupabaseEnhancementRepository implements EnhancementRepository {
     readonly event: string
     readonly detail: Record<string, unknown>
     readonly actor: string
+    readonly entityType?: string
+    readonly entityId?: string
   }): Promise<void> {
     const { error } = await this.db.from('events').insert({
-      entity_type: 'system',
-      entity_id: null,
+      entity_type: input.entityType ?? 'system',
+      entity_id: input.entityId ?? null,
       event: input.event,
       detail: input.detail,
       actor: input.actor,

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { configuredModel } from '@/lib/config/models'
 import { serverEnv } from '@/lib/env'
 
 import { promptSetting, settingsForCategory, type PromptSetting } from './matrix'
@@ -22,7 +23,7 @@ export const AUTO_SETTING = 'auto'
 /** The house catalogue ground, and the fallback when the model misbehaves. */
 export const DEFAULT_SETTING = 'charcoal-plaster'
 
-const MODEL = process.env.ART_DIRECTOR_MODEL?.trim() || 'google/gemini-3.5-flash-lite'
+const ENV_MODEL = process.env.ART_DIRECTOR_MODEL?.trim() || 'google/gemini-3.5-flash-lite'
 
 export interface ArtDirectorPick {
   readonly settingSlug: string
@@ -81,7 +82,7 @@ function fallback(categorySlug: string, reason: string, costUsd = 0): ArtDirecto
     settings.find((setting) => setting.slug === DEFAULT_SETTING)?.slug ??
     settings[0]?.slug ??
     DEFAULT_SETTING
-  return { settingSlug: slug, reason, model: MODEL, costUsd, fellBack: true }
+  return { settingSlug: slug, reason, model: ENV_MODEL, costUsd, fellBack: true }
 }
 
 /** The house ground when the photograph itself is unavailable to judge. */
@@ -100,6 +101,9 @@ export async function pickSetting(
   const settings = settingsForCategory(categorySlug)
   if (settings.length === 0) return fallback(categorySlug, 'No settings exist for this category.')
 
+  // D121: the /models section can retarget the art director; env, then the
+  // code default, remain the fallbacks.
+  const model = await configuredModel('art_director_model', ENV_MODEL)
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -110,7 +114,7 @@ export async function pickSetting(
       },
       signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
-        model: MODEL,
+        model,
         messages: [
           {
             role: 'user',
@@ -158,7 +162,7 @@ export async function pickSetting(
     return {
       settingSlug: chosen,
       reason: typeof answer.reason === 'string' ? answer.reason : '',
-      model: parsed.model?.trim() || MODEL,
+      model: parsed.model?.trim() || model,
       costUsd: Number.isFinite(cost) && (cost as number) >= 0 ? (cost as number) : 0,
       fellBack: false,
     }

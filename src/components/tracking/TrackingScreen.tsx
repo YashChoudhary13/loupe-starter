@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -23,6 +22,8 @@ import {
 import { filterTrackingRows, type TrackingFilters } from '@/lib/tracking/filters'
 import type { TrackingRow, TrackingSnapshot } from '@/lib/tracking/types'
 import { cn } from '@/lib/utils'
+
+import { relativeAge, stageIndexFor, TrackingItem } from './TrackingItem'
 
 
 const DEFAULT_FILTERS: TrackingFilters = {
@@ -62,13 +63,60 @@ function preserveTrackingThumbs(
   }
 }
 
-function relativeAge(iso: string, now: number): string {
-  const minutes = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000))
-  if (minutes < 1) return 'now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
+/**
+ * D121 — Needs attention reads as a triaged list, not a wall. First matching
+ * section wins; order is the order a human should deal with them.
+ */
+const ATTENTION_SECTIONS = [
+  {
+    key: 'provider',
+    title: 'Provider paused',
+    hint: 'The model account needs credits. Nothing is wrong with these photographs — top up, then resume.',
+    matches: (row: TrackingRow) => row.canResumeEnhancement,
+  },
+  {
+    key: 'failed',
+    title: 'Failures',
+    hint: 'Enhancement or publishing failed after its retries. Each row says why.',
+    matches: (row: TrackingRow) => row.tone === 'failed',
+  },
+  {
+    key: 'duplicates',
+    title: 'Possible duplicates',
+    hint: 'Two photographs look alike. Deciding never blocks publishing.',
+    matches: (row: TrackingRow) => row.duplicate !== null,
+  },
+  {
+    key: 'stalled',
+    title: 'Stalled',
+    hint: 'Nothing failed — this work has just been waiting on a person for a while.',
+    matches: (row: TrackingRow) => row.tone === 'stalled',
+  },
+  {
+    key: 'hold',
+    title: 'On hold',
+    hint: 'Deliberately skipped photographs, waiting for you to resume or discard them.',
+    matches: (row: TrackingRow) => row.canResume,
+  },
+  {
+    key: 'shopify',
+    title: 'Shopify drift',
+    hint: 'The live store differs from what Loupe published. Loupe records drift; it never repairs Shopify on its own.',
+    matches: (row: TrackingRow) =>
+      row.kind === 'reconciliation' || row.rowId.startsWith('webhook-alert:'),
+  },
+  { key: 'other', title: 'Other', hint: '', matches: () => true },
+] as const
+
+function sectionRows(rows: readonly TrackingRow[]) {
+  const remaining = [...rows]
+  return ATTENTION_SECTIONS.map((section) => {
+    const matched: TrackingRow[] = []
+    for (let index = remaining.length - 1; index >= 0; index -= 1) {
+      if (section.matches(remaining[index])) matched.unshift(...remaining.splice(index, 1))
+    }
+    return { ...section, rows: matched }
+  }).filter((section) => section.rows.length > 0)
 }
 
 export function TrackingScreen({
@@ -218,6 +266,95 @@ export function TrackingScreen({
     }
   }
 
+  const renderRow = (row: TrackingRow) => (
+    <TrackingItem
+                key={row.rowId}
+                row={row}
+                now={now}
+                busy={busy}
+                onRetry={() =>
+                  void update(
+                    `retry:${row.entityId}`,
+                    () => retryIntakeAction(row.entityId),
+                    `${row.label} returned to the enhancement queue.`,
+                  )
+                }
+                onSkip={() =>
+                  void update(
+                    `skip:${row.entityId}`,
+                    () => skipIntakeAction(row.entityId),
+                    `${row.label} is on hold.`,
+                  )
+                }
+                onResume={() =>
+                  void update(
+                    `resume:${row.entityId}`,
+                    () => resumeIntakeAction(row.entityId),
+                    `${row.label} is back in the enhancement queue.`,
+                  )
+                }
+                onResumeEnhancement={() =>
+                  void update(
+                    `resume-enhancement:${row.entityId}`,
+                    () => resumeProviderPausedIntakeAction(row.entityId),
+                    `${row.label} was released and enhancement resumed.`,
+                  )
+                }
+                onDiscard={() => {
+                  // Irreversible and off-site: it deletes the images and moves
+                  // the file out of RAW. Worth one deliberate confirmation.
+                  if (
+                    !window.confirm(
+                      `Discard ${row.label}?\n\nIts images will be deleted and the file moved out of the RAW folder. This cannot be undone.`,
+                    )
+                  ) {
+                    return
+                  }
+                  void update(
+                    `discard:${row.entityId}`,
+                    () => discardIntakeAction(row.entityId),
+                    `${row.label} was discarded and moved out of RAW.`,
+                  )
+                }}
+                onDuplicate={(decision) =>
+                  row.duplicate
+                    ? void update(
+                        `duplicate:${row.entityId}`,
+                        () =>
+                          reviewDuplicateAction({
+                            intakeFileId: row.entityId,
+                            matchIntakeFileId: row.duplicate!.matchIntakeFileId,
+                            decision,
+                          }),
+                        decision === 'duplicate'
+                          ? `${row.label} was marked duplicate.`
+                          : 'The pair was dismissed and will not be warned again.',
+                      )
+                    : undefined
+                }
+                onDismiss={() => {
+                  // The finding id lives in rowId; `entityId` carries the run or
+                  // draft the event trail hangs off. `webhook-alert:` rows are
+                  // live push findings (D102), `reconciliation:` the nightly ones.
+                  const findingId = Number(row.rowId.split(':')[1])
+                  if (!Number.isFinite(findingId)) return
+                  if (row.rowId.startsWith('webhook-alert:')) {
+                    void update(
+                      `dismiss:${row.rowId}`,
+                      () => resolveWebhookAlertAction({ alertId: findingId }),
+                      'Resolved. It returns if Shopify reports the product drifting again.',
+                    )
+                    return
+                  }
+                  void update(
+                    `dismiss:${row.rowId}`,
+                    () => dismissReconciliationIssueAction({ issueId: findingId }),
+                    'Marked correct. It will stay hidden unless the value changes again.',
+                  )
+                }}
+              />
+  )
+
   return (
     <main className="loupe-scroll flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto pr-1">
         <header className="flex flex-wrap items-center gap-3">
@@ -350,98 +487,81 @@ export function TrackingScreen({
           </div>
 
           <div className="loupe-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
-            {rows.map((row) => (
-              <TrackingItem
-                key={row.rowId}
-                row={row}
-                now={now}
-                busy={busy}
-                onRetry={() =>
-                  void update(
-                    `retry:${row.entityId}`,
-                    () => retryIntakeAction(row.entityId),
-                    `${row.label} returned to the enhancement queue.`,
+            {filters.view === 'progress' && rows.length > 0 ? (
+              <div className="mb-1 flex flex-wrap gap-2" aria-label="Pipeline stage counts">
+                {([
+                  ['Queued', 0],
+                  ['Describer', 1],
+                  ['Image model', 2],
+                  ['Finished', 4],
+                ] as const).map(([label, index]) => {
+                  const count = rows.filter(
+                    (row) => stageIndexFor(row.statusLabel) === index,
+                  ).length
+                  return (
+                    <span
+                      key={label}
+                      className={cn(
+                        'rounded-pill px-3 py-1.5 text-[11px]',
+                        count > 0 ? 'bg-chip text-ink' : 'bg-chip/60 text-muted-foreground',
+                      )}
+                    >
+                      <b className="font-semibold">{count}</b> {label.toLowerCase()}
+                    </span>
                   )
-                }
-                onSkip={() =>
-                  void update(
-                    `skip:${row.entityId}`,
-                    () => skipIntakeAction(row.entityId),
-                    `${row.label} is on hold.`,
-                  )
-                }
-                onResume={() =>
-                  void update(
-                    `resume:${row.entityId}`,
-                    () => resumeIntakeAction(row.entityId),
-                    `${row.label} is back in the enhancement queue.`,
-                  )
-                }
-                onResumeEnhancement={() =>
-                  void update(
-                    `resume-enhancement:${row.entityId}`,
-                    () => resumeProviderPausedIntakeAction(row.entityId),
-                    `${row.label} was released and enhancement resumed.`,
-                  )
-                }
-                onDiscard={() => {
-                  // Irreversible and off-site: it deletes the images and moves
-                  // the file out of RAW. Worth one deliberate confirmation.
-                  if (
-                    !window.confirm(
-                      `Discard ${row.label}?\n\nIts images will be deleted and the file moved out of the RAW folder. This cannot be undone.`,
-                    )
-                  ) {
-                    return
-                  }
-                  void update(
-                    `discard:${row.entityId}`,
-                    () => discardIntakeAction(row.entityId),
-                    `${row.label} was discarded and moved out of RAW.`,
-                  )
-                }}
-                onDuplicate={(decision) =>
-                  row.duplicate
-                    ? void update(
-                        `duplicate:${row.entityId}`,
-                        () =>
-                          reviewDuplicateAction({
-                            intakeFileId: row.entityId,
-                            matchIntakeFileId: row.duplicate!.matchIntakeFileId,
-                            decision,
-                          }),
-                        decision === 'duplicate'
-                          ? `${row.label} was marked duplicate.`
-                          : 'The pair was dismissed and will not be warned again.',
-                      )
-                    : undefined
-                }
-                onDismiss={() => {
-                  // The finding id lives in rowId; `entityId` carries the run or
-                  // draft the event trail hangs off. `webhook-alert:` rows are
-                  // live push findings (D102), `reconciliation:` the nightly ones.
-                  const findingId = Number(row.rowId.split(':')[1])
-                  if (!Number.isFinite(findingId)) return
-                  if (row.rowId.startsWith('webhook-alert:')) {
-                    void update(
-                      `dismiss:${row.rowId}`,
-                      () => resolveWebhookAlertAction({ alertId: findingId }),
-                      'Resolved. It returns if Shopify reports the product drifting again.',
-                    )
-                    return
-                  }
-                  void update(
-                    `dismiss:${row.rowId}`,
-                    () => dismissReconciliationIssueAction({ issueId: findingId }),
-                    'Marked correct. It will stay hidden unless the value changes again.',
-                  )
-                }}
-              />
-            ))}
+                })}
+                {rows.some((row) => row.kind === 'redo') ? (
+                  <span className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink">
+                    <b className="font-semibold">
+                      {rows.filter((row) => row.kind === 'redo').length}
+                    </b>{' '}
+                    redo
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {filters.view === 'attention' ? (
+              sectionRows(rows).map((section) => (
+                <section key={section.key} aria-label={section.title}>
+                  <div className="mb-1.5 mt-2 flex items-baseline gap-2 first:mt-0">
+                    <h2 className="text-[12px] font-semibold uppercase tracking-[0.08em]">
+                      {section.title}
+                    </h2>
+                    <span className="rounded-pill bg-chip px-1.5 text-[10px] text-muted-foreground">
+                      {section.rows.length}
+                    </span>
+                    {section.hint ? (
+                      <span className="text-[10.5px] text-muted-foreground">{section.hint}</span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-col gap-2">{section.rows.map(renderRow)}</div>
+                </section>
+              ))
+            ) : (
+              rows.map(renderRow)
+            )}
+
             {rows.length === 0 ? (
-              <p className="py-12 text-center text-[12px] text-muted-foreground">
-                No work matches these filters.
-              </p>
+              <div className="flex flex-col items-center gap-1 py-16 text-center">
+                <span className="text-[20px]">
+                  {filters.view === 'attention' ? '✓' : '·'}
+                </span>
+                <p className="text-[12.5px] font-medium text-ink-soft">
+                  {filters.view === 'attention'
+                    ? snapshot.attentionCount === 0
+                      ? 'Nothing needs attention'
+                      : 'No attention items match these filters'
+                    : 'Nothing is running right now'}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {filters.view === 'attention'
+                    ? snapshot.attentionCount === 0
+                      ? 'Failures, stalls, duplicates and Shopify drift will appear here the moment they happen.'
+                      : 'Clear a filter above to see them.'
+                    : 'New uploads join the queue within a minute and move through Describe, Render and Check here.'}
+                </p>
+              </div>
             ) : null}
           </div>
 
@@ -470,246 +590,6 @@ export function TrackingScreen({
           </footer>
         </section>
     </main>
-  )
-}
-
-function TrackingItem({
-  row,
-  now,
-  busy,
-  onRetry,
-  onSkip,
-  onResume,
-  onResumeEnhancement,
-  onDiscard,
-  onDuplicate,
-  onDismiss,
-}: {
-  row: TrackingRow
-  now: number
-  busy: string | null
-  onRetry: () => void
-  onSkip: () => void
-  onResume: () => void
-  onResumeEnhancement: () => void
-  onDiscard: () => void
-  onDuplicate: (decision: 'dismissed' | 'duplicate') => void
-  onDismiss: () => void
-}) {
-  return (
-    <article className="rounded-panel border border-[#efefef] p-3.5 focus-within:border-ink">
-      <div className="flex items-start gap-3.5">
-        <div className="relative size-[52px] shrink-0 overflow-hidden rounded-[13px] bg-chip">
-          {row.thumb ? (
-            // eslint-disable-next-line @next/next/no-img-element -- short-lived private R2 URL.
-            <img src={row.thumb.url} alt="" className="size-full object-cover" />
-          ) : null}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate font-mono text-[12px] font-medium">{row.label}</span>
-            <Status tone={row.tone}>{row.statusLabel}</Status>
-            {/*
-              What this row actually cost: the cached description plus every
-              generated image, redos included — for a photograph, its own; for a
-              draft, summed across every photograph grouped into it. Provider-
-              reported only (D5/D35), never derived from a price table. Absent,
-              not zero, when nothing has been billed yet.
-            */}
-            {row.costUsd !== null ? (
-              <span
-                className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
-                title={
-                  row.kind === 'draft'
-                    ? 'Description + image generation across every photograph in this product, as billed by the provider'
-                    : 'Description + image generation for this photograph, as billed by the provider'
-                }
-              >
-                ${row.costUsd.toFixed(4)}
-              </span>
-            ) : null}
-            <span
-              className={cn(
-                'shrink-0 text-[11px] text-muted-foreground',
-                row.costUsd === null && 'ml-auto',
-              )}
-            >
-              {relativeAge(row.occurredAt, now)}
-            </span>
-          </div>
-          <p className="mt-1 text-[12px] leading-relaxed text-ink-soft">{row.reason}</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {row.canRetry ? (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={onRetry}
-                className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
-              >
-                {busy === `retry:${row.entityId}` ? 'Retrying…' : 'Retry'}
-              </button>
-            ) : null}
-            {row.consoleHref ? (
-              <Link
-                href={row.consoleHref}
-                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft"
-              >
-                Open in console
-              </Link>
-            ) : null}
-            {row.driveHref ? (
-              <a
-                href={row.driveHref}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft"
-              >
-                Open in Drive
-              </a>
-            ) : null}
-            {row.canSkip ? (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={onSkip}
-                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft disabled:opacity-40"
-              >
-                Skip
-              </button>
-            ) : null}
-            {row.canResume ? (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={onResume}
-                className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
-              >
-                {busy === `resume:${row.entityId}` ? 'Resuming…' : 'Resume'}
-              </button>
-            ) : null}
-            {row.canResumeEnhancement ? (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={onResumeEnhancement}
-                className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
-              >
-                {busy === `resume-enhancement:${row.entityId}`
-                  ? 'Resuming…'
-                  : 'Resume enhancement'}
-              </button>
-            ) : null}
-            {row.canDiscard ? (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={onDiscard}
-                title="Deletes the images and moves the file out of the RAW folder"
-                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft disabled:opacity-40"
-              >
-                {busy === `discard:${row.entityId}` ? 'Discarding…' : 'Discard'}
-              </button>
-            ) : null}
-            {row.duplicate ? (
-              <>
-                {row.duplicate.canMarkDuplicate ? (
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => onDuplicate('duplicate')}
-                    className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
-                  >
-                    Mark this duplicate
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => onDuplicate('dismissed')}
-                  className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft disabled:opacity-40"
-                >
-                  Not a duplicate
-                </button>
-              </>
-            ) : null}
-            {row.canDismiss ? (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={onDismiss}
-                title="Records that this difference is correct. It stays hidden across future checks, and returns only if the value changes again."
-                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft disabled:opacity-40"
-              >
-                {busy === `dismiss:${row.rowId}` ? 'Dismissing…' : 'This is correct'}
-              </button>
-            ) : null}
-            <details className="ml-auto text-[11px]">
-              <summary className="cursor-pointer rounded-pill bg-chip px-3 py-1.5 text-ink-soft">
-                Details
-              </summary>
-              <div className="mt-3 border-t border-line pt-3">
-                {row.events.length > 0 ? (
-                  <ol className="space-y-1.5">
-                    {row.events.map((event) => (
-                      <li key={event.id} className="grid grid-cols-[84px_1fr] gap-2">
-                        <time className="font-mono text-[10px] text-muted-foreground">
-                          {new Date(event.createdAt).toLocaleString('en-GB', {
-                            day: '2-digit',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            timeZone: 'Asia/Kolkata',
-                          })}
-                        </time>
-                        <div>
-                          <p className="text-[11px] text-ink-soft">
-                            {event.event.replaceAll('.', ' ')}
-                            {event.actor ? ` · ${event.actor}` : ''}
-                          </p>
-                          <pre className="mt-0.5 max-h-28 overflow-auto whitespace-pre-wrap break-words font-mono text-[9.5px] text-muted-foreground">
-                            {event.detail}
-                          </pre>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="text-muted-foreground">No event history is available.</p>
-                )}
-                {row.rawDetail ? (
-                  <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-field bg-chip p-2.5 font-mono text-[9.5px] text-muted-foreground">
-                    {row.rawDetail}
-                  </pre>
-                ) : null}
-              </div>
-            </details>
-          </div>
-        </div>
-      </div>
-    </article>
-  )
-}
-
-function Status({
-  tone,
-  children,
-}: {
-  tone: TrackingRow['tone']
-  children: React.ReactNode
-}) {
-  return (
-    <span
-      className={cn(
-        'shrink-0 rounded-pill px-2.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.04em]',
-        tone === 'failed' || tone === 'mismatch'
-          ? 'bg-[#faf2e4] text-amber'
-          : tone === 'running'
-            ? 'bg-ink text-white'
-            : 'bg-chip text-muted-foreground',
-      )}
-    >
-      {children}
-    </span>
   )
 }
 

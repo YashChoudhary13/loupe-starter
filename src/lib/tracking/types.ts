@@ -44,6 +44,10 @@ export interface TrackingRow {
   readonly rawDetail: string | null
   readonly thumb: SignedImage | null
   readonly events: readonly TrackingEvent[]
+  /** D121 — photographs only: which models actually ran, and the check verdict. */
+  readonly describerModel?: string | null
+  readonly imageModel?: string | null
+  readonly checkVerdict?: 'pass' | 'fail' | 'skipped' | null
   readonly canRetry: boolean
   readonly canSkip: boolean
   /** On-hold work only: send it back to the enhancement queue. */

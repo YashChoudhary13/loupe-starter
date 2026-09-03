@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { configuredModel } from '@/lib/config/models'
 import { supabaseServer } from '@/lib/supabase/server'
 
 import { composeClientPair } from './matrix'
@@ -27,18 +28,18 @@ const DESCRIBE_MODEL = 'google/gemini-3.5-flash'
 const IMAGE_MODEL = 'google/gemini-3.1-flash-image'
 
 async function newestPair(slug: string): Promise<{
-  describe: { id: string; body: string } | null
-  image: { id: string; body: string } | null
+  describe: { id: string; body: string; model: string } | null
+  image: { id: string; body: string; model: string } | null
 }> {
   const db = supabaseServer()
   const { data, error } = await db
     .from('prompts')
-    .select('id, kind, body, created_at')
+    .select('id, kind, body, model, created_at')
     .eq('preset_slug', slug)
     .in('kind', ['describe', 'image'])
     .order('created_at', { ascending: false })
   if (error) throw new Error(`prompt pair read: ${error.message}`)
-  const rows = (data ?? []) as { id: string; kind: string; body: string }[]
+  const rows = (data ?? []) as { id: string; kind: string; body: string; model: string }[]
   return {
     describe: rows.find((row) => row.kind === 'describe') ?? null,
     image: rows.find((row) => row.kind === 'image') ?? null,
@@ -90,23 +91,38 @@ export async function ensurePromptPair(
     )
   }
 
+  const describeModel = await configuredModel('describe_model', DESCRIBE_MODEL)
+  const imageModel = await configuredModel('image_model', IMAGE_MODEL)
+
+  // A pair refreshes when its BODY or its MODEL is stale. Comparing the body
+  // alone silently pinned every existing pair to the models it was first
+  // materialised with — a D120 model refresh changed nothing until a scene
+  // paragraph happened to be edited too.
   const existing = await newestPair(composed.slug)
-  if (!existing.describe || existing.describe.body !== composed.describeBody) {
+  if (
+    !existing.describe ||
+    existing.describe.body !== composed.describeBody ||
+    existing.describe.model !== describeModel
+  ) {
     await createHalf(
       'describe',
       `${composed.label} — describe`,
       composed.describeBody,
-      DESCRIBE_MODEL,
+      describeModel,
       composed.slug,
       actor,
     )
   }
-  if (!existing.image || existing.image.body !== composed.imageBody) {
+  if (
+    !existing.image ||
+    existing.image.body !== composed.imageBody ||
+    existing.image.model !== imageModel
+  ) {
     await createHalf(
       'image',
       `${composed.label} — image`,
       composed.imageBody,
-      IMAGE_MODEL,
+      imageModel,
       composed.slug,
       actor,
     )

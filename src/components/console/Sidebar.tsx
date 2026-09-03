@@ -41,17 +41,20 @@ export function Sidebar({
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLive)
   }, [])
 
-  const active: 'console' | 'tracking' | 'prompts' | 'upload' | 'identify' | 'restock' = pathname.startsWith('/tracking')
-    ? 'tracking'
-    : pathname.startsWith('/prompts')
-      ? 'prompts'
-      : pathname.startsWith('/upload')
-        ? 'upload'
-        : pathname.startsWith('/identify')
-          ? 'identify'
-          : pathname.startsWith('/restock')
-            ? 'restock'
-            : 'console'
+  const active: 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' =
+    pathname.startsWith('/tracking')
+      ? 'tracking'
+      : pathname.startsWith('/prompts')
+        ? 'prompts'
+        : pathname.startsWith('/models')
+          ? 'models'
+          : pathname.startsWith('/upload')
+            ? 'upload'
+            : pathname.startsWith('/identify')
+              ? 'identify'
+              : pathname.startsWith('/restock')
+                ? 'restock'
+                : 'console'
 
   return (
     <aside className="flex min-h-0 flex-col gap-[22px] overflow-hidden px-1 pt-2">
@@ -136,6 +139,13 @@ export function Sidebar({
           collapsed={collapsed}
           icon={<ListIcon />}
         />
+        <NavItem
+          href="/models"
+          label="Models"
+          active={active === 'models'}
+          collapsed={collapsed}
+          icon={<ListIcon />}
+        />
       </nav>
 
       <LiveActivity compact={collapsed} />
@@ -190,7 +200,7 @@ function NavItem({
   icon,
   badge = null,
 }: {
-  href: '/console' | '/tracking' | '/prompts' | '/upload' | '/identify' | '/restock'
+  href: '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock'
   label: string
   active: boolean
   collapsed: boolean

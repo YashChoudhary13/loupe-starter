@@ -176,11 +176,15 @@ export interface EnhancementRepository {
     readonly source: string
   }): Promise<ProviderQuotaPauseResult>
   /** One aggregate account-level event per worker tick, in addition to each
-   * photograph's actionable pause record. */
+   * photograph's actionable pause record. With an entity, the event lands on
+   * that row's audit trail instead of the system stream (D121 — check
+   * verdicts belong to their photograph). */
   recordSystemEvent(input: {
     readonly event: string
     readonly detail: Record<string, unknown>
     readonly actor: string
+    readonly entityType?: string
+    readonly entityId?: string
   }): Promise<void>
 }
 

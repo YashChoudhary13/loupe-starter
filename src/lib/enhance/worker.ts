@@ -595,6 +595,8 @@ async function processClaim(
         await repository
           .recordSystemEvent({
             event: 'enhancement.render_check',
+            entityType: 'intake_file',
+            entityId: claim.id,
             detail: {
               intake_file_id: claim.id,
               verdict: checkVerdict,
