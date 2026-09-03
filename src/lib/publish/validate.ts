@@ -14,13 +14,24 @@
  * That is not redundancy: these messages are for a person, those raises are for
  * anything that reaches the database without coming through here.
  */
+import { isControlledMaterial } from './description'
 import type { PublishInput, PublishOptions } from './types'
+
+/** The controlled material names a description can state. `316` alone counts as 316L. */
+function materialsNamed(text: string): Set<string> {
+  const found = new Set<string>()
+  if (/\b316\s*L?\b/i.test(text)) found.add('316L')
+  if (/\b304\b/.test(text)) found.add('304')
+  if (/\bbrass\b/i.test(text)) found.add('Brass')
+  return found
+}
 
 export type PublishBlockCode =
   | 'price_missing'
   | 'stock_zero'
   | 'variants_missing'
   | 'material_missing'
+  | 'material_conflict'
   | 'weight_unknown'
   | 'tag_unconfirmed'
   | 'images_missing'
@@ -121,6 +132,26 @@ export function validateDraftForPublish(
         'No material. It supplies the first line of the product description and the ' +
         'custom.material metafield. Pick 304, 316L or Brass, or enter a custom material.',
     })
+  }
+
+  // The tag (card badge, 316L/304 collections), the custom.material metafield and
+  // the SEO title all follow the selected material; a custom description that
+  // names a different one ships a product whose badge contradicts its own text.
+  // Found live on 22 products on 4 Sep 2026 (hand-made admin duplicates, but the
+  // override path can produce the same thing).
+  if (input.materialName && draft.description_override && isControlledMaterial(input.materialName)) {
+    const named = materialsNamed(draft.description_override)
+    const clean = input.materialName.trim().replace(/\s+/g, ' ')
+    if (named.size > 0 && !(named.size === 1 && named.has(clean))) {
+      blocks.push({
+        code: 'material_conflict',
+        field: 'description',
+        message:
+          `Material is ${clean}, but the custom description names ${[...named].join(' and ')}. ` +
+          'The badge, collections and SEO title follow the material — make the text agree ' +
+          'or switch back to the standard description.',
+      })
+    }
   }
 
   // NULL only. A category whose default is 0 publishes as 0 g, because somebody

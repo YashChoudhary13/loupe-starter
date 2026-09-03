@@ -168,6 +168,23 @@ describe('publish validation', () => {
     expect(codes(input({}, {}, { materialName: null }))).toContain('material_missing')
   })
 
+  it('blocks a custom description that names a different material than the one selected', () => {
+    const override = 'Premium 316L Stainless Steel – highly durable\nWater-resistant for daily wear'
+    expect(codes(input({ description_override: override }, {}, { materialName: '304' }))).toContain(
+      'material_conflict',
+    )
+    expect(codes(input({ description_override: 'Premium Brass – warm-toned' }, {}, { materialName: '304' }))).toContain(
+      'material_conflict',
+    )
+  })
+
+  it('accepts a custom description that agrees with, or does not mention, the material', () => {
+    expect(codes(input({ description_override: 'Premium 304 Stainless Steel – durable' }, {}, { materialName: '304' }))).toEqual([])
+    expect(codes(input({ description_override: 'Fits most wrists. Sold singly.' }, {}, { materialName: '316L' }))).toEqual([])
+    // A custom material is not a controlled name; the text may say anything.
+    expect(codes(input({ description_override: 'Premium 304 Stainless Steel' }, {}, { materialName: 'Titanium' }))).toEqual([])
+  })
+
   it('blocks a category whose Shopify tag is unconfirmed (this is Nose Pins)', () => {
     expect(
       codes(input({}, { name: 'Nose Pins', sku_prefix: 'NP', shopify_tag: null })),
