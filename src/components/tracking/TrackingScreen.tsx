@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -11,7 +12,6 @@ import {
   resumeProviderPausedIntakeAction,
   retryIntakeAction,
   reviewDuplicateAction,
-  runFullReconciliationAction,
   skipIntakeAction,
 } from '@/app/(shell)/tracking/actions'
 import {
@@ -23,7 +23,7 @@ import { filterTrackingRows, type TrackingFilters } from '@/lib/tracking/filters
 import type { TrackingRow, TrackingSnapshot } from '@/lib/tracking/types'
 import { cn } from '@/lib/utils'
 
-import { relativeAge, stageIndexFor, TrackingItem } from './TrackingItem'
+import { stageIndexFor, TrackingItem } from './TrackingItem'
 
 
 const DEFAULT_FILTERS: TrackingFilters = {
@@ -208,64 +208,6 @@ export function TrackingScreen({
     }
   }
 
-  const reconcile = async () => {
-    const confirmed = window.confirm(
-      'Run full Shopify reconciliation now?\n\n' +
-        'This checks product status and catalogue differences, removes Loupe drafts deleted from Shopify ' +
-        '(their photos return to Pending), reflects drafts published from Shopify, ' +
-        'and raises future per-category SKU counters if Shopify is ahead.\n\n' +
-        'It never lowers a counter, reuses a deleted SKU, or silently rewrites an existing product.',
-    )
-    if (!confirmed) return
-
-    setBusy('reconcile')
-    setFeedback(null)
-    setDetail(null)
-    const result = await runFullReconciliationAction()
-    setBusy(null)
-    if (result.ok) {
-      setSnapshot(result.data.snapshot)
-      const raised = result.data.skuCounters.raised
-      const counterResult =
-        raised.length > 0
-          ? `${raised.length} SKU counter${raised.length === 1 ? '' : 's'} raised (${raised
-              .map((row) => `${row.prefix} ${row.from}→${row.to}`)
-              .join(', ')}).`
-          : 'SKU counters were already safe; none were lowered.'
-      const driveResult = result.data.driveError
-        ? ` Drive tidy-up failed: ${result.data.driveError}`
-        : result.data.driveMoved > 0 || result.data.driveFailed > 0
-          ? ` ${result.data.driveMoved} photograph${result.data.driveMoved === 1 ? '' : 's'} moved out of RAW into Processed${
-              result.data.driveFailed > 0 ? `, ${result.data.driveFailed} could not be moved` : ''
-            }${result.data.driveMore ? ' (more remain — run again)' : ''}.`
-          : ' RAW was already clear of published photographs.'
-      setFeedback(result.data.started
-        ? `Full reconciliation completed: ${result.data.deletedShopifyDrafts} Shopify-deleted draft${result.data.deletedShopifyDrafts === 1 ? '' : 's'} removed from Loupe; ${result.data.matchedProducts}/${result.data.totalProducts} published products matched, ${result.data.issueCount} published-product issues, ${result.data.promotedProducts} Shopify-published drafts reflected.${driveResult} ${counterResult}`
-        : `A catalogue check was already running; no duplicate check was started.${driveResult} ${counterResult}`)
-
-      const warnings = [
-        result.data.promotionError
-          ? `Draft-status check failed: ${result.data.promotionError}`
-          : null,
-        result.data.promotionFailures > 0
-          ? `${result.data.promotionFailures} Shopify draft changes could not be reflected.`
-          : null,
-        result.data.skuCounters.unknownPrefixes.length > 0
-          ? `Unknown Shopify SKU prefixes were not created: ${result.data.skuCounters.unknownPrefixes
-              .map((row) => row.prefix)
-              .join(', ')}.`
-          : null,
-        result.data.skuCounters.unparseableSkus > 0
-          ? `${result.data.skuCounters.unparseableSkus} Shopify SKUs could not be parsed and were ignored.`
-          : null,
-      ].filter((warning): warning is string => warning !== null)
-      setDetail(warnings.length > 0 ? warnings.join('\n') : null)
-    } else {
-      setFeedback(result.error)
-      setDetail(result.detail)
-    }
-  }
-
   const renderRow = (row: TrackingRow) => (
     <TrackingItem
                 key={row.rowId}
@@ -370,15 +312,13 @@ export function TrackingScreen({
             </p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void reconcile()}
-              title="Checks Shopify product drift and safely raises future per-category SKU counters"
-              className="rounded-pill bg-ink px-4 py-2 text-[11px] font-medium text-white disabled:opacity-40"
+            <Link
+              href="/workflows"
+              title="Runs in Workflows with a live step-by-step view"
+              className="rounded-pill bg-ink px-4 py-2 text-[11px] font-medium text-white"
             >
-              {busy === 'reconcile' ? 'Reconciling…' : 'Full reconciliation'}
-            </button>
+              Full reconciliation ↗
+            </Link>
             <Stat value={snapshot.uploadedToday} label="photos uploaded" />
             <Stat value={snapshot.listedToday} label="products listed" />
             <Stat value={snapshot.attentionCount} label="need attention" attention />

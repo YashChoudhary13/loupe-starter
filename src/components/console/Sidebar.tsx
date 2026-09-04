@@ -41,8 +41,10 @@ export function Sidebar({
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLive)
   }, [])
 
-  const active: 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' =
-    pathname.startsWith('/tracking')
+  const active: 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' =
+    pathname.startsWith('/workflows')
+      ? 'workflows'
+      : pathname.startsWith('/tracking')
       ? 'tracking'
       : pathname.startsWith('/prompts')
         ? 'prompts'
@@ -146,6 +148,13 @@ export function Sidebar({
           collapsed={collapsed}
           icon={<ListIcon />}
         />
+        <NavItem
+          href="/workflows"
+          label="Workflows"
+          active={active === 'workflows'}
+          collapsed={collapsed}
+          icon={<PlayIcon />}
+        />
       </nav>
 
       <LiveActivity compact={collapsed} />
@@ -200,7 +209,7 @@ function NavItem({
   icon,
   badge = null,
 }: {
-  href: '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock'
+  href: '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows'
   label: string
   active: boolean
   collapsed: boolean
@@ -247,6 +256,15 @@ function SearchIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4 shrink-0 opacity-85" aria-hidden>
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-4.5-4.5" />
+    </svg>
+  )
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4 shrink-0 opacity-85" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M10 8.5v7l5.5-3.5z" />
     </svg>
   )
 }

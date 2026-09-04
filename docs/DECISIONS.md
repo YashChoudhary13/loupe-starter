@@ -3466,3 +3466,31 @@ Tracking page plus a visual place to choose models.
    visible version's `model`) and the D120 check verdict as a chip. Check events moved from
    the system stream onto the photograph's own audit trail (`recordSystemEvent` gained an
    optional entity binding) so the row's Details show its verification history.
+
+---
+
+### D122 — Store-wide checks are operator-pressed workflows with a live step timeline, not scheduled jobs (2026-09-05)
+
+*Owner request, 2026-09-05.* The material-consistency repair (Qimati SEO,
+`implementation/material-audit-2026-09-04/material_sync.py`) ran as a LaunchAgent on the owner's
+Mac that turned out never to have been loaded; full reconciliation was a blocking button on
+Tracking with a one-paragraph answer. Both drift problems come from occasional admin actions,
+not from a daily rhythm, so the owner asked for one press per job with visible progress.
+
+`/workflows` and `workflow_runs` (see `docs/superpowers/specs/2026-09-05-workflows-section-design.md`).
+A press inserts a durable run row and executes the steps in `after()` in-process — the same
+mechanism the console uses for background Shopify pushes — writing progress onto the row;
+browsers poll while a run is live. One running row per workflow (partial unique index); different
+workflows run concurrently. The material repair is the deliberate operator workflow D54 always
+required for repairing Shopify; reconciliation itself stays read-only.
+
+Four workflows ship: Material consistency (writes tags, metafield, SEO to follow the description),
+Full reconciliation (the nightly job's five functions plus a duplicate-SKU / `-copy`-handle report),
+Copy rules scan (report; fixes only the old boilerplate), Collection membership audit (report; the
+"manually included" products that ignore collection rules). The nightly `pg_cron` reconciliation is
+unchanged. The Tracking button became a link.
+
+**Rejected:** running steps in the browser (a closed tab would abandon a half-written repair);
+in-memory job state (lost on deploy, invisible to a second operator); a rollback button (before
+and after values are recorded in the run; a repair is re-runnable and the description is the
+source, so undo means editing the description).

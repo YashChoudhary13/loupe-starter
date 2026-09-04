@@ -29,6 +29,54 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-05 — D122: /workflows section, four one-click workflows, run engine
+
+**Goal this session:** replace the never-loaded daily material-sync LaunchAgent and the blocking
+Tracking button with a Workflows section where each store-wide job is one press with a live
+step timeline, runs concurrently with the others, and records what it found.
+
+**Built:**
+- `supabase/migrations/20260905100000_workflow_runs.sql` → `workflow_runs` (steps/log/result
+  jsonb updated in place, one running row per workflow, RLS deny-all). Applied.
+- `src/lib/workflows/runner.ts` → `startWorkflow` (insert + `after()` execution, joins a run
+  already in flight), `listWorkflowRuns` (marks 15-min-silent runs failed), step context
+  (`report`, `log`, `section`, `summary`), warning-vs-failure semantics, audit event on finish.
+- `src/lib/workflows/types.ts` → the catalogue (four workflows, their steps) and the run view.
+- `material.ts` + `material-plan.ts` → the 4 Sep audit script ported; planner is pure and tested.
+- `reconciliation.ts` + `duplicates-scan.ts` → the nightly job's five functions as steps plus the
+  duplicate-SKU / `-copy`-handle report.
+- `copy-rules.ts` + `copy-rules-scan.ts` → banned-wording scan over description + SEO; replaces
+  only the old "Made with premium … (Surgical Grade)" boilerplate.
+- `collections.ts` + `collection-rules.ts` → rule evaluator (TAG, TITLE, VARIANT_INVENTORY,
+  VARIANT_PRICE — the only shapes the store uses, read live) and the per-collection member audit.
+- `src/app/(shell)/workflows/{page,actions}.tsx`, `src/components/workflows/WorkflowsScreen.tsx`,
+  sidebar item; Tracking's reconciliation button and its 100-line action removed in favour of a link.
+
+**Verified:** `npm run typecheck` clean; eslint clean on every touched file; `next build` clean with
+`/workflows` in the route list; `vitest` — `workflow-material-plan` 5/5, `workflow-collection-rules`
+5/5, `workflow-copy-rules` 3/3 (planner makes tags/metafield/SEO follow a 316L description on a
+304-tagged duplicate; two-material bodies reported not guessed; collection verdicts read "sold
+out" / tag "Necklace" missing; approved six bullets and Loupe SEO pass the copy scan). Live
+collection rules were read before writing the evaluator: all AND, four column types, one leftover
+`TITLE NOT_CONTAINS zzqimatirebuild` marker on `316l-stainless-steel` (logged by the audit).
+A real press of each button in production has NOT yet been made this session.
+
+**Not finished / known broken:**
+- No production press yet: the first run of each workflow should be watched (Material consistency
+  was clean at 0 inconsistent on 5 Sep 01:00 by the Python dry run, so expect "Everything consistent").
+- `CLAUDE.md` still calls `qimti.myshopify.com` the test store; `.env` points at
+  `961b9d-2.myshopify.com`, the live qimati.in store, and so does the Qimati SEO tooling. Left as is.
+
+**Surprises:** the LaunchAgent `com.qimati.material-sync` (created 4 Sep) was never bootstrapped —
+`launchctl list` had no entry and no `launchd.out` existed. It was loaded on 5 Sep, then removed
+again the same night when the owner chose buttons over a schedule.
+
+**Next session should start with:** press each of the four Run buttons once in production and
+read the Details; if Collection membership audit is slow on `new-arrivals` (523 members), lower
+the members page size.
+
+---
+
 ## 2026-09-04 — D121: /models section, Tracking triage, pair model-staleness fix
 
 **Goal this session:** explain and fix "tracking still shows kimi-k3", make Tracking worth
