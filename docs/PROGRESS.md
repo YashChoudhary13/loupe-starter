@@ -39,7 +39,9 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 **Verified:** 33 tests passed across product descriptions, copy-rule fixtures and publish validation. TypeScript and ESLint checks passed. Production and origin/main were both `ed18c94` before this targeted patch; the previously proposed larger material-workflow rollout is not included. The separate Shopify correction removed the claim from 183 descriptions and repaired three stale material tags, with immediate readback after each write.
 
-**Not finished / known broken:** production deployment/readback pending at commit time; completion evidence will be recorded in the website-fix report. This only normalises the known retired boilerplate, not arbitrary new custom advertising claims.
+**Production completion:** deployed commit `26a63b3` to `/home/ubuntu/loupe/releases/20260913-105002-26a63b3`; service active. Running-release checks confirmed both the default and saved legacy override omit the retired claim. Deployment and behaviour receipts are in `/Users/yash/Documents/ChatGPT/QIMATI/output/meta-fixes-20260913/`.
+
+**Not finished / known broken:** this only normalises the known retired boilerplate, not arbitrary new custom advertising claims. No other workflow was deployed or triggered.
 
 **Next session should start with:** inspect the deployment receipt in `QIMATI/output/meta-fixes-20260913` before making another catalogue change.
 
