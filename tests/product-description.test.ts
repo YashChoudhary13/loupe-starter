@@ -43,6 +43,19 @@ describe('product descriptions', () => {
     expect(resolveDescriptionText('304', null)).toContain('304 Stainless Steel')
   })
 
+  it('keeps new and previously saved default descriptions free of the retired scratch claim', () => {
+    for (const material of ['304', '316L', 'Brass']) {
+      expect(buildDescriptionHtml(material, null)).not.toMatch(/scratch/i)
+    }
+    const legacy = 'Custom detail\nAdvanced PVD Coating, not standard plating – long-lasting colour, anti-tarnish & scratch resistance\nRemove before bathing'
+    expect(buildDescriptionHtml('316L', legacy)).toBe(
+      '<ul><li>Custom detail</li><li>Advanced PVD Coating, not standard plating – long-lasting colour &amp; anti-tarnish</li><li>Remove before bathing</li></ul>',
+    )
+    expect(resolveDescriptionText('304', 'Not scratch-resistant. Handle with care.')).toBe(
+      'Not scratch-resistant. Handle with care.',
+    )
+  })
+
   it('escapes override text and never passes operator HTML through', () => {
     expect(buildDescriptionHtml('Brass', '<script>alert("x")</script>\nSafe & bright')).toBe(
       '<ul><li>&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</li><li>Safe &amp; bright</li></ul>',

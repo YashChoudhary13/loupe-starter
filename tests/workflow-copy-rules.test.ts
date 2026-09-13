@@ -8,7 +8,7 @@ const APPROVED_BODY =
   'Water-resistant for daily wear — remove before swimming, bathing or physical activity ' +
   'Not fully soap-proof or chemical-proof – avoid harsh chemicals for longer life ' +
   'Finished in 18KT Gold Tone for a rich luxury look ' +
-  'Advanced PVD Coating, not standard plating – long-lasting colour, anti-tarnish & scratch resistance ' +
+  'Advanced PVD Coating, not standard plating – long-lasting colour & anti-tarnish ' +
   'Extra E-Coating Layer on top – added protection and shine'
 
 describe('copy rules scan (D122)', () => {

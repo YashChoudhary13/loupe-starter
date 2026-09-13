@@ -35,7 +35,7 @@ const STANDARD_BULLETS = [
   () => 'Not fully soap-proof or chemical-proof – avoid harsh chemicals for longer life',
   () => 'Finished in 18KT Gold Tone for a rich luxury look',
   () =>
-    'Advanced PVD Coating, not standard plating – long-lasting colour, anti-tarnish & scratch resistance',
+    'Advanced PVD Coating, not standard plating – long-lasting colour & anti-tarnish',
   () => 'Extra E-Coating Layer on top – added protection and shine',
 ] as const
 
@@ -60,7 +60,13 @@ export function resolveDescriptionText(
   material: string | null,
   override: string | null,
 ): string {
-  return override?.trim() || (material ? defaultDescriptionText(material) : '')
+  const text = override?.trim() || (material ? defaultDescriptionText(material) : '')
+  // Older drafts may have saved the former default as an override. Remove only
+  // that known claim fragment, preserving the operator's other wording.
+  return text.replace(
+    /(long-lasting\s+colou?r),\s*(anti-tarnish)\s*&\s*scratch[\s\-\u2010-\u2015]*(?:resistance|resistant|proof)\b/gi,
+    '$1 & $2',
+  )
 }
 
 function escapeHtml(value: string): string {

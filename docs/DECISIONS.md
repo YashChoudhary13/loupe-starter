@@ -3494,3 +3494,6 @@ unchanged. The Tracking button became a link.
 in-memory job state (lost on deploy, invisible to a second operator); a rollback button (before
 and after values are recorded in the run; a repair is re-runnable and the description is the
 source, so undo means editing the description).
+
+## 2026-09-13 — Retired scratch-resistance boilerplate
+Normalise only the exact legacy default fragment at description resolution, so saved overrides cannot restore the approved removed claim; preserve all other operator copy. This targeted correction does not deploy the earlier material-workflow redesign.

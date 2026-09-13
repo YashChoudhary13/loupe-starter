@@ -29,6 +29,22 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-13 — Remove recurring scratch-resistance boilerplate
+
+**Goal this session:** prevent the approved website claim cleanup from being undone by new listings or saved legacy defaults.
+
+**Built:**
+- `src/lib/publish/description.ts`: retired the scratch-resistance fragment in the default six bullets; normalises that exact legacy fragment in saved plain-text overrides while preserving custom details and negative care advice.
+- Regression coverage exercises all three controlled materials, a saved legacy override, HTML escaping and unchanged negative wording.
+
+**Verified:** 33 tests passed across product descriptions, copy-rule fixtures and publish validation. TypeScript and ESLint checks passed. Production and origin/main were both `ed18c94` before this targeted patch; the previously proposed larger material-workflow rollout is not included. The separate Shopify correction removed the claim from 183 descriptions and repaired three stale material tags, with immediate readback after each write.
+
+**Not finished / known broken:** production deployment/readback pending at commit time; completion evidence will be recorded in the website-fix report. This only normalises the known retired boilerplate, not arbitrary new custom advertising claims.
+
+**Next session should start with:** inspect the deployment receipt in `QIMATI/output/meta-fixes-20260913` before making another catalogue change.
+
+---
+
 ## 2026-09-05 — D122: /workflows section, four one-click workflows, run engine
 
 **Goal this session:** replace the never-loaded daily material-sync LaunchAgent and the blocking
