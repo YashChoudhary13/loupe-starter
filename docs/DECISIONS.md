@@ -3536,4 +3536,10 @@ The owner wants continuous scanning of every pouch, including items that do not 
 
 Rejected: blocking the checker on “not in this order, remove it” with no durable extra list; client-only ticks that vanish on refresh.
 
+### D127 — Print labels after Save draft; Cancel stays not printed (2026-09-15)
+
+After the operator fills a product and presses Draft, Loupe waits until the Shopify DRAFT exists, then offers a print popup with each variant's saved SKU/barcode and copy counts from saved stock. Print opens the existing label sheet and then records `labels_printed`. Cancel, a failed print, or a blocked popup leaves `labels_printed` false. Autosave does not offer labels.
+
+Rejected: marking printed when the dialog opens; printing on autosave.
+
 ---

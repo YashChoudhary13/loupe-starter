@@ -67,6 +67,7 @@ const CONSOLE_REFRESH_EVENTS = new Set([
    */
   'draft.shopify_synced',
   'draft.shopify_push_failed',
+  'draft.labels_printed',
   'publish.failed',
   'publish.published',
 ])

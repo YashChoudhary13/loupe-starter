@@ -114,6 +114,7 @@ interface DraftRow {
   reserved_sku: string | null
   reserved_handle: string | null
   shopify_product_id: string | null
+  labels_printed?: boolean
   error: string | null
   publish_lease_expires_at: string | null
 }
@@ -277,7 +278,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('product_drafts')
       .select(
-        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, labels_printed, error, publish_lease_expires_at',
       )
       .in('status', ['assembling', 'publishing', 'failed'])
       .order('updated_at', { ascending: false })
@@ -285,7 +286,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('product_drafts')
       .select(
-        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, labels_printed, error, publish_lease_expires_at',
         { count: 'exact' },
       )
       .eq('status', 'published')
@@ -412,8 +413,11 @@ export async function loadQueue(): Promise<QueueSnapshot> {
             ? 'Publish was interrupted — retry to finish it'
             : isUnpushedDraft(draft)
               ? 'Not in Shopify — open it and press Save draft'
-              : null,
+              : draft.shopify_product_id && !draft.labels_printed
+                ? 'Label not printed'
+                : null,
       reservedSku: draft.reserved_sku,
+      labelsPrinted: Boolean(draft.labels_printed),
     }
   }
 
@@ -542,7 +546,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
   const { data: draftRow, error: draftError } = await db
     .from('product_drafts')
     .select(
-      'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, error, publish_lease_expires_at',
+      'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, labels_printed, error, publish_lease_expires_at',
     )
     .eq('id', draftId)
     .maybeSingle<DraftRow>()
@@ -679,6 +683,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     reservedSku: draftRow.reserved_sku,
     reservedHandle: draftRow.reserved_handle,
     shopifyProductId: draftRow.shopify_product_id,
+    labelsPrinted: Boolean(draftRow.labels_printed),
     error: draftRow.error,
     publishInFlight:
       draftRow.publish_lease_expires_at !== null &&

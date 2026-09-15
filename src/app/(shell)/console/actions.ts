@@ -16,6 +16,7 @@ import {
   type DriveHousekeepingOutcome,
 } from '@/lib/console/publish'
 import { pushDraftToShopifyInBackground } from '@/lib/console/shopify-push'
+import { loadDraftLabelOffer, markDraftLabelsPrinted } from '@/lib/console/draft-labels'
 import {
   loadColourSuggestions,
   loadCatalog,
@@ -709,5 +710,18 @@ export async function publishDraftAction(
       bundle: await bundle(request.draftId, request.allowZeroStock),
       queue: await loadQueue(),
     }
+  })
+}
+
+export async function loadDraftLabelPrintAction(
+  draftId: string,
+): Promise<ActionResult<{ offer: Awaited<ReturnType<typeof loadDraftLabelOffer>> }>> {
+  return withOperator(async () => ({ offer: await loadDraftLabelOffer(draftId) }))
+}
+
+export async function confirmDraftLabelsPrintedAction(draftId: string): Promise<ActionResult<{ ok: true }>> {
+  return withOperator(async (operator) => {
+    await markDraftLabelsPrinted(draftId, operator)
+    return { ok: true as const }
   })
 }

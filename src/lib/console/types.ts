@@ -74,6 +74,7 @@ export interface QueueTile {
   /** Amber, and only amber. Null means nothing needs a human. */
   readonly attention: string | null
   readonly reservedSku: string | null
+  readonly labelsPrinted?: boolean
 }
 
 export interface CategoryOption {
@@ -138,6 +139,8 @@ export interface DraftDetail {
   readonly reservedSku: string | null
   readonly reservedHandle: string | null
   readonly shopifyProductId: string | null
+  /** False until the operator prints from the post-draft popup. Cancel keeps false. */
+  readonly labelsPrinted: boolean
   readonly error: string | null
   readonly publishInFlight: boolean
   readonly photos: readonly PhotoSummary[]

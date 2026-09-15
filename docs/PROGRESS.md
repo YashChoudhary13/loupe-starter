@@ -29,20 +29,31 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
-## 2026-09-15 — Continuous camera plus extra/missing wrap-up (local)
+## 2026-09-15 — Draft print popup; Cancel stays label not printed (local)
+
+**Goal this session:** after Draft, offer to print labels for the saved quantity and SKU/barcode; Cancel must not mark labels printed.
+
+**Built:** post-draft print dialog; copies default to saved stock; Print uses `/api/labels/print` then sets `labels_printed`; Cancel leaves false. Console shows Label printed / Label not printed. Migration `20260915180000_draft_labels_printed.sql` not applied to production.
+
+**Verified:** focused `draft-label-print` tests. Production deploy follows owner authorization.
+
+**Not finished:** physical print on pouch stock is still untested.
+
+**Next session should start with:** draft one new product, confirm Cancel stays not printed, then Print.
+
+---
+
+## 2026-09-15 — Continuous camera plus extra/missing wrap-up (live)
 
 **Goal this session:** keep the QC camera on while pouches are shown, record extras instead of only blocking them, and show missing plus extra items at the end with a tick that the extra was removed.
 
-**Built:**
-- Camera starts on and stays mounted; the existing clear-view gate still requires the pouch to leave the frame before the next scan.
-- Extra and not-on-order scans are saved. `summarizeQc` lists missing units and extras. `clear_extra` ticks an extra as removed. Complete QC is blocked until both lists are clear.
-- Migration `20260915081237` is unchanged; new `20260915173000_qc_extra_confirmation.sql` replaces `qc_command` for this behaviour. Not applied to production.
+**Built and deployed:** `8c2a81b` is live in `/home/ubuntu/loupe/releases/20260915-120902-8c2a81b`. Schema `20260915173000_qc_extra_confirmation` applied first to runtime project `sxuxqtzwuvftwfjkpnyo`. Camera starts on. Extra/wrong scans are recorded. Complete QC requires missing units scanned and extras ticked removed.
 
-**Verified:** focused vitest for summary, command parsing, camera gate and existing QC route/server tests. No live Shopify order was scanned. No production deploy or database push.
+**Verified:** focused 31 QC tests; production `/qc` `/labels` `/console` 200; unauthenticated 401; foreign origin 403; rolled-back RPC scan/incomplete/extra/clear_extra/complete. No customer order was scanned or fulfilled. Receipts: `output/qc-system/loupe-label-preview/qc-extra-schema.json`, `qc-extra-production-verification.json`.
 
-**Not finished / known broken:** schema is not on Supabase yet, so production still shows the old “set it aside” extra message and cannot store removed ticks. Physical print/scan remains untested. Do not push `main` until the migration is applied in a short pause, then the app.
+**Not finished / operating limits:** physical print-and-scan on a pouch is still untested. Print one 38 × 25 mm sticker at 100% before batches.
 
-**Next session should start with:** authorized schema apply + deploy, then one physical pouch trial.
+**Next session should start with:** one physical pouch trial on Order QC with the camera left on.
 
 ---
 

@@ -91,6 +91,7 @@ export interface DraftEditorProps {
   readonly identity: PredictedIdentity | null
   readonly skuScheme?: SkuScheme
   readonly shopifyProductId?: string | null
+  readonly labelsPrinted?: boolean
   readonly identityLocked: boolean
   readonly readOnly?: boolean
   readonly blocks: readonly PublishBlock[]
@@ -133,6 +134,8 @@ export function DraftEditor(props: DraftEditorProps) {
     colourSuggestions,
     identity,
     identityLocked,
+    shopifyProductId,
+    labelsPrinted = false,
     readOnly = false,
     blocks,
     busy,
@@ -1269,6 +1272,7 @@ export function DraftEditor(props: DraftEditorProps) {
           </>
         )}
       </div>
+      {shopifyProductId ? <p className={`mt-2 text-[12px] ${labelsPrinted ? 'text-ink-soft' : 'text-amber'}`}>{labelsPrinted ? 'Label printed' : 'Label not printed'}</p> : null}
     </form>
   )
 }

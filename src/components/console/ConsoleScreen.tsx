@@ -20,6 +20,8 @@ import {
   redoPromptPreviewAction,
   refreshQueueAction,
   saveDraftAction,
+  loadDraftLabelPrintAction,
+  confirmDraftLabelsPrintedAction,
   finalizeManualUploadAction,
   type ActionError,
   type ActionResult,
@@ -46,11 +48,13 @@ import {
   shouldRefreshConsole,
   type LiveActivityUpdate,
 } from '@/lib/live/types'
+import type { DraftLabelOffer } from '@/lib/labels/draft-print'
 import type { PublishBlock } from '@/lib/publish/validate'
 
 import { putUploadedObject } from '@/components/upload/put-object'
 
 import { DraftEditor, type EditorForm } from './DraftEditor'
+import { DraftLabelPrintDialog } from './DraftLabelPrintDialog'
 import { NewCategoryDialog } from './NewCategoryDialog'
 import { Card, Notice, StatPill } from './primitives'
 import { QueueGrid } from './QueueGrid'
@@ -264,6 +268,9 @@ export function ConsoleScreen({
   const [uploads, setUploads] = useState<readonly UploadItem[]>([])
   /** Backfilled 1280px previews for Drive originals, by image version id. */
   const [originalPreviews, setOriginalPreviews] = useState<Record<string, string>>({})
+  const [labelOffer, setLabelOffer] = useState<DraftLabelOffer | null>(null)
+  const [labelPrintBusy, setLabelPrintBusy] = useState(false)
+  const [labelPrintError, setLabelPrintError] = useState<string | null>(null)
 
   const priceRef = useRef<HTMLInputElement>(null)
   const manualUploadRef = useRef<HTMLInputElement>(null)
@@ -272,6 +279,7 @@ export function ConsoleScreen({
   const formRef = useRef<EditorForm | null>(null)
   const requestedPreviewsRef = useRef(new Set<string>())
   const queueRefreshTimerRef = useRef<number | null>(null)
+  const pendingLabelDraftIdRef = useRef<string | null>(null)
   const tileRefs = useRef(new Map<number, HTMLButtonElement>())
   const registerTile = useCallback((index: number, node: HTMLButtonElement | null) => {
     if (node) tileRefs.current.set(index, node)
@@ -693,6 +701,19 @@ export function ConsoleScreen({
       }
     }
     refreshQueueSoon()
+    pendingLabelDraftIdRef.current = draftId
+    void (async () => {
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        if (pendingLabelDraftIdRef.current !== draftId) return
+        const print = await settled(loadDraftLabelPrintAction(draftId))
+        if (print.ok && print.data.offer) {
+          setLabelPrintError(null)
+          setLabelOffer(print.data.offer)
+          return
+        }
+        await new Promise(resolve => window.setTimeout(resolve, 1000))
+      }
+    })()
   }, [ensureDraft, handleResult, refreshQueueSoon, rememberSticky, saveRequest])
 
   const focusNextUngrouped = useCallback((snapshot: QueueSnapshot) => {
@@ -1047,6 +1068,41 @@ export function ConsoleScreen({
     timeZone: 'Asia/Kolkata',
   })
 
+  const cancelLabelPrint = useCallback(() => {
+    pendingLabelDraftIdRef.current = null
+    setLabelOffer(null)
+    setLabelPrintError(null)
+  }, [])
+
+  const printDraftLabels = useCallback(async (copies: Record<string, number>) => {
+    if (!labelOffer) return
+    setLabelPrintBusy(true)
+    setLabelPrintError(null)
+    try {
+      const form = new URLSearchParams({ symbology: 'qr', width: '38', height: '25' })
+      for (const item of labelOffer.items) form.set(`copies:${item.id}`, String(copies[item.id] ?? 0))
+      const response = await fetch('/api/labels/print', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form, credentials: 'same-origin' })
+      const html = await response.text()
+      if (!response.ok) throw new Error(html || 'Could not prepare labels.')
+      const preview = window.open('', '_blank')
+      if (!preview) throw new Error('Allow pop-ups to print labels. Cancel keeps this as label not printed.')
+      preview.document.write(html)
+      preview.document.close()
+      const marked = await settled(confirmDraftLabelsPrintedAction(labelOffer.draftId))
+      if (!marked.ok) throw new Error(marked.error.message)
+      pendingLabelDraftIdRef.current = null
+      setLabelOffer(null)
+      setBundle(current => current && current.draft.id === labelOffer.draftId
+        ? { ...current, draft: { ...current.draft, labelsPrinted: true } }
+        : current)
+      refreshQueueSoon()
+    } catch (cause) {
+      setLabelPrintError(cause instanceof Error ? cause.message : 'Could not print labels. This draft is still label not printed.')
+    } finally {
+      setLabelPrintBusy(false)
+    }
+  }, [labelOffer, refreshQueueSoon])
+
   return (
     <main className="flex min-h-0 min-w-0 flex-col gap-3.5">
       {addingCategory ? (
@@ -1061,6 +1117,15 @@ export function ConsoleScreen({
             })
             setAddingCategory(false)
           }}
+        />
+      ) : null}
+      {labelOffer ? (
+        <DraftLabelPrintDialog
+          offer={labelOffer}
+          busy={labelPrintBusy}
+          error={labelPrintError}
+          onCancel={cancelLabelPrint}
+          onPrint={copies => void printDraftLabels(copies)}
         />
       ) : null}
 
@@ -1268,6 +1333,7 @@ export function ConsoleScreen({
               identity={identity}
               skuScheme={bundle?.draft.skuScheme ?? (mode === 'new' ? 'variant-v1' : 'legacy')}
               shopifyProductId={bundle?.draft.shopifyProductId}
+              labelsPrinted={bundle?.draft.labelsPrinted ?? false}
               identityLocked={Boolean(bundle?.draft.reservedSku)}
               readOnly={listedReadOnly}
               blocks={blocks}
