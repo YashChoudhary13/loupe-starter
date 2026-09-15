@@ -29,6 +29,50 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-15 — Clarified colour × size coverage before release
+
+**Goal this session:** answer whether the local barcode change covers all variants and capture the owner's genuine colour-with-sizes products.
+
+**Verified:** read `variant-sku.ts`, console types/mutations, editor and `ProductSetArgs`. They support no options, colour only, size only and numbered choices only. Combined dimensions and arbitrary custom option types are not implemented. D70 deliberately restricted Loupe to one dimension; this new business requirement calls for extending that model. Shopify's official Adding variants documentation confirms each combination can be a variant.
+
+**Built:** updated `docs/BARCODE-LABELS.md` with the newly confirmed requirement, sparse colour–size combinations, one stock/SKU/barcode per actual pair and exact Shopify variant-ID matching for QC. No application code changed and no new tests were required for this read-only coverage check.
+
+**Not finished / known broken:** colour × size editing/publishing is not supported by the current local feature; the earlier 119 tests do not prove that support. The proposed combined-code examples are design examples only. No deployment, database change or store write occurred.
+
+**Next session should start with:** extend Loupe's saved variant model and editor to support each colour's actual sizes before treating the barcode rollout as covering all of the owner's products. Keep the existing single-option paths compatible and verify identities across save, reorder, publish and retry.
+
+---
+
+## 2026-09-15 — D123: variant SKU/barcode policy and small-pouch labels (local)
+
+**Goal this session:** integrate new variant codes and self-generated labels into Loupe for Qimati's order-QC rollout.
+
+**Built:**
+- `variant-sku.ts`, publisher payload and draft `sku_scheme` migration: distinct colour/size/number codes with matching Shopify Barcode values on new drafts; existing drafts stay legacy. The atomic parent allocator is unchanged.
+- Counter probes, webhook and reconciliation parsing, restock family pagination, retry ownership checks and barcode drift detection follow the new option identities.
+- `/labels`, authenticated bounded print route, saved-code lookup, duplicate checks, adjustable QR/Code 128 roll-label rendering, sidebar navigation and editor previews/link.
+- The owner clarified that products are in small plastic pouches and has no printer specification. Default sample is 40 × 25 mm QR, with readable product/option/code. Wider Code 128 remains available. Identical saleable units repeat one option's label.
+- `docs/BARCODE-LABELS.md`, D123, reproducible preview and isolated database verification scripts. CLAUDE's shared-SKU requirement is superseded for new drafts. Its obsolete claim that .env is a test store is corrected using the earlier verified live configuration.
+
+**Verified:**
+- Vitest: `Test Files 9 passed (9); Tests 119 passed (119)` across variant codes, labels, print route, publisher validation/collision guards, Shopify input, stock, reconciliation and webhooks. Tests used local fixtures and fake Shopify credentials, with no store calls.
+- TypeScript, ESLint on changed source/tests/scripts and `git diff --check` passed. Final `next build` passed with `/labels` and `/api/labels/print` present.
+- `verify:isolation` passed all three steps using non-secret sentinels: positive public-key control, no service-role/Shopify/session secret in client assets, and deliberate server-only client import rejected. A normal build was regenerated afterward.
+- Temporary local PostgreSQL: existing row `legacy`, new row `variant-v1`; changing policy rejected and ordinary edit accepted. 100 allocator requests over 20 connections returned 100 distinct numbers (1333–1432) and 300 distinct derived colour codes in 1174 ms. This exercises the allocator and isolated migration, not the complete deployed schema or parallel Shopify publishes. The temporary server was stopped.
+- Visually inspected the actual Labels component with fictional fixtures, plus 40 × 25 mm QR and 70 × 30 mm Code 128 sample sheets in the in-app browser. This is not a physical print/scan result or an authenticated live screen verification.
+- Samples, build/isolation output, DB receipt and SHA-256 source manifest: `/Users/yash/Documents/ChatGPT/QIMATI/output/qc-system/loupe-label-preview/`. Branch `codex/loupe-barcode-labels` in `/Users/yash/Desktop/Qimati-worktrees/loupe-barcode-labels`, based on `aa1db00`, uncommitted.
+
+**Not finished / known broken:**
+- Not deployed; database migration not applied to Supabase. A main push auto-deploys production, so release authorization is still needed. Apply schema first during a short save pause, then release and read back a designated Shopify DRAFT's SKU/barcodes and variant IDs across a reorder/retry. Existing drafts/products have not been migrated or relabeled.
+- No printer/scanner has been selected and no sticker has been tested on a physical pouch. QR needs a compatible 2D scanner or phone scanning screen. Internal codes must not be treated as manufacturer GTINs.
+- This is listing identity + label printing. The order-QC demo remains a demo: production order scanning, saved QC progress and fulfillment integration are separate remaining work.
+
+**Surprises:** the label worker stopped with an account-credit error before writing files; the integration owner completed the bounded implementation. The bwip-js Node subpath was required for TypeScript resolution. A Homebrew PostgreSQL 17.11 installation (and its dependencies) enabled the isolated concurrency/migration proof; no database service was registered at login. The sample server on local port 8873 remains available for review; its files work independently from that server. Live .env files were not copied into this worktree.
+
+**Next session should start with:** review `docs/BARCODE-LABELS.md` and `implementation-receipt.json`; confirm release authorization before a main push or production migration, and choose a designated test draft for Shopify readback.
+
+---
+
 ## 2026-09-13 — Remove recurring scratch-resistance boilerplate
 
 **Goal this session:** prevent the approved website claim cleanup from being undone by new listings or saved legacy defaults.

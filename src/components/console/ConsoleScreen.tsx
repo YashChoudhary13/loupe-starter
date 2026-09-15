@@ -1264,6 +1264,8 @@ export function ConsoleScreen({
               materials={catalog.materials}
               colourSuggestions={colours}
               identity={identity}
+              skuScheme={bundle?.draft.skuScheme ?? (mode === 'new' ? 'variant-v1' : 'legacy')}
+              shopifyProductId={bundle?.draft.shopifyProductId}
               identityLocked={Boolean(bundle?.draft.reservedSku)}
               readOnly={listedReadOnly}
               blocks={blocks}

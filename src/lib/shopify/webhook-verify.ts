@@ -6,6 +6,8 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
+import { parentSku } from '@/lib/publish/variant-sku'
+
 import { malformedSkuCorrection } from '@/lib/publish/identity'
 
 import { shopifyConfig } from './config'
@@ -43,8 +45,9 @@ export function parseWebhookSku(sku: string | null | undefined): {
   prefix: string
   number: number
 } | null {
+  if (typeof sku !== 'string' || sku.trim() !== sku.trim().toUpperCase()) return null
   if (malformedSkuCorrection(sku)) return null
-  const match = /^([A-Z]{2,4})0*([0-9]{1,9})$/u.exec(sku?.trim() ?? '')
+  const match = /^([A-Z]{2,4})0*([0-9]{1,9})$/u.exec(parentSku(sku ?? '') ?? '')
   if (!match) return null
   return { prefix: match[1]!, number: Number(match[2]) }
 }

@@ -57,6 +57,7 @@ export type HandleOwnership =
 export interface OwnershipInput {
   readonly handle: string
   readonly reservedSku: string
+  readonly expectedVariantSkus?: readonly string[]
   /** `product_drafts.shopify_product_id` — null before the first success. */
   readonly recordedProductId: string | null
   /** `product_drafts.created_at`. Our product cannot be older than this. */
@@ -105,7 +106,11 @@ export function classifyHandleOwnership(
     }
   }
 
-  const carriesOurSku = existing.variants.nodes.some((variant) => variant.sku === input.reservedSku)
+  const expected = input.expectedVariantSkus
+  const observed = existing.variants.nodes.map(variant => variant.sku)
+  const carriesOurSku = expected
+    ? expected.length === observed.length && expected.every(sku => observed.includes(sku))
+    : observed.includes(input.reservedSku)
   if (!carriesOurSku) {
     return {
       kind: 'foreign',

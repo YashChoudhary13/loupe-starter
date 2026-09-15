@@ -14,6 +14,7 @@
  * That is not redundancy: these messages are for a person, those raises are for
  * anything that reaches the database without coming through here.
  */
+import { variantSkus } from './variant-sku'
 import { isControlledMaterial } from './description'
 import type { PublishInput, PublishOptions } from './types'
 
@@ -30,6 +31,7 @@ export type PublishBlockCode =
   | 'price_missing'
   | 'stock_zero'
   | 'variants_missing'
+  | 'variant_codes_invalid'
   | 'material_missing'
   | 'material_conflict'
   | 'weight_unknown'
@@ -88,6 +90,11 @@ export function validateDraftForPublish(
 ): readonly PublishBlock[] {
   const blocks: PublishBlock[] = []
   const { draft, category } = input
+  try {
+    variantSkus('PREVIEW001', draft.variant_kind, input.variants.map(v => v.value), draft.sku_scheme ?? 'legacy')
+  } catch (error) {
+    blocks.push({ code: 'variant_codes_invalid', field: 'variants', message: error instanceof Error ? error.message : 'Check variant names before creating barcodes.' })
+  }
 
   if (draft.price_paise === null || draft.price_paise <= 0) {
     blocks.push({

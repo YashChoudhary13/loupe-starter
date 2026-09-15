@@ -1,3 +1,5 @@
+import { parentSku } from './variant-sku'
+
 /**
  * SKU / title / handle formatting.
  *
@@ -78,7 +80,7 @@ export function slugifyHandle(title: string): string {
 
 /** Splits a SKU into its prefix and number. Returns null for anything malformed. */
 export function parseSku(sku: string): { prefix: string; number: number } | null {
-  const match = /^([A-Za-z]{2,4})(\d{1,})$/.exec(sku.trim())
+  const match = /^([A-Za-z]{2,4})(\d{1,})$/.exec(parentSku(sku) ?? '')
   if (!match) return null
   return { prefix: match[1].toUpperCase(), number: Number.parseInt(match[2], 10) }
 }
@@ -98,7 +100,7 @@ export const KNOWN_MALFORMED_SKU_CORRECTIONS = new Map<string, string>([
 ])
 
 export function malformedSkuCorrection(sku: string | null | undefined): string | null {
-  return KNOWN_MALFORMED_SKU_CORRECTIONS.get(sku?.trim().toUpperCase() ?? '') ?? null
+  return KNOWN_MALFORMED_SKU_CORRECTIONS.get(parentSku(sku ?? '') ?? sku?.trim().toUpperCase() ?? '') ?? null
 }
 
 /** Paise → the decimal rupee string Shopify's `MoneyInput` wants. Never a float. */

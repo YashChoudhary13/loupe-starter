@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, type RefObject } from 'react'
 
 import {
@@ -19,6 +20,7 @@ import {
   defaultDescriptionText,
   DESCRIPTION_OVERRIDE_MAX_LENGTH,
 } from '@/lib/publish/description'
+import { variantSkus, type SkuScheme } from '@/lib/publish/variant-sku'
 import type { PublishBlock } from '@/lib/publish/validate'
 import { cn } from '@/lib/utils'
 
@@ -84,6 +86,8 @@ export interface DraftEditorProps {
   readonly materials: readonly MaterialOption[]
   readonly colourSuggestions: readonly ColourSuggestion[]
   readonly identity: PredictedIdentity | null
+  readonly skuScheme?: SkuScheme
+  readonly shopifyProductId?: string | null
   readonly identityLocked: boolean
   readonly readOnly?: boolean
   readonly blocks: readonly PublishBlock[]
@@ -168,6 +172,18 @@ export function DraftEditor(props: DraftEditorProps) {
     const stock = Number.parseInt(variant.stock.trim() || '0', 10)
     return sum + (Number.isFinite(stock) && stock > 0 ? stock : 0)
   }, 0)
+  const skuScheme = props.skuScheme ?? (mode === 'new' ? 'variant-v1' : 'legacy')
+  let labelCodes: string[] = []
+  let codeError: string | null = null
+  if (identity && skuScheme === 'variant-v1') {
+    try {
+      labelCodes = form.variantKind === 'none' || form.variants.length === 0
+        ? [identity.sku]
+        : variantSkus(identity.sku, form.variantKind, form.variants.map(v => v.value), skuScheme)
+    } catch (error) {
+      codeError = error instanceof Error ? error.message : 'Check the option names.'
+    }
+  }
   const newOptionStock = (form.variants[0]?.stock ?? form.stock) || '0'
   const availableColourNames = colourPaletteNames(colourSuggestions)
 
@@ -1165,6 +1181,18 @@ export function DraftEditor(props: DraftEditorProps) {
             </p>
           ) : null}
         </Field>
+
+        {identity && <Field label="SKU & barcode labels">
+          {skuScheme === 'variant-v1' ? <>
+            <p className="mb-2 text-[11.5px] text-ink-soft">Each option gets its own SKU. Shopify’s Barcode field uses the same code.</p>
+            {codeError ? <p role="alert" className="text-[11.5px] text-amber">{codeError}</p> :
+              <div className="max-h-36 overflow-auto rounded-field bg-chip p-3 font-mono text-[11px] leading-6">
+                {labelCodes.map(code => <div key={code}>{code}</div>)}
+              </div>}
+            <p className="mt-2 text-[11px] text-muted-foreground">{identity.predicted ? 'Preview only — save first to reserve the product number.' : 'Renaming an option can change its code. Reprint its labels after Shopify finishes updating.'}</p>
+          </> : <p className="text-[11.5px] text-ink-soft">This earlier listing keeps its existing codes. Shared colour codes need to be migrated before scan checking.</p>}
+          {props.shopifyProductId && <Link href={`/labels?q=${encodeURIComponent(identity.sku)}`} className="mt-3 inline-block rounded-pill bg-chip px-4 py-2 text-[12px] font-medium">Open saved labels</Link>}
+        </Field>}
 
         {/* The one black feature card on the screen. */}
         <div className="mt-[18px]">

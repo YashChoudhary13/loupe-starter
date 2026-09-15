@@ -2,7 +2,7 @@
   "name": "loupe",
   "version": "0.1.0",
   "private": true,
-  "description": "Loupe \u2014 Qimati listing console. Phase 2: the Shopify write path.",
+  "description": "Loupe — Qimati listing console. Phase 2: the Shopify write path.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -43,6 +43,7 @@
     "@aws-sdk/s3-request-presigner": "3.1097.0",
     "@googleapis/drive": "20.2.0",
     "@supabase/supabase-js": "^2.95.3",
+    "bwip-js": "4.11.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.27.0",

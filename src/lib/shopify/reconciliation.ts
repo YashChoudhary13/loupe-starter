@@ -20,6 +20,7 @@ const RECONCILIATION_PRODUCTS_QUERY = /* GraphQL */ `
         variants(first: 100) {
           nodes {
             sku
+            barcode
             selectedOptions {
               name
               value

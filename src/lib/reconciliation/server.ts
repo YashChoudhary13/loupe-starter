@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { variantSku, type SkuScheme } from '@/lib/publish/variant-sku'
 import { parseSku, renderTitle } from '@/lib/publish/identity'
 import { buildProductTags } from '@/lib/publish/publish-product'
 import { ShopifyClient } from '@/lib/shopify/client'
@@ -25,6 +26,7 @@ interface PublishedDraftRow {
   title_suffix: string | null
   price_paise: number
   weight_g: number | null
+  sku_scheme?: SkuScheme
   variant_kind: 'none' | 'colour' | 'number' | 'size'
   reserved_sku: string
   reserved_handle: string
@@ -63,7 +65,7 @@ async function publishedDraftRows(db: SupabaseClient): Promise<PublishedDraftRow
     const { data, error } = await db
       .from('product_drafts')
       .select(
-        'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value ), product_draft_images ( position, shopify_media_id )',
+        'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value ), product_draft_images ( position, shopify_media_id )',
       )
       .eq('status', 'published')
       .order('id', { ascending: true })
@@ -118,7 +120,8 @@ function expectedProduct(row: PublishedDraftRow): {
     handle: row.reserved_handle,
     title,
     variants: (optionValues.length > 0 ? optionValues : [null]).map((optionValue) => ({
-      sku: row.reserved_sku,
+      sku: variantSku(row.reserved_sku, row.variant_kind, optionValue, row.sku_scheme),
+      ...(row.sku_scheme === 'variant-v1' ? { barcode: variantSku(row.reserved_sku, row.variant_kind, optionValue, row.sku_scheme) } : {}),
       optionName,
       optionValue,
     })),
@@ -168,7 +171,7 @@ export async function reconcileSingleProduct(
   const { data, error } = await db
     .from('product_drafts')
     .select(
-      'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value ), product_draft_images ( position, shopify_media_id )',
+      'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value ), product_draft_images ( position, shopify_media_id )',
     )
     .eq('id', draftId)
     .eq('status', 'published')

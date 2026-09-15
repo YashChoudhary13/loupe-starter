@@ -11,6 +11,7 @@ export interface DraftRow {
   readonly price_paise: number | null
   readonly weight_g: number | null
   readonly stock: number
+  readonly sku_scheme?: import('./variant-sku').SkuScheme
   readonly variant_kind: 'none' | 'colour' | 'number' | 'size'
   readonly status: 'assembling' | 'publishing' | 'published' | 'failed'
   readonly reserved_sku: string | null

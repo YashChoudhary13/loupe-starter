@@ -114,6 +114,7 @@ export interface DraftVariant {
 }
 
 export interface DraftDetail {
+  readonly skuScheme?: import('@/lib/publish/variant-sku').SkuScheme
   readonly id: string
   readonly status: 'assembling' | 'publishing' | 'published' | 'failed'
   /** Optimistic-concurrency token. Sent back on save; a mismatch refuses. */

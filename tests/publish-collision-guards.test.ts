@@ -38,7 +38,7 @@ function probeClient(taken: Record<number, 'sku' | 'handle' | 'both'>) {
   const graphql = vi.fn(async (_query: string, variables?: Record<string, unknown>) => {
     const sku = String(variables?.sku ?? '')
     const handle = String(variables?.handle ?? '')
-    const number = Number(sku.replace(/\D/gu, '')) || Number(handle.replace(/\D/gu, ''))
+    const number = Number(sku.match(/\d+/u)?.[0]) || Number(handle.replace(/\D/gu, ''))
     const how = taken[number]
     return {
       variants: { nodes: how === 'sku' || how === 'both' ? [{ id: 'gid://v/1' }] : [] },
@@ -120,7 +120,7 @@ describe('stepping the counter past hand-made numbers', () => {
       counterLastNumber: 221,
     })
     expect(graphql.mock.calls[0]?.[1]).toEqual({
-      sku: 'sku:RS222',
+      sku: '(sku:RS222 OR sku:RS222-*)',
       handle: 'rings-222-adjustable',
     })
   })

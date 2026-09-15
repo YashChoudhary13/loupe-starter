@@ -158,7 +158,7 @@ See D50, which supersedes D6.
 
 ### Colours
 
-Product options. Free text, remembered, ranked by usage **per category** (Necklaces → Gold/Silver; Rings → Red/White/Green). Variants currently **share the parent SKU** (`AK011` on both Gold and Silver) — keep that convention.
+Product options. Free text, remembered, ranked by usage **per category** (Necklaces → Gold/Silver; Rings → Red/White/Green). Owner request, 15 September 2026: newly created drafts use separate option SKUs and matching Shopify Barcode values, e.g. `AK011-C-GOLD` and `AK011-C-SILVER`. Existing drafts keep the shared parent SKU under their `legacy` scheme; do not bulk rewrite printed stock. See D123 and `docs/BARCODE-LABELS.md`.
 
 The console renders these names as **visual swatches**: category-ranked remembered colours
 first, followed by the stable jewellery palette. Gold, Silver and Rose Gold use distinct
@@ -192,8 +192,7 @@ Normalise on save (trim, collapse spaces, Title Case) and fuzzy-match on entry, 
 Some photographs show a tray/box of separately numbered pieces (often 30 rings).
 The customer chooses the visible number, so these publish as one Shopify option
 named exactly **`Number`**, with values `1` through the operator-selected count
-and independent stock per number. Numbered variants share the parent product SKU,
-just like colour variants. A product uses one option mode at a time: no option,
+and independent stock per number. New-policy numbered variants use `<parent>-N-<number>`; existing legacy drafts retain shared parent SKUs. A product uses one option mode at a time: no option,
 `Color`, `Number`, or `Size`; a tray number already identifies the exact visible piece,
 so Loupe does not multiply it by a second colour dimension. The console supports
 up to 100 numbered choices on one product.
@@ -201,7 +200,7 @@ up to 100 numbered choices on one product.
 ### Ring sizes
 
 Ring sizes publish as one Shopify option named exactly **`Size`**, with independent stock
-per selected size and the same parent SKU on every variant. The console offers numeric sizes
+per selected size. New-policy variants use `<parent>-S-<size>` with the same value in Barcode; existing legacy drafts retain shared parent SKUs. The console offers numeric sizes
 4 through 30 as quick choices but also accepts trimmed custom values such as `4.5`, `US 7`,
 or `Adjustable`; it must not force one country's sizing system. Size labels are compared
 case-insensitively after collapsing whitespace so the same size cannot appear twice.
@@ -457,13 +456,14 @@ passes and the failure surfaces much later, somewhere unhelpful.
 `src/lib/google/service-account.ts`; call `googleServiceAccount()` once at start-up, and
 `/health` shows the result. See D26.
 
-**`SHOPIFY_STORE_DOMAIN=qimti.myshopify.com` is correct.** "qimti", not "qimati" — confirmed
-at `admin.shopify.com/store/qimti`. It is the **test store**, and it is password-protected.
-The live store is a later cutover; nothing in this repo points at it yet. Do not "fix" the
-spelling. At cutover, the only Shopify configuration changes are `SHOPIFY_STORE_DOMAIN`, a
-set of app credentials for the live store, and re-running `npm run seed:counters`. That scan
-must report `NK7801`, `BK3367` and `AK0834` as the exact excluded catalogue typos from D69;
-they must never become counter maxima.
+**The active Shopify environment is LIVE.** The 5 September progress record and
+this task's environment inspection identify `961b9d-2.myshopify.com` as the live
+qimati.in store. `qimti.myshopify.com` was the historical test store; do not assume
+`.env` still targets it. Inspect the configured host without printing credentials
+before any store or database test. Existing concurrency tests reset counters and
+must not be run against production. Use an isolated local database for counter
+proofs. The confirmed malformed SKUs `NK7801`, `BK3367` and `AK0834` remain excluded
+from sequence maxima (D69).
 
 `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_PASSWORD` are different credentials. The
 service-role key is a JWT for the PostgREST API; it cannot authenticate a Postgres wire

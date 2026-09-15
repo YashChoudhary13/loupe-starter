@@ -36,6 +36,11 @@ describe('webhook HMAC verification', () => {
 })
 
 describe('webhook SKU parsing', () => {
+  it('raises only the parent number for variant codes and still excludes catalogue typos', () => {
+    expect(parseWebhookSku('NK1333-C-WHITE')).toEqual({ prefix: 'NK', number: 1333 })
+    expect(parseWebhookSku('RS004-N-100')).toEqual({ prefix: 'RS', number: 4 })
+    expect(parseWebhookSku('NK7801-C-WHITE')).toBeNull()
+  })
   it('reads real catalogue shapes, zero-padded and long', () => {
     expect(parseWebhookSku('NK970')).toEqual({ prefix: 'NK', number: 970 })
     expect(parseWebhookSku('NP004')).toEqual({ prefix: 'NP', number: 4 })

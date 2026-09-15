@@ -3497,3 +3497,14 @@ source, so undo means editing the description).
 
 ## 2026-09-13 — Retired scratch-resistance boilerplate
 Normalise only the exact legacy default fragment at description resolution, so saved overrides cannot restore the approved removed claim; preserve all other operator copy. This targeted correction does not deploy the earlier material-workflow redesign.
+
+
+### D123 — Variant codes and pouch-label printing in Loupe (2026-09-15)
+
+Owner request supersedes the shared-SKU convention for new listings. Keep the existing atomic parent-number allocator; derive an option code using the option kind and canonical value (`NK1333-C-WHITE`, `RS004-S-7`, `RS004-N-7`). Write that exact string to Shopify SKU, inventory-item SKU and Barcode. Codes survive reordering and retries; a semantic option rename requires relabeling. Refuse normalization collisions rather than silently inventing a second identity.
+
+Persist an immutable `sku_scheme` on drafts: existing rows are `legacy`, new rows default to `variant-v1`. This preserves existing labels and interrupted retries, including unfinished drafts. Older catalogue migration must be a separate reviewed operation by Shopify variant ID with a stock-label changeover. It must not run the general publisher. Counter probes, webhook parsing and restock lookup recognize the parent family; reconciliation matches option identity and checks barcodes only for the new policy.
+
+Reuse Loupe authentication and Shopify access for a `/labels` screen. Generate SVG using pinned `bwip-js@4.11.4` through its explicit Node export (the generic package's conditional exports do not resolve under TypeScript bundler resolution). Print only saved values reread by variant ID, verifying exact SKU/barcode collisions before generating a sheet. Bound request size, copies and pagination; no inventory or fulfillment writes. Check form origin against configured `AUTH_BASE_URL` because the server runs behind nginx.
+
+The owner has small plastic jewellery pouches and no printer specification yet. Default to adjustable 40 × 25 mm QR labels with four-module clear margins, and offer Code 128 for wider stickers. Both carry identical barcode text. Render locally, without a label-app subscription or a public barcode-image API. Stock quantity is displayed but the operator chooses print copies. Physical printer/scanner acceptance and a live Shopify DRAFT readback are still release checks; the label feature is not an order-QC implementation.

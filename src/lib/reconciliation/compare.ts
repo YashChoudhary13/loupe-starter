@@ -41,6 +41,7 @@ export interface ExpectedReconciliationProduct {
   readonly title: string
   readonly variants: readonly {
     readonly sku: string
+    readonly barcode?: string
     readonly optionName: 'Color' | 'Number' | 'Size' | null
     readonly optionValue: string | null
   }[]
@@ -54,6 +55,7 @@ export interface ActualReconciliationProduct {
   readonly variants: {
     readonly nodes: readonly {
       readonly sku: string | null
+      readonly barcode?: string | null
       readonly selectedOptions: readonly { readonly name: string; readonly value: string }[]
     }[]
   }
@@ -170,7 +172,12 @@ export function comparePublishedProduct(
   }
 
   expected.variants.forEach((variant, index) => {
-    const observed = actual.variants.nodes[index]
+    // Match by option identity, so a Shopify reordering is not false SKU drift.
+    const observed = actual.variants.nodes.find(candidate => {
+      const option = candidate.selectedOptions[0]
+      return (option?.name ?? DEFAULT_OPTION_NAME) === (variant.optionName ?? DEFAULT_OPTION_NAME)
+        && comparableOptionValue(option?.value ?? DEFAULT_OPTION_VALUE) === comparableOptionValue(variant.optionValue ?? DEFAULT_OPTION_VALUE)
+    }) ?? actual.variants.nodes[index]
     if (!observed) return
 
     if (variant.sku !== observed.sku) {
@@ -184,6 +191,11 @@ export function comparePublishedProduct(
           `${actual.title} variant ${index + 1} carries SKU ${observed.sku ?? '(none)'}, not the ${variant.sku} Loupe reserved.`,
         ),
       )
+    }
+
+    if (variant.barcode !== undefined && variant.barcode !== observed.barcode) {
+      issues.push(issue(expected, 'field_mismatch', `variants.${index}.barcode`, variant.barcode, observed.barcode ?? null,
+        `${actual.title} has a different or missing barcode for ${variant.sku}. Reprint labels only after resolving it.`))
     }
 
     const observedOption = observed.selectedOptions[0] ?? null

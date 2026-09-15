@@ -53,6 +53,7 @@ export const DEFAULT_OPTION_VALUE = 'Default Title'
 export const ALT_TEXT_MAX_LENGTH = 512
 
 export interface ProductSetVariant {
+  readonly barcode?: string
   readonly sku: string
   readonly price: string
   readonly weightG: number
@@ -395,9 +396,8 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
         }
 
   const variants = args.variants.map((variant, index) => ({
-    // Every option variant carries the SAME parent SKU. That is the live store's
-    // convention for colours and remains the convention for numbered trays.
     sku: variant.sku,
+    ...(variant.barcode !== undefined ? { barcode: variant.barcode } : {}),
     price: variant.price,
     position: index + 1,
     taxable: true,
@@ -548,7 +548,7 @@ const PRODUCT_BY_HANDLE_QUERY = /* GraphQL */ `
       metafield(namespace: "custom", key: "material") {
         value
       }
-      variants(first: 50) {
+      variants(first: 100) {
         nodes {
           id
           sku

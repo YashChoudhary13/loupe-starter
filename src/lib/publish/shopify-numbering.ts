@@ -131,7 +131,7 @@ export async function findFreeNumber(
     )
 
     const data = await client.graphql<ProbeResponse>(PROBE_QUERY, {
-      sku: `sku:${sku}`,
+      sku: `(sku:${sku} OR sku:${sku}-*)`,
       handle,
     })
     const bySku = (data.variants?.nodes.length ?? 0) > 0

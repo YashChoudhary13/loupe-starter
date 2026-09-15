@@ -1,5 +1,6 @@
 import type { ShopifyClient } from './client'
 import { ShopifyError } from './errors'
+import { parentSku } from '@/lib/publish/variant-sku'
 import { primaryLocationId } from './product-set'
 
 /**
@@ -25,8 +26,8 @@ export interface ProductStock {
 }
 
 const VARIANTS_BY_SKU = /* GraphQL */ `
-  query LoupeVariantsBySku($query: String!) {
-    productVariants(first: 25, query: $query) {
+  query LoupeVariantsBySku($query: String!, $after: String) {
+    productVariants(first: 100, query: $query, after: $after) {
       nodes {
         id
         sku
@@ -35,12 +36,14 @@ const VARIANTS_BY_SKU = /* GraphQL */ `
         inventoryItem { id }
         product { id title handle status }
       }
+      pageInfo { hasNextPage endCursor }
     }
   }
 `
 
 interface VariantsBySkuResponse {
   productVariants: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null }
     nodes: {
       id: string
       sku: string | null
@@ -57,12 +60,22 @@ export function variantLabel(options: readonly { name: string; value: string }[]
   return named.length ? named.map((o) => o.value).join(' / ') : 'Default'
 }
 
-/** Every product carrying this SKU (Loupe's variants share the parent SKU). Active first. */
+/** Resolve a parent or exact variant code to its full family, including all numbered choices. */
 export async function readProductStockBySku(client: ShopifyClient, sku: string): Promise<ProductStock[]> {
-  const data = await client.graphql<VariantsBySkuResponse>(VARIANTS_BY_SKU, { query: `sku:${JSON.stringify(sku)}` })
+  const family = parentSku(sku) ?? sku
+  const nodes: VariantsBySkuResponse['productVariants']['nodes'] = []
+  let after: string | null = null
+  for (let page = 0; page < 100; page++) {
+    const data: VariantsBySkuResponse = await client.graphql(VARIANTS_BY_SKU, { query: `(sku:${JSON.stringify(family)} OR sku:${family}-*)`, after })
+    nodes.push(...data.productVariants.nodes)
+    if (!data.productVariants.pageInfo.hasNextPage) break
+    const next = data.productVariants.pageInfo.endCursor
+    if (!next || next === after || page === 99) throw new Error('Could not load the complete variant family. Retry before changing stock.')
+    after = next
+  }
   const byProduct = new Map<string, ProductStock>()
-  for (const node of data.productVariants?.nodes ?? []) {
-    if ((node.sku ?? '').toUpperCase() !== sku.toUpperCase() || !node.inventoryItem) continue
+  for (const node of nodes) {
+    if ((parentSku(node.sku ?? '') ?? node.sku ?? '').toUpperCase() !== family.toUpperCase() || !node.inventoryItem) continue
     const current = byProduct.get(node.product.id) ?? {
       productId: node.product.id,
       title: node.product.title,

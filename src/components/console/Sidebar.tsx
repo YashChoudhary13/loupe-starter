@@ -41,8 +41,10 @@ export function Sidebar({
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLive)
   }, [])
 
-  const active: 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' =
-    pathname.startsWith('/workflows')
+  const active: 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' | 'labels' =
+    pathname.startsWith('/labels')
+      ? 'labels'
+      : pathname.startsWith('/workflows')
       ? 'workflows'
       : pathname.startsWith('/tracking')
       ? 'tracking'
@@ -155,6 +157,13 @@ export function Sidebar({
           collapsed={collapsed}
           icon={<PlayIcon />}
         />
+        <NavItem
+          href="/labels"
+          label="Labels"
+          active={active === 'labels'}
+          collapsed={collapsed}
+          icon={<ListIcon />}
+        />
       </nav>
 
       <LiveActivity compact={collapsed} />
@@ -209,7 +218,7 @@ function NavItem({
   icon,
   badge = null,
 }: {
-  href: '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows'
+  href: '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows' | '/labels'
   label: string
   active: boolean
   collapsed: boolean

@@ -44,6 +44,8 @@ import { publishToSalesChannels } from '@/lib/shopify/publications'
 
 import { buildDescriptionHtml, isControlledMaterial } from './description'
 import { buildSeo } from './seo'
+import { variantSkus } from './variant-sku'
+import { assertVariantCodesAvailable } from '@/lib/shopify/barcode-lookup'
 import { assertHandleIsWritable, classifyHandleOwnership } from './handle-ownership'
 import { paiseToShopifyPrice } from './identity'
 import { clearCounterOfShopifyNumbers } from './shopify-numbering'
@@ -104,7 +106,7 @@ export function filenameForStorage(sourceFilename: string, storageKey: string): 
 }
 
 const DRAFT_COLUMNS =
-  'id, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, status, reserved_sku, reserved_handle, shopify_product_id, created_at'
+  'id, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, status, reserved_sku, reserved_handle, shopify_product_id, created_at'
 const CATEGORY_COLUMNS =
   'id, name, sku_prefix, title_pattern, shopify_tag, shopify_taxonomy_category_id, default_weight_g, default_stock'
 
@@ -433,6 +435,7 @@ export async function reserveIdentityForSave(
   actor?: string,
 ): Promise<ReservedIdentity> {
   const input = await loadPublishInput(db, draftId)
+  variantSkus('PREVIEW001', input.draft.variant_kind, input.variants.map(v => v.value), input.draft.sku_scheme ?? 'legacy')
   await stepCounterPastShopifyNumbers(db, shopify, input, actor)
   return reserveIdentity(db, draftId, actor, false)
 }
@@ -456,6 +459,8 @@ export async function publishProduct(
   // Before anything is reserved. A blocked publish must not burn a SKU number,
   // and must say every reason at once (hard rule 8).
   if (!asDraft) assertPublishable(input, options)
+  // Validate even Save Draft before a number is reserved or any Shopify write.
+  variantSkus('PREVIEW001', input.draft.variant_kind, input.variants.map(v => v.value), input.draft.sku_scheme ?? 'legacy')
 
   // D19: NULL weight means "nobody has said" and must never be coerced to 0 on
   // the publish path — assertPublishable() blocks it there, so this stays an
@@ -501,17 +506,20 @@ export async function publishProduct(
     // the first row was added. Keep that draft saveable as one default variant;
     // ACTIVE validation blocks until the missing choices are supplied.
     const hasOptionRows = optionName !== null && input.variants.length > 0
+    const codes = variantSkus(identity.sku, input.draft.variant_kind, input.variants.map(v => v.value), input.draft.sku_scheme ?? 'legacy')
+    const writesBarcode = input.draft.sku_scheme === 'variant-v1'
     let variants: ProductSetVariant[] =
       hasOptionRows
-        ? input.variants.map((variant) => ({
-            sku: identity.sku,
+        ? input.variants.map((variant, index) => ({
+            sku: codes[index],
+            ...(writesBarcode ? { barcode: codes[index] } : {}),
             price,
             weightG,
             stock: variant.stock,
             locationId,
             optionValue: variant.value,
           }))
-        : [{ sku: identity.sku, price, weightG, stock: input.draft.stock, locationId }]
+        : [{ sku: identity.sku, ...(writesBarcode ? { barcode: identity.sku } : {}), price, weightG, stock: input.draft.stock, locationId }]
 
     /**
      * Never write over a product Loupe did not create.
@@ -527,6 +535,7 @@ export async function publishProduct(
       {
         handle: identity.handle,
         reservedSku: identity.sku,
+        expectedVariantSkus: writesBarcode ? variants.map(v => v.sku) : undefined,
         recordedProductId: input.draft.shopify_product_id,
         draftCreatedAt: input.draft.created_at,
       },
@@ -536,11 +545,16 @@ export async function publishProduct(
       {
         handle: identity.handle,
         reservedSku: identity.sku,
+        expectedVariantSkus: writesBarcode ? variants.map(v => v.sku) : undefined,
         recordedProductId: input.draft.shopify_product_id,
         draftCreatedAt: input.draft.created_at,
       },
       ownership,
     )
+
+    if (writesBarcode) {
+      await assertVariantCodesAvailable(shopify, variants.map(v => v.sku), occupant?.id ?? null)
+    }
 
     // Read the store's media BEFORE writing. A publish that was interrupted
     // after Shopify accepted the files but before Loupe recorded their ids is
