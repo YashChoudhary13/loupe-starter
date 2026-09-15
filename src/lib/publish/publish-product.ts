@@ -1,3 +1,4 @@
+import { comparableOptionValue } from '@/lib/shopify/colour-options'
 /**
  * publishProduct() — the Shopify write path.
  *
@@ -39,6 +40,8 @@ import {
   readProductMedia,
   type ProductSetFile,
   type ProductSetVariant,
+  DEFAULT_OPTION_NAME,
+  DEFAULT_OPTION_VALUE,
 } from '@/lib/shopify/product-set'
 import { publishToSalesChannels } from '@/lib/shopify/publications'
 
@@ -495,7 +498,7 @@ export async function publishProduct(
     )
 
     const optionName =
-      input.draft.variant_kind === 'colour'
+      (input.draft.variant_kind === 'colour' || input.draft.variant_kind === 'colour_size')
         ? COLOUR_OPTION_NAME
         : input.draft.variant_kind === 'number'
           ? NUMBER_OPTION_NAME
@@ -518,6 +521,7 @@ export async function publishProduct(
             stock: variant.stock,
             locationId,
             optionValue: variant.value,
+            ...(input.draft.variant_kind === 'colour_size' ? { sizeValue: variant.sizeValue! } : {}),
           }))
         : [{ sku: identity.sku, ...(writesBarcode ? { barcode: identity.sku } : {}), price, weightG, stock: input.draft.stock, locationId }]
 
@@ -552,6 +556,15 @@ export async function publishProduct(
       ownership,
     )
 
+    // Retain Shopify variant IDs for the exact option combination across retries/reordering.
+    variants = variants.map(variant => {
+      const options = optionName && variant.optionValue
+        ? [{ name: optionName, value: variant.optionValue }, ...(variant.sizeValue ? [{ name: SIZE_OPTION_NAME, value: variant.sizeValue }] : [])]
+        : [{ name: DEFAULT_OPTION_NAME, value: DEFAULT_OPTION_VALUE }]
+      const previous = occupant?.variants.nodes.find(node => node.selectedOptions.length === options.length && options.every(option => node.selectedOptions.some(saved => saved.name === option.name && comparableOptionValue(saved.value) === comparableOptionValue(option.value))))
+      return previous ? { ...variant, id: previous.id } : variant
+    })
+
     if (writesBarcode) {
       await assertVariantCodesAvailable(shopify, variants.map(v => v.sku), occupant?.id ?? null)
     }
@@ -584,7 +597,7 @@ export async function publishProduct(
 
       const savedColours = await syncShopifySavedColours(
         shopify,
-        input.variants.map((variant) => variant.value),
+        [...new Set(input.variants.map((variant) => variant.value))],
       )
       const metaobjectByName = new Map(
         savedColours.map((colour) => [colour.name.toLowerCase(), colour.metaobjectId]),
@@ -621,6 +634,7 @@ export async function publishProduct(
       material: input.materialName,
       categoryId: input.category.shopify_taxonomy_category_id,
       optionName: hasOptionRows ? optionName : null,
+      secondaryOptionName: hasOptionRows && input.draft.variant_kind === 'colour_size' ? SIZE_OPTION_NAME : null,
       variants,
       ...(asDraft ? { status: 'DRAFT' as const } : {}),
       ...(files ? { files } : {}),

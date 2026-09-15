@@ -29,7 +29,7 @@ async function main() {
       create table public.product_drafts(id text primary key, title text);
       insert into public.product_drafts values ('old','Existing draft');`)
     const allocator = readFileSync('supabase/migrations/20260728120900_next_sku.sql', 'utf8')
-    const migration = readFileSync('supabase/migrations/20260915090000_variant_barcode_scheme.sql', 'utf8')
+    const migration = readFileSync('supabase/migrations/20260915080000_variant_barcode_scheme.sql', 'utf8')
     await pool.query(allocator)
     await pool.query(migration)
     await pool.query("insert into product_drafts(id,title) values ('new','New draft')")

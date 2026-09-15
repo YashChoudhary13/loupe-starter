@@ -19,7 +19,9 @@ export function variantSku(
   if (kind === 'colour_size') {
     if (scheme !== 'variant-v1') throw new Error('Colour and size combinations need separate barcodes. Start a new draft for this product; existing legacy drafts keep their saved codes.')
     if (!value?.trim() || !sizeValue?.trim()) throw new Error('Choose both a colour and a size for every combination.')
-    return `${variantSku(base, 'colour', value, scheme)}-${variantSku('', 'size', sizeValue, scheme).slice(1)}`
+    const code = `${variantSku(base, 'colour', value, scheme)}-${variantSku('', 'size', sizeValue, scheme).slice(1)}`
+    if (code.length > 64) throw new Error('Shorten the colour or size name so the barcode fits on a label.')
+    return code
   }
   if (scheme === 'legacy' || kind === 'none' || value === null) return base
   const canonical = kind === 'colour' ? comparableOptionValue(value) : value.trim().toLowerCase().replace(/\s+/g, ' ')

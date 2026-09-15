@@ -53,6 +53,9 @@ export const DEFAULT_OPTION_VALUE = 'Default Title'
 export const ALT_TEXT_MAX_LENGTH = 512
 
 export interface ProductSetVariant {
+  readonly id?: string
+  readonly sizeValue?: string
+
   readonly barcode?: string
   readonly sku: string
   readonly price: string
@@ -105,6 +108,7 @@ export interface ProductSetArgs {
     | typeof NUMBER_OPTION_NAME
     | typeof SIZE_OPTION_NAME
     | null
+  readonly secondaryOptionName?: typeof SIZE_OPTION_NAME | null
   readonly variants: readonly ProductSetVariant[]
   /**
    * Omitted entirely when the caller has no opinion about images — `productSet`
@@ -375,7 +379,7 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
   const hasOptions = args.optionName !== null
   const nativeColour = args.optionName === COLOUR_OPTION_NAME
   const nativeColourValues = nativeColour
-    ? args.variants.map((variant) => variant.linkedMetafieldValue!)
+    ? [...new Set(args.variants.map((variant) => variant.linkedMetafieldValue!))]
     : []
 
   if (nativeColour && !args.categoryId) {
@@ -383,6 +387,10 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
   }
   if (nativeColour && args.variants.some((variant) => !variant.linkedMetafieldValue)) {
     throw new Error('Every native Shopify Color variant requires a saved-colour metaobject id.')
+  }
+
+  if (args.secondaryOptionName && (!nativeColour || args.variants.some(v => !v.sizeValue?.trim()))) {
+    throw new Error("Every colour and size combination needs its own size.")
   }
 
   const fileInput = (file: ProductSetFile) =>
@@ -396,6 +404,7 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
         }
 
   const variants = args.variants.map((variant, index) => ({
+    ...(variant.id ? { id: variant.id } : {}),
     sku: variant.sku,
     ...(variant.barcode !== undefined ? { barcode: variant.barcode } : {}),
     price: variant.price,
@@ -410,6 +419,7 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
                   linkedMetafieldValue: variant.linkedMetafieldValue,
                 }
               : { optionName: args.optionName, name: variant.optionValue },
+            ...(args.secondaryOptionName ? [{ optionName: args.secondaryOptionName, name: variant.sizeValue! }] : []),
           ]
         : [{ optionName: DEFAULT_OPTION_NAME, name: DEFAULT_OPTION_VALUE }],
     ...(variant.file ? { file: fileInput(variant.file) } : {}),
@@ -474,8 +484,9 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
               }
             : {
                 name: args.optionName,
-                values: args.variants.map((variant) => ({ name: variant.optionValue! })),
+                values: [...new Set(args.variants.map((variant) => variant.optionValue!))].map(name => ({ name })),
               },
+          ...(args.secondaryOptionName ? [{ name: args.secondaryOptionName, values: [...new Set(args.variants.map(v => v.sizeValue!))].map(name => ({ name })) }] : []),
         ]
       : [{ name: DEFAULT_OPTION_NAME, values: [{ name: DEFAULT_OPTION_VALUE }] }],
     variants,

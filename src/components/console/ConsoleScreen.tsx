@@ -1,5 +1,7 @@
 'use client'
 
+import { variantSkus } from '@/lib/publish/variant-sku'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -1383,6 +1385,8 @@ function localBlocks(
   category: { name: string; skuPrefix: string; shopifyTag: string | null; defaultWeightG: number | null } | null,
 ): readonly PublishBlock[] {
   const blocks: PublishBlock[] = []
+  try { variantSkus('PREVIEW001', form.variantKind, form.variants, 'variant-v1') }
+  catch (error) { blocks.push({ code: 'variant_codes_invalid', field: 'variants', message: error instanceof Error ? error.message : 'Check each option.' }) }
   const price = parseRupeesToPaise(form.price)
   if (!price.ok) {
     blocks.push({ code: 'price_missing', field: 'price', message: price.reason })
@@ -1408,7 +1412,7 @@ function localBlocks(
       code: 'variants_missing',
       field: 'variants',
       message:
-        form.variantKind === 'colour'
+        (form.variantKind === 'colour' || form.variantKind === 'colour_size')
           ? 'Stock is set to “By colour”, but no colours have been added.'
           : form.variantKind === 'size'
             ? 'Stock is set to “By size”, but no ring sizes have been added.'

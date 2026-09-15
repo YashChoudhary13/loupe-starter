@@ -65,7 +65,7 @@ async function publishedDraftRows(db: SupabaseClient): Promise<PublishedDraftRow
     const { data, error } = await db
       .from('product_drafts')
       .select(
-        'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value ), product_draft_images ( position, shopify_media_id )',
+        'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value, size_value ), product_draft_images ( position, shopify_media_id )',
       )
       .eq('status', 'published')
       .order('id', { ascending: true })
@@ -96,12 +96,11 @@ function expectedProduct(row: PublishedDraftRow): {
     ? buildProductTags(category.shopify_tag)
     : ['NEWEST']
 
-  const optionValues = many<{ position: number; option_value: string }>(row.product_draft_variants)
+  const optionValues = many<{ position: number; option_value: string; size_value?: string | null }>(row.product_draft_variants)
     .sort((a, b) => a.position - b.position)
-    .map((variant) => variant.option_value)
-    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .filter(variant => typeof variant.option_value === 'string' && variant.option_value.length > 0)
   const optionName: 'Color' | 'Number' | 'Size' | null =
-    row.variant_kind === 'colour'
+    (row.variant_kind === 'colour' || row.variant_kind === 'colour_size')
       ? 'Color'
       : row.variant_kind === 'number'
         ? 'Number'
@@ -119,11 +118,13 @@ function expectedProduct(row: PublishedDraftRow): {
     shopifyProductId: row.shopify_product_id,
     handle: row.reserved_handle,
     title,
-    variants: (optionValues.length > 0 ? optionValues : [null]).map((optionValue) => ({
-      sku: variantSku(row.reserved_sku, row.variant_kind, optionValue, row.sku_scheme),
-      ...(row.sku_scheme === 'variant-v1' ? { barcode: variantSku(row.reserved_sku, row.variant_kind, optionValue, row.sku_scheme) } : {}),
+    variants: (optionValues.length > 0 ? optionValues : [{ option_value: null, size_value: null }]).map((variant) => ({
+      sku: variantSku(row.reserved_sku, row.variant_kind, variant.option_value, row.sku_scheme, variant.size_value),
+      ...(row.sku_scheme === 'variant-v1' ? { barcode: variantSku(row.reserved_sku, row.variant_kind, variant.option_value, row.sku_scheme, variant.size_value) } : {}),
       optionName,
-      optionValue,
+      optionValue: variant.option_value,
+      sizeValue: variant.size_value,
+      allowVariantSkuFamily: row.sku_scheme !== 'variant-v1',
     })),
   }
   const localIssues: ReconciliationIssue[] = []
@@ -171,7 +172,7 @@ export async function reconcileSingleProduct(
   const { data, error } = await db
     .from('product_drafts')
     .select(
-      'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value ), product_draft_images ( position, shopify_media_id )',
+      'id, custom_material, description_override, title_suffix, price_paise, weight_g, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, categories ( name, title_pattern, shopify_tag, default_weight_g ), materials ( name ), product_draft_variants ( position, option_value, size_value ), product_draft_images ( position, shopify_media_id )',
     )
     .eq('id', draftId)
     .eq('status', 'published')

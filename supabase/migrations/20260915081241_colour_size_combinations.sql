@@ -433,3 +433,38 @@ begin
 end;
 $function$
 ;
+
+-- Preserve legacy one-dimension parent stock semantics; pairs sum their own units.
+CREATE OR REPLACE FUNCTION public.sync_product_draft_option_stock()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+declare
+  v_draft_id uuid := coalesce(new.product_draft_id, old.product_draft_id);
+  v_kind     text;
+  v_stock    integer;
+begin
+  select variant_kind into v_kind
+    from public.product_drafts
+   where id = v_draft_id;
+
+  -- During a switch back to one-stock mode, save_product_draft has already put
+  -- the intended simple quantity on the parent before deleting old rows.
+  if v_kind is null or v_kind = 'none' then
+    return null;
+  end if;
+
+  select coalesce(case when v_kind = 'colour_size' then sum(stock) else max(stock) end, 0)::integer into v_stock
+    from public.product_draft_variants
+   where product_draft_id = v_draft_id;
+
+  update public.product_drafts
+     set stock = v_stock
+   where id = v_draft_id
+     and stock is distinct from v_stock;
+
+  return null;
+end;
+$function$
+;

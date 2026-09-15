@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 
 import { ImageLightbox, type LightboxImage } from './ImageLightbox'
 import { Chip, FeatureCard, SectionLabel } from './primitives'
+import { CombinationChoices } from './CombinationChoices'
 
 /** Quick ring-size choices; custom labels remain available beside them. */
 const RING_SIZE_SUGGESTIONS = Array.from({ length: 27 }, (_, index) => String(index + 4))
@@ -188,9 +189,14 @@ export function DraftEditor(props: DraftEditorProps) {
   }
   const newOptionStock = (form.variants[0]?.stock ?? form.stock) || '0'
   const availableColourNames = colourPaletteNames(colourSuggestions)
+  const distinctColours = [...new Map(form.variants.filter(v => v.value.trim()).map(v => [v.value.trim().toLowerCase(), v])).values()]
 
   const setVariantKind = (kind: VariantKind) => {
     if (kind === form.variantKind) return
+    if (kind === 'colour_size' && form.variantKind === 'colour') {
+      onChange({ variantKind: kind, variants: form.variants.map(v => ({ ...v, sizeValue: '' })) })
+      return
+    }
     if (kind === 'none') {
       onChange({
         variantKind: kind,
@@ -214,7 +220,7 @@ export function DraftEditor(props: DraftEditorProps) {
     onChange({
       variantKind: kind,
       variants: [],
-      ...(kind === 'colour'
+      ...((kind === 'colour' || kind === 'colour_size')
         ? {}
         : { images: form.images.map((image) => ({ ...image, colourValue: null })) }),
     })
@@ -395,13 +401,13 @@ export function DraftEditor(props: DraftEditorProps) {
                   <span className="pointer-events-none absolute left-2 top-2 z-10 rounded-pill bg-white/90 px-2 py-1 text-[10px] font-medium text-ink shadow-sm backdrop-blur-sm">
                     {index + 1} of {orderedImages.length}
                   </span>
-                  {index === 0 && form.variantKind === 'colour' && form.variants.length > 0 ? (
+                  {index === 0 && (form.variantKind === 'colour' || form.variantKind === 'colour_size') && form.variants.length > 0 ? (
                     <div
                       className="pointer-events-none absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1.5 rounded-pill bg-white/90 p-1.5 shadow-sm backdrop-blur-sm"
                       role="img"
                       aria-label={`Selected colours: ${form.variants.map((variant) => variant.value).join(', ')}`}
                     >
-                      {form.variants.map((variant) => (
+                      {distinctColours.map((variant) => (
                         <ColourSwatch key={variant.value} name={variant.value} className="size-6" />
                       ))}
                     </div>
@@ -538,7 +544,7 @@ export function DraftEditor(props: DraftEditorProps) {
                           : 'Redo image'}
                     </button>
                   </div>
-                  {form.variantKind === 'colour' && form.variants.length > 0 ? (
+                  {(form.variantKind === 'colour' || form.variantKind === 'colour_size') && form.variants.length > 0 ? (
                     <div className="mt-2 flex flex-wrap items-center gap-1" role="group" aria-label={`Colour shown in ${row.photo.filename}`}>
                       <span className="mr-1 text-[10.5px] text-muted-foreground">Image for</span>
                       <button
@@ -555,7 +561,7 @@ export function DraftEditor(props: DraftEditorProps) {
                       >
                         All colours
                       </button>
-                      {form.variants.map((variant) => {
+                      {distinctColours.map((variant) => {
                         const selected =
                           row.image.colourValue?.toLowerCase() === variant.value.toLowerCase()
                         return (
@@ -844,7 +850,10 @@ export function DraftEditor(props: DraftEditorProps) {
             >
               Numbered choices
             </Chip>
+            <Chip selected={form.variantKind === 'colour_size'} disabled={readOnly || skuScheme === 'legacy'} onClick={() => setVariantKind('colour_size')}>Colour + size</Chip>
           </div>
+
+          {form.variantKind === 'colour_size' && <CombinationChoices variants={form.variants} colours={availableColourNames} disabled={readOnly} onChange={variants => onChange({ variants, images: form.images.map(image => ({ ...image, colourValue: variants.some(v => v.value.trim().toLowerCase() === image.colourValue?.toLowerCase()) ? image.colourValue : null })) })} />}
 
           {form.variantKind === 'colour' ? (
             <div className="mt-3">

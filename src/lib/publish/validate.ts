@@ -123,7 +123,7 @@ export function validateDraftForPublish(
       code: 'variants_missing',
       field: 'variants',
       message:
-        draft.variant_kind === 'colour'
+        (draft.variant_kind === 'colour' || draft.variant_kind === 'colour_size')
           ? 'Stock is set to “By colour”, but no colours have been added.'
           : draft.variant_kind === 'size'
             ? 'Stock is set to “By size”, but no ring sizes have been added.'

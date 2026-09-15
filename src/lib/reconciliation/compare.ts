@@ -1,3 +1,4 @@
+import { parentSku } from '@/lib/publish/variant-sku'
 import { comparableOptionValue } from '@/lib/shopify/colour-options'
 import { DEFAULT_OPTION_NAME, DEFAULT_OPTION_VALUE } from '@/lib/shopify/product-set'
 
@@ -42,6 +43,8 @@ export interface ExpectedReconciliationProduct {
   readonly variants: readonly {
     readonly sku: string
     readonly barcode?: string
+    readonly sizeValue?: string | null
+    readonly allowVariantSkuFamily?: boolean
     readonly optionName: 'Color' | 'Number' | 'Size' | null
     readonly optionValue: string | null
   }[]
@@ -174,13 +177,14 @@ export function comparePublishedProduct(
   expected.variants.forEach((variant, index) => {
     // Match by option identity, so a Shopify reordering is not false SKU drift.
     const observed = actual.variants.nodes.find(candidate => {
-      const option = candidate.selectedOptions[0]
+      const option = candidate.selectedOptions.find(o => o.name === (variant.optionName ?? DEFAULT_OPTION_NAME))
       return (option?.name ?? DEFAULT_OPTION_NAME) === (variant.optionName ?? DEFAULT_OPTION_NAME)
         && comparableOptionValue(option?.value ?? DEFAULT_OPTION_VALUE) === comparableOptionValue(variant.optionValue ?? DEFAULT_OPTION_VALUE)
+        && (!variant.sizeValue || candidate.selectedOptions.some(o => o.name === 'Size' && comparableOptionValue(o.value) === comparableOptionValue(variant.sizeValue!)))
     }) ?? actual.variants.nodes[index]
     if (!observed) return
 
-    if (variant.sku !== observed.sku) {
+    if (variant.sku !== observed.sku && !(variant.allowVariantSkuFamily && parentSku(observed.sku ?? '') === variant.sku)) {
       issues.push(
         issue(
           expected,
@@ -198,7 +202,7 @@ export function comparePublishedProduct(
         `${actual.title} has a different or missing barcode for ${variant.sku}. Reprint labels only after resolving it.`))
     }
 
-    const observedOption = observed.selectedOptions[0] ?? null
+    const observedOption = observed.selectedOptions.find(o => o.name === (variant.optionName ?? DEFAULT_OPTION_NAME)) ?? null
     const expectedOption =
       variant.optionName && variant.optionValue
         ? { name: variant.optionName, value: variant.optionValue }
@@ -216,6 +220,10 @@ export function comparePublishedProduct(
         : expectedOption.name !== observedOption.name ||
           comparableOptionValue(expectedOption.value) !==
             comparableOptionValue(observedOption.value)
+    const sizeDiffers = variant.sizeValue && !observed.selectedOptions.some(o => o.name === 'Size' && comparableOptionValue(o.value) === comparableOptionValue(variant.sizeValue!))
+    if (sizeDiffers || observed.selectedOptions.length !== (variant.sizeValue ? 2 : 1)) {
+      issues.push(issue(expected, 'field_mismatch', `variants.${index}.size`, variant.sizeValue ?? null, observed.selectedOptions, `${actual.title} has a different size combination for ${variant.sku}.`))
+    }
     if (optionDiffers) {
       issues.push(
         issue(
