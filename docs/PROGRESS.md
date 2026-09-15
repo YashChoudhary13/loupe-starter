@@ -29,6 +29,20 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-15 — Confirmed 38 × 25 mm labels and deployed the new default
+
+**Goal this follow-up:** incorporate the owner's actual 38 × 25 mm label stock into the completed QC rollout.
+
+**Built and deployed:** `5fcc447277a56090e10758f4fd854a5dfbc05301` is live in `/home/ubuntu/loupe/releases/20260915-095702-5fcc447`. Labels now defaults to width 38 mm, height 25 mm and QR. The sample generator and operating guide use that size. The local preview helper now supplies the router context required by the existing-product preparation component; this affects only static sample generation.
+
+**Verified:** 22 label/rendering/decoding/print-route tests passed; changed-file ESLint, TypeScript and production builds passed. The refreshed `qr-sample.html` visibly shows 38 × 25 mm and fits the sample code/text. Authenticated production `/labels?q=NK1222` returned 200 with width `38`, height `25` and the matching default-paper note at `2026-09-15T09:59:18Z`. An earlier probe coincided with the service restart and returned 502; the post-deployment probe passed. Receipts: `output/qc-system/loupe-label-preview/38mm-production-verification.json`, `38mm-build-verification.txt`, updated `implementation-receipt.json` and `production-release.json` in the QIMATI workspace.
+
+**Not finished / operating limits:** physical printing and scanning on the team's printer/phone remain untested. Paper size is now known; printer model and resolution remain unspecified. Print at 100% with headers/footers disabled, and test one sticker on a pouch before batches. Existing-stock preparation and the QC workflow described in the preceding entry remain applicable.
+
+**Next session should start with:** the first physical 38 × 25 mm print-and-scan trial. All application changes are pushed and deployed. This session-log-only commit is retained locally to avoid an unnecessary production restart for documentation; it can accompany the next application push.
+
+---
+
 ## 2026-09-15 — Deployed variant labels, sparse colour–size listings and order QC
 
 **Goal this session:** finish the owner-authorized Loupe barcode/QC implementation and deploy it to production, including each colour's own sizes.
