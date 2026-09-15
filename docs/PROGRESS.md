@@ -29,6 +29,39 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-15 — Deployed variant labels, sparse colour–size listings and order QC
+
+**Goal this session:** finish the owner-authorized Loupe barcode/QC implementation and deploy it to production, including each colour's own sizes.
+
+**Built and deployed:**
+- Application commit `ac976da66c0ba35a686a27d6bbc1740e8a94d25c` pushed to main and verified live at `https://loupe.qimati-eng.site`; VPS release `/home/ubuntu/loupe/releases/20260915-084302-ac976da`. Loupe, packaging and LinkedIn services remained active.
+- Console supports no options, colour, size, numbered choices and sparse colour–size rows. Each new-draft variant has an independent SKU, matching Barcode and stock; reordering preserves Shopify IDs. Colour–size stock totals sum every explicit row.
+- Labels supports adjustable QR/Code 128, saved-code uniqueness checks and copies per saleable unit. Existing stock uses a per-product before/after preview and targeted SKU/Barcode update, preserving options, IDs, prices, inventory and images.
+- `/qc` and order checklists read remaining Shopify shipping quantities and resolve scans to exact variant IDs. PostgreSQL serializes counts, caps quantities, saves operator history, deduplicates retries and invalidates changed orders. Recount/undo require a reason. USB/Bluetooth Enter scanners and one-pouch-at-a-time camera decoding are available; fulfillment stays in Shopify.
+- Four migrations applied to runtime Supabase project `sxuxqtzwuvftwfjkpnyo`: prepare schema first, deploy compatible app, then activate the `variant-v1` default at `2026-09-15T08:47:36Z`. All 764 pre-existing drafts remained `legacy`. No catalogue-wide code rewrite was run.
+- Next 16.3.5 and Sharp 0.35.4 address the verified production dependency advisories. Camera libraries are pinned to Node 22-compatible releases. Runtime audit reports zero vulnerabilities; two development-only moderate findings require an unrelated Vitest major upgrade.
+
+**Verified:**
+- Focused suites: 147 tests across 14 files, plus 5 preparation-route tests, all passed (152 total). Typecheck and ESLint on changed files passed. Local and VPS production builds passed. Three secret-isolation checks passed with non-secret sentinels, followed by a normal build.
+- Independent ZXing decoding recovered the exact saved codes from generated QR and Code 128 label images. This proves digital rendering, not physical printing.
+- Temporary PostgreSQL: 100 concurrent allocations over 20 connections produced 100 distinct parents and 300 distinct variant codes. Sparse Gold/7, Gold/8 and Silver/8 persisted independent stock and summed to 47. Duplicate/missing dimensions and legacy combinations were rejected; single-option paths remained valid.
+- QC database proof: 100 simultaneous scans for 12 units accepted exactly 12 and rejected 88 extras; 40 deliveries of one UUID counted once. Completion races, sticky invalidation, reset generations, undo ownership, expired snapshots and RLS/RPC grants passed.
+- Real Shopify zero-stock DRAFT: three sparse combinations received distinct matching SKU/Barcode values and retained variant IDs after reordering. The temporary product was deleted and its absence verified. No customer orders were created, scanned, completed or fulfilled.
+- Live authenticated HTTP: `/qc`, `/labels`, `/console` returned 200; 30 Shopify orders loaded. Qimati5713 opened with 7 lines/7 remaining units and a zero-count checking session. Unauthorized API access returned 401 and a foreign-origin POST returned 403. The deployed service-role RPC accepted scans, rejected incomplete completion and extras, and passed exact completion inside an always-rolled-back fictional-order transaction.
+- Browser checks used the actual QC and combination components with fictional API responses: counts/ticks, wrong size, exact completion, extra rejection after completion, recount, and independent colour/size/stock editing passed. Production browser reached normal Loupe login; authenticated production behavior was checked through HTTP without changing operator access.
+- Evidence and source hashes: `/Users/yash/Documents/ChatGPT/QIMATI/output/qc-system/loupe-label-preview/implementation-receipt.json`; adjacent production release/schema/activation/readback receipts, local DB receipts, Shopify readback/cleanup, build/isolation logs and runtime audit. Public health/login both returned 200 at `2026-09-15T08:51:01Z`.
+
+**Not finished / operating limits:**
+- The team must print and scan one sticker on an actual pouch before bulk printing; printer dimensions and phone-camera permission/device behavior are not physically verified. Default QR is 40 × 25 mm and dimensions are adjustable.
+- Existing stock needs per-product **Labels → Prepare codes**, review/save, then physical relabeling. Older drafts keep their existing policy; start a new draft for colour–size combinations. Arbitrary additional option dimensions cannot be created in Console, though existing unusual Shopify variants can receive stable labels.
+- The checklist covers the whole remaining shipping order across locations. Variant labels do not serialize individual pieces: operators must scan once, wait for acceptance, and move each pouch into the checked box. Shopify fulfillment remains a separate action.
+
+**Surprises:** the initial Supabase connector account exposed an older unrelated project, so deployment used the verified current runtime PostgreSQL connection with certificate validation. No writes went to the older project. Worker limit exhaustion required the integration owner to finish and verify the remaining code. Worktrees remain available; no live env files were copied into the integration worktree.
+
+**Next session should start with:** help the operator prepare one existing product's codes, print a single pouch sticker and run a physical scan trial before rolling labels out to the rest of the stock. Deployment is complete; do not reapply migrations or rename the catalogue automatically.
+
+---
+
 ## 2026-09-15 — Clarified colour × size coverage before release
 
 **Goal this session:** answer whether the local barcode change covers all variants and capture the owner's genuine colour-with-sizes products.
