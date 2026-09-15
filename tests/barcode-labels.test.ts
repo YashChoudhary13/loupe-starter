@@ -9,13 +9,13 @@ const clientFor = (graphql: ReturnType<typeof vi.fn>) => ({ graphql }) as unknow
 const page = (nodes: unknown[]) => ({ productVariants: { nodes, pageInfo: { hasNextPage: false, endCursor: null } } })
 
 describe('printable labels', () => {
-  it('fits a compact QR and its four-module quiet zone on 40 × 25 mm pouch labels', () => {
-    const f = form('1'); f.set('symbology', 'qr'); f.set('width', '40'); f.set('height', '25')
+  it('fits a compact QR and its four-module quiet zone on 38 × 25 mm pouch labels', () => {
+    const f = form('1'); f.set('symbology', 'qr'); f.set('width', '38'); f.set('height', '25')
     const html = renderLabelDocument(parseLabelRequest(f), [variant])
     expect(html).toContain('padding:2mm')
-    expect(html).toContain('40mm 25mm')
+    expect(html).toContain('38mm 25mm')
     expect(html).toContain('2D scanner or phone')
-    expect(qrSvg(variant.barcode!, 40, 25)).toContain('width:14.5mm')
+    expect(qrSvg(variant.barcode!, 38, 25)).toContain('width:14.5mm')
     expect(() => qrSvg('X'.repeat(64), 30, 25)).toThrow(/larger label/)
   })
   it('prints exactly the selected physical copies using the saved barcode', () => {

@@ -29,9 +29,9 @@ Prepare one product at a time and relabel its physical stock together. The rollo
 
 One saleable packed unit gets one sticker. A pair or fixed set sold as one Shopify unit needs one sticker on the package. Twelve identical units need twelve copies of that option's sticker; stock is shown as a reference, not an automatic copy count.
 
-Start with adjustable **QR, 40 × 25 mm** on opaque white adhesive stock. Put the sticker outside a flat part of the plastic pouch, away from folds and seals. Both QR and Code 128 encode the saved Barcode field. Code 128 needs wider labels, often 70 × 30 mm or more. The renderer refuses undersized symbols and keeps clear scan margins. Label length can require wider paper.
+The owner confirmed **38 × 25 mm** labels on 15 September 2026. This is now the default paper size with **QR** selected. Use opaque white adhesive stock. Put the sticker outside a flat part of the plastic pouch, away from folds and seals. Both QR and Code 128 encode the saved Barcode field. Code 128 needs wider labels, often 70 × 30 mm or more. The renderer refuses undersized symbols and keeps clear scan margins. Label length can require wider paper.
 
-Choose matching roll paper, 100% print scale, no browser headers/footers. Print and scan one sticker on a real pouch before printing batches. No printer specification or physical print test has been supplied yet. This is a roll-label layout, not an A4 sticker-sheet template. Missing, duplicate or not-yet-indexed saved codes block printing.
+Choose matching roll paper, 100% print scale, no browser headers/footers. Print and scan one sticker on a real pouch before printing batches. The label size is confirmed; printer model, resolution and a physical print test are still pending. This is a roll-label layout, not an A4 sticker-sheet template. Missing, duplicate or not-yet-indexed saved codes block printing.
 
 No Retail Barcode Labels subscription is needed. Internal alphanumeric codes are not GS1-issued GTINs and must not be represented as such to sales-channel feeds.
 
