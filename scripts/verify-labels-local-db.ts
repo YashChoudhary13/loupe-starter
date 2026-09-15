@@ -32,6 +32,8 @@ async function main() {
     const migration = readFileSync('supabase/migrations/20260915080000_variant_barcode_scheme.sql', 'utf8')
     await pool.query(allocator)
     await pool.query(migration)
+    assert.match((await pool.query("select column_default from information_schema.columns where table_name='product_drafts' and column_name='sku_scheme'")).rows[0].column_default, /legacy/)
+    await pool.query(readFileSync('supabase/migrations/20260915083506_activate_variant_codes.sql','utf8'))
     await pool.query("insert into product_drafts(id,title) values ('new','New draft')")
     const schemes = (await pool.query('select id,sku_scheme from product_drafts order by id')).rows
     assert.deepEqual(schemes, [{ id: 'new', sku_scheme: 'variant-v1' }, { id: 'old', sku_scheme: 'legacy' }])

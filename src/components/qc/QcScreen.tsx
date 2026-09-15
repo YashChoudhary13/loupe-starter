@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { QcCommand, QcView } from '@/lib/qc/types'
 import { parseQcCommand } from '@/lib/qc/validation'
+import { CameraScan } from './CameraScan'
 
 const button = 'rounded-pill px-5 py-3 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
 const time = (value: string) => new Date(value).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Kolkata' })
@@ -88,12 +89,13 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const lastOwn = view.events.find(event => event.outcome === 'accepted' && event.actor_id === view.operatorId && event.generation === view.session.generation && !undone.has(event.id))
   const passed = view.session.status === 'passed' && verified && !recoveryRequired && !pending && !view.order.blockedReason
 
-  function scan(event: FormEvent) {
-    event.preventDefault()
-    if (blocked || !code.trim() || passed) return
-    try { void send(parseQcCommand({ action: 'scan', requestId: crypto.randomUUID(), code, expectedGeneration: view.session.generation })) }
+  function submitCode(scannedCode: string) {
+    if (blocked || !scannedCode.trim()) return
+    try { void send(parseQcCommand({ action: 'scan', requestId: crypto.randomUUID(), code: scannedCode, expectedGeneration: view.session.generation })) }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Scan a valid code.'); input.current?.select() }
   }
+
+  function scan(event: FormEvent) { event.preventDefault(); submitCode(code) }
 
   return <section className="h-full overflow-auto px-4 py-5 md:px-8">
     <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/qc" className="rounded-pill py-2 text-[13px] underline focus-visible:outline-2">← Order QC</Link><Link href="/labels" className={`${button} bg-white`}>Prepare labels</Link></div>
@@ -101,8 +103,9 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
     <p className="mt-4 max-w-3xl text-[12px] leading-relaxed text-ink-soft">Scan one pouch, wait for acceptance, then move it into this order’s box. A pair or set sold as one unit needs one scan. Check the whole remaining order together, including items at other locations. Repeated scans of the same physical pouch cannot be distinguished.</p>
     {(view.order.blockedReason || stale) && <div role="alert" className="mt-4 rounded-panel bg-white p-4 text-[13px] text-amber">{view.order.blockedReason || 'Shopify changed this order’s items, quantities or codes. Previous counts are preserved in history. Start a fresh checklist and recount every unit.'}</div>}
     <div className="sticky top-0 z-10 mt-5 rounded-card bg-white p-4 shadow-sm md:p-5">
-      <form onSubmit={scan} className="flex flex-wrap items-end gap-3"><label className="grid min-w-0 flex-1 gap-2 text-[12px]" htmlFor="qc-code">Scan barcode or SKU<input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked || passed} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Click here, scan, then Enter" className="min-w-0 rounded-pill bg-chip px-4 py-3 font-mono text-[16px] focus:outline-2 focus:outline-ink" /></label><button disabled={blocked || passed || !code.trim()} className={`${button} bg-ink text-white`}>{busy ? 'Checking…' : 'Check 1 unit ↵'}</button></form>
+      <form onSubmit={scan} className="flex flex-wrap items-end gap-3"><label className="grid min-w-0 flex-1 gap-2 text-[12px]" htmlFor="qc-code">Scan barcode or SKU<input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Click here, scan, then Enter" className="min-w-0 rounded-pill bg-chip px-4 py-3 font-mono text-[16px] focus:outline-2 focus:outline-ink" /></label><button disabled={blocked || !code.trim()} className={`${button} bg-ink text-white`}>{busy ? 'Checking…' : 'Check 1 unit ↵'}</button></form>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-soft"><span>{verified ? `Shopify verified at ${time(view.session.checked_at)}` : 'Shopify verification needed'} · {busy ? 'Wait for the result before the next scan' : '2D USB/Bluetooth scanner with Enter'}</span><button disabled={busy || !!pending} onClick={() => void refresh()} className="rounded-pill px-3 py-1 underline focus-visible:outline-2 disabled:opacity-40">Refresh order</button></div>
+      {!blocked && <CameraScan key={view.session.generation} onCode={submitCode} />}
       {notice && <p role={notice.attention ? 'alert' : 'status'} aria-live="polite" className={`mt-3 text-[13px] ${notice.attention ? 'text-amber' : 'text-ink'}`}>{notice.text}</p>}
       {error && <p role="alert" className="mt-3 text-[13px] text-amber">{error}</p>}
       {pending && !busy && <button onClick={() => void send(pending)} className={`${button} mt-3 bg-ink text-white`}>Retry the same request safely</button>}

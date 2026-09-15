@@ -1,79 +1,70 @@
-# Loupe labels and variant codes
+# Loupe labels and order QC
 
-Prepared locally on 15 September 2026. This feature is not deployed and has not changed the live catalogue.
+The owner approved implementation and production deployment on 15 September 2026. See the newest `PROGRESS.md` entry for the deployed commit and verification evidence.
 
-## Operator workflow
+## New listings
 
-1. Create a new listing in Loupe and select its colours, sizes or numbered choices. The editor previews a separate SKU for each option.
-2. Save and wait for the Shopify push to finish. Loupe reserves the product number and writes each option's SKU into Shopify's Barcode field too.
-3. Open **Labels** in the sidebar, or **Open saved labels** in the editor. Search by the parent SKU (e.g. NK1333) or an exact variant SKU.
-4. Enter a copy count for each option. Stock is a reference, not a default print count. Twelve identical White units need twelve copies of the White label.
-5. For small plastic jewellery pouches, start with **QR, 40 × 25 mm**. This is an adjustable sample size, not a verified fit for Qimati's packaging. Use an opaque white adhesive label on the outside of a flat part of the pouch, away from folds and seals. QR scanning needs a 2D scanner or a compatible phone scanning screen. Code 128 is also available; the longer option codes generally need wider paper, such as 70 × 30 mm.
-6. Preview checks the saved Shopify barcode, including collisions with another variant's SKU or barcode. Missing, ambiguous or unconfirmed codes block the print run. Shopify search indexing delays can require a retry.
-7. Select the matching paper size in the printer, 100% scale, no margins, and disable browser headers/footers. Print and scan one sticker on a real pouch before printing the batch. The layout is for individual roll labels; it is not an A4 sticker-sheet template.
+1. In Console choose **One stock**, **By colour**, **By size**, **Numbered choices**, or **Colour + size**.
+2. In Colour + size, add only actual combinations. Gold / 7, Gold / 8 and Silver / 8 are three rows with independent stock. Silver / 7 is not created automatically. Up to 100 choices are supported.
+3. Save and wait for the Shopify push. New drafts receive an atomic parent number and a unique SKU for every option; the same value is written into Barcode. Reordering preserves codes and Shopify variant IDs. Renaming an option can require new stickers.
+4. Open **Labels**, search the parent SKU, choose copies, and preview/print.
 
-Label one **saleable packed unit**: a pair or a fixed set sold as one Shopify unit gets one label on that package. Do not assume one earring equals one order unit. Every physical unit of the same option repeats its option code; these are not individual serial numbers.
-
-## Newly confirmed requirement: colour with sizes
-
-The owner confirmed that some products have both colour and size, with different
-sizes available for each colour. The current local implementation does **not**
-create those combinations: Loupe's editor, saved variant rows and publisher still
-support one mode at a time (`none`, `colour`, `size`, `number`). Do not describe
-that as support for every variant configuration or deploy it as a complete
-solution to this expanded requirement.
-
-Each actual colour–size pair must become one Shopify variant with its own stock,
-SKU and matching barcode. For example, Gold/7, Gold/8 and Silver/8 are three
-variants; Silver/7 must not be invented if it is not offered. A prospective code
-is `RS004-C-GOLD-S-7`; this combined-code generator is not implemented yet.
-The editor should allow the operator to select sizes and quantities within each
-colour, while publishing Color and Size as separate Shopify options. QC should
-match the exact Shopify variant ID, so a right colour with the wrong size is a
-rejected item. Support needs to extend the saved model, validation, publishing,
-reconciliation and previews together. Existing multi-option Shopify variants can
-only be labeled by the current Labels feature if their saved barcodes are already
-unique and valid; that does not mean Loupe can create or edit them yet.
-
-## Code policy
-
-| Listing | SKU and Shopify Barcode for new drafts |
+| Option | Example new SKU and Barcode |
 | --- | --- |
-| Necklace 1333, White | NK1333-C-WHITE |
-| Necklace 1333, Green | NK1333-C-GREEN |
-| Ring 004, Size 7 | RS004-S-7 |
-| Ring 004, numbered choice 7 | RS004-N-7 |
-| Earrings 004, no options | ER004 |
+| Necklace, White | NK1333-C-WHITE |
+| Ring, size 7 | RS004-S-7 |
+| Ring, Gold, size 7 | RS004-C-GOLD-S-7 |
+| Numbered choice 7 | RS004-N-7 |
+| No options | ER004 |
 
-The parent number is still allocated by the existing atomic Postgres allocator. Codes derive from option identity, not row position: reordering choices or retrying a publish does not renumber them. Colour aliases follow the existing Shopify colour canonicalizer. Changing an option's meaning/name can change its code and requires new labels. Normalization collisions are blocked; arbitrary custom option names are not guaranteed to be encodable.
+Existing drafts keep the legacy policy so retries cannot silently relabel stock. Finish publishing an older draft, then prepare its codes from Labels. Start a new draft for colour–size combinations. Other arbitrary custom option dimensions cannot be created in Console; existing Shopify variants with unusual option names can still receive stable codes in Labels.
 
-QR and Code 128 encode the same saved barcode text. No Retail Barcode Labels app is required. These are internal inventory codes, not GS1-issued UPC/EAN/GTINs. Do not present them as manufacturer GTINs to a marketplace or sales-channel feed.
+## Existing stock
 
-Existing drafts, including unfinished or failed drafts, remain on `legacy`. The migration does not rewrite their SKUs or barcodes. New rows use `variant-v1`; normal draft editing cannot flip the scheme. Changing older stock needs a separate migration tied to Shopify variant IDs and physical relabeling. The general publisher must not be used as a bulk catalogue repair because it also writes stock, prices, options and media.
+Search the product in **Labels → Prepare codes**. Review the before/after mapping and press **Save these codes to Shopify** when ready to print and replace that product's stickers. This targeted operation updates only variant SKU and Barcode, keeping variant IDs, options, prices, stock and media. It rereads the product before applying and refuses a changed preview or duplicate identities. Existing distinct barcodes are preserved, including manufacturer codes. Unusual historical option names use the Shopify variant number in their suffix.
 
-## Release and verification
+Prepare one product at a time and relabel its physical stock together. The rollout does not automatically rewrite the entire catalogue. Old printed labels and shared parent SKUs cannot reliably distinguish variants. Open orders continue to match the same Shopify variant IDs; changing their codes invalidates any saved QC checklist. Conflicting product numbers require a deliberate correction in Shopify.
 
-- Worktree: `/Users/yash/Desktop/Qimati-worktrees/loupe-barcode-labels`, branch `codex/loupe-barcode-labels`, based on `aa1db00`.
-- Apply `20260915090000_variant_barcode_scheme.sql` before serving the new application. The application selects the new column, so deploying code first breaks draft reads.
-- Coordinate a short pause in new listing saves while applying the migration and switching releases: the older application does not know the new default policy.
-- Confirm the migration history and current production branch before release. A push to `main` triggers production deployment automatically; no commit, push, migration or deployment was performed in this implementation session.
-- Test one new Shopify DRAFT with White and Green, read back both SKU/barcode values, reorder and save again, and verify variant IDs are preserved. Check an older draft remains unchanged. Run these against a designated test product before real labeling.
-- Isolated database proof (never reads `.env`): `npx tsx scripts/verify-labels-local-db.ts`. Requires local PostgreSQL binaries, with optional `LOUPE_TEST_PG_BIN`. It starts a temporary Unix-socket-only database and stops it after testing migration defaults and 100 concurrent allocator requests; it does not test the full deployed schema.
-- Generate samples locally after `npm run build`: `npx tsx scripts/preview-labels.tsx /tmp/loupe-label-preview`. These samples use fictional fixtures and are visibly marked as samples.
-- Rollback requires keeping the new schema and pausing saves of new-policy drafts until a compatible publisher is restored. Do not drop the scheme column or silently revert its rows to legacy.
+## Printing on pouches
 
-## Remaining QC work
+One saleable packed unit gets one sticker. A pair or fixed set sold as one Shopify unit needs one sticker on the package. Twelve identical units need twelve copies of that option's sticker; stock is shown as a reference, not an automatic copy count.
 
-This change supplies listing identity and label printing. It does not implement an order scanning dashboard or mark orders fulfilled.
+Start with adjustable **QR, 40 × 25 mm** on opaque white adhesive stock. Put the sticker outside a flat part of the plastic pouch, away from folds and seals. Both QR and Code 128 encode the saved Barcode field. Code 128 needs wider labels, often 70 × 30 mm or more. The renderer refuses undersized symbols and keeps clear scan margins. Label length can require wider paper.
 
-The earlier QC demo and setup plan in `QIMATI/output/qc-system` describe the separate order flow. That flow must load current unfulfilled Shopify line items, match exact variant IDs, count one saleable unit per scan, reject unknown/wrong/excess codes, and refuse completion while quantities are short. Changes to the order must invalidate stale progress. QC completion and Shopify fulfillment must remain separate actions.
+Choose matching roll paper, 100% print scale, no browser headers/footers. Print and scan one sticker on a real pouch before printing batches. No printer specification or physical print test has been supplied yet. This is a roll-label layout, not an A4 sticker-sheet template. Missing, duplicate or not-yet-indexed saved codes block printing.
 
-Repeated option codes cannot tell two identical physical pieces apart. A checker must scan each package once and move it to the checked area; detecting a repeated scan of the same physical piece would require unit serial numbers. The proposed codes do distinguish colours, sizes and numbered options.
+No Retail Barcode Labels subscription is needed. Internal alphanumeric codes are not GS1-issued GTINs and must not be represented as such to sales-channel feeds.
 
-Before migrating old stock, prepare a read-only mapping of product/variant IDs, old and proposed codes, existing barcodes and affected open orders. Preserve any manufacturer barcode and stop on conflicting identities. Relabel the physical stock and handle open orders together with that reviewed mapping.
+## Order QC
 
-## References
+1. Open **Order QC**, find the Shopify order, and open its checklist.
+2. Check the whole remaining shipping order together. It includes remaining units at other locations; this is not a per-location shipment checklist.
+3. With a 2D USB/Bluetooth scanner, focus the code field and configure Enter after every scan. Alternatively tap **Scan one pouch with camera**, allow camera access, and point at one QR/barcode. Camera decoding stays on the device and stops after one result.
+4. Wait for acceptance, then move that pouch into the checked area. Each accepted scan adds one saleable unit. Wrong variants, ambiguous codes and extras are rejected. A completed row is ticked and crossed out.
+5. Use **Complete QC** only when all quantities are checked. This saves the checker and time. Fulfillment remains a separate Shopify action.
 
-- Shopify permits a barcode string in [ProductVariantSetInput](https://shopify.dev/docs/api/admin-graphql/2026-07/input-objects/ProductVariantSetInput).
-- Rendering uses [bwip-js](https://bwip-js.metafloor.com/), version 4.11.4, locally on the server.
-- QR printing preserves [DENSO WAVE's four-module quiet zone](https://www.qrcode.com/en/howto/code.html). The proposed 0.5 mm modules still require a real printer/scanner test.
+Counts and audit history survive reloads. Network retries retain the same request ID and cannot double count. Recount starts a new checklist and preserves previous history; undo requires a reason and removes one of the checker's own accepted scans. Concurrent scans are serialized; scans from a checklist that was reset cannot count toward its replacement.
+
+Shopify is checked on every action, when reopening the screen and every 30 seconds while visible. Changes to variant identity, codes or remaining quantities invalidate saved progress. Cancellation, held/scheduled whole orders, custom/deleted variants and empty shipping orders block completion. The order list says **Previously passed · recheck** until the order is opened and reverified. Shopify and Loupe are separate systems: edits after the last verification require another check before fulfillment.
+
+Repeated variant labels do not identify individual physical pieces. Scanning the same pouch twice can count as two units if the order still needs two. The physical scan-and-move procedure is essential; unit serial numbers would be a different system.
+
+## Deployment and verification
+
+Production is the Qimati VPS at https://loupe.qimati-eng.site. The configured Supabase connector account lists an older Loupe project; the current runtime project was verified from the server environment. Use the existing authenticated PostgreSQL deployment connection for this release, not that older project.
+
+1. Apply `20260915080000_variant_barcode_scheme.sql`, `20260915081237_order_qc_sessions.sql`, then `20260915081241_colour_size_combinations.sql` transactionally. The initial default stays legacy during rollout.
+2. Deploy the compatible app and verify health.
+3. Apply `20260915083506_activate_variant_codes.sql` to opt newly created drafts into unique codes. Existing rows retain their policy.
+
+Rollback: keep schema and saved identities. A compatible prior release is required for new-policy drafts; do not restore a publisher that ignores their codes. Never drop QC history or convert existing new-policy rows to legacy.
+
+Safe local proofs: `scripts/verify-combinations-local-db.ts` (schema-only pre-change fixture, sparse save/reload/reorder, invalid rows, allocator concurrency), `scripts/verify-qc-local-db.ts` (scan cap, races, UUID retries, reset generation, audit, RLS). Both create private temporary PostgreSQL instances and never read `.env`. Focused unit tests cover identity, payloads, reconciliation, label rendering/decoding, routes and QC. Do not run the old broad integration suite against live credentials: its helpers reset counters.
+
+`scripts/verify-variant-barcodes-live.ts` is an explicit opt-in probe creating one zero-stock Shopify DRAFT and deleting only that test product after verifying codes and IDs across reordering. It does not create or alter customer orders. Camera permission/device behavior and a physical printer/scanner still need testing on the team's hardware.
+
+## Sources
+
+- Shopify [ProductVariantSetInput](https://shopify.dev/docs/api/admin-graphql/2026-07/input-objects/ProductVariantSetInput) and [targeted bulk variant update](https://shopify.dev/docs/api/admin-graphql/2026-07/mutations/productVariantsBulkUpdate).
+- Local rendering: [bwip-js](https://bwip-js.metafloor.com/). Camera decoding: [ZXing browser](https://github.com/zxing-js/browser).
+- QR labels preserve [DENSO WAVE's four-module quiet zone](https://www.qrcode.com/en/howto/code.html).

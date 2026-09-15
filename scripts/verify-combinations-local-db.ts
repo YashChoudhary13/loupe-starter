@@ -30,6 +30,8 @@ async function main() {
     const allocator = readFileSync('supabase/migrations/20260728120900_next_sku.sql', 'utf8')
     const migration = readFileSync('supabase/migrations/20260915080000_variant_barcode_scheme.sql', 'utf8')
     await pool.query(migration)
+    assert.match((await pool.query("select column_default from information_schema.columns where table_name='product_drafts' and column_name='sku_scheme'")).rows[0].column_default, /legacy/)
+    await pool.query(readFileSync('supabase/migrations/20260915083506_activate_variant_codes.sql','utf8'))
     await pool.query(readFileSync('supabase/migrations/20260915081241_colour_size_combinations.sql','utf8'))
     const id = (await pool.query('insert into product_drafts(category_id) values ($1) returning id', [category])).rows[0].id
     const save = async (draft: string, kind: string, rows: object[]) => pool.query(`select save_product_draft(p_draft_id=>$1,p_expected_updated_at=>null,p_category_id=>$2,p_material_id=>null,p_title_suffix=>null,p_price_paise=>12000,p_weight_g=>20,p_stock=>0,p_variant_kind=>$3,p_variants=>$4::jsonb,p_actor=>'local-verification')`, [draft,category,kind,JSON.stringify(rows)])
