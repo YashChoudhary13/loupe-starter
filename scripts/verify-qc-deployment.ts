@@ -53,13 +53,16 @@ async function main() {
     await pg.query('begin');await pg.query('set local role service_role')
     const orderId=`gid://shopify/Order/999999${Date.now()}`
     const snapshot={id:orderId,name:'ROLLBACK-ONLY QC VERIFICATION',lines:[{id:'fixture-line',variantId:'fixture-variant',title:'Fixture',required:2}],blockedReason:null}
-    const call=async(action:string,version:number|null=null)=>pg.query(`select qc_command(p_shop_domain=>$1,p_order_id=>$2,p_actor_id=>$3,p_action=>$4,p_snapshot=>$5,p_fingerprint=>$6,p_checked_at=>clock_timestamp(),p_request_id=>gen_random_uuid(),p_code=>'FIXTURE',p_variant_id=>'fixture-variant',p_expected_version=>$7,p_expected_generation=>1) result`,[new ShopifyClient().config.storeDomain,orderId,user.id,action,JSON.stringify(snapshot),'a'.repeat(64),version])
+    const call=async(action:string,version:number|null=null,extra?:{undo?:string})=>pg.query(`select qc_command(p_shop_domain=>$1,p_order_id=>$2,p_actor_id=>$3,p_action=>$4,p_snapshot=>$5,p_fingerprint=>$6,p_checked_at=>clock_timestamp(),p_request_id=>gen_random_uuid(),p_code=>'FIXTURE',p_variant_id=>'fixture-variant',p_expected_version=>$7,p_expected_generation=>1,p_undo_event_id=>$8) result`,[new ShopifyClient().config.storeDomain,orderId,user.id,action,JSON.stringify(snapshot),'a'.repeat(64),version,extra?.undo??null])
     assert.equal((await call('scan')).rows[0].result.event.outcome,'accepted')
     assert.equal((await call('complete',1)).rows[0].result.event.outcome,'incomplete')
     assert.equal((await call('scan')).rows[0].result.event.outcome,'accepted')
-    assert.equal((await call('scan')).rows[0].result.event.outcome,'extra')
-    assert.equal((await call('complete',2)).rows[0].result.event.outcome,'passed')
-    checks.productionRpc='service_role scan/incomplete/extra/complete passed; transaction rolled back'
+    const extra=(await call('scan')).rows[0].result
+    assert.equal(extra.event.outcome,'extra')
+    assert.equal((await call('complete',2)).rows[0].result.event.outcome,'extras')
+    assert.equal((await call('clear_extra',2,{undo:extra.event.id})).rows[0].result.event.outcome,'removed')
+    assert.equal((await call('complete',3)).rows[0].result.event.outcome,'passed')
+    checks.productionRpc='service_role scan/incomplete/extra/clear_extra/complete passed; transaction rolled back'
   } finally {await pg.query('rollback');await pg.end()}
   checks.customerOrderScans=0;checks.customerOrderFulfillments=0
   checks.verifiedAt=new Date().toISOString()

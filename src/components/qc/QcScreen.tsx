@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { QcCommand, QcView } from '@/lib/qc/types'
 import { parseQcCommand } from '@/lib/qc/validation'
+import { summarizeQc } from '@/lib/qc/summary'
 import { CameraScan } from './CameraScan'
 
 const button = 'rounded-pill px-5 py-3 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
@@ -21,6 +22,8 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const [reason, setReason] = useState('')
   const [resetOpen, setResetOpen] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const cameraOpen = useRef(false)
+  const cameraOpenChanged = useCallback((open: boolean) => { cameraOpen.current = open }, [])
   const inFlight = useRef(false)
   const sequence = useRef(0)
   const endpoint = `/api/qc/${view.order.id.split('/').pop()}`
@@ -74,10 +77,10 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       if (!response.ok) throw new Error(payload.error || 'QC could not confirm this request. Retry it.')
       setView(payload); setVerified(true)
       sessionStorage.removeItem(pendingKey); setPending(null); setCode(''); setReason(''); setResetOpen(false); setRecoveryRequired(false)
-      setNotice({ text: `${payload.replayed ? 'Saved request confirmed. ' : ''}${payload.event?.message ?? 'QC saved.'}`, attention: !['accepted', 'passed', 'undone', 'reset'].includes(payload.event?.outcome) })
+      setNotice({ text: `${payload.replayed ? 'Saved request confirmed. ' : ''}${payload.event?.message ?? 'QC saved.'}`, attention: !['accepted', 'passed', 'undone', 'reset', 'removed'].includes(payload.event?.outcome) })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No confirmed response. Retry this request before scanning another unit.')
-    } finally { inFlight.current = false; setBusy(false); input.current?.focus() }
+    } finally { inFlight.current = false; setBusy(false); if (!cameraOpen.current) input.current?.focus() }
   }
 
   const stale = view.session.status === 'stale'
@@ -88,11 +91,12 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const undone = new Set(view.events.filter(event => event.undo_of).map(event => event.undo_of))
   const lastOwn = view.events.find(event => event.outcome === 'accepted' && event.actor_id === view.operatorId && event.generation === view.session.generation && !undone.has(event.id))
   const passed = view.session.status === 'passed' && verified && !recoveryRequired && !pending && !view.order.blockedReason
+  const wrap = summarizeQc(view.session, view.events)
 
   function submitCode(scannedCode: string) {
     if (blocked || !scannedCode.trim()) return
     try { void send(parseQcCommand({ action: 'scan', requestId: crypto.randomUUID(), code: scannedCode, expectedGeneration: view.session.generation })) }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Scan a valid code.'); input.current?.select() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Scan a valid code.'); if (!cameraOpen.current) input.current?.select() }
   }
 
   function scan(event: FormEvent) { event.preventDefault(); submitCode(code) }
@@ -105,11 +109,11 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
     <div className="sticky top-0 z-10 mt-5 rounded-card bg-white p-4 shadow-sm md:p-5">
       <form onSubmit={scan} className="flex flex-wrap items-end gap-3"><label className="grid min-w-0 flex-1 gap-2 text-[12px]" htmlFor="qc-code">Scan barcode or SKU<input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Click here, scan, then Enter" className="min-w-0 rounded-pill bg-chip px-4 py-3 font-mono text-[16px] focus:outline-2 focus:outline-ink" /></label><button disabled={blocked || !code.trim()} className={`${button} bg-ink text-white`}>{busy ? 'Checking…' : 'Check 1 unit ↵'}</button></form>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-soft"><span>{verified ? `Shopify verified at ${time(view.session.checked_at)}` : 'Shopify verification needed'} · {busy ? 'Wait for the result before the next scan' : '2D USB/Bluetooth scanner with Enter'}</span><button disabled={busy || !!pending} onClick={() => void refresh()} className="rounded-pill px-3 py-1 underline focus-visible:outline-2 disabled:opacity-40">Refresh order</button></div>
-      {!blocked && <CameraScan key={view.session.generation} onCode={submitCode} />}
       {notice && <p role={notice.attention ? 'alert' : 'status'} aria-live="polite" className={`mt-3 text-[13px] ${notice.attention ? 'text-amber' : 'text-ink'}`}>{notice.text}</p>}
       {error && <p role="alert" className="mt-3 text-[13px] text-amber">{error}</p>}
       {pending && !busy && <button onClick={() => void send(pending)} className={`${button} mt-3 bg-ink text-white`}>Retry the same request safely</button>}
-      {passed && <div role="status" className="mt-4 rounded-panel bg-chip p-4 text-[13px]"><strong>✓ QC passed</strong><p className="mt-1">Every remaining shipping unit was checked at {time(view.session.completed_at!)}. Fulfill the order in Shopify after packing. Order changes will require a new check.</p></div>}
+      <CameraScan paused={blocked || resetOpen} onCode={submitCode} onOpenChange={cameraOpenChanged} />
+      {passed && <div role="status" className="mt-4 rounded-panel bg-chip p-4 text-[13px]"><strong>✓ QC passed</strong><p className="mt-1">Every remaining shipping unit was checked at {time(view.session.completed_at!)}. Extra items were confirmed removed. Fulfill the order in Shopify after packing. Order changes will require a new check.</p></div>}
     </div>
     <div className="mt-4 grid gap-3">{lines.map(line => {
       const count = stale ? 0 : view.session.counts[line.id] ?? 0
@@ -119,7 +123,19 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
         <div className="text-right"><p className="text-[20px] font-medium tabular-nums">{count}<span className="text-[14px] text-ink-soft"> / {line.required}</span></p><p className="mt-1 text-[12px] text-ink-soft">{done ? 'Checked' : `${line.required - count} to scan`}</p></div>
       </article>
     })}</div>
-    <div className="mt-5 flex flex-wrap gap-3"><button disabled={blocked || checked !== required || required === 0 || passed} onClick={() => void send({ action: 'complete', requestId: crypto.randomUUID(), expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>Complete QC</button><button disabled={busy || !!pending} onClick={() => { setResetOpen(!resetOpen); setReason('') }} className={`${button} bg-white`}>Recount / undo</button></div>
+    {(wrap.missing.length > 0 || wrap.extras.length > 0) && <div className="mt-4 rounded-card bg-white p-5">
+      <h2 className="text-[15px] font-medium">End of QC</h2>
+      <p className="mt-2 text-[12px] text-ink-soft">Keep the camera on and scan every pouch. Missing items still need a scan. Extra items stay listed until you tick that you took them out of this order’s box.</p>
+      {wrap.missing.length > 0 && <div className="mt-4 grid gap-3">{wrap.missing.map(item => <article key={item.lineId} className="flex flex-wrap items-center justify-between gap-3 rounded-panel bg-chip p-4">
+        <div className="min-w-0"><h3 className="text-[14px] font-medium">{item.title}</h3><p className="mt-1 text-[13px] text-ink-soft">{item.variantTitle || 'One option'} · missing</p></div>
+        <p className="text-[20px] font-medium tabular-nums text-amber">{item.remaining}<span className="text-[14px] text-ink-soft"> short</span></p>
+      </article>)}</div>}
+      {wrap.extras.length > 0 && <div className="mt-4 grid gap-3"><p className="text-[12px] uppercase tracking-[0.11em] text-ink-soft">Extra items</p>{wrap.extras.map(item => <article key={item.eventId} className={`flex flex-wrap items-center justify-between gap-3 rounded-panel border bg-white p-4 ${item.removed ? 'border-ink' : 'border-amber'}`}>
+        <div className="min-w-0"><h3 className={`text-[14px] font-medium ${item.removed ? 'line-through' : ''}`}>{item.removed && '✓ '}{item.title}</h3><p className="mt-1 text-[13px] text-ink-soft">{item.kind === 'wrong' ? 'Not on this order' : 'Extra unit of a listed variant'}</p>{item.code && <p className="mt-2 break-all font-mono text-[12px]">{item.code}</p>}</div>
+        {item.removed ? <p className="text-[13px] font-medium">✓ Removed</p> : <button disabled={busy || !!pending || recoveryRequired || !verified || stale} onClick={() => void send({ action: 'clear_extra', requestId: crypto.randomUUID(), extraEventId: item.eventId, expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>Tick — removed</button>}
+      </article>)}</div>}
+    </div>}
+    <div className="mt-5 flex flex-wrap gap-3"><button disabled={blocked || !wrap.canPass || passed} onClick={() => void send({ action: 'complete', requestId: crypto.randomUUID(), expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>Complete QC</button><button disabled={busy || !!pending} onClick={() => { setResetOpen(!resetOpen); setReason('') }} className={`${button} bg-white`}>Recount / undo</button></div>
     {resetOpen && <div className="mt-4 rounded-card bg-white p-5"><h2 className="text-[15px] font-medium">Correct the checklist</h2><p className="mt-2 text-[12px] text-ink-soft">Undo removes one of your counted units. Starting fresh clears the current counts and keeps the previous checklist in the audit history.</p><label className="mt-4 grid gap-2 text-[12px]">Reason<input value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="For example: repacking into a new box" className="rounded-pill bg-chip px-4 py-3 focus:outline-2 focus:outline-ink" /></label><div className="mt-4 flex flex-wrap gap-3"><button disabled={blocked || !lastOwn || reason.trim().length < 3} onClick={() => lastOwn && void send({ action: 'undo', requestId: crypto.randomUUID(), undoEventId: lastOwn.id, expectedVersion: view.session.version, reason })} className={`${button} bg-chip`}>Undo my last counted unit</button><button disabled={busy || !!pending || !verified || !!view.order.blockedReason || reason.trim().length < 3} onClick={() => void send({ action: 'reset', requestId: crypto.randomUUID(), expectedVersion: view.session.version, reason })} className={`${button} bg-ink text-white`}>Start fresh · recount all {required} units</button></div></div>}
     <details className="my-5 rounded-card bg-white p-5"><summary className="cursor-pointer rounded-pill text-[14px] font-medium focus-visible:outline-2">Recent QC history · {view.events.length} events</summary><ol className="mt-4 grid gap-3">{view.events.map(event => <li key={event.id} className="border-b border-chip pb-3 text-[12px]"><div className="flex flex-wrap justify-between gap-2"><span>{event.actor_name} · {event.action} · checklist {event.generation}</span><time dateTime={event.created_at} className="text-ink-soft">{new Date(event.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} {time(event.created_at)}</time></div><p className="mt-1 text-ink-soft">{event.message}{event.code && ` · ${event.code}`}</p></li>)}</ol><p className="mt-3 text-[12px] text-ink-soft">Showing the most recent 40 events. Earlier checklists remain saved.</p></details>
   </section>

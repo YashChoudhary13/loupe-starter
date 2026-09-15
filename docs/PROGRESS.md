@@ -29,6 +29,23 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-15 — Continuous camera plus extra/missing wrap-up (local)
+
+**Goal this session:** keep the QC camera on while pouches are shown, record extras instead of only blocking them, and show missing plus extra items at the end with a tick that the extra was removed.
+
+**Built:**
+- Camera starts on and stays mounted; the existing clear-view gate still requires the pouch to leave the frame before the next scan.
+- Extra and not-on-order scans are saved. `summarizeQc` lists missing units and extras. `clear_extra` ticks an extra as removed. Complete QC is blocked until both lists are clear.
+- Migration `20260915081237` is unchanged; new `20260915173000_qc_extra_confirmation.sql` replaces `qc_command` for this behaviour. Not applied to production.
+
+**Verified:** focused vitest for summary, command parsing, camera gate and existing QC route/server tests. No live Shopify order was scanned. No production deploy or database push.
+
+**Not finished / known broken:** schema is not on Supabase yet, so production still shows the old “set it aside” extra message and cannot store removed ticks. Physical print/scan remains untested. Do not push `main` until the migration is applied in a short pause, then the app.
+
+**Next session should start with:** authorized schema apply + deploy, then one physical pouch trial.
+
+---
+
 ## 2026-09-15 — Confirmed 38 × 25 mm labels and deployed the new default
 
 **Goal this follow-up:** incorporate the owner's actual 38 × 25 mm label stock into the completed QC rollout.

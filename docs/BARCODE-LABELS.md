@@ -39,9 +39,11 @@ No Retail Barcode Labels subscription is needed. Internal alphanumeric codes are
 
 1. Open **Order QC**, find the Shopify order, and open its checklist.
 2. Check the whole remaining shipping order together. It includes remaining units at other locations; this is not a per-location shipment checklist.
-3. With a 2D USB/Bluetooth scanner, focus the code field and configure Enter after every scan. Alternatively tap **Scan one pouch with camera**, allow camera access, and point at one QR/barcode. Camera decoding stays on the device and stops after one result.
+3. With a 2D USB/Bluetooth scanner, focus the code field and configure Enter after every scan. Alternatively tap **Start camera scanning** once, allow camera access, and bring each pouch in front of the camera. It stays open while Loupe checks each scan. After acceptance, move the pouch into the checked box and leave the camera view clear for about a second until **Ready for the next pouch** appears. This also allows successive pouches with the same code. Use **Stop camera** when finished; decoding stays on the device.
 4. Wait for acceptance, then move that pouch into the checked area. Each accepted scan adds one saleable unit. Wrong variants, ambiguous codes and extras are rejected. A completed row is ticked and crossed out.
 5. Use **Complete QC** only when all quantities are checked. This saves the checker and time. Fulfillment remains a separate Shopify action.
+
+Repeated readable frames are suppressed. Scanning pauses during an unconfirmed request, order verification or a correction, without closing the camera. Brief missed reads do not rearm it; a clear interval and a stable new read are required. An unreadable or obscured label can still resemble an empty view, so the physical scan-and-move procedure remains necessary.
 
 Counts and audit history survive reloads. Network retries retain the same request ID and cannot double count. Recount starts a new checklist and preserves previous history; undo requires a reason and removes one of the checker's own accepted scans. Concurrent scans are serialized; scans from a checklist that was reset cannot count toward its replacement.
 

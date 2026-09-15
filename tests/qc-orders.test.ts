@@ -83,5 +83,9 @@ describe('QC input and fingerprint', () => {
     expect(() => parseQcCommand({ action: 'scan', expectedGeneration: 1, requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', code: 'NK 4' })).toThrow(/Spaces/)
     expect(() => parseQcCommand({ action: 'reset', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4 })).toThrow(/reason/)
     expect(() => parseQcCommand({ action: 'complete', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5' })).toThrow(/Refresh/)
+    expect(parseQcCommand({ action: 'clear_extra', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4, extraEventId: 'a1c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', reason: 'injected' })).toEqual({
+      action: 'clear_extra', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4, extraEventId: 'a1c6a240-bef7-4db4-9e09-0a8bc0f6fbe5',
+    })
+    expect(() => parseQcCommand({ action: 'clear_extra', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4 })).toThrow(/extra item/)
   })
 })

@@ -29,13 +29,13 @@ export async function loadQcView(orderId: string, operator: Operator, command?: 
     p_request_id: command?.requestId ?? null, p_code: command?.code ?? null,
     p_variant_id: resolution.variantId, p_rejection: resolution.rejection,
     p_expected_generation: command?.expectedGeneration ?? null,
-    p_expected_version: command?.expectedVersion ?? null, p_undo_event_id: command?.undoEventId ?? null,
+    p_expected_version: command?.expectedVersion ?? null, p_undo_event_id: command?.undoEventId ?? command?.extraEventId ?? null,
     p_reason: command?.reason ?? null,
   })
   if (error) throw new Error(`QC could not save this action. Retry the same request. ${error.message}`)
   const result = data as { session: QcSession; event?: QcEvent; replayed?: boolean }
   if (!result?.session) throw new Error('QC did not return saved counts. Retry the same request before scanning another item.')
-  const history = await db.from('qc_events').select('id,action,outcome,message,code,line_id,actor_id,actor_name,created_at,generation,undo_of')
+  const history = await db.from('qc_events').select('id,action,outcome,message,code,line_id,variant_id,actor_id,actor_name,created_at,generation,undo_of')
     .eq('session_id', result.session.id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(40)
   if (history.error) throw new Error('QC saved the action but could not read its history. Retry the same request; it will not count twice.')
   return { order, session: result.session, events: history.data as QcEvent[], operatorId: operator.id, event: result.event, replayed: result.replayed }

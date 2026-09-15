@@ -39,6 +39,7 @@ export interface QcEvent {
   message: string
   code: string | null
   line_id: string | null
+  variant_id: string | null
   actor_id: string
   actor_name: string
   created_at: string
@@ -55,7 +56,7 @@ export interface QcView {
   replayed?: boolean
 }
 
-export type QcAction = 'scan' | 'complete' | 'reset' | 'undo'
+export type QcAction = 'scan' | 'complete' | 'reset' | 'undo' | 'clear_extra'
 export interface QcCommand {
   action: QcAction
   requestId: string
@@ -63,5 +64,6 @@ export interface QcCommand {
   expectedGeneration?: number
   expectedVersion?: number
   undoEventId?: string
+  extraEventId?: string
   reason?: string
 }

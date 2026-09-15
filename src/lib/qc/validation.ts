@@ -11,7 +11,7 @@ export function parseQcCommand(value: unknown): QcCommand {
   const input = value as Record<string, unknown>
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   if (typeof input.requestId !== 'string' || !uuid.test(input.requestId)) throw new Error('Retry from the QC screen so the scan can be saved once.')
-  if (!['scan', 'complete', 'reset', 'undo'].includes(String(input.action))) throw new Error('Unknown QC action.')
+  if (!['scan', 'complete', 'reset', 'undo', 'clear_extra'].includes(String(input.action))) throw new Error('Unknown QC action.')
   const command: QcCommand = { action: input.action as QcCommand['action'], requestId: input.requestId }
   if (command.action === 'scan') {
     if (!Number.isSafeInteger(input.expectedGeneration) || Number(input.expectedGeneration) < 1) throw new Error('Refresh the current QC checklist before scanning.')
@@ -25,6 +25,10 @@ export function parseQcCommand(value: unknown): QcCommand {
   if (command.action === 'undo') {
     if (typeof input.undoEventId !== 'string' || !uuid.test(input.undoEventId)) throw new Error('Choose a saved scan to undo.')
     command.undoEventId = input.undoEventId
+  }
+  if (command.action === 'clear_extra') {
+    if (typeof input.extraEventId !== 'string' || !uuid.test(input.extraEventId)) throw new Error('Choose an extra item to confirm it was removed.')
+    command.extraEventId = input.extraEventId
   }
   if (command.action === 'reset' || command.action === 'undo') {
     if (typeof input.reason !== 'string' || input.reason.trim().length < 3 || input.reason.trim().length > 240) throw new Error('Enter a short reason (3–240 characters) for the audit history.')

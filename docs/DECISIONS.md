@@ -3520,3 +3520,20 @@ QC covers the complete remaining shipping order, explicitly including other loca
 Camera is an optional deliberate one-package action, using lazy-loaded `@zxing/browser@0.1.5` with `@zxing/library@0.21.3`, compatible with the existing Node 22 runtime. Newer releases require Node 24. QR and Code 128 symbols also pass an independent ZXing decode test. Real hardware remains an operator acceptance step.
 
 Release dependency audit found current production's Next/Sharp image path affected by [GHSA-2xp9-vwfh-vxw4](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4) and [GHSA-rgj7-g3m4-5g8c](https://github.com/lovell/sharp/security/advisories/GHSA-rgj7-g3m4-5g8c). Update Next/eslint-config-next to 16.3.5 and Sharp to 0.35.4 and apply non-breaking transitive fixes; rerun build and focused regressions. The remaining moderate Vitest mocker development-only advisory requires a major test-runner upgrade and has no running production mock server; it is outside this release.
+
+
+### D125 — Continuous camera QC with a clear-view gate (2026-09-15)
+
+The owner wants to start the camera once and bring successive pouches into view. Supersede D124's one-click-per-pouch behavior. Keep the camera mounted through busy, pending, stale and correction states; pause submission while those states apply. Do not refocus or select the text field while camera mode is open, avoiding the phone keyboard interrupting scanning.
+
+Use the installed ZXing continuous callback at explicit 100 ms attempt/success intervals. Require stable decoded text for 150 ms, then latch synchronously before sending. Rearm only after QC resumes and at least four no-decode frames span 900 ms; a detected/unreadable code resets this interval. A frame gap over 1500 ms resets timing, allowing slower phones without crediting a suspended tab as clear. Hidden views, muted/paused streams and corrections cannot submit. Stop tracks on exit and expose camera interruption errors. Existing request UUID, generation, count caps and retry behavior stay server-owned.
+
+This is accidental-repeat protection, not physical serial tracking. ZXing's multi-format reader can return NotFound for a blurred label too; the operator must remove each accepted pouch and wait for Ready. The [ZXing browser API](https://github.com/zxing-js/browser) supports continued scanning until controls.stop(). No new dependency, access permission, database schema or Shopify mutation is required for this change.
+
+### D126 — Extra and missing wrap-up with a removed tick (2026-09-15)
+
+The owner wants continuous scanning of every pouch, including items that do not belong on the order, then a finish list of extras and missing units. An extra/wrong scan is recorded and the camera stays on. It does not increment ordered counts. Complete QC requires every ordered unit scanned and every extra ticked as physically removed. Missing lines stay listed until scanned. Shopify fulfillment is still a separate action.
+
+Rejected: blocking the checker on “not in this order, remove it” with no durable extra list; client-only ticks that vanish on refresh.
+
+---
