@@ -27,7 +27,7 @@ interface PublishedDraftRow {
   price_paise: number
   weight_g: number | null
   sku_scheme?: SkuScheme
-  variant_kind: 'none' | 'colour' | 'number' | 'size'
+  variant_kind: 'none' | 'colour' | 'number' | 'size' | 'colour_size'
   reserved_sku: string
   reserved_handle: string
   shopify_product_id: string | null

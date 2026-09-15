@@ -564,7 +564,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
       .order('position', { ascending: true }),
     db
       .from('product_draft_variants')
-      .select('position, option_value, stock')
+      .select('position, option_value, size_value, stock')
       .eq('product_draft_id', draftId)
       .order('position', { ascending: true }),
   ])
@@ -656,9 +656,10 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     (variantsResult.data ?? []) as {
       position: number
       option_value: string
+      size_value?: string | null
       stock: number
     }[]
-  ).map((row) => ({ value: row.option_value, stock: row.stock, position: row.position }))
+  ).map((row) => ({ value: row.option_value, sizeValue: row.size_value ?? null, stock: row.stock, position: row.position }))
 
   return {
     id: draftRow.id,

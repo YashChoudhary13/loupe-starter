@@ -12,7 +12,7 @@ export interface DraftRow {
   readonly weight_g: number | null
   readonly stock: number
   readonly sku_scheme?: import('./variant-sku').SkuScheme
-  readonly variant_kind: 'none' | 'colour' | 'number' | 'size'
+  readonly variant_kind: 'none' | 'colour' | 'number' | 'size' | 'colour_size'
   readonly status: 'assembling' | 'publishing' | 'published' | 'failed'
   readonly reserved_sku: string | null
   readonly reserved_handle: string | null
@@ -56,6 +56,8 @@ export interface PublishImage {
 }
 
 export interface PublishVariant {
+  /** Only present for a colour + size combination; value is the colour. */
+  readonly sizeValue?: string | null
   readonly value: string
   readonly stock: number
 }

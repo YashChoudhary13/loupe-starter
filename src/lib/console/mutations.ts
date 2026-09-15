@@ -95,7 +95,7 @@ export interface DraftSaveInput {
   readonly weightG: number | null
   readonly stock: number
   readonly variantKind: VariantKind
-  readonly variants: readonly { value: string; stock: number }[]
+  readonly variants: readonly { value: string; sizeValue?: string | null; stock: number }[]
   readonly images: readonly {
     imageVersionId: string
     position: number

@@ -103,9 +103,11 @@ export interface DraftImageRef {
   readonly colourValue: string | null
 }
 
-export type VariantKind = 'none' | 'colour' | 'number' | 'size'
+export type VariantKind = 'none' | 'colour' | 'number' | 'size' | 'colour_size'
 
 export interface DraftVariant {
+  /** Only present for a colour + size combination; value is the colour. */
+  readonly sizeValue?: string | null
   /** Customer-facing Shopify option value: e.g. Gold or 17. */
   readonly value: string
   /** Inventory for this exact choice at the primary Shopify location. */

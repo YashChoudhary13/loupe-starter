@@ -91,7 +91,7 @@ export function validateDraftForPublish(
   const blocks: PublishBlock[] = []
   const { draft, category } = input
   try {
-    variantSkus('PREVIEW001', draft.variant_kind, input.variants.map(v => v.value), draft.sku_scheme ?? 'legacy')
+    variantSkus('PREVIEW001', draft.variant_kind, input.variants, draft.sku_scheme ?? 'legacy')
   } catch (error) {
     blocks.push({ code: 'variant_codes_invalid', field: 'variants', message: error instanceof Error ? error.message : 'Check variant names before creating barcodes.' })
   }

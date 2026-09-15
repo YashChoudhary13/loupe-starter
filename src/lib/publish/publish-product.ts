@@ -148,7 +148,7 @@ export async function loadPublishInput(
 
   const { data: variantRows, error: variantError } = await db
     .from('product_draft_variants')
-    .select('position, option_value, stock')
+    .select('position, option_value, size_value, stock')
     .eq('product_draft_id', draftId)
     .order('position', { ascending: true })
   if (variantError) {
@@ -156,8 +156,8 @@ export async function loadPublishInput(
   }
 
   const variants = (
-    (variantRows ?? []) as { option_value: string; stock: number; position: number }[]
-  ).map((row) => ({ value: row.option_value, stock: row.stock }))
+    (variantRows ?? []) as { option_value: string; size_value?: string | null; stock: number; position: number }[]
+  ).map((row) => ({ value: row.option_value, sizeValue: row.size_value ?? null, stock: row.stock }))
 
   return { draft, category, materialName, variants, images: await loadPublishImages(db, draftId) }
 }
@@ -435,7 +435,7 @@ export async function reserveIdentityForSave(
   actor?: string,
 ): Promise<ReservedIdentity> {
   const input = await loadPublishInput(db, draftId)
-  variantSkus('PREVIEW001', input.draft.variant_kind, input.variants.map(v => v.value), input.draft.sku_scheme ?? 'legacy')
+  variantSkus('PREVIEW001', input.draft.variant_kind, input.variants, input.draft.sku_scheme ?? 'legacy')
   await stepCounterPastShopifyNumbers(db, shopify, input, actor)
   return reserveIdentity(db, draftId, actor, false)
 }
@@ -460,7 +460,7 @@ export async function publishProduct(
   // and must say every reason at once (hard rule 8).
   if (!asDraft) assertPublishable(input, options)
   // Validate even Save Draft before a number is reserved or any Shopify write.
-  variantSkus('PREVIEW001', input.draft.variant_kind, input.variants.map(v => v.value), input.draft.sku_scheme ?? 'legacy')
+  variantSkus('PREVIEW001', input.draft.variant_kind, input.variants, input.draft.sku_scheme ?? 'legacy')
 
   // D19: NULL weight means "nobody has said" and must never be coerced to 0 on
   // the publish path — assertPublishable() blocks it there, so this stays an
@@ -506,7 +506,7 @@ export async function publishProduct(
     // the first row was added. Keep that draft saveable as one default variant;
     // ACTIVE validation blocks until the missing choices are supplied.
     const hasOptionRows = optionName !== null && input.variants.length > 0
-    const codes = variantSkus(identity.sku, input.draft.variant_kind, input.variants.map(v => v.value), input.draft.sku_scheme ?? 'legacy')
+    const codes = variantSkus(identity.sku, input.draft.variant_kind, input.variants, input.draft.sku_scheme ?? 'legacy')
     const writesBarcode = input.draft.sku_scheme === 'variant-v1'
     let variants: ProductSetVariant[] =
       hasOptionRows

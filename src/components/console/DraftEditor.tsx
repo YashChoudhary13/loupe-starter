@@ -72,6 +72,8 @@ export interface EditorForm {
 }
 
 export interface EditorVariant {
+  /** Only present for a colour + size combination; value is the colour. */
+  readonly sizeValue?: string | null
   readonly value: string
   /** Raw numeric input text; parsed without treating an empty field as valid stock. */
   readonly stock: string
@@ -179,7 +181,7 @@ export function DraftEditor(props: DraftEditorProps) {
     try {
       labelCodes = form.variantKind === 'none' || form.variants.length === 0
         ? [identity.sku]
-        : variantSkus(identity.sku, form.variantKind, form.variants.map(v => v.value), skuScheme)
+        : variantSkus(identity.sku, form.variantKind, form.variants, skuScheme)
     } catch (error) {
       codeError = error instanceof Error ? error.message : 'Check the option names.'
     }

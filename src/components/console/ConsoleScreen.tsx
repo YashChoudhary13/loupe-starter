@@ -189,7 +189,7 @@ function formFromBundle(bundle: DraftBundle): EditorForm {
     variantKind: draft.variantKind,
     variants: [...draft.variants]
       .sort((a, b) => a.position - b.position)
-      .map((variant) => ({ value: variant.value, stock: String(variant.stock) })),
+      .map((variant) => ({ value: variant.value, sizeValue: variant.sizeValue ?? null, stock: String(variant.stock) })),
     // NULL is "nobody has said" and is NOT the same as 0 (D19), so an unset
     // weight stays an empty field rather than becoming a typed zero.
     weight: draft.weightG === null ? '' : String(draft.weightG),
@@ -553,7 +553,7 @@ export function ConsoleScreen({
       const singleStock = Number.parseInt(form.stock.trim() || '0', 10)
       const variants = form.variants.map((variant) => {
         const stock = Number.parseInt(variant.stock.trim() || '0', 10)
-        return { value: variant.value, stock: Number.isFinite(stock) ? stock : 0 }
+        return { value: variant.value, sizeValue: variant.sizeValue ?? null, stock: Number.isFinite(stock) ? stock : 0 }
       })
       const stock =
         form.variantKind === 'none'
@@ -584,7 +584,7 @@ export function ConsoleScreen({
         images: images.map((image, index) => ({
           imageVersionId: image.imageVersionId,
           position: index,
-          colourValue: form.variantKind === 'colour' ? image.colourValue : null,
+          colourValue: (form.variantKind === 'colour' || form.variantKind === 'colour_size') ? image.colourValue : null,
         })),
         allowZeroStock: form.allowZeroStock,
       }
