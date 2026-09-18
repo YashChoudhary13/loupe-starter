@@ -3555,3 +3555,12 @@ The open-order list is filtered to `financial_status:paid OR partially_paid OR p
 Accepted shortage: a new `short` action (reason required, line must be on the checklist, one open shortage per line per checklist) records the remaining units as short in a new `qc_shortages` table with a human-friendly `ref`. Completion passes when every line's `scanned + open short = required` and no extra is untreated; the pass event records `detail.short`. Scanning a unit that was marked short accepts it and closes the shortage as `found`; a fresh checklist cancels its predecessor's open shortages; any active operator can undo a shortage once with a reason. The RPC gains `p_line_id`, so the old 15-argument overload is dropped in the same migration — PostgREST cannot resolve two candidates with defaults. Open shortages are the refund/coupon checklist: resolved in Loupe at `/qc/shortages` (operator identity from the session) or from WhatsApp via `POST /api/qc/shortages` guarded by `QC_BOT_SECRET` (bearer, 64 hex, same shape as the other machine credentials). The bot's `missing`, `missing resolved` and `missing done <ref> refund|coupon|shipped|other [note]` commands live in the WhatsApp Bot workspace (`src/qc-missing/`, `scripts/deploy_qc_missing.py`).
 
 Rejected: pushing a WhatsApp alert on every shortage (pull is enough for now); a shortage stored only in event history (needs a durable open/closed state with a resolver); silently allowing completion with missing units; auto-refunding in Shopify.
+
+### D129 — The workspace frame collapses to a phone layout below `md` (2026-09-18)
+
+Owner: "the whole loupe interface as soon as loaded in mobile distorts", and the QC team may check orders from a handset. The shell was a fixed 216 px sidebar grid at every width, and the console was a two-column grid whose editor column clamps at 400 px minimum.
+
+Below `md` the shell is a column: a horizontally scrolling top bar with the same section pills (from one shared `ITEMS` list), sign-out, and the section in a single-cell grid wrapper that is `md:contents` on desktop — so desktop layout, the collapse cookie and the LiveActivity poller are unchanged. The desktop aside stays mounted but hidden on phones so the attention badge keeps updating. Console and its skeleton stack their two columns and scroll the whole page on phones. QC, labels, upload and tracking already wrap.
+
+Rejected: a hamburger drawer (an extra tap before every section switch; the pill row is one thumb-scroll), a separate mobile app, and hiding the console on phones.
+

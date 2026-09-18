@@ -27,7 +27,7 @@ export function ScreenSkeleton({ title }: { readonly title: string }) {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[1fr_clamp(400px,32vw,500px)] gap-3.5 overflow-hidden">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3.5 overflow-y-auto md:grid-cols-[1fr_clamp(400px,32vw,500px)] md:overflow-hidden">
         <div className="animate-pulse rounded-[24px] bg-surface" />
         <div className="animate-pulse rounded-[24px] bg-surface" />
       </div>

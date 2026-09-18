@@ -18,6 +18,22 @@ import { LiveActivity } from '@/components/live/LiveActivity'
  * alive across navigation. The attention badge starts from the server-rendered
  * count and then follows the live heartbeat.
  */
+type SectionKey = 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc'
+type SectionHref = '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc'
+
+const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon: React.ReactNode }[] = [
+  { key: 'console', href: '/console', label: 'Console', icon: <SearchIcon /> },
+  { key: 'upload', href: '/upload', label: 'Upload', icon: <UploadIcon /> },
+  { key: 'identify', href: '/identify', label: 'Identify', icon: <SearchIcon /> },
+  { key: 'restock', href: '/restock', label: 'Restock', icon: <ListIcon /> },
+  { key: 'tracking', href: '/tracking', label: 'Tracking', icon: <AlertIcon /> },
+  { key: 'prompts', href: '/prompts', label: 'Prompts', icon: <ListIcon /> },
+  { key: 'models', href: '/models', label: 'Models', icon: <ListIcon /> },
+  { key: 'workflows', href: '/workflows', label: 'Workflows', icon: <PlayIcon /> },
+  { key: 'labels', href: '/labels', label: 'Labels', icon: <ListIcon /> },
+  { key: 'qc', href: '/qc', label: 'Order QC', icon: <ListIcon /> },
+]
+
 export function Sidebar({
   operator,
   initialAttentionCount,
@@ -41,7 +57,7 @@ export function Sidebar({
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLive)
   }, [])
 
-  const active: 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' =
+  const active: SectionKey =
     pathname.startsWith('/qc') ? 'qc' : pathname.startsWith('/labels')
       ? 'labels'
       : pathname.startsWith('/workflows')
@@ -61,7 +77,37 @@ export function Sidebar({
                 : 'console'
 
   return (
-    <aside className="flex min-h-0 flex-col gap-[22px] overflow-hidden px-1 pt-2">
+    <>
+      {/* Phone top bar: same destinations, horizontally scrollable; the desktop aside below is display:none here
+          but stays mounted so its LiveActivity poller keeps the attention badge current. */}
+      <header className="flex shrink-0 items-center gap-2 md:hidden">
+        <div className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-[14px] font-semibold text-white">L</div>
+        <nav aria-label="Sections" className="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {ITEMS.map((item) => (
+            <NavItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              active={active === item.key}
+              collapsed={false}
+              compact
+              icon={item.icon}
+              badge={item.key === 'tracking' && attentionCount > 0 ? attentionCount : null}
+            />
+          ))}
+        </nav>
+        <form action="/api/auth/signout" method="post" className="shrink-0">
+          <button
+            type="submit"
+            title={`Sign out ${operator.email}`}
+            aria-label="Sign out"
+            className="grid size-8 place-items-center rounded-full bg-chip text-[12px] text-ink-soft transition-colors hover:bg-[#ebebeb]"
+          >
+            ⏻
+          </button>
+        </form>
+      </header>
+    <aside className="hidden min-h-0 flex-col gap-[22px] overflow-hidden px-1 pt-2 md:flex">
       <div className={cn('flex items-center gap-2.5', collapsed ? 'flex-col px-0' : 'px-3')}>
         <div className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-[14px] font-semibold text-white">
           L
@@ -99,72 +145,17 @@ export function Sidebar({
             Workspace
           </div>
         )}
-
-        <NavItem
-          href="/console"
-          label="Console"
-          active={active === 'console'}
-          collapsed={collapsed}
-          icon={<SearchIcon />}
-        />
-        <NavItem
-          href="/upload"
-          label="Upload"
-          active={active === 'upload'}
-          collapsed={collapsed}
-          icon={<UploadIcon />}
-        />
-        <NavItem
-          href="/identify"
-          label="Identify"
-          active={active === 'identify'}
-          collapsed={collapsed}
-          icon={<SearchIcon />}
-        />
-        <NavItem
-          href="/restock"
-          label="Restock"
-          active={active === 'restock'}
-          collapsed={collapsed}
-          icon={<ListIcon />}
-        />
-        <NavItem
-          href="/tracking"
-          label="Tracking"
-          active={active === 'tracking'}
-          collapsed={collapsed}
-          icon={<AlertIcon />}
-          badge={attentionCount > 0 ? attentionCount : null}
-        />
-        <NavItem
-          href="/prompts"
-          label="Prompts"
-          active={active === 'prompts'}
-          collapsed={collapsed}
-          icon={<ListIcon />}
-        />
-        <NavItem
-          href="/models"
-          label="Models"
-          active={active === 'models'}
-          collapsed={collapsed}
-          icon={<ListIcon />}
-        />
-        <NavItem
-          href="/workflows"
-          label="Workflows"
-          active={active === 'workflows'}
-          collapsed={collapsed}
-          icon={<PlayIcon />}
-        />
-        <NavItem
-          href="/labels"
-          label="Labels"
-          active={active === 'labels'}
-          collapsed={collapsed}
-          icon={<ListIcon />}
-        />
-        <NavItem href="/qc" label="Order QC" active={active === 'qc'} collapsed={collapsed} icon={<ListIcon />} />
+        {ITEMS.map((item) => (
+          <NavItem
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            active={active === item.key}
+            collapsed={collapsed}
+            icon={item.icon}
+            badge={item.key === 'tracking' && attentionCount > 0 ? attentionCount : null}
+          />
+        ))}
       </nav>
 
       <LiveActivity compact={collapsed} />
@@ -208,6 +199,7 @@ export function Sidebar({
         )}
       </form>
     </aside>
+    </>
   )
 }
 
@@ -216,13 +208,16 @@ function NavItem({
   label,
   active,
   collapsed,
+  compact = false,
   icon,
   badge = null,
 }: {
-  href: '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc'
+  href: SectionHref
   label: string
   active: boolean
   collapsed: boolean
+  /** Phone top bar: one short pill per section, never wrapping. */
+  compact?: boolean
   icon: React.ReactNode
   badge?: number | null
 }) {
@@ -234,7 +229,7 @@ function NavItem({
       aria-current={active ? 'page' : undefined}
       className={cn(
         'relative flex items-center gap-3 rounded-pill font-medium transition-colors duration-150',
-        collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5',
+        compact ? 'shrink-0 gap-1.5 whitespace-nowrap px-3 py-2 text-[12px]' : collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5',
         active ? 'bg-ink text-white' : 'text-ink-soft hover:bg-chip',
       )}
     >

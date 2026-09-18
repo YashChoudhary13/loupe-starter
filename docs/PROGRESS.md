@@ -55,6 +55,8 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - No push notification on a new shortage; staff pull with `missing`.
 - Physical print-and-scan on a pouch is still untested (carried over).
 
+**Also (same session, D129):** phone layout for the whole workspace — `AppShell` becomes a column below `md` with a scrolling top-bar nav from `Sidebar` (shared `ITEMS` list), the desktop aside is `hidden md:flex` (poller still mounted), Console/Skeleton stack their two columns and scroll. `tests/app-shell-render.test.ts` proves both navs render, the current section is marked twice, the badge appears twice and the poller once.
+
 **Surprises:** `create or replace function` with an added parameter creates a second overload and PostgREST then refuses the call — the migration drops the old signature first. React SSR inserts `<!-- -->` between adjacent text nodes, so render tests strip them.
 
 **Next session should start with:** the four rollout steps above, then one real order with a deliberately short line, then `missing` / `missing done <ref> coupon …` from the staff number.

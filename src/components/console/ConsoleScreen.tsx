@@ -1245,7 +1245,7 @@ export function ConsoleScreen({
           </div>
         ) : null}
 
-        <div className="grid min-h-0 flex-1 grid-cols-[1fr_clamp(400px,32vw,500px)] gap-3.5 overflow-hidden">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3.5 overflow-y-auto md:grid-cols-[1fr_clamp(400px,32vw,500px)] md:overflow-hidden">
           <Card className="flex min-h-0 flex-col">
             <div className="mb-4 flex items-center gap-2.5">
               <h2 className="text-[14px] font-medium">{QUEUE_VIEW_LABELS[queueView]}</h2>

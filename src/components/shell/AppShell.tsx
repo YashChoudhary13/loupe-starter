@@ -15,6 +15,12 @@ const COLLAPSED_PX = 68
  * the second column. Lives in the (shell) layout so navigation between
  * Console, Tracking and Prompts swaps only the content column.
  *
+ * Below the `md` breakpoint (phones, QC on a handset) the frame becomes a
+ * column: a compact top bar from Sidebar, then the section filling the rest.
+ * The content wrapper is `md:contents`, so on desktop the section is still a
+ * direct grid item exactly as before; on mobile it is a single-cell grid so
+ * `h-full` / `min-h-0 flex-1` sections size the same way they do on desktop.
+ *
  * Collapse state is a cookie rather than localStorage so the server renders
  * the correct width on first paint — no hydration snap.
  */
@@ -40,7 +46,7 @@ export function AppShell({
 
   return (
     <div
-      className="grid h-dvh gap-[18px] overflow-hidden p-[18px] transition-[grid-template-columns] duration-300 ease-in-out"
+      className="flex h-dvh flex-col gap-3 overflow-hidden p-3 md:grid md:gap-[18px] md:p-[18px] md:transition-[grid-template-columns] md:duration-300 md:ease-in-out"
       style={{
         gridTemplateColumns: `${collapsed ? COLLAPSED_PX : EXPANDED_PX}px minmax(0, 1fr)`,
       }}
@@ -51,7 +57,7 @@ export function AppShell({
         collapsed={collapsed}
         onToggle={toggle}
       />
-      {children}
+      <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] md:contents">{children}</div>
     </div>
   )
 }
