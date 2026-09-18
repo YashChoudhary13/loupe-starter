@@ -29,6 +29,24 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-18 — Deployed QC v2 + phone layout; WhatsApp `missing` published
+
+**Goal this session:** release D128 and D129 to production and publish the staff `missing` command.
+
+**Deployed (owner ran each production step by hand; the assistant's SSH and DB writes were policy-blocked):**
+1. `scripts/apply-qc-shortages.ts` against runtime project `sxuxqtzwuvftwfjkpnyo` at `2026-09-18T18:23:55Z`: migration `20260918090000_qc_shortages.sql` (sha256 `5a129c92…012af`) applied; one 16-argument `qc_command`; `qc_shortages` RLS deny-all, service_role only; existing sessions untouched (3 checking, 1 passed, 2 stale). Receipt `/Users/yash/Documents/ChatGPT/QIMATI/output/qc-system/qc-v2-20260918/schema-apply.json`.
+2. `QC_BOT_SECRET` appended to the VPS `~/loupe/shared/.env` (mirror `.env.railway`), `loupe` restarted and active.
+3. `git push origin claude/qc-v2:main` → `912ee11..c79df89`. Poller built and switched within 100 s; `/health` and `/login` 200, `/qc` and `/qc/shortages` 307 to login when anonymous.
+4. `deploy_qc_missing.py --apply` at 18:24:57Z: WhatsApp workflow `CfHZc9D61i7Qhmy2` staged from `8b9cdcd2…` and activated as `e2b87e94-82d0-4139-8c75-2f6b79425e29` (64 nodes, static data equal); n8n credential `Loupe QC Bot` id `8zVvP5N1KYma3AiO` created.
+
+**Verified live:** `POST /api/qc/shortages` with the real bearer → `{"ok":true,"open":[],"resolved":[]}`; with a wrong 64-hex bearer → 401 `Unauthorized`; no bearer → 401 (previously the old `[orderId]` catch-all answered this path with a session error, so the body change proves the new route is serving).
+
+**Not finished / operating limits:** no real order has been checked on v2 yet and no staff `missing` message has been sent; the physical print-and-scan trial and the `-N-<variant id>` fallback codes on ~100 relabeled variants (16 Sep) remain open. Docs-only commits after this one are held locally to avoid a needless rebuild; they ride the next application push.
+
+**Next session should start with:** one real paid order on `/qc` with the scanner gun (listen for the tone, watch the image card), mark one line short deliberately, complete, then send `missing` and `missing done <ref> coupon …` from the staff number; confirm the row flips on `/qc/shortages`.
+
+---
+
 ## 2026-09-18 — Scanner-first QC v2: tone + image feedback, paid-only list, 30-day history, accepted shortages, WhatsApp `missing` (local, not deployed)
 
 **Goal this session:** act on the owner's first real QC run — no sound/picture per scan, camera always on though the team uses a 2D scanner gun, payment-pending orders in the list, no past-QC view, and no way to proceed when a unit is genuinely not available; plus a WhatsApp command listing those shortages until refund/coupon (D128).
