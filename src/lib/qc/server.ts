@@ -5,7 +5,11 @@ import { ShopifyClient } from '@/lib/shopify/client'
 import { findCodeMatches } from '@/lib/shopify/barcode-lookup'
 import { readQcOrder } from '@/lib/shopify/qc-orders'
 import { orderFingerprint } from './snapshot'
-import type { QcCommand, QcEvent, QcSession, QcView } from './types'
+import { orderGid } from './validation'
+import type { QcCommand, QcEvent, QcPass, QcSession, QcShortage, QcView } from './types'
+
+const EVENT_FIELDS = 'id,action,outcome,message,code,line_id,variant_id,actor_id,actor_name,created_at,generation,undo_of'
+export const SHORTAGE_FIELDS = 'id,ref,session_id,event_id,order_id,order_name,generation,line_id,variant_id,sku,title,variant_title,quantity,reason,reported_by,reported_at,resolved_at,resolved_by,resolution,resolution_note'
 
 /** Match across the catalogue, never only within the currently open order. */
 export async function resolveQcCode(client: ShopifyClient, code: string): Promise<{ variantId: string | null; rejection: string | null }> {
@@ -14,6 +18,13 @@ export async function resolveQcCode(client: ShopifyClient, code: string): Promis
   if (ids.length === 0) return { variantId: null, rejection: 'Code not found in Shopify. Check the label and use Labels to prepare a saved barcode.' }
   if (ids.length > 1) return { variantId: null, rejection: 'This code belongs to several variants. Give each colour and size a unique code in Labels before QC.' }
   return { variantId: ids[0], rejection: null }
+}
+
+async function openShortages(sessionId: string, generation: number): Promise<QcShortage[]> {
+  const { data, error } = await supabaseServer().from('qc_shortages').select(SHORTAGE_FIELDS)
+    .eq('session_id', sessionId).eq('generation', generation).is('resolved_at', null).order('ref', { ascending: true })
+  if (error) throw new Error('QC saved the action but could not read its shortages. Retry the same request; it will not count twice.')
+  return data as QcShortage[]
 }
 
 export async function loadQcView(orderId: string, operator: Operator, command?: QcCommand): Promise<QcView> {
@@ -30,15 +41,16 @@ export async function loadQcView(orderId: string, operator: Operator, command?: 
     p_variant_id: resolution.variantId, p_rejection: resolution.rejection,
     p_expected_generation: command?.expectedGeneration ?? null,
     p_expected_version: command?.expectedVersion ?? null, p_undo_event_id: command?.undoEventId ?? command?.extraEventId ?? null,
-    p_reason: command?.reason ?? null,
+    p_reason: command?.reason ?? null, p_line_id: command?.lineId ?? null,
   })
   if (error) throw new Error(`QC could not save this action. Retry the same request. ${error.message}`)
   const result = data as { session: QcSession; event?: QcEvent; replayed?: boolean }
   if (!result?.session) throw new Error('QC did not return saved counts. Retry the same request before scanning another item.')
-  const history = await db.from('qc_events').select('id,action,outcome,message,code,line_id,variant_id,actor_id,actor_name,created_at,generation,undo_of')
+  const history = await db.from('qc_events').select(EVENT_FIELDS)
     .eq('session_id', result.session.id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(40)
   if (history.error) throw new Error('QC saved the action but could not read its history. Retry the same request; it will not count twice.')
-  return { order, session: result.session, events: history.data as QcEvent[], operatorId: operator.id, event: result.event, replayed: result.replayed }
+  const shortages = await openShortages(result.session.id, result.session.generation)
+  return { order, session: result.session, events: history.data as QcEvent[], shortages, operatorId: operator.id, event: result.event, replayed: result.replayed }
 }
 
 export async function qcOrderStatuses(orderIds: readonly string[]): Promise<Record<string, { status: string; checked_at: string; snapshotUpdatedAt: string }>> {
@@ -48,4 +60,39 @@ export async function qcOrderStatuses(orderIds: readonly string[]): Promise<Reco
     .eq('shop_domain', client.config.storeDomain).in('order_id', [...orderIds])
   if (error) throw new Error('QC progress could not be loaded. Open an order to retry.')
   return Object.fromEntries((data ?? []).map(row => [row.order_id, { status: row.status, checked_at: row.checked_at, snapshotUpdatedAt: row.snapshot?.updatedAt }]))
+}
+
+/** Passed checklists in the last `days`, from the append-only audit, newest first. */
+export async function listRecentPasses(days = 30): Promise<QcPass[]> {
+  const client = new ShopifyClient()
+  const since = new Date(Date.now() - days * 86_400_000).toISOString()
+  const { data, error } = await supabaseServer().from('qc_events')
+    .select('created_at,actor_name,generation,detail,session:qc_sessions!inner(order_id,status,generation,snapshot,shop_domain)')
+    .eq('outcome', 'passed').gte('created_at', since).eq('session.shop_domain', client.config.storeDomain)
+    .order('created_at', { ascending: false }).limit(300)
+  if (error) throw new Error('Past QC checks could not be loaded.')
+  const seen = new Set<string>()
+  const passes: QcPass[] = []
+  for (const row of (data ?? []) as unknown as { created_at: string; actor_name: string; generation: number; detail: { short?: number } | null; session: { order_id: string; status: QcSession['status']; generation: number; snapshot: { name?: string; lines?: { required: number }[] } } }[]) {
+    if (seen.has(row.session.order_id)) continue
+    seen.add(row.session.order_id)
+    passes.push({ orderId: row.session.order_id, orderName: row.session.snapshot?.name ?? row.session.order_id, passedAt: row.created_at, passedBy: row.actor_name,
+      units: (row.session.snapshot?.lines ?? []).reduce((sum, line) => sum + (line.required ?? 0), 0), short: row.detail?.short ?? 0, sessionStatus: row.session.status })
+  }
+  return passes
+}
+
+/** Read-only record of a checklist. Never touches Shopify or the RPC, so opening history cannot invalidate a pass. */
+export async function loadQcHistory(orderId: string): Promise<{ session: QcSession; events: QcEvent[]; shortages: QcShortage[] } | null> {
+  const client = new ShopifyClient()
+  const db = supabaseServer()
+  const session = await db.from('qc_sessions').select('*').eq('shop_domain', client.config.storeDomain).eq('order_id', orderGid(orderId)).maybeSingle()
+  if (session.error) throw new Error('QC history could not be loaded.')
+  if (!session.data) return null
+  const [events, shortages] = await Promise.all([
+    db.from('qc_events').select(EVENT_FIELDS).eq('session_id', session.data.id).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(200),
+    db.from('qc_shortages').select(SHORTAGE_FIELDS).eq('session_id', session.data.id).order('ref', { ascending: true }),
+  ])
+  if (events.error || shortages.error) throw new Error('QC history could not be loaded.')
+  return { session: session.data as QcSession, events: events.data as QcEvent[], shortages: shortages.data as QcShortage[] }
 }

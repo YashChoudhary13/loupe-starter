@@ -7,7 +7,7 @@ import type { QcOrder } from '@/lib/qc/types'
 
 const client = (graphql: ReturnType<typeof vi.fn>) => ({ graphql }) as unknown as ShopifyClient
 const header = { id: 'gid://shopify/Order/1', name: 'Qimati1', updatedAt: '2026-09-15T08:00:00Z', cancelledAt: null, displayFulfillmentStatus: 'UNFULFILLED' }
-const line = (id = '1', changes = {}) => ({ id: `gid://shopify/LineItem/${id}`, title: 'Ring', variantTitle: 'Gold / 7', sku: 'RS004', requiresShipping: true, fulfillableQuantity: 2, variant: { id: 'gid://shopify/ProductVariant/11', sku: 'RS004-C-GOLD-S-7', barcode: 'RS004-C-GOLD-S-7', title: 'Gold / 7' }, ...changes })
+const line = (id = '1', changes = {}) => ({ id: `gid://shopify/LineItem/${id}`, title: 'Ring', variantTitle: 'Gold / 7', sku: 'RS004', requiresShipping: true, fulfillableQuantity: 2, image: { url: 'https://cdn.shopify.com/s/files/ring.jpg' }, variant: { id: 'gid://shopify/ProductVariant/11', sku: 'RS004-C-GOLD-S-7', barcode: 'RS004-C-GOLD-S-7', title: 'Gold / 7' }, ...changes })
 const page = (lines = [line()], next: string | null = null, changes = {}) => ({ order: { ...header, ...changes, lineItems: { nodes: lines, pageInfo: { hasNextPage: !!next, endCursor: next } } } })
 
 describe('whole-order Shopify QC snapshots', () => {
@@ -18,6 +18,8 @@ describe('whole-order Shopify QC snapshots', () => {
     expect(order.lines.map(x => [x.id, x.required])).toEqual([['gid://shopify/LineItem/1',2],['gid://shopify/LineItem/4',1]])
     expect(order.lines[0].sku).toBe('RS004-C-GOLD-S-7')
     expect(order.lines[0].variantTitle).toBe('Gold / 7')
+    expect(order.lines[0].image).toBe('https://cdn.shopify.com/s/files/ring.jpg')
+    expect(graphql.mock.calls[0][0]).toContain('image { url(transform:')
     expect(graphql.mock.calls[1][1].after).toBe('next')
     expect(graphql.mock.calls[2][0]).toContain('LoupeQcOrderVersion')
     expect(graphql.mock.calls.every(([query]) => !query.includes('mutation'))).toBe(true)
@@ -52,10 +54,13 @@ describe('whole-order Shopify QC snapshots', () => {
     await expect(readQcOrder(client(vi.fn().mockResolvedValue(page([line(),line()]))), '1')).rejects.toThrow(/repeated/)
     await expect(readQcOrder(client(vi.fn().mockResolvedValue(page([line('1', { fulfillableQuantity: -1 })]))), '1')).rejects.toThrow(/invalid remaining/)
   })
-  it('searches only open orders with unfulfilled units and preserves safe cursor pagination', async () => {
+  it('lists only paid open orders with unfulfilled units, shows any searched order, and preserves safe cursor pagination', async () => {
     const graphql = vi.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } })
     await listQcOrders(client(graphql), '#Qimati5019', 'Y3Vyc29y')
     expect(graphql.mock.calls[0][1]).toEqual({ query: 'status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial) name:"Qimati5019"', after: 'Y3Vyc29y' })
+    await listQcOrders(client(graphql))
+    expect(graphql.mock.calls[1][1].query).toBe('status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial) (financial_status:paid OR financial_status:partially_paid OR financial_status:partially_refunded)')
+    expect(graphql.mock.calls[1][0]).toContain('displayFinancialStatus')
     await expect(listQcOrders(client(graphql), 'foo OR status:any')).rejects.toThrow(/Search by/)
   })
   it('turns a missing order scope into an operator action', () => {
@@ -70,6 +75,7 @@ describe('QC input and fingerprint', () => {
       { id: 'l2', variantId: 'v2', title: 'Ring', variantTitle: 'Gold / 8', sku: 'RS004-C-GOLD-S-8', barcode: 'RS004-C-GOLD-S-8', required: 1 },
     ] }
     expect(orderFingerprint(order)).toBe(orderFingerprint({ ...order, updatedAt: 'unrelated edit', lines: [...order.lines].reverse() }))
+    expect(orderFingerprint(order)).toBe(orderFingerprint({ ...order, lines: order.lines.map(line => ({ ...line, image: 'https://cdn.shopify.com/new.jpg' })) }))
     for (const change of [{ required: 1 }, { variantId: 'v2' }, { barcode: 'CHANGED' }, { variantTitle: 'Silver / 7' }]) {
       expect(orderFingerprint(order)).not.toBe(orderFingerprint({ ...order, lines: [{ ...order.lines[0], ...change },order.lines[1]] }))
     }
@@ -87,5 +93,10 @@ describe('QC input and fingerprint', () => {
       action: 'clear_extra', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4, extraEventId: 'a1c6a240-bef7-4db4-9e09-0a8bc0f6fbe5',
     })
     expect(() => parseQcCommand({ action: 'clear_extra', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4 })).toThrow(/extra item/)
+    expect(parseQcCommand({ action: 'short', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4, lineId: 'gid://shopify/LineItem/77', reason: ' not in stock ', quantity: 99 })).toEqual({
+      action: 'short', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4, lineId: 'gid://shopify/LineItem/77', reason: 'not in stock',
+    })
+    expect(() => parseQcCommand({ action: 'short', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4, lineId: 'l1', reason: 'not in stock' })).toThrow(/order line/)
+    expect(() => parseQcCommand({ action: 'short', requestId: 'f9c6a240-bef7-4db4-9e09-0a8bc0f6fbe5', expectedVersion: 4, lineId: 'gid://shopify/LineItem/77' })).toThrow(/reason/)
   })
 })

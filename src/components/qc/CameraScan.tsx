@@ -3,8 +3,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { CameraScanGate, type CameraScanState } from '@/lib/qc/camera-scan-gate'
 
+const PREFERENCE = 'loupe.qc.camera'
+/** Off unless this browser last chose the camera; the 2D scanner gun is the usual tool (D128). */
+function preferredOpen(): boolean {
+  try { return localStorage.getItem(PREFERENCE) === 'on' } catch { return false }
+}
+function remember(open: boolean): void {
+  try { localStorage.setItem(PREFERENCE, open ? 'on' : 'off') } catch { /* private mode */ }
+}
+
 export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: string) => void; paused: boolean; onOpenChange: (open: boolean) => void }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [state, setState] = useState<CameraScanState | 'starting'>('starting')
   const video = useRef<HTMLVideoElement>(null)
@@ -12,6 +21,9 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
   const pausedRef = useRef(paused)
   const gate = useRef(new CameraScanGate())
   useEffect(() => { callback.current = onCode }, [onCode])
+  // Browser-only preference after hydration; server rendering always starts closed.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (preferredOpen()) setOpen(true) }, [])
   useEffect(() => {
     pausedRef.current = paused
     if (paused) gate.current.pause()
@@ -79,7 +91,7 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
     remove: 'Remove this pouch from view. Wait for Ready before the next one.', paused: 'Waiting for a clear camera view…',
   }[state]
   return <div className="mt-3">
-    <button type="button" disabled={!open && paused} onClick={() => { setError(''); setState('starting'); setOpen(!open) }} className="rounded-pill bg-chip px-4 py-2 text-[12px] focus-visible:outline-2 disabled:opacity-40">{open ? 'Stop camera' : 'Start camera scanning'}</button>
+    <button type="button" disabled={!open && paused} onClick={() => { setError(''); setState('starting'); remember(!open); setOpen(!open) }} className="rounded-pill bg-chip px-4 py-2 text-[12px] focus-visible:outline-2 disabled:opacity-40">{open ? 'Stop camera' : 'Use phone camera instead'}</button>
     {open && <div className="mt-3 max-w-md"><p role="status" aria-live="polite" className="mb-2 rounded-panel bg-chip p-3 text-[13px] font-medium">{status}</p><video ref={video} muted playsInline className="aspect-[4/3] w-full rounded-panel bg-ink object-cover" aria-label="Barcode camera preview" /><p className="mt-2 text-[12px] text-ink-soft">The camera stays on. Show one label, wait for acceptance, then move the pouch into the checked box. Leave the view clear for about a second before the next pouch, even if its code is the same.</p></div>}
     {error && <p role="alert" className="mt-2 text-[12px] text-amber">{error}</p>}
   </div>

@@ -6,6 +6,8 @@ export interface QcLine {
   sku: string | null
   barcode: string | null
   required: number
+  /** Shopify CDN thumbnail of the line's product; display only, never part of the fingerprint. */
+  image?: string | null
 }
 
 export interface QcOrder {
@@ -47,16 +49,56 @@ export interface QcEvent {
   undo_of: string | null
 }
 
+export type QcResolution = 'refund' | 'coupon' | 'shipped' | 'other' | 'found' | 'cancelled'
+export const QC_STAFF_RESOLUTIONS: readonly QcResolution[] = ['refund', 'coupon', 'shipped', 'other']
+
+/** One line marked short in one checklist; open until resolved. */
+export interface QcShortage {
+  id: string
+  ref: number
+  session_id: string
+  event_id: string
+  order_id: string
+  order_name: string
+  generation: number
+  line_id: string
+  variant_id: string | null
+  sku: string | null
+  title: string
+  variant_title: string | null
+  quantity: number
+  reason: string
+  reported_by: string
+  reported_at: string
+  resolved_at: string | null
+  resolved_by: string | null
+  resolution: QcResolution | null
+  resolution_note: string | null
+}
+
 export interface QcView {
   order: QcOrder
   session: QcSession
   events: QcEvent[]
+  /** Open shortages of the current checklist. */
+  shortages: QcShortage[]
   operatorId: string
   event?: QcEvent
   replayed?: boolean
 }
 
-export type QcAction = 'scan' | 'complete' | 'reset' | 'undo' | 'clear_extra'
+/** A passed checklist, read from the append-only audit; survives later fulfillment or order edits. */
+export interface QcPass {
+  orderId: string
+  orderName: string
+  passedAt: string
+  passedBy: string
+  units: number
+  short: number
+  sessionStatus: QcSession['status']
+}
+
+export type QcAction = 'scan' | 'complete' | 'reset' | 'undo' | 'clear_extra' | 'short'
 export interface QcCommand {
   action: QcAction
   requestId: string
@@ -65,5 +107,6 @@ export interface QcCommand {
   expectedVersion?: number
   undoEventId?: string
   extraEventId?: string
+  lineId?: string
   reason?: string
 }

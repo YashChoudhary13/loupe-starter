@@ -91,6 +91,11 @@ export const serverEnv = {
     return validatedCronSecret(process.env.WORKER_SECRET)
   },
 
+  /** Shared secret the WhatsApp bot (n8n) presents to /api/qc/shortages (D128). Same 64-hex shape as the other machine credentials. */
+  get qcBotSecret(): string {
+    return validatedCronSecret(process.env.QC_BOT_SECRET)
+  },
+
   /** Colour re-rank weight for identify search: 1.0 = pure cosine (off), lower gives
    * colour more say. Off by default until tuned on real photos (docs/COLOUR-RERANK.md). */
   get matchColourAlpha(): number {

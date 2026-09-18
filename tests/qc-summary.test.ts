@@ -48,8 +48,8 @@ describe('QC extra and missing wrap-up', () => {
   it('lists missing units until every ordered line is fully scanned', () => {
     const result = summarizeQc(session({ l1: 1 }), [])
     expect(result.missing).toEqual([
-      { lineId: 'l1', title: 'Ring', variantTitle: 'Gold / 7', required: 2, checked: 1, remaining: 1 },
-      { lineId: 'l2', title: 'Necklace', variantTitle: 'Silver', required: 1, checked: 0, remaining: 1 },
+      { lineId: 'l1', title: 'Ring', variantTitle: 'Gold / 7', required: 2, checked: 1, short: 0, remaining: 1 },
+      { lineId: 'l2', title: 'Necklace', variantTitle: 'Silver', required: 1, checked: 0, short: 0, remaining: 1 },
     ])
     expect(result.canPass).toBe(false)
   })

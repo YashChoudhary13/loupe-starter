@@ -29,6 +29,38 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-18 — Scanner-first QC v2: tone + image feedback, paid-only list, 30-day history, accepted shortages, WhatsApp `missing` (local, not deployed)
+
+**Goal this session:** act on the owner's first real QC run — no sound/picture per scan, camera always on though the team uses a 2D scanner gun, payment-pending orders in the list, no past-QC view, and no way to proceed when a unit is genuinely not available; plus a WhatsApp command listing those shortages until refund/coupon (D128).
+
+**Built (branch `claude/qc-v2` from `912ee11`):**
+- `supabase/migrations/20260918090000_qc_shortages.sql` → `qc_shortages` table (RLS deny-all, service_role only, human `ref`), drops the 15-arg `qc_command` overload and recreates it with `p_line_id`; new `short` action, found-on-scan, undo of a shortage, reset cancels open shortages, completion accepts `scanned + short = required`, pass event `detail.short`.
+- `src/lib/shopify/qc-orders.ts` → list filtered to paid/partially paid/partially refunded (searched order always shown); `displayFinancialStatus`; `LineItem.image` thumbnail (Shopify CDN only) on every line, excluded from the fingerprint.
+- `src/lib/qc/{types,validation,summary,server,shortages,sound}.ts` → `short` command, shortage-aware missing math, open shortages in the view, `listRecentPasses` from `qc_events.outcome='passed'`, read-only `loadQcHistory`, resolve helper (idempotent, conditional update), Web Audio tones + vibration.
+- `src/components/qc/QcScreen.tsx` → feedback card (image, title, option, `n / required`) per scan, tones, scanner keystroke capture, per-line thumbnails and short state, **Don’t have it · mark N short** with reason, shortage list with undo, `Complete QC · N short`.
+- `src/components/qc/CameraScan.tsx` → starts closed; **Use phone camera instead** remembered per browser.
+- `/qc` → paid-only open list with payment status, **Checked in the last 30 days**; `/qc/[orderId]?view=history` → `QcHistoryScreen` (no Shopify read, no RPC); `/qc/shortages` → open + resolved-30d with a server-action resolve form (resolver from the session).
+- `src/app/api/qc/shortages/route.ts` → bot endpoint, bearer `QC_BOT_SECRET` (`serverEnv.qcBotSecret`), `list` / `resolve` only; `.env.local.example` documents the key.
+- `scripts/apply-qc-shortages.ts` → production schema apply with overload/permission checks; `scripts/verify-qc-shortages-local-db.ts` → temporary-Postgres proof.
+- WhatsApp Bot workspace: `src/qc-missing/missing_command.js`, `build_missing_reply.js`, `tests/qc_missing.test.js`, `scripts/deploy_qc_missing.py` (dry-run / staged apply, creates the `Loupe QC Bot` header credential from `LOUPE_QC_BOT_SECRET`).
+
+**Verified:**
+- `scripts/verify-qc-shortages-local-db.ts`: 29 checks on a temporary PostgreSQL 17 (single 16-arg overload; short/reject/replay; pass with short and `detail.short`; found-on-scan; reset cancellation; undo once by any operator; extras still gate; stale rejects; RLS). 38 audit events, ~180 ms.
+- Vitest focused: `qc-shortages` (9), `qc-orders` (10), `qc-summary` (3), `qc-route` (5), `qc-server` (7), `qc-screen-render` (2), `camera-scan-gate`, labels/print/decoding/isolation — 66 tests passed. `tsc --noEmit`, changed-file ESLint and `next build` passed.
+- WhatsApp: `node tests/qc_missing.test.js` passed (parsing, list/resolved/resolve replies, error and 4000-char truncation). `deploy_qc_missing.py --dry-run` read live `CfHZc9D61i7Qhmy2` version `8b9cdcd2-10b1-4dba-a6f7-3f4fbeeb039f`: 59 → 64 nodes, guard chain `GST invoice? → Missing items? → Staff coupon?`, nothing written.
+
+**Not finished / known limits:**
+- **Not deployed.** Order of rollout: (1) `QC_BOT_SECRET` (openssl rand -hex 32) into the server `~/loupe/shared/.env` + `.env.railway`, restart; (2) `scripts/apply-qc-shortages.ts <server-env> <receipt>`; (3) push `main`; (4) `LOUPE_QC_BOT_SECRET` into WhatsApp Bot `.env`, `deploy_qc_missing.py --apply`. Schema before app: the old app never sends `p_line_id`, the new RPC defaults it.
+- Sound needs one user gesture first (the scanner's keystrokes count); iOS Safari may still need a tap before the first tone.
+- No push notification on a new shortage; staff pull with `missing`.
+- Physical print-and-scan on a pouch is still untested (carried over).
+
+**Surprises:** `create or replace function` with an added parameter creates a second overload and PostgREST then refuses the call — the migration drops the old signature first. React SSR inserts `<!-- -->` between adjacent text nodes, so render tests strip them.
+
+**Next session should start with:** the four rollout steps above, then one real order with a deliberately short line, then `missing` / `missing done <ref> coupon …` from the staff number.
+
+---
+
 ## 2026-09-15 — Draft print popup; Cancel stays label not printed (local)
 
 **Goal this session:** after Draft, offer to print labels for the saved quantity and SKU/barcode; Cancel must not mark labels printed.

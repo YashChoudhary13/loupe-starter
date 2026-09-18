@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ find: vi.fn(), read: vi.fn(), rpc: vi.fn(), history: vi.fn() }))
+const mocks = vi.hoisted(() => ({ find: vi.fn(), read: vi.fn(), rpc: vi.fn(), history: vi.fn(), shortages: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/shopify/client', () => ({ ShopifyClient: class { config = { storeDomain: 'qc-test.myshopify.com' } } }))
 vi.mock('@/lib/shopify/barcode-lookup', () => ({ findCodeMatches: mocks.find }))
 vi.mock('@/lib/shopify/qc-orders', () => ({ readQcOrder: mocks.read }))
-vi.mock('@/lib/supabase/server', () => ({ supabaseServer: () => ({ rpc: mocks.rpc, from: () => ({ select: () => ({ eq: () => ({ order: () => ({ order: () => ({ limit: mocks.history }) }) }) }) }) }) }))
+vi.mock('@/lib/supabase/server', () => ({ supabaseServer: () => ({ rpc: mocks.rpc, from: (table: string) => table === 'qc_shortages'
+  ? { select: () => ({ eq: () => ({ eq: () => ({ is: () => ({ order: mocks.shortages }) }) }) }) }
+  : { select: () => ({ eq: () => ({ order: () => ({ order: () => ({ limit: mocks.history }) }) }) }) } }) }))
 import { loadQcView, resolveQcCode } from '@/lib/qc/server'
 import { ShopifyClient } from '@/lib/shopify/client'
 import type { Operator } from '@/lib/auth/authorize'
@@ -16,6 +18,7 @@ beforeEach(() => {
   mocks.read.mockResolvedValue(order)
   mocks.rpc.mockResolvedValue({ data: { session: { id: 'session1' } }, error: null })
   mocks.history.mockResolvedValue({ data: [], error: null })
+  mocks.shortages.mockResolvedValue({ data: [], error: null })
 })
 describe('QC server authority', () => {
   it('requires one globally unique variant, allowing its identical SKU and barcode', async () => {
@@ -30,7 +33,19 @@ describe('QC server authority', () => {
     await loadQcView('1', operator, { action: 'scan', expectedGeneration: 1, requestId: 'request', code: 'CODE' })
     expect(mocks.find.mock.invocationCallOrder[0]).toBeLessThan(mocks.read.mock.invocationCallOrder[0])
     expect(mocks.read.mock.invocationCallOrder[0]).toBeLessThan(mocks.rpc.mock.invocationCallOrder[0])
-    expect(mocks.rpc).toHaveBeenCalledWith('qc_command', expect.objectContaining({ p_actor_id: 'server-actor', p_variant_id: 'v1', p_code: 'CODE', p_snapshot: order, p_order_id: order.id, p_shop_domain: 'qc-test.myshopify.com' }))
+    expect(mocks.rpc).toHaveBeenCalledWith('qc_command', expect.objectContaining({ p_actor_id: 'server-actor', p_variant_id: 'v1', p_code: 'CODE', p_snapshot: order, p_order_id: order.id, p_shop_domain: 'qc-test.myshopify.com', p_line_id: null }))
+  })
+  it('sends the chosen line and reason for a shortage and returns the open shortages of the current checklist', async () => {
+    mocks.rpc.mockResolvedValue({ data: { session: { id: 'session1', generation: 2 } }, error: null })
+    mocks.shortages.mockResolvedValue({ data: [{ ref: 12, line_id: 'l1', quantity: 1 }], error: null })
+    const view = await loadQcView('1', operator, { action: 'short', requestId: 'request', expectedVersion: 4, lineId: 'gid://shopify/LineItem/1', reason: 'not in stock' })
+    expect(mocks.find).not.toHaveBeenCalled()
+    expect(mocks.rpc).toHaveBeenCalledWith('qc_command', expect.objectContaining({ p_action: 'short', p_line_id: 'gid://shopify/LineItem/1', p_reason: 'not in stock', p_expected_version: 4 }))
+    expect(view.shortages).toEqual([{ ref: 12, line_id: 'l1', quantity: 1 }])
+  })
+  it('makes a saved-but-shortages-failed request explicitly retryable', async () => {
+    mocks.shortages.mockResolvedValue({ data: null, error: { message: 'timeout' } })
+    await expect(loadQcView('1', operator)).rejects.toThrow(/saved the action.*shortages.*Retry the same request/)
   })
   it('never counts on an inconclusive barcode lookup or Shopify read', async () => {
     mocks.find.mockRejectedValue(new Error('Shopify lookup failed'))
