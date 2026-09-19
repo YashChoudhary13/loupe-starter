@@ -83,9 +83,12 @@ export async function readQcOrder(client: ShopifyClient, id: string): Promise<Qc
           image: /^https:\/\/cdn\.shopify\.com\//.test(line.image?.url ?? '') ? line.image!.url : null })
       }
       if (!order.lineItems.pageInfo.hasNextPage) {
-        const final = await client.graphql<{ order: Omit<RawOrder, 'lineItems'> | null }>(`
-          query LoupeQcOrderVersion($id: ID!) { order(id: $id) { ${headerFields} } }`, { id: gid })
-        if (!final.order || first.updatedAt !== final.order.updatedAt || first.cancelledAt !== final.order.cancelledAt) { changed = true; break }
+        // A single page is one consistent Shopify response; only a paged read needs the header re-checked for a mid-read edit.
+        if (page > 0) {
+          const final = await client.graphql<{ order: Omit<RawOrder, 'lineItems'> | null }>(`
+            query LoupeQcOrderVersion($id: ID!) { order(id: $id) { ${headerFields} } }`, { id: gid })
+          if (!final.order || first.updatedAt !== final.order.updatedAt || first.cancelledAt !== final.order.cancelledAt) { changed = true; break }
+        }
         const blockedReason = first.cancelledAt ? 'This order is cancelled. Do not pack it.'
           : ['ON_HOLD', 'SCHEDULED'].includes(first.displayFulfillmentStatus) ? 'This order is on hold or scheduled. Resolve its fulfillment status in Shopify before QC.'
           : lines.length === 0 ? 'There are no remaining shipping units to check.'

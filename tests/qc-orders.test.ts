@@ -30,14 +30,19 @@ describe('whole-order Shopify QC snapshots', () => {
   })
   it('restarts a paginated read when the order changes in Shopify', async () => {
     const changed = { ...header, updatedAt: '2026-09-15T08:01:00Z' }
-    const graphql = vi.fn().mockResolvedValueOnce(page()).mockResolvedValueOnce({ order: changed }).mockResolvedValueOnce(page([line('1', { fulfillableQuantity: 1 })], null, changed)).mockResolvedValueOnce({ order: changed })
+    const graphql = vi.fn().mockResolvedValueOnce(page([line()], 'next')).mockResolvedValueOnce(page([line('2')], null, changed)).mockResolvedValueOnce(page([line('1', { fulfillableQuantity: 1 })], null, changed))
     expect((await readQcOrder(client(graphql), '1')).lines[0].required).toBe(1)
-    expect(graphql).toHaveBeenCalledTimes(4)
+    expect(graphql).toHaveBeenCalledTimes(3)
   })
   it('stops after a bounded number of mid-read order edits', async () => {
-    const graphql = vi.fn().mockImplementation(async (query: string) => query.includes('Version') ? { order: { ...header, updatedAt: 'changed' } } : page())
+    const graphql = vi.fn().mockImplementation(async (query: string, variables: { after: string | null }) => query.includes('Version') ? { order: { ...header, updatedAt: 'changed' } } : variables.after ? page([line('2')]) : page([line()], 'next'))
     await expect(readQcOrder(client(graphql), '1')).rejects.toThrow(/changing in Shopify/)
-    expect(graphql).toHaveBeenCalledTimes(6)
+    expect(graphql).toHaveBeenCalledTimes(9)
+  })
+  it('reads a single-page order in one request: the header and lines came from one response', async () => {
+    const graphql = vi.fn().mockResolvedValueOnce(page())
+    expect((await readQcOrder(client(graphql), '1')).lines).toHaveLength(1)
+    expect(graphql).toHaveBeenCalledTimes(1)
   })
   it('blocks cancelled orders, held orders, custom/deleted variants and empty checklists', async () => {
     for (const [rows, changes, reason] of [
@@ -46,7 +51,7 @@ describe('whole-order Shopify QC snapshots', () => {
       [[line('1', { variant: null })], {}, 'custom or deleted'],
       [[line('1', { fulfillableQuantity: 0 })], {}, 'no remaining'],
     ] as const) {
-      const graphql = vi.fn().mockResolvedValueOnce(page([...rows], null, changes)).mockResolvedValueOnce({ order: { ...header, ...changes } })
+      const graphql = vi.fn().mockResolvedValueOnce(page([...rows], null, changes))
       expect((await readQcOrder(client(graphql), '1')).blockedReason).toContain(reason)
     }
   })

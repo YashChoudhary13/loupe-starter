@@ -29,6 +29,24 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-19 — Faster scanning, scan queue, check-by-hand, new operator script (D130)
+
+**Goal this session:** owner: QR sometimes cut → manual entry; scanning feels slow because each scan blocks until confirmed; allow one more sign-in.
+
+**Built:**
+- `src/lib/shopify/qc-orders.ts` → header re-read only after a paged read; single-page orders are one Shopify request.
+- `src/lib/qc/server.ts` → `resolveQcCode` remembers successful matches for 10 min per process (`clearQcResolutionCache` for tests); history + shortage reads in parallel after the RPC.
+- `src/components/qc/QcScreen.tsx` → field stays writable while busy; codes fired during a request queue (≤20) and send in order with fresh UUIDs; button shows "Checking… N waiting"; per-line **Check 1 by hand** submits the saved code; label/placeholder tell the checker to type the SKU under the QR.
+- `scripts/add-operator.ts` → `<env-file> <email> [operator|admin]`, idempotent, audited.
+
+**Verified:** 39 focused tests (new: single-page read is one request, paged mid-edit restart now 3 calls / bounded 9, cache remembers for 10 min and never a rejection), typecheck, lint, `next build`. Per scan before: 3 Shopify + 3 Supabase round trips serial; after: 1 Shopify (0 catalogue lookups after the first unit of a code) + RPC + 2 parallel reads.
+
+**Not finished:** psp.huf27@gmail.com allowlisting is a production `app_users` write — run `npx tsx scripts/add-operator.ts /Users/yash/Desktop/Qimati/loupe-starter/.env.railway psp.huf27@gmail.com` (or with `admin`). Deploy is the usual push. Queued codes are not persisted across reloads. Audit cannot tell a by-hand check from a scan.
+
+**Next session should start with:** push, then scan a 12+ unit line continuously with the gun and confirm the queue drains without dropped units.
+
+---
+
 ## 2026-09-18 — Deployed QC v2 + phone layout; WhatsApp `missing` published
 
 **Goal this session:** release D128 and D129 to production and publish the staff `missing` command.

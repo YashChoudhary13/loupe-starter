@@ -7,13 +7,14 @@ vi.mock('@/lib/shopify/qc-orders', () => ({ readQcOrder: mocks.read }))
 vi.mock('@/lib/supabase/server', () => ({ supabaseServer: () => ({ rpc: mocks.rpc, from: (table: string) => table === 'qc_shortages'
   ? { select: () => ({ eq: () => ({ eq: () => ({ is: () => ({ order: mocks.shortages }) }) }) }) }
   : { select: () => ({ eq: () => ({ order: () => ({ order: () => ({ limit: mocks.history }) }) }) }) } }) }))
-import { loadQcView, resolveQcCode } from '@/lib/qc/server'
+import { clearQcResolutionCache, loadQcView, resolveQcCode } from '@/lib/qc/server'
 import { ShopifyClient } from '@/lib/shopify/client'
 import type { Operator } from '@/lib/auth/authorize'
 const operator = { id: 'server-actor', name: 'Operator', email: 'checker@example.test', role: 'operator' } as Operator
 const order = { id: 'gid://shopify/Order/1', name: 'TEST', updatedAt: '2026-09-15T08:00:00Z', cancelledAt: null, fulfillmentStatus: 'UNFULFILLED', blockedReason: null, lines: [] }
 beforeEach(() => {
   vi.resetAllMocks()
+  clearQcResolutionCache()
   mocks.find.mockResolvedValue([{ id: 'v1' }])
   mocks.read.mockResolvedValue(order)
   mocks.rpc.mockResolvedValue({ data: { session: { id: 'session1' } }, error: null })
@@ -24,10 +25,24 @@ describe('QC server authority', () => {
   it('requires one globally unique variant, allowing its identical SKU and barcode', async () => {
     mocks.find.mockResolvedValue([{ id: 'v1' }, { id: 'v1' }])
     expect(await resolveQcCode(new ShopifyClient(), 'CODE')).toEqual({ variantId: 'v1', rejection: null })
+    clearQcResolutionCache()
     mocks.find.mockResolvedValue([{ id: 'v1' }, { id: 'v2' }])
     expect((await resolveQcCode(new ShopifyClient(), 'CODE')).rejection).toContain('several variants')
     mocks.find.mockResolvedValue([])
     expect((await resolveQcCode(new ShopifyClient(), 'CODE')).rejection).toContain('not found')
+  })
+  it('remembers a successful global match for ten minutes per code, never a rejection', async () => {
+    const client = new ShopifyClient()
+    mocks.find.mockResolvedValue([])
+    expect((await resolveQcCode(client, 'MISS', 1_000)).rejection).toContain('not found')
+    mocks.find.mockResolvedValue([{ id: 'v9' }])
+    expect((await resolveQcCode(client, 'MISS', 1_000)).variantId).toBe('v9')
+    expect(mocks.find).toHaveBeenCalledTimes(2)
+    mocks.find.mockResolvedValue([{ id: 'other' }])
+    expect((await resolveQcCode(client, 'MISS', 1_000 + 9 * 60_000)).variantId).toBe('v9')
+    expect(mocks.find).toHaveBeenCalledTimes(2)
+    expect((await resolveQcCode(client, 'MISS', 1_000 + 11 * 60_000)).variantId).toBe('other')
+    expect(mocks.find).toHaveBeenCalledTimes(3)
   })
   it('resolves the code before the fresh order read and sends server-derived identity', async () => {
     await loadQcView('1', operator, { action: 'scan', expectedGeneration: 1, requestId: 'request', code: 'CODE' })

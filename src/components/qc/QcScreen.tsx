@@ -42,6 +42,9 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const cameraOpenChanged = useCallback((open: boolean) => { cameraOpen.current = open }, [])
   const inFlight = useRef(false)
   const sequence = useRef(0)
+  // Codes the gun fired while a request was in flight; drained one at a time after each confirmed response.
+  const queue = useRef<string[]>([])
+  const [queued, setQueued] = useState(0)
   const endpoint = `/api/qc/${view.order.id.split('/').pop()}`
   const pendingKey = `loupe.qc.pending.${view.operatorId}.${view.order.id}`
 
@@ -122,7 +125,11 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
     } catch (cause) {
       signal('reject')
       setError(cause instanceof Error ? cause.message : 'No confirmed response. Retry this request before scanning another unit.')
-    } finally { inFlight.current = false; setBusy(false); if (!cameraOpen.current) input.current?.focus() }
+    } finally {
+      inFlight.current = false; setBusy(false); if (!cameraOpen.current) input.current?.focus()
+      const next = queue.current.shift(); setQueued(queue.current.length)
+      if (next) queueMicrotask(() => submitCode(next))
+    }
   }
 
   const stale = view.session.status === 'stale'
@@ -139,8 +146,15 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const actionsBlocked = busy || !!pending || recoveryRequired || !verified || stale
 
   function submitCode(scannedCode: string) {
-    if (blocked || !scannedCode.trim()) return
-    try { void send(parseQcCommand({ action: 'scan', requestId: crypto.randomUUID(), code: scannedCode, expectedGeneration: view.session.generation })) }
+    const trimmed = scannedCode.trim()
+    if (!trimmed) return
+    if (inFlight.current && !recoveryRequired && !stale && !view.order.blockedReason) {
+      // The gun fires faster than a round trip: keep scanning, each code is sent in order after the current one confirms.
+      if (queue.current.length < 20) { queue.current.push(trimmed); setQueued(queue.current.length); setCode('') }
+      return
+    }
+    if (blocked) return
+    try { void send(parseQcCommand({ action: 'scan', requestId: crypto.randomUUID(), code: trimmed, expectedGeneration: view.session.generation })) }
     catch (cause) { signal('reject'); setError(cause instanceof Error ? cause.message : 'Scan a valid code.'); if (!cameraOpen.current) input.current?.select() }
   }
 
@@ -155,7 +169,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
     <p className="mt-4 max-w-3xl text-[12px] leading-relaxed text-ink-soft">Scan each pouch with the 2D scanner, listen for the tone, then move it into this order’s box. A pair or set sold as one unit needs one scan. Repeated scans of the same physical pouch cannot be distinguished.</p>
     {(view.order.blockedReason || stale) && <div role="alert" className="mt-4 rounded-panel bg-white p-4 text-[13px] text-amber">{view.order.blockedReason || 'Shopify changed this order’s items, quantities or codes. Previous counts are preserved in history. Start a fresh checklist and recount every unit.'}</div>}
     <div className="sticky top-0 z-10 mt-5 rounded-card bg-white p-4 shadow-sm md:p-5">
-      <form onSubmit={scan} className="flex flex-wrap items-end gap-3"><label className="grid min-w-0 flex-1 gap-2 text-[12px]" htmlFor="qc-code">Scan barcode or SKU<input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Scanner ready — scan a pouch" className="min-w-0 rounded-pill bg-chip px-4 py-3 font-mono text-[16px] focus:outline-2 focus:outline-ink" /></label><button disabled={blocked || !code.trim()} className={`${button} bg-ink text-white`}>{busy ? 'Checking…' : 'Check 1 unit ↵'}</button></form>
+      <form onSubmit={scan} className="flex flex-wrap items-end gap-3"><label className="grid min-w-0 flex-1 gap-2 text-[12px]" htmlFor="qc-code">Scan the QR, or type the SKU printed under it<input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked && !busy} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Scanner ready — scan, or type e.g. RS004-C-GOLD-S-7 and press Enter" className="min-w-0 rounded-pill bg-chip px-4 py-3 font-mono text-[16px] focus:outline-2 focus:outline-ink" /></label><button disabled={(blocked && !busy) || !code.trim()} className={`${button} bg-ink text-white`}>{busy ? (queued > 0 ? `Checking… ${queued} waiting` : 'Checking…') : 'Check 1 unit ↵'}</button></form>
       {feedback && <div role="status" aria-live="assertive" className={`mt-3 flex items-center gap-4 rounded-panel border-2 p-3 ${feedbackClass}`}>
         {feedback.image
           // eslint-disable-next-line @next/next/no-img-element -- Shopify CDN thumbnail of the scanned line.
@@ -167,7 +181,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
           <p className="mt-1 text-[12px] text-ink-soft">{feedback.message}{feedback.code && !feedback.title && <span className="font-mono"> · {feedback.code}</span>}</p>
         </div>
       </div>}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-soft"><span>{verified ? `Shopify verified at ${time(view.session.checked_at)}` : 'Shopify verification needed'} · {busy ? 'Wait for the tone before the next scan' : 'Scanner sends Enter after each code'}</span><button disabled={busy || !!pending} onClick={() => void refresh()} className="rounded-pill px-3 py-1 underline focus-visible:outline-2 disabled:opacity-40">Refresh order</button></div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-soft"><span>{verified ? `Shopify verified at ${time(view.session.checked_at)}` : 'Shopify verification needed'} · {busy ? 'Keep scanning — each code is checked in order' : 'Scanner sends Enter after each code'}</span><button disabled={busy || !!pending} onClick={() => void refresh()} className="rounded-pill px-3 py-1 underline focus-visible:outline-2 disabled:opacity-40">Refresh order</button></div>
       {notice && <p role={notice.attention ? 'alert' : 'status'} aria-live="polite" className={`mt-3 text-[13px] ${notice.attention ? 'text-amber' : 'text-ink'}`}>{notice.text}</p>}
       {error && <p role="alert" className="mt-3 text-[13px] text-amber">{error}</p>}
       {pending && !busy && <button onClick={() => void send(pending)} className={`${button} mt-3 bg-ink text-white`}>Retry the same request safely</button>}
@@ -186,7 +200,8 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
           ? <img src={image} alt="" className={`h-16 w-16 shrink-0 rounded-panel bg-chip object-cover ${done ? 'opacity-50' : ''}`} />
           : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-panel bg-chip text-[10px] text-ink-soft">No image</div>}
         <div className="min-w-0 flex-1"><h2 className={`text-[14px] font-medium ${done ? 'line-through' : ''}`}>{done && '✓ '}{line.title}</h2><p className="mt-1 text-[13px] text-ink-soft">{line.variantTitle || 'One option'}</p><p className="mt-2 break-all font-mono text-[12px]">{line.barcode || line.sku || 'No saved code'}</p>{!line.barcode && <Link href={line.sku ? `/labels?q=${encodeURIComponent(line.sku)}` : '/labels'} className="mt-1 inline-block text-[12px] text-amber underline">Barcode missing · prepare labels</Link>}</div>
-        <div className="text-right"><p className="text-[20px] font-medium tabular-nums">{count}<span className="text-[14px] text-ink-soft"> / {line.required}</span></p><p className="mt-1 text-[12px] text-ink-soft">{done ? 'Checked' : short > 0 && settled ? `${short} short · accepted` : `${line.required - count - short} to scan${short > 0 ? ` · ${short} short` : ''}`}</p></div>
+        <div className="text-right"><p className="text-[20px] font-medium tabular-nums">{count}<span className="text-[14px] text-ink-soft"> / {line.required}</span></p><p className="mt-1 text-[12px] text-ink-soft">{done ? 'Checked' : short > 0 && settled ? `${short} short · accepted` : `${line.required - count - short} to scan${short > 0 ? ` · ${short} short` : ''}`}</p>
+          {!settled && (line.barcode || line.sku) && <button type="button" disabled={blocked && !busy} onClick={() => submitCode(line.barcode || line.sku || '')} title="Use when the QR is cut or will not read; counts one unit exactly like a scan" className="mt-2 rounded-pill bg-chip px-3 py-1.5 text-[12px] focus-visible:outline-2 disabled:opacity-40">Check 1 by hand</button>}</div>
       </article>
     })}</div>
     {(wrap.missing.length > 0 || wrap.extras.length > 0 || view.shortages.length > 0) && !stale && <div className="mt-4 rounded-card bg-white p-5">

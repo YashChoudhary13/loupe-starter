@@ -3564,3 +3564,15 @@ Below `md` the shell is a column: a horizontally scrolling top bar with the same
 
 Rejected: a hamburger drawer (an extra tap before every section switch; the pill row is one thumb-scroll), a separate mobile app, and hiding the console on phones.
 
+### D130 — Scan queue, ten-minute code memory and check-by-hand (2026-09-19)
+
+Owner after a day on v2: "some items have QR cut, I want an option to enter sku manually, also the speed is a bit slow, while we scan we need to wait."
+
+Per scan the server now does one Shopify order read (the header re-read after paging only runs when there was paging: a single page is one consistent response), one RPC, and the history and shortage reads in parallel. A successful global code→variant match is remembered per process for ten minutes (`resolveQcCode`); an order holds 12–60 units of the same variant, so only the first unit of each code pays the catalogue lookup. Rejections are never remembered and the RPC still checks the variant against the fresh order, so the D124 rule "resolve globally, count against the order" is unchanged; a relabel takes effect within ten minutes or on restart.
+
+The screen no longer locks the field while a request is in flight: codes fired meanwhile join a short queue (max 20) and are sent one at a time, each with its own request UUID, after the previous response. Only the in-flight command is persisted for retry; a queued code is lost on reload and simply needs rescanning — the missing count makes that visible before completion. Every line has **Check 1 by hand** for a cut or unreadable QR; it submits the line's saved barcode/SKU through the ordinary scan path, so it counts, audits and caps exactly like a scan (the audit does not distinguish it). The typed field also accepts the SKU printed under the QR.
+
+`scripts/add-operator.ts <env-file> <email> [role]` allowlists one more sign-in (idempotent upsert into `app_users`, `events` row), because membership of that table is the rule and there is no admin UI.
+
+Rejected: skipping the Shopify order read on consecutive scans (would break the invalidation guarantee), caching rejections, a separate "manual" RPC action (would need another signature change for no behavioural difference).
+
