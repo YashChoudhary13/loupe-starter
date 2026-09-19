@@ -11,6 +11,7 @@ import {
   type LiveActivityUpdate,
   type LiveNotice,
 } from '@/lib/live/types'
+import { isStaleDeploymentError } from '@/lib/live/stale-deployment'
 import { cn } from '@/lib/utils'
 
 const POLL_MS = 4_000
@@ -46,6 +47,7 @@ function writeCursor(value: number | null): void {
 export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
   const [snapshot, setSnapshot] = useState<LiveActivitySnapshot | null>(null)
   const [notices, setNotices] = useState<readonly VisibleNotice[]>([])
+  const [stale, setStale] = useState(false)
   const cursorRef = useRef<number | null>(null)
   const instanceRef = useRef(0)
 
@@ -78,6 +80,10 @@ export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
           }))
           if (incoming.length > 0) setNotices((current) => [...current, ...incoming])
         }
+      } catch (error) {
+        // The heartbeat is the first server action a stale tab calls after a deploy: every other
+        // action in this tab would fail the same way, so say so once instead of failing silently.
+        if (isStaleDeploymentError(error)) { stopped = true; setStale(true) }
       } finally {
         inFlight = false
       }
@@ -112,6 +118,12 @@ export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
 
   return (
     <>
+      {stale ? (
+        <div role="alert" className="fixed inset-x-3 top-3 z-50 flex items-center justify-between gap-3 rounded-pill bg-amber px-4 py-2.5 text-[12.5px] text-white shadow-lg md:inset-x-auto md:left-1/2 md:-translate-x-1/2">
+          <span>Loupe was updated. Reload to keep working — saved work is safe.</span>
+          <button type="button" onClick={() => window.location.reload()} className="shrink-0 rounded-pill bg-white px-3 py-1 font-medium text-ink focus-visible:outline-2">Reload</button>
+        </div>
+      ) : null}
       {notices.length > 0 ? (
         <div
           className="fixed left-1/2 top-5 z-50 flex -translate-x-1/2 flex-col items-center gap-2"

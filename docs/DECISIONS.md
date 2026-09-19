@@ -3586,3 +3586,11 @@ Verified with headless Chromium screenshots of the server-rendered screen (feedb
 
 Rejected: hiding the preview while scrolling (mobile browsers may throttle a hidden video; aiming needs it), a picture-in-picture thumbnail (too small to aim), a separate mobile route.
 
+### D132 — A tab left open across a deploy says so and offers one reload (2026-09-19)
+
+After two same-day releases, uploads from a tab opened earlier failed every file with `Server Action "40d0c45…" was not found on the server` (Next.js `failed-to-find-server-action`). Each build assigns new server-action ids; the old tab keeps calling the old ones. Nothing was wrong with the files or the pipeline.
+
+The 4-second heartbeat (`LiveActivity`) is the first server action such a tab calls, so it now catches this exact error, stops polling, and shows one fixed banner with a Reload button. The upload screen maps the same error to a plain sentence instead of the raw message. Route handlers (QC scans) use no action ids and are unaffected.
+
+Rejected: reloading automatically (would discard an unsaved console edit), Vercel-style skew protection (not on this VPS), pinning a deployment id (Next only errors differently; it does not recover).
+

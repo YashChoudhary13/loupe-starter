@@ -12,6 +12,7 @@ import {
   promptSetting,
   settingsForCategory,
 } from '@/lib/prompts/matrix'
+import { STALE_DEPLOYMENT_MESSAGE, isStaleDeploymentError } from '@/lib/live/stale-deployment'
 import { cn } from '@/lib/utils'
 
 import { putUploadedObject } from './put-object'
@@ -159,7 +160,7 @@ export function UploadScreen() {
           } catch (cause) {
             patch(item.key, {
               state: 'failed',
-              detail: cause instanceof Error ? cause.message : String(cause),
+              detail: isStaleDeploymentError(cause) ? STALE_DEPLOYMENT_MESSAGE : cause instanceof Error ? cause.message : String(cause),
             })
           }
         }

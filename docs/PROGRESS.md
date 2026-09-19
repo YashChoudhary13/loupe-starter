@@ -29,6 +29,20 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-19 — Stale-tab detection after deploys (D132)
+
+**Goal this session:** owner: every enhanced image upload failed with `Server Action "…" was not found on the server`.
+
+**Diagnosis:** two releases went out today; the upload tab predated them and called action ids the new server no longer has. A reload fixes it; nothing else was wrong.
+
+**Built:** `src/lib/live/stale-deployment.ts` (`isStaleDeploymentError`, message); `LiveActivity` heartbeat catches it, stops polling and shows a Reload banner; `UploadScreen` shows the plain sentence per file. `tests/stale-deployment.test.ts` pins the exact Next.js message.
+
+**Verified:** focused tests, typecheck, lint, `next build`. Not reproduced live (needs a deploy with an open tab); the next push is itself the test: an open Loupe tab should show the banner within 4 s.
+
+**Next session should start with:** push; keep one tab open across the deploy and confirm the banner appears.
+
+---
+
 ## 2026-09-19 — Phone-first QC screen (D131)
 
 **Goal this session:** owner: Loupe on a phone feels cramped and zoomed in; with the camera open the list is not visible while scrolling.
