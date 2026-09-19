@@ -3594,3 +3594,16 @@ The 4-second heartbeat (`LiveActivity`) is the first server action such a tab ca
 
 Rejected: reloading automatically (would discard an unsaved console edit), Vercel-style skew protection (not on this VPS), pinning a deployment id (Next only errors differently; it does not recover).
 
+### D133 — One database round trip per scan; the Shopify snapshot is reused for a burst and refreshed behind the response (2026-09-19)
+
+Measured from Jaipur against production: operator lookup ~250 ms, Shopify order read ~470 ms, RPC ~250 ms, history + shortage reads ~230 ms — about 1.2 s per scan, all network. The owner wants scans to feel instant and asked what takes the time.
+
+Three changes, each keeping an invariant it touches:
+- **Operator check moves into the RPC.** `qc_command` already refuses an inactive actor (`42501`), so QC routes take the operator id from the signed cookie (`requireOperatorIdForAction`) and skip the `app_users` read. Deactivation still bites on the very next request (D44).
+- **The RPC returns the view.** `qc_view(session, generation)` appends the last 40 audit rows and the open shortages of the current checklist to every `qc_command` result (same signature; `create or replace`). The two follow-up reads are gone.
+- **Snapshot reuse for a burst.** Scan, short, undo and clear-extra reuse a Shopify snapshot younger than 15 s; once it is older than 6 s the response goes out and the order is re-read afterwards (`after()`), with a `sync` call when the fingerprint changed, so an edit still flips the checklist stale within seconds. Completion, reset and page loads always read fresh. `p_checked_at` is the snapshot's time, which the RPC's 30-second window accepts. D124's "Shopify is the authority" stands: nothing is counted against a snapshot older than 15 s, and the pass is only ever granted on a fresh one.
+
+The response carries `timings` (Shopify, database, snapshot age) and the status line shows "last check n s", so the next slowness report comes with its own numbers. Enhancement toasts are suppressed on `/qc` (heartbeat and badge unchanged). The sticky scan card became two columns from `md` (field and messages left, last-scan card and camera right; camera status/Stop overlaid on the preview at every width), so on a 10-inch screen the sticky block is about one card tall.
+
+Rejected: caching the operator lookup (would delay revocation); skipping the Shopify read entirely (would let a cancelled order be packed); trusting the browser with counts.
+

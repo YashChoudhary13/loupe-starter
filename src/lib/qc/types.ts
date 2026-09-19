@@ -85,6 +85,8 @@ export interface QcView {
   operatorId: string
   event?: QcEvent
   replayed?: boolean
+  /** Server-side milliseconds for the last request; shown so slow scans can be explained, never used for logic. */
+  timings?: { totalMs: number; shopifyMs: number; rpcMs: number; snapshotAgeMs: number }
 }
 
 /** A passed checklist, read from the append-only audit; survives later fulfillment or order edits. */

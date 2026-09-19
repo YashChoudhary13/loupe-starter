@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
 import { liveActivityAction } from '@/app/live/actions'
@@ -48,6 +49,10 @@ export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
   const [snapshot, setSnapshot] = useState<LiveActivitySnapshot | null>(null)
   const [notices, setNotices] = useState<readonly VisibleNotice[]>([])
   const [stale, setStale] = useState(false)
+  // Packing is not the moment for enhancement toasts; the badge and heartbeat still run on QC screens.
+  const quiet = usePathname().startsWith('/qc')
+  const quietRef = useRef(quiet)
+  quietRef.current = quiet
   const cursorRef = useRef<number | null>(null)
   const instanceRef = useRef(0)
 
@@ -73,7 +78,7 @@ export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
         const update: LiveActivityUpdate = { initial, snapshot: next }
         window.dispatchEvent(new CustomEvent<LiveActivityUpdate>(LIVE_ACTIVITY_EVENT, { detail: update }))
 
-        if (!initial && next.events.length > 0) {
+        if (!initial && next.events.length > 0 && !quietRef.current) {
           const incoming = noticesForLiveEvents(next.events).map((notice) => ({
             ...notice,
             instance: ++instanceRef.current,

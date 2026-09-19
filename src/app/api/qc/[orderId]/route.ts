@@ -1,4 +1,4 @@
-import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
+import { NotAuthorisedError, requireOperatorIdForAction } from '@/lib/auth/authorize'
 import { serverEnv } from '@/lib/env'
 import { loadQcView } from '@/lib/qc/server'
 import { orderGid, parseQcCommand } from '@/lib/qc/validation'
@@ -16,7 +16,7 @@ function failure(error: unknown) {
 
 export async function GET(_request: Request, context: Context) {
   try {
-    const operator = await requireOperatorForAction()
+    const operator = await requireOperatorIdForAction()
     const { orderId } = await context.params
     return Response.json(await loadQcView(orderGid(orderId), operator), { headers })
   } catch (error) { return failure(error) }
@@ -24,7 +24,7 @@ export async function GET(_request: Request, context: Context) {
 
 export async function POST(request: Request, context: Context) {
   try {
-    const operator = await requireOperatorForAction()
+    const operator = await requireOperatorIdForAction()
     if (request.headers.get('origin') !== new URL(serverEnv.authBaseUrl).origin) return Response.json({ error: 'Open QC in Loupe to scan products.' }, { status: 403, headers })
     if (request.headers.get('content-type')?.split(';')[0] !== 'application/json') return Response.json({ error: 'Use the QC scan form.' }, { status: 415, headers })
     if (Number(request.headers.get('content-length') ?? '0') > 4096) return Response.json({ error: 'QC request too large.' }, { status: 413, headers })

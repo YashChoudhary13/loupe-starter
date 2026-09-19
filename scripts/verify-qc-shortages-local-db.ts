@@ -9,7 +9,7 @@ import { Pool } from 'pg'
 import { orderFingerprint } from '../src/lib/qc/snapshot'
 import type { QcOrder, QcEvent, QcSession } from '../src/lib/qc/types'
 
-const MIGRATIONS = ['20260915081237_order_qc_sessions.sql', '20260915173000_qc_extra_confirmation.sql', '20260918090000_qc_shortages.sql']
+const MIGRATIONS = ['20260915081237_order_qc_sessions.sql', '20260915173000_qc_extra_confirmation.sql', '20260918090000_qc_shortages.sql', '20260919120000_qc_command_returns_view.sql']
 const RING = 'gid://shopify/LineItem/1', NECK = 'gid://shopify/LineItem/2'
 
 async function main() {
@@ -42,7 +42,7 @@ async function main() {
       { id: NECK, variantId: 'gid://shopify/ProductVariant/12', title: 'Necklace', variantTitle: null, sku: 'NK1', barcode: 'NK1', required: 1 },
     ] }
     type Args = { action?: string; snapshot?: QcOrder; request?: string; code?: string | null; variant?: string | null; rejection?: string | null; version?: number | null; undo?: string | null; reason?: string | null; actor?: string; generation?: number; line?: string | null }
-    const command = async (a: Args = {}): Promise<{ session: QcSession; event: QcEvent; replayed: boolean }> => {
+    const command = async (a: Args = {}): Promise<{ session: QcSession; event: QcEvent; replayed: boolean; events: QcEvent[]; shortages: { ref: number; quantity: number; line_id: string }[] }> => {
       const snapshot = a.snapshot ?? order
       const connection = await pool.connect()
       try {
@@ -67,6 +67,8 @@ async function main() {
     check('completion is incomplete while a unit is neither scanned nor short', (await command({ action: 'complete', version: await version() })).event.outcome === 'incomplete')
     const short = await command({ action: 'short', version: await version(), line: RING, reason: 'Not in stock, supplier delayed' })
     check('short is accepted for the remaining units of a line', short.event.outcome === 'short' && short.event.line_id === RING && short.event.variant_id === 'gid://shopify/ProductVariant/11')
+    check('the RPC returns the recent audit and the open shortages with the command', short.events[0].id === short.event.id && short.events.length <= 40 && short.shortages.length === 1 && short.shortages[0].line_id === RING && short.shortages[0].quantity === 1)
+    check('sync also returns them', (await command({ action: 'sync' })).shortages.length === 1)
     let list = await rows()
     assert.deepEqual(list.map(r => [Number(r.ref), r.line_id, r.quantity, r.reason, r.reported_by, r.open, r.generation]), [[1, RING, 1, 'Not in stock, supplier delayed', 'Checker', true, 1]])
     checks.push('shortage row records the remaining quantity, reason and reporter')

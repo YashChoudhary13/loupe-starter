@@ -91,14 +91,13 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
     remove: 'Remove this pouch from view. Wait for Ready before the next one.', paused: 'Waiting for a clear camera view…',
   }[state]
   const toggle = () => { setError(''); setState('starting'); remember(!open); setOpen(!open) }
-  return <div className="mt-2 md:mt-3">
-    <button type="button" disabled={!open && paused} onClick={toggle} className={`rounded-pill bg-chip px-3 py-1.5 text-[12px] focus-visible:outline-2 disabled:opacity-40 md:px-4 md:py-2 ${open ? 'hidden md:inline-block' : ''}`}>{open ? 'Stop camera' : 'Use phone camera instead'}</button>
-    {open && <div className="relative md:mt-3 md:max-w-md">
-      {/* On a phone the status and stop control sit on the preview itself, so the sticky card stays short. */}
-      <p role="status" aria-live="polite" className="absolute left-2 top-2 z-10 max-w-[70%] truncate rounded-pill bg-white/90 px-2.5 py-1 text-[11px] font-medium md:static md:mb-2 md:max-w-none md:rounded-panel md:bg-chip md:p-3 md:text-[13px]">{status}</p>
-      <button type="button" onClick={toggle} aria-label="Stop camera" className="absolute right-2 top-2 z-10 rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:hidden">Stop</button>
-      <video ref={video} muted playsInline className="h-28 w-full rounded-panel bg-ink object-cover md:aspect-[4/3] md:h-auto" aria-label="Barcode camera preview" />
-      <p className="mt-2 hidden text-[12px] text-ink-soft md:block">The camera stays on. Show one label, wait for acceptance, then move the pouch into the checked box. Leave the view clear for about a second before the next pouch, even if its code is the same.</p>
+  return <div className="mt-2">
+    {!open && <button type="button" disabled={paused} onClick={toggle} className="rounded-pill bg-chip px-3 py-1.5 text-[12px] focus-visible:outline-2 disabled:opacity-40 md:px-4 md:py-2">Use phone camera instead</button>}
+    {open && <div className="relative">
+      {/* Status and Stop sit on the preview itself at every width, so the camera costs one short band, not three rows. */}
+      <p role="status" aria-live="polite" className="absolute left-2 top-2 z-10 max-w-[70%] truncate rounded-pill bg-white/90 px-2.5 py-1 text-[11px] font-medium md:text-[12px]">{status}</p>
+      <button type="button" onClick={toggle} aria-label="Stop camera" className="absolute right-2 top-2 z-10 rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:text-[12px]">Stop</button>
+      <video ref={video} muted playsInline className="h-28 w-full rounded-panel bg-ink object-cover md:h-40" aria-label="Barcode camera preview" />
     </div>}
     {error && <p role="alert" className="mt-2 text-[12px] text-amber">{error}</p>}
   </div>

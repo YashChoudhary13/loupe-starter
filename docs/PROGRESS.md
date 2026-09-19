@@ -29,6 +29,27 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-19 — Scan in one round trip, compact sticky card, quiet QC (D133)
+
+**Goal this session:** owner: QC still not fast enough (what exactly takes time?), sticky scan card leaves little list on a 10-inch screen, no upload toasts while checking.
+
+**Measured (read-only probe from this Mac):** Shopify token first use 1.6 s, then ~390–480 ms per call (order read 477, code lookup 444); Supabase ~250 ms per call (auth 441 cold, sessions 255, events+shortages ∥ 224). Per scan ≈ 1.2 s.
+
+**Built:**
+- `supabase/migrations/20260919120000_qc_command_returns_view.sql` → `qc_view()` + `qc_command` returning `events`/`shortages` (same signature). `scripts/apply-migration.ts <file> <env> <receipt>` generic apply with overload/permission checks.
+- `src/lib/qc/server.ts` → snapshot reuse 15 s / background refresh after 6 s via `after()`, RPC-returned view, `timings`; `clearQcSnapshotCache` for tests.
+- `src/lib/auth/authorize.ts` → `requireOperatorIdForAction` (cookie only; RPC enforces `active`); QC route uses it.
+- `QcScreen` → two-column sticky card from `md`, camera under the last-scan card, status/Stop overlaid on the preview at every width, "last check n s" with a tooltip of the split.
+- `LiveActivity` → no toasts on `/qc`.
+
+**Verified:** local Postgres proof now 31 checks over 4 migrations (RPC returns audit + shortages, sync too); 48 focused tests incl. snapshot reuse/refresh/complete-rereads with a fake clock; typecheck, lint, `next build`; headless screenshots at 1280×720 with camera off/on and 390×844.
+
+**Rollout:** apply the migration first (`scripts/apply-migration.ts 20260919120000_qc_command_returns_view.sql …`), then push. The new app reads `events`/`shortages` from the RPC; against the old function it would show an empty history until the migration lands, so order matters.
+
+**Next session should start with:** apply + push, then watch "last check" on a real order — expect ~0.3 s after the first unit of each code.
+
+---
+
 ## 2026-09-19 — Stale-tab detection after deploys (D132)
 
 **Goal this session:** owner: every enhanced image upload failed with `Server Action "…" was not found on the server`.

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ authorize: vi.fn(), load: vi.fn() }))
-vi.mock('@/lib/auth/authorize', () => ({ requireOperatorForAction: mocks.authorize, NotAuthorisedError: class extends Error {} }))
+vi.mock('@/lib/auth/authorize', () => ({ requireOperatorIdForAction: mocks.authorize, NotAuthorisedError: class extends Error {} }))
 vi.mock('@/lib/env', () => ({ serverEnv: { authBaseUrl: 'https://loupe.example' } }))
 vi.mock('@/lib/qc/server', () => ({ loadQcView: mocks.load }))
 import { NotAuthorisedError } from '@/lib/auth/authorize'

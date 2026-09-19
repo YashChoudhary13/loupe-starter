@@ -151,3 +151,16 @@ export async function requireOperatorForAction(): Promise<Operator> {
   if (!operator) throw new NotAuthorisedError()
   return operator
 }
+
+/**
+ * The signed-in operator's id from the signed cookie alone — no app_users round trip.
+ * ONLY for callers whose next step is a database routine that itself refuses an inactive
+ * actor (qc_command raises 42501 unless app_users.active). Deactivation therefore still
+ * takes effect on the very next request (D44); this just stops paying for the same check twice.
+ */
+export async function requireOperatorIdForAction(): Promise<{ readonly id: string }> {
+  const jar = await cookies()
+  const session = sessionFromCookie(jar.get(SESSION_COOKIE)?.value)
+  if (!session) throw new NotAuthorisedError()
+  return { id: session.uid }
+}
