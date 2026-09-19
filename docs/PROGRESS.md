@@ -29,6 +29,16 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-19 — ER713–ER731 material 304 → 316L via the publisher
+
+**Goal:** owner: make these earrings 316L — tags, description and custom.material.
+
+**Built:** `scripts/change-draft-material.ts <env> <from> <to> <first> <last> <receipt-dir> [--apply]` — plans read-only, then flips `product_drafts.material_id` (only if still <from>), records `draft.material_changed`, re-pushes through `publishDraftForOperator` with `shopifyStatus: 'DRAFT'`, and verifies tags, first bullet, `custom.material` and SEO title on read-back. Skips non-DRAFT Shopify products (a DRAFT push would un-publish them) and drafts with custom overrides.
+
+**Verified live:** all 19 changed and verified (plan + apply receipts in `output/qc-system/material-er713-731-20260919/`). Loupe's own record now says 316L, so reconciliation sees no drift.
+
+---
+
 ## 2026-09-19 — Duplicate-code diagnosis: legacy shared SKUs; active-only QC resolution; Prepare codes rules (D134)
 
 **Goal this session:** owner sees "code belongs to several variants" on variant products during QC.
