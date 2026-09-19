@@ -29,6 +29,17 @@ describe('QC server authority', () => {
     mocks.find.mockResolvedValue([])
     expect((await resolveQcCode(new ShopifyClient(), 'CODE')).rejection).toContain('not found')
   })
+  it('lets one active product win over an archived or draft copy carrying the same code, never two active ones', async () => {
+    const client = new ShopifyClient()
+    mocks.find.mockResolvedValue([{ id: 'live', product: { id: 'p1', status: 'ACTIVE' } }, { id: 'old', product: { id: 'p2', status: 'ARCHIVED' } }, { id: 'draft', product: { id: 'p3', status: 'DRAFT' } }])
+    expect(await resolveQcCode(client, 'RS235', 5)).toEqual({ variantId: 'live', rejection: null })
+    clearQcResolutionCache()
+    mocks.find.mockResolvedValue([{ id: 'a', product: { id: 'p1', status: 'ACTIVE' } }, { id: 'b', product: { id: 'p2', status: 'ACTIVE' } }])
+    expect((await resolveQcCode(client, 'CB459', 5)).rejection).toContain('several variants of active products')
+    clearQcResolutionCache()
+    mocks.find.mockResolvedValue([{ id: 's6', product: { id: 'p1', status: 'ACTIVE' } }, { id: 's7', product: { id: 'p1', status: 'ACTIVE' } }])
+    expect((await resolveQcCode(client, 'RS242', 5)).variantId).toBeNull()
+  })
   it('remembers a successful global match for ten minutes per code, never a rejection', async () => {
     const client = new ShopifyClient()
     mocks.find.mockResolvedValue([])

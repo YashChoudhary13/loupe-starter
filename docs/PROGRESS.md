@@ -29,6 +29,20 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-19 — Duplicate-code diagnosis: legacy shared SKUs; active-only QC resolution; Prepare codes rules (D134)
+
+**Goal this session:** owner sees "code belongs to several variants" on variant products during QC.
+
+**Found (read-only, all 5,632 variants):** 0 duplicated new-scheme codes; 382 legacy shared codes, 6 on active stocked variants: RS229, RS242 (`Ring size`), BR038 (`Designs` 1–5), RS235 (archived copy), CB459 (Chain Bracelet 458 Pink carries it), BK218 (Bracelet Kada 217 Orange carries it; 217's Brown/Sea Green carry BK219/BK220). Reports saved beside the QC receipts.
+
+**Built:** `resolveQcCode` prefers ACTIVE products among duplicates; `CodeMatch` carries product status; `planProductCodes` accepts `Ring size` and numeric single options. Tests: active-vs-archived/draft resolution; RS242/BR038/type fallbacks.
+
+**Not finished (owner actions in Shopify/Labels):** Labels → Prepare codes for Rings 229, Rings 242, Brooch 038, then reprint; fix the wrong SKUs on Chain Bracelet 458 (Pink → CB458) and Bracelet Kada 217 (Orange/Brown/Sea Green → BK217) in Shopify Admin, then Prepare codes on both; Rings 235 needs nothing after deploy. Deploy: push only (no migration).
+
+**Next session should start with:** push; scan one RS235 unit (should accept) and one RS242 unit before relabel (should still refuse, naming active products).
+
+---
+
 ## 2026-09-19 — Scan in one round trip, compact sticky card, quiet QC (D133)
 
 **Goal this session:** owner: QC still not fast enough (what exactly takes time?), sticky scan card leaves little list on a 10-inch screen, no upload toasts while checking.

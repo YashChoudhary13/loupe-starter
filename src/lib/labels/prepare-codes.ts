@@ -30,8 +30,9 @@ export async function planProductCodes(client: ShopifyClient, productId: string)
   const rows = variants.map(v => {
     const options = v.selectedOptions.filter(o => o.name !== 'Title')
     const colour = options.find(o => /^(colou?r)$/i.test(o.name))
-    const size = options.find(o => /^size$/i.test(o.name))
-    const number = options.find(o => /^number$/i.test(o.name))
+    const size = options.find(o => /^(ring\s*)?size$/i.test(o.name))
+    // "Number", or any single option whose value is just a small integer (Design 1–5, tray positions): a numbered choice.
+    const number = options.find(o => /^number$/i.test(o.name)) ?? (options.length === 1 && !colour && !size && /^\d{1,3}$/.test(options[0].value.trim()) ? options[0] : undefined)
     // Keep an already-distinct identifier, so repeat preparations never relabel renamed choices.
     let sku = v.sku!
     if (sku === parent || variants.filter(other => other.sku === sku).length > 1) {

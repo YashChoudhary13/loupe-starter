@@ -3607,3 +3607,11 @@ The response carries `timings` (Shopify, database, snapshot age) and the status 
 
 Rejected: caching the operator lookup (would delay revocation); skipping the Shopify read entirely (would let a cancelled order be packed); trusting the browser with counts.
 
+### D134 — "Several variants" during QC is legacy shared codes, not new codes; archived copies no longer count (2026-09-19)
+
+Owner: scanning products with variants shows "this SKU is used in several places". A read-only pass over all 5,632 variants found **no duplicated new-scheme code** (`-C-`, `-S-`, `-N-`). 382 codes are duplicated, 356 within one product — the legacy convention where every colour or size carried the parent SKU (`NK390` on eight colours). Only six of them sit on active stocked variants (9 products, 13 variants): RS229 and RS242 (sizes never relabelled; RS242's option is named "Ring size", which the relabel treated as unknown), BR038 (option "Designs" with values 1–5), RS235 (an archived copy carries the live code), CB459 and BK218 (a neighbouring product's variant carries the wrong number). Report: `output/qc-system/qc-v2-20260918/dup-codes.json`, `dup-stock.json`.
+
+Two rule changes, no data change by Loupe: QC resolution now narrows a multi-match to variants of **ACTIVE** products and accepts a single survivor, because an archived or draft product cannot be on an open order (the publish-time collision check stays global). `Prepare codes` recognises `Ring size` as the size option and treats a lone option whose values are small integers as a numbered choice, so RS242 becomes `RS242-S-5…8` and BR038 `BR038-N-1…5` instead of `-N-<variant id>`. Wrong-number variants (CB458 Pink as `CB459`, Bracelet Kada 217 as `BK218/219/220`) must be corrected by hand in Shopify first; `Prepare codes` refuses a product whose number is shared with another product on purpose.
+
+Rejected: resolving a duplicate code by "whichever variant is on this order" (for sizes it would count a wrong size as right, which is the very thing QC exists to catch).
+

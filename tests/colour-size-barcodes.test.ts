@@ -50,6 +50,19 @@ describe('existing catalogue preparation', () => {
     expect(graphql.mock.lastCall?.[1]).toEqual({ productId:id, variants: plan.rows.map(row=>({id:row.id,barcode:row.barcode,inventoryItem:{sku:row.sku}})) })
     expect(graphql.mock.lastCall?.[0]).toContain('allowPartialUpdates: false')
   })
+  it('derives sizes from a "Ring size" option and numbered choices from a small-integer option, instead of variant-id fallbacks', async () => {
+    const product = (title: string, parent: string, option: string, values: string[]) => {
+      const nodes = values.map((value, i) => ({ id: `gid://shopify/ProductVariant/${i + 1}`, sku: parent, barcode: null, title: value, selectedOptions: [{ name: option, value }] }))
+      const graphql = vi.fn().mockImplementation(async (query: string) => query.includes('LoupePrepareCodes') ? { product: { id, title, variants: { nodes, pageInfo: { hasNextPage: false } } } }
+        : query.includes('LoupeLabelSearch') ? { productVariants: { nodes: nodes.map(v => ({ ...v, product: { id } })), pageInfo: { hasNextPage: false, endCursor: null } } }
+        : { productVariants: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } })
+      return { graphql } as unknown as ShopifyClient
+    }
+    expect((await planProductCodes(product('Rings 242 (4 Rings Set)', 'RS242', 'Ring size', ['5', '6', '7', '8']), id)).rows.map(r => r.sku)).toEqual(['RS242-S-5', 'RS242-S-6', 'RS242-S-7', 'RS242-S-8'])
+    expect((await planProductCodes(product('Brooch 038', 'BR038', 'Designs', ['1', '2', '3']), id)).rows.map(r => r.sku)).toEqual(['BR038-N-1', 'BR038-N-2', 'BR038-N-3'])
+    const fallback = (await planProductCodes(product('Necklace 088', 'NK088', 'type', ['Star', 'Heart']), id)).rows.map(r => r.sku)
+    expect(fallback).toEqual(['NK088-N-1', 'NK088-N-2'])
+  })
   it('blocks truncated products before proposing any change', async () => {
     const client = {graphql:vi.fn().mockResolvedValue({product:{id,title:'Rings',variants:{nodes:saved,pageInfo:{hasNextPage:true}}}})} as unknown as ShopifyClient
     await expect(planProductCodes(client,id)).rejects.toThrow(/1–250/)

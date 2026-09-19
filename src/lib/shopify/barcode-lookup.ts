@@ -4,7 +4,7 @@ export interface CodeMatch {
   readonly id: string
   readonly sku: string | null
   readonly barcode: string | null
-  readonly product: { readonly id: string }
+  readonly product: { readonly id: string; readonly status?: 'ACTIVE' | 'ARCHIVED' | 'DRAFT' }
 }
 
 /** Shopify does not enforce barcode or SKU uniqueness. Always verify exact values. */
@@ -15,7 +15,7 @@ export async function findCodeMatches(client: ShopifyClient, code: string): Prom
     const data: { productVariants: { nodes: CodeMatch[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } = await client.graphql(`
       query LoupeCodeMatches($query: String!, $after: String) {
         productVariants(first: 100, query: $query, after: $after) {
-          nodes { id sku barcode product { id } }
+          nodes { id sku barcode product { id status } }
           pageInfo { hasNextPage endCursor }
         }
       }`, { query: `(sku:${JSON.stringify(code)} OR barcode:${JSON.stringify(code)})`, after })
