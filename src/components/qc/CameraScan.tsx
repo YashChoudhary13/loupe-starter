@@ -90,9 +90,16 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
     starting: 'Opening camera…', ready: 'Ready for the next pouch', steady: 'Hold the label steady…',
     remove: 'Remove this pouch from view. Wait for Ready before the next one.', paused: 'Waiting for a clear camera view…',
   }[state]
-  return <div className="mt-3">
-    <button type="button" disabled={!open && paused} onClick={() => { setError(''); setState('starting'); remember(!open); setOpen(!open) }} className="rounded-pill bg-chip px-4 py-2 text-[12px] focus-visible:outline-2 disabled:opacity-40">{open ? 'Stop camera' : 'Use phone camera instead'}</button>
-    {open && <div className="mt-3 max-w-md"><p role="status" aria-live="polite" className="mb-2 rounded-panel bg-chip p-3 text-[13px] font-medium">{status}</p><video ref={video} muted playsInline className="aspect-[4/3] w-full rounded-panel bg-ink object-cover" aria-label="Barcode camera preview" /><p className="mt-2 text-[12px] text-ink-soft">The camera stays on. Show one label, wait for acceptance, then move the pouch into the checked box. Leave the view clear for about a second before the next pouch, even if its code is the same.</p></div>}
+  const toggle = () => { setError(''); setState('starting'); remember(!open); setOpen(!open) }
+  return <div className="mt-2 md:mt-3">
+    <button type="button" disabled={!open && paused} onClick={toggle} className={`rounded-pill bg-chip px-3 py-1.5 text-[12px] focus-visible:outline-2 disabled:opacity-40 md:px-4 md:py-2 ${open ? 'hidden md:inline-block' : ''}`}>{open ? 'Stop camera' : 'Use phone camera instead'}</button>
+    {open && <div className="relative md:mt-3 md:max-w-md">
+      {/* On a phone the status and stop control sit on the preview itself, so the sticky card stays short. */}
+      <p role="status" aria-live="polite" className="absolute left-2 top-2 z-10 max-w-[70%] truncate rounded-pill bg-white/90 px-2.5 py-1 text-[11px] font-medium md:static md:mb-2 md:max-w-none md:rounded-panel md:bg-chip md:p-3 md:text-[13px]">{status}</p>
+      <button type="button" onClick={toggle} aria-label="Stop camera" className="absolute right-2 top-2 z-10 rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:hidden">Stop</button>
+      <video ref={video} muted playsInline className="h-28 w-full rounded-panel bg-ink object-cover md:aspect-[4/3] md:h-auto" aria-label="Barcode camera preview" />
+      <p className="mt-2 hidden text-[12px] text-ink-soft md:block">The camera stays on. Show one label, wait for acceptance, then move the pouch into the checked box. Leave the view clear for about a second before the next pouch, even if its code is the same.</p>
+    </div>}
     {error && <p role="alert" className="mt-2 text-[12px] text-amber">{error}</p>}
   </div>
 }

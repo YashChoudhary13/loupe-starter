@@ -26,7 +26,7 @@ export default async function ShortagesPage() {
   let lists: Awaited<ReturnType<typeof listShortages>> = { open: [], resolved: [] }
   let error: string | undefined
   try { lists = await listShortages(30) } catch (cause) { error = cause instanceof Error ? cause.message : 'Shortages could not be loaded.' }
-  return <section className="h-full overflow-auto px-4 py-6 md:px-8">
+  return <section className="h-full overflow-auto px-3 py-4 md:px-8 md:py-6">
     <div className="flex flex-wrap items-start justify-between gap-4"><div>
       <h1 className="text-[26px] font-medium tracking-[-0.025em]">Shortages</h1>
       <p className="mt-2 max-w-2xl text-[13px] text-ink-soft">Units marked short during QC because the team did not have them. Each stays open until the customer is refunded, sent a coupon, or the unit is shipped later. Staff can also list and resolve these from WhatsApp with <span className="font-mono">missing</span>.</p>

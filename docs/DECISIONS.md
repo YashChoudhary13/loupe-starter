@@ -3576,3 +3576,13 @@ The screen no longer locks the field while a request is in flight: codes fired m
 
 Rejected: skipping the Shopify order read on consecutive scans (would break the invalidation guarantee), caching rejections, a separate "manual" RPC action (would need another signature change for no behavioural difference).
 
+### D131 — The QC screen is phone-first below `md`: short sticky card, camera as a band with overlaid controls (2026-09-19)
+
+Owner on a phone: "very cramped… when I open camera and scroll I can't see the list properly… things optimised for mobile but very zoomed in." Measured at 390 × 844 with a static render: the sticky scan card (input, feedback card, status line, camera toggle, status pill, 4:3 preview) took ~55% of the viewport, so scrolling left a third of the screen for the list.
+
+Below `md`: the sticky card keeps only the input row, a compact feedback card (64 px thumbnail, two-line message) and a one-line status; the camera is a 112 px full-width band with the ready/remove state and a Stop chip overlaid on the preview instead of stacked above it; the intro paragraph, the "Prepare labels" pill and the long camera explanation are desktop-only; the header puts the counter beside the order name; line cards use 56 px thumbnails and truncation. The sticky block is now ~40% of the viewport with three line cards visible above the fold. Desktop keeps every previous element and size through `md:` variants. Decoding is unaffected by the preview's CSS size: ZXing reads the video frames, not the rendered box.
+
+Verified with headless Chromium screenshots of the server-rendered screen (feedback card derived from `initialView.event`, which also lets a future reload show the last outcome).
+
+Rejected: hiding the preview while scrolling (mobile browsers may throttle a hidden video; aiming needs it), a picture-in-picture thumbnail (too small to aim), a separate mobile route.
+

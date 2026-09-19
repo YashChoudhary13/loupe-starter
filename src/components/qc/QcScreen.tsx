@@ -13,6 +13,24 @@ const time = (value: string) => new Date(value).toLocaleTimeString('en-IN', { ho
 
 interface Feedback { tone: QcTone; headline: string; message: string; image: string | null; title: string | null; variantTitle: string | null; progress: string | null; code: string | null }
 
+/** What the last action deserves on the feedback card, or null when the view carries no outcome worth a tone. */
+function feedbackFor(payload: QcView): Feedback | null {
+  const outcome = payload.event?.outcome
+  const tone = toneForOutcome(outcome)
+  if (!tone) return null
+  const line = payload.session.snapshot.lines.find(item => item.id === payload.event?.line_id) ?? payload.session.snapshot.lines.find(item => payload.event?.variant_id != null && item.variantId === payload.event?.variant_id)
+  const fresh = line && payload.order.lines.find(item => item.id === line.id)
+  const count = line ? payload.session.counts[line.id] ?? 0 : null
+  return {
+    tone,
+    headline: outcome === 'accepted' ? '✓ Checked' : outcome === 'passed' ? '✓ QC passed' : outcome === 'short' ? 'Marked short' : outcome === 'removed' ? '✓ Extra removed' : outcome === 'extra' ? 'Extra unit' : outcome === 'wrong' ? 'Not on this order' : outcome === 'rejected' ? 'Not accepted' : 'Check the message',
+    message: payload.event?.message ?? '',
+    image: fresh?.image ?? line?.image ?? null, title: line?.title ?? null, variantTitle: line?.variantTitle ?? null,
+    progress: line && count !== null ? `${count} / ${line.required}` : null,
+    code: payload.event?.code ?? null,
+  }
+}
+
 /** A small inline "reason, then confirm" control; every count-changing correction needs an audit reason. */
 function ReasonAction({ label, confirm, disabled, onConfirm }: { label: string; confirm: string; disabled: boolean; onConfirm: (reason: string) => void }) {
   const [open, setOpen] = useState(false)
@@ -32,7 +50,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const [pending, setPending] = useState<QcCommand | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ text: string; attention: boolean } | null>(null)
-  const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [feedback, setFeedback] = useState<Feedback | null>(() => feedbackFor(initialView))
   const [verified, setVerified] = useState(false)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
   const [reason, setReason] = useState('')
@@ -107,21 +125,8 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       sessionStorage.removeItem(pendingKey); setPending(null); setCode(''); setReason(''); setResetOpen(false); setRecoveryRequired(false)
       const outcome = payload.event?.outcome
       setNotice({ text: `${payload.replayed ? 'Saved request confirmed. ' : ''}${payload.event?.message ?? 'QC saved.'}`, attention: !['accepted', 'passed', 'undone', 'reset', 'removed', 'short'].includes(outcome ?? '') })
-      const tone = toneForOutcome(outcome)
-      if (tone && command.action !== 'reset') {
-        signal(tone)
-        const line = payload.session.snapshot.lines.find(item => item.id === payload.event?.line_id) ?? payload.session.snapshot.lines.find(item => payload.event?.variant_id != null && item.variantId === payload.event?.variant_id)
-        const fresh = line && payload.order.lines.find(item => item.id === line.id)
-        const count = line ? payload.session.counts[line.id] ?? 0 : null
-        setFeedback({
-          tone,
-          headline: outcome === 'accepted' ? '✓ Checked' : outcome === 'passed' ? '✓ QC passed' : outcome === 'short' ? 'Marked short' : outcome === 'removed' ? '✓ Extra removed' : outcome === 'extra' ? 'Extra unit' : outcome === 'wrong' ? 'Not on this order' : outcome === 'rejected' ? 'Not accepted' : 'Check the message',
-          message: payload.event?.message ?? '',
-          image: fresh?.image ?? line?.image ?? null, title: line?.title ?? null, variantTitle: line?.variantTitle ?? null,
-          progress: line && count !== null ? `${count} / ${line.required}` : null,
-          code: payload.event?.code ?? null,
-        })
-      }
+      const next = command.action === 'reset' ? null : feedbackFor(payload)
+      if (next) { signal(next.tone); setFeedback(next) }
     } catch (cause) {
       signal('reject')
       setError(cause instanceof Error ? cause.message : 'No confirmed response. Retry this request before scanning another unit.')
@@ -163,45 +168,45 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const feedbackClass = feedback?.tone === 'accept' ? 'border-green bg-white' : feedback?.tone === 'passed' ? 'border-green bg-chip' : 'border-amber bg-white'
   const feedbackText = feedback?.tone === 'reject' ? 'text-amber' : 'text-green'
 
-  return <section className="h-full overflow-auto px-4 py-5 md:px-8">
-    <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/qc" className="rounded-pill py-2 text-[13px] underline focus-visible:outline-2">← Order QC</Link><div className="flex gap-2"><Link href="/qc/shortages" className={`${button} bg-white`}>Shortages</Link><Link href="/labels" className={`${button} bg-white`}>Prepare labels</Link></div></div>
-    <div className="mt-4 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-[28px] font-medium tracking-[-0.025em]">{view.order.name}</h1><p className="mt-1 text-[13px] text-ink-soft">All remaining shipping units · checklist {view.session.generation}</p></div><div className="rounded-pill bg-ink px-5 py-3 text-[15px] font-medium text-white">{checked} / {required} checked{shortTotal > 0 && <span className="text-amber"> · {shortTotal} short</span>}</div></div>
-    <p className="mt-4 max-w-3xl text-[12px] leading-relaxed text-ink-soft">Scan each pouch with the 2D scanner, listen for the tone, then move it into this order’s box. A pair or set sold as one unit needs one scan. Repeated scans of the same physical pouch cannot be distinguished.</p>
+  return <section className="h-full overflow-auto px-3 py-3 md:px-8 md:py-5">
+    <div className="flex items-center justify-between gap-2"><Link href="/qc" className="rounded-pill py-1 text-[13px] underline focus-visible:outline-2 md:py-2">← Order QC</Link><div className="flex gap-2"><Link href="/qc/shortages" className="rounded-pill bg-white px-3 py-1.5 text-[12px] focus-visible:outline-2 md:px-5 md:py-3 md:text-[13px]">Shortages</Link><Link href="/labels" className="hidden rounded-pill bg-white px-5 py-3 text-[13px] focus-visible:outline-2 md:inline-block">Prepare labels</Link></div></div>
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 md:mt-4 md:items-start md:gap-4"><div><h1 className="text-[22px] font-medium tracking-[-0.025em] md:text-[28px]">{view.order.name}</h1><p className="mt-0.5 text-[12px] text-ink-soft md:mt-1 md:text-[13px]"><span className="hidden md:inline">All remaining shipping units · </span>checklist {view.session.generation}</p></div><div className="rounded-pill bg-ink px-4 py-2 text-[14px] font-medium text-white md:px-5 md:py-3 md:text-[15px]">{checked} / {required} checked{shortTotal > 0 && <span className="text-amber"> · {shortTotal} short</span>}</div></div>
+    <p className="mt-4 hidden max-w-3xl text-[12px] leading-relaxed text-ink-soft md:block">Scan each pouch with the 2D scanner, listen for the tone, then move it into this order’s box. A pair or set sold as one unit needs one scan. Repeated scans of the same physical pouch cannot be distinguished.</p>
     {(view.order.blockedReason || stale) && <div role="alert" className="mt-4 rounded-panel bg-white p-4 text-[13px] text-amber">{view.order.blockedReason || 'Shopify changed this order’s items, quantities or codes. Previous counts are preserved in history. Start a fresh checklist and recount every unit.'}</div>}
-    <div className="sticky top-0 z-10 mt-5 rounded-card bg-white p-4 shadow-sm md:p-5">
-      <form onSubmit={scan} className="flex flex-wrap items-end gap-3"><label className="grid min-w-0 flex-1 gap-2 text-[12px]" htmlFor="qc-code">Scan the QR, or type the SKU printed under it<input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked && !busy} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Scanner ready — scan, or type e.g. RS004-C-GOLD-S-7 and press Enter" className="min-w-0 rounded-pill bg-chip px-4 py-3 font-mono text-[16px] focus:outline-2 focus:outline-ink" /></label><button disabled={(blocked && !busy) || !code.trim()} className={`${button} bg-ink text-white`}>{busy ? (queued > 0 ? `Checking… ${queued} waiting` : 'Checking…') : 'Check 1 unit ↵'}</button></form>
-      {feedback && <div role="status" aria-live="assertive" className={`mt-3 flex items-center gap-4 rounded-panel border-2 p-3 ${feedbackClass}`}>
+    <div className="sticky top-0 z-10 mt-3 rounded-card bg-white p-3 shadow-sm md:mt-5 md:p-5">
+      <form onSubmit={scan} className="flex items-end gap-2 md:gap-3"><label className="grid min-w-0 flex-1 gap-1 text-[11px] md:gap-2 md:text-[12px]" htmlFor="qc-code"><span><span className="md:hidden">Scan, or type the SKU under the QR</span><span className="hidden md:inline">Scan the QR, or type the SKU printed under it</span></span><input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked && !busy} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Scan or type SKU" className="min-w-0 rounded-pill bg-chip px-4 py-2.5 font-mono text-[16px] focus:outline-2 focus:outline-ink md:py-3" /></label><button disabled={(blocked && !busy) || !code.trim()} className={`${button} shrink-0 whitespace-nowrap bg-ink px-4 py-2.5 text-white md:px-5 md:py-3`}>{busy ? (queued > 0 ? `${queued} waiting` : 'Checking…') : <><span className="md:hidden">Check ↵</span><span className="hidden md:inline">Check 1 unit ↵</span></>}</button></form>
+      {feedback && <div role="status" aria-live="assertive" className={`mt-2 flex items-center gap-3 rounded-panel border-2 p-2 md:mt-3 md:gap-4 md:p-3 ${feedbackClass}`}>
         {feedback.image
           // eslint-disable-next-line @next/next/no-img-element -- Shopify CDN thumbnail of the scanned line.
-          ? <img src={feedback.image} alt="" className="h-24 w-24 shrink-0 rounded-panel bg-chip object-cover md:h-32 md:w-32" />
-          : <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-panel bg-chip text-[11px] text-ink-soft md:h-32 md:w-32">No image</div>}
+          ? <img src={feedback.image} alt="" className="h-16 w-16 shrink-0 rounded-panel bg-chip object-cover md:h-28 md:w-28" />
+          : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-panel bg-chip text-[11px] text-ink-soft md:h-28 md:w-28">No image</div>}
         <div className="min-w-0 flex-1">
-          <p className={`text-[20px] font-medium ${feedbackText}`}>{feedback.headline}{feedback.progress && <span className="ml-3 text-[16px] text-ink">{feedback.progress}</span>}</p>
-          {feedback.title && <p className="mt-1 truncate text-[15px] font-medium">{feedback.title}<span className="text-ink-soft"> · {feedback.variantTitle || 'One option'}</span></p>}
-          <p className="mt-1 text-[12px] text-ink-soft">{feedback.message}{feedback.code && !feedback.title && <span className="font-mono"> · {feedback.code}</span>}</p>
+          <p className={`text-[17px] font-medium md:text-[20px] ${feedbackText}`}>{feedback.headline}{feedback.progress && <span className="ml-2 text-[15px] text-ink md:ml-3 md:text-[16px]">{feedback.progress}</span>}</p>
+          {feedback.title && <p className="mt-0.5 truncate text-[14px] font-medium md:mt-1 md:text-[15px]">{feedback.title}<span className="text-ink-soft"> · {feedback.variantTitle || 'One option'}</span></p>}
+          <p className="mt-0.5 line-clamp-2 text-[11px] text-ink-soft md:mt-1 md:text-[12px]">{feedback.message}{feedback.code && !feedback.title && <span className="font-mono"> · {feedback.code}</span>}</p>
         </div>
       </div>}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-soft"><span>{verified ? `Shopify verified at ${time(view.session.checked_at)}` : 'Shopify verification needed'} · {busy ? 'Keep scanning — each code is checked in order' : 'Scanner sends Enter after each code'}</span><button disabled={busy || !!pending} onClick={() => void refresh()} className="rounded-pill px-3 py-1 underline focus-visible:outline-2 disabled:opacity-40">Refresh order</button></div>
-      {notice && <p role={notice.attention ? 'alert' : 'status'} aria-live="polite" className={`mt-3 text-[13px] ${notice.attention ? 'text-amber' : 'text-ink'}`}>{notice.text}</p>}
+      <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-ink-soft md:mt-3 md:flex-wrap md:text-[12px]"><span className="min-w-0 truncate"><span className="md:hidden">{verified ? `✓ Shopify ${time(view.session.checked_at)}` : 'Shopify check needed'}{busy ? ' · checking…' : ''}</span><span className="hidden md:inline">{verified ? `Shopify verified at ${time(view.session.checked_at)}` : 'Shopify verification needed'} · {busy ? 'Keep scanning — each code is checked in order' : 'Scanner sends Enter after each code'}</span></span><button disabled={busy || !!pending} onClick={() => void refresh()} className="shrink-0 rounded-pill px-2 py-1 underline focus-visible:outline-2 disabled:opacity-40 md:px-3">Refresh</button></div>
+      {notice && <p role={notice.attention ? 'alert' : 'status'} aria-live="polite" className={`mt-2 text-[12px] md:mt-3 md:text-[13px] ${notice.attention ? 'text-amber' : 'text-ink'}`}>{notice.text}</p>}
       {error && <p role="alert" className="mt-3 text-[13px] text-amber">{error}</p>}
       {pending && !busy && <button onClick={() => void send(pending)} className={`${button} mt-3 bg-ink text-white`}>Retry the same request safely</button>}
       <CameraScan paused={blocked || resetOpen} onCode={submitCode} onOpenChange={cameraOpenChanged} />
       {passed && <div role="status" className="mt-4 rounded-panel bg-chip p-4 text-[13px]"><strong>✓ QC passed</strong><p className="mt-1">Every remaining shipping unit was checked at {time(view.session.completed_at!)}{shortTotal > 0 ? `, with ${shortTotal} unit(s) accepted as short and listed under Shortages for refund or coupon` : ''}. Extra items were confirmed removed. Fulfill the order in Shopify after packing. Order changes will require a new check.</p></div>}
     </div>
-    <div className="mt-4 grid gap-3">{lines.map(line => {
+    <div className="mt-3 grid gap-2 md:mt-4 md:gap-3">{lines.map(line => {
       const count = stale ? 0 : view.session.counts[line.id] ?? 0
       const short = stale ? 0 : wrap.shortByLine[line.id] ?? 0
       const done = count === line.required
       const settled = count + short === line.required
       const image = images.get(line.id) ?? line.image ?? null
-      return <article key={line.id} className={`flex flex-wrap items-center gap-4 rounded-panel border bg-white p-3 md:p-4 ${done ? 'border-green' : settled ? 'border-amber' : 'border-transparent'}`}>
+      return <article key={line.id} className={`flex items-center gap-3 rounded-panel border bg-white p-2.5 md:gap-4 md:p-4 ${done ? 'border-green' : settled ? 'border-amber' : 'border-transparent'}`}>
         {image
           // eslint-disable-next-line @next/next/no-img-element -- Shopify CDN thumbnail.
-          ? <img src={image} alt="" className={`h-16 w-16 shrink-0 rounded-panel bg-chip object-cover ${done ? 'opacity-50' : ''}`} />
-          : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-panel bg-chip text-[10px] text-ink-soft">No image</div>}
-        <div className="min-w-0 flex-1"><h2 className={`text-[14px] font-medium ${done ? 'line-through' : ''}`}>{done && '✓ '}{line.title}</h2><p className="mt-1 text-[13px] text-ink-soft">{line.variantTitle || 'One option'}</p><p className="mt-2 break-all font-mono text-[12px]">{line.barcode || line.sku || 'No saved code'}</p>{!line.barcode && <Link href={line.sku ? `/labels?q=${encodeURIComponent(line.sku)}` : '/labels'} className="mt-1 inline-block text-[12px] text-amber underline">Barcode missing · prepare labels</Link>}</div>
-        <div className="text-right"><p className="text-[20px] font-medium tabular-nums">{count}<span className="text-[14px] text-ink-soft"> / {line.required}</span></p><p className="mt-1 text-[12px] text-ink-soft">{done ? 'Checked' : short > 0 && settled ? `${short} short · accepted` : `${line.required - count - short} to scan${short > 0 ? ` · ${short} short` : ''}`}</p>
-          {!settled && (line.barcode || line.sku) && <button type="button" disabled={blocked && !busy} onClick={() => submitCode(line.barcode || line.sku || '')} title="Use when the QR is cut or will not read; counts one unit exactly like a scan" className="mt-2 rounded-pill bg-chip px-3 py-1.5 text-[12px] focus-visible:outline-2 disabled:opacity-40">Check 1 by hand</button>}</div>
+          ? <img src={image} alt="" className={`h-14 w-14 shrink-0 rounded-panel bg-chip object-cover md:h-16 md:w-16 ${done ? 'opacity-50' : ''}`} />
+          : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-panel bg-chip text-[10px] text-ink-soft md:h-16 md:w-16">No image</div>}
+        <div className="min-w-0 flex-1"><h2 className={`truncate text-[14px] font-medium ${done ? 'line-through' : ''}`}>{done && '✓ '}{line.title}</h2><p className="mt-0.5 truncate text-[12px] text-ink-soft md:mt-1 md:text-[13px]">{line.variantTitle || 'One option'}</p><p className="mt-1 truncate font-mono text-[11px] md:mt-2 md:break-all md:text-[12px]">{line.barcode || line.sku || 'No saved code'}</p>{!line.barcode && <Link href={line.sku ? `/labels?q=${encodeURIComponent(line.sku)}` : '/labels'} className="mt-1 inline-block text-[12px] text-amber underline">Barcode missing · prepare labels</Link>}</div>
+        <div className="shrink-0 text-right"><p className="text-[18px] font-medium tabular-nums md:text-[20px]">{count}<span className="text-[13px] text-ink-soft md:text-[14px]"> / {line.required}</span></p><p className="mt-0.5 text-[11px] text-ink-soft md:mt-1 md:text-[12px]">{done ? 'Checked' : short > 0 && settled ? `${short} short · accepted` : `${line.required - count - short} to scan${short > 0 ? ` · ${short} short` : ''}`}</p>
+          {!settled && (line.barcode || line.sku) && <button type="button" disabled={blocked && !busy} onClick={() => submitCode(line.barcode || line.sku || '')} title="Use when the QR is cut or will not read; counts one unit exactly like a scan" className="mt-1.5 rounded-pill bg-chip px-2.5 py-1 text-[11px] focus-visible:outline-2 disabled:opacity-40 md:mt-2 md:px-3 md:py-1.5 md:text-[12px]">By hand</button>}</div>
       </article>
     })}</div>
     {(wrap.missing.length > 0 || wrap.extras.length > 0 || view.shortages.length > 0) && !stale && <div className="mt-4 rounded-card bg-white p-5">

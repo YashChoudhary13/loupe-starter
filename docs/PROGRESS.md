@@ -29,6 +29,20 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-19 — Phone-first QC screen (D131)
+
+**Goal this session:** owner: Loupe on a phone feels cramped and zoomed in; with the camera open the list is not visible while scrolling.
+
+**Built:** `QcScreen.tsx` and `CameraScan.tsx` responsive below `md` — compact sticky card, camera band with overlaid status/stop, counter beside the order name, desktop-only intro/labels pill/camera explanation, truncating line cards; `/qc` and `/qc/shortages` page padding. `feedbackFor(view)` derives the feedback card from the view (SSR-able).
+
+**Verified:** headless Chromium screenshots of the server-rendered screen at 390 × 844 and 1280 × 800 (`/Users/yash/Documents/ChatGPT/QIMATI/output/qc-system/qc-v2-20260918/qc-mobile-390.png`, `qc-desktop-1280.png`): sticky card ~40% of the phone viewport (was ~55%), three line cards above the fold, desktop unchanged. 47 focused tests, typecheck, lint, `next build`.
+
+**Not finished:** the harness that produced the screenshots was a throwaway vitest file (deleted); a real phone with the live camera is still the acceptance test. Deploy is the usual push.
+
+**Next session should start with:** push; then on a phone open an order, start the camera, scroll the list and confirm the preview + last-scan card stay visible and short.
+
+---
+
 ## 2026-09-19 — Faster scanning, scan queue, check-by-hand, new operator script (D130)
 
 **Goal this session:** owner: QR sometimes cut → manual entry; scanning feels slow because each scan blocks until confirmed; allow one more sign-in.

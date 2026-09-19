@@ -25,7 +25,7 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
     statuses = await qcOrderStatuses(result.nodes.map(order => order.id))
   } catch (cause) { error = qcShopifyError(cause) }
   try { passes = await listRecentPasses(30) } catch (cause) { passesError = cause instanceof Error ? cause.message : 'Past QC checks could not be loaded.' }
-  return <section className="h-full overflow-auto px-4 py-6 md:px-8">
+  return <section className="h-full overflow-auto px-3 py-4 md:px-8 md:py-6">
     <div className="flex flex-wrap items-start justify-between gap-4"><div>
       <h1 className="text-[26px] font-medium tracking-[-0.025em]">Order QC</h1>
       <p className="mt-2 max-w-2xl text-[13px] text-ink-soft">Open a paid order and scan every remaining shipping unit with the 2D scanner. Each colour and size is checked separately.</p>
