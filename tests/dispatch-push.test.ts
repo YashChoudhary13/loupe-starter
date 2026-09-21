@@ -82,4 +82,44 @@ describe('pushParcel', () => {
   it('refuses a parcel without a number or a carrier', async () => {
     await expect(pushParcel('p1', 'op', harness(parcelOf([row(1)], { carrier: null }), {}).deps)).rejects.toThrow(/tracking number and carrier/)
   })
+  it('does not let a failed audit write turn a completed fulfilment into an error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const h = harness(parcelOf([row(1)]), { 'gid://shopify/Order/1': snapshot(1) })
+    h.deps.store.record = async () => { throw new Error('audit db down') }
+    const [result] = await pushParcel('p1', 'op', h.deps)
+    expect(result.status).toBe('fulfilled')
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+  })
+  it('reports a fulfilment Loupe could not save, and still processes the next order', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const h = harness(parcelOf([row(1), row(2)]), two())
+    const realFinish = h.deps.store.finish
+    let calls = 0
+    h.deps.store.finish = async (...args: Parameters<PushStore['finish']>) => { calls++; if (calls === 1) throw new Error('save failed'); return realFinish(...args) }
+    const results = await pushParcel('p1', 'op', h.deps)
+    expect(results.map(r => r.status)).toEqual(['fulfilled', 'fulfilled'])
+    expect(h.fulfil).toHaveBeenCalledTimes(2)
+    expect(results[0].message).toMatch(/could not save the result/)
+    spy.mockRestore()
+  })
+  it('does not let a failed markPushed write turn a completed push into an error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const h = harness(parcelOf([row(1)]), { 'gid://shopify/Order/1': snapshot(1) })
+    h.deps.store.markPushed = async () => { throw new Error('markPushed failed') }
+    const [result] = await pushParcel('p1', 'op', h.deps)
+    expect(result.status).toBe('fulfilled')
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+  })
+  it('does not let a failed pre-check write lose the refusal results', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const h = harness(parcelOf([row(1), row(2)]), { ...two(), 'gid://shopify/Order/2': snapshot(2, { cancelledAt: '2026-09-21T01:00:00Z' }) })
+    h.deps.store.fail = async () => { throw new Error('fail write failed') }
+    const results = await pushParcel('p1', 'op', h.deps)
+    expect(h.fulfil).not.toHaveBeenCalled()
+    expect(results[0]).toMatchObject({ orderName: 'Qimati1', status: 'failed' })
+    expect(results[1].message).toMatch(/cancelled/)
+    spy.mockRestore()
+  })
 })

@@ -41,7 +41,7 @@ export async function pushParcel(parcelId: string, by: string, deps: PushDeps): 
     for (const item of pending) {
       const plan = plans.get(item.id)!
       const message = plan.kind === 'refuse' ? plan.reason : `Not pushed: ${refused[0].order_name} in the same parcel was refused.`
-      if (plan.kind === 'refuse') await deps.store.fail(item.id, message)
+      if (plan.kind === 'refuse') await guard('dispatch fail write failed', () => deps.store.fail(item.id, message))
       results.push({ orderId: item.order_id, orderName: item.order_name, status: 'failed', message })
     }
     await audit(deps, parcelId, 'dispatch.failed', { stage: 'precheck', tracking: number, carrier, refused: refused.map(item => item.order_name) }, by)
@@ -63,15 +63,15 @@ export async function pushParcel(parcelId: string, by: string, deps: PushDeps): 
       catch { failure ??= 'Shopify could not be re-read after the push.' }
     }
     if (fulfillmentId) {
-      await deps.store.finish(item.id, requestId, { fulfillmentId }, deps.now())
-      results.push({ orderId: item.order_id, orderName: item.order_name, status: 'fulfilled', message: `Fulfilled with ${carrier} ${number}.` })
+      const saved = await guard('dispatch finish write failed', () => deps.store.finish(item.id, requestId, { fulfillmentId }, deps.now()))
+      results.push({ orderId: item.order_id, orderName: item.order_name, status: 'fulfilled', message: saved ? `Fulfilled with ${carrier} ${number}.` : `Fulfilled with ${carrier} ${number}, but Loupe could not save the result. Reload Dispatch; the Shopify order is the truth.` })
     } else {
       const message = failure ? `${failure} ${CHECK}` : `Shopify did not confirm the fulfilment. ${CHECK}`
-      await deps.store.finish(item.id, requestId, { error: message }, deps.now())
+      await guard('dispatch finish write failed', () => deps.store.finish(item.id, requestId, { error: message }, deps.now()))
       results.push({ orderId: item.order_id, orderName: item.order_name, status: 'failed', message })
     }
   }
-  if (results.some(result => result.status === 'fulfilled')) await deps.store.markPushed(parcelId, by, deps.now())
+  if (results.some(result => result.status === 'fulfilled')) await guard('dispatch markPushed write failed', () => deps.store.markPushed(parcelId, by, deps.now()))
   await audit(deps, parcelId, results.every(result => result.status === 'fulfilled') ? 'dispatch.pushed' : 'dispatch.failed', { tracking: number, carrier, orders: results.map(result => ({ order: result.orderName, status: result.status })) }, by)
   return results
 }
@@ -79,4 +79,9 @@ export async function pushParcel(parcelId: string, by: string, deps: PushDeps): 
 /** The fulfilment already happened; a failed audit write must not turn the result into an error. */
 async function audit(deps: PushDeps, parcelId: string, event: string, detail: Record<string, unknown>, by: string): Promise<void> {
   try { await deps.store.record(parcelId, event, detail, by) } catch (cause) { console.error('dispatch audit write failed', event, cause) }
+}
+
+/** The Shopify outcome is already known; a Loupe write recording it must not turn a known result into a thrown error. */
+async function guard(label: string, action: () => Promise<void>): Promise<boolean> {
+  try { await action(); return true } catch (cause) { console.error(label, cause); return false }
 }
