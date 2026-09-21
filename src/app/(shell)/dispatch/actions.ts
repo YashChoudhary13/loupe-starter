@@ -1,0 +1,49 @@
+'use server'
+
+import { randomUUID } from 'node:crypto'
+import { revalidatePath } from 'next/cache'
+import { actorFor, requireOperatorForAction } from '@/lib/auth/authorize'
+import { ShopifyClient } from '@/lib/shopify/client'
+import { createFulfillment, dispatchShopifyError, readDispatchOrder } from '@/lib/shopify/dispatch-orders'
+import { pushParcel, type PushResult } from '@/lib/dispatch/push'
+import { discardParcel, groupOrder, stageTracking, supabasePushStore, ungroupOrder } from '@/lib/dispatch/store'
+
+export interface DispatchState { readonly ok: boolean; readonly message: string }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Runs one change as the signed-in operator. The actor always comes from the session, never from the browser. */
+async function run(work: (by: string) => Promise<string>): Promise<DispatchState> {
+  try {
+    const by = actorFor(await requireOperatorForAction())
+    const message = await work(by)
+    revalidatePath('/dispatch')
+    return { ok: true, message }
+  } catch (cause) { return { ok: false, message: dispatchShopifyError(cause) } }
+}
+
+export async function stageTrackingAction(input: { orderId: string; orderName: string; tracking: string; carrier?: string }): Promise<DispatchState> {
+  return run(async by => { await stageTracking({ orderId: String(input.orderId), orderName: String(input.orderName), tracking: String(input.tracking ?? ''), carrier: input.carrier === undefined ? undefined : String(input.carrier), by }); return 'Saved.' })
+}
+export async function groupOrderAction(input: { primaryOrderId: string; primaryOrderName: string; orderId: string; orderName: string }): Promise<DispatchState> {
+  return run(async by => { await groupOrder({ primaryOrderId: String(input.primaryOrderId), primaryOrderName: String(input.primaryOrderName), orderId: String(input.orderId), orderName: String(input.orderName), by }); return 'Added to the parcel.' })
+}
+export async function ungroupOrderAction(orderId: string): Promise<DispatchState> {
+  return run(async by => { await ungroupOrder({ orderId: String(orderId), by }); return 'Removed from the parcel.' })
+}
+export async function discardParcelAction(parcelId: string): Promise<DispatchState> {
+  return run(async by => { if (!UUID.test(String(parcelId))) throw new Error('Reload Dispatch and try again.'); await discardParcel({ parcelId, by }); return 'Discarded.' })
+}
+
+/** One parcel per call. Reads retry as usual; the fulfilment mutation is sent exactly once. */
+export async function pushParcelAction(parcelId: string): Promise<DispatchState & { results: PushResult[] }> {
+  let results: PushResult[] = []
+  const state = await run(async by => {
+    if (!UUID.test(String(parcelId))) throw new Error('Reload Dispatch and try again.')
+    const reader = new ShopifyClient()
+    const writer = new ShopifyClient({ retryDelaysMs: [0], tokens: reader.tokens })
+    results = await pushParcel(parcelId, by, { store: supabasePushStore(), readOrder: id => readDispatchOrder(reader, id), fulfil: input => createFulfillment(writer, input), now: () => new Date(), newId: randomUUID })
+    const fulfilled = results.filter(result => result.status === 'fulfilled').length
+    return fulfilled === results.length ? `${fulfilled} order${fulfilled === 1 ? '' : 's'} fulfilled.` : `${fulfilled} of ${results.length} orders fulfilled. See each row.`
+  })
+  return { ...state, results }
+}
