@@ -13,7 +13,7 @@ async function main() {
   const child = spawn(join(bin, 'postgres'), ['-D', join(root, 'data'), '-h', '', '-k', root, '-p', '55440'], { stdio: 'ignore' })
   const pool = new Pool({ host: root, port: 55440, user: 'loupe_test', database: 'postgres' })
   const checks: string[] = []
-  const refuses = async (name: string, sql: string, params: unknown[] = []) => { await assert.rejects(pool.query(sql, params), undefined, name); checks.push(name) }
+  const refuses = async (name: string, sql: string, params: unknown[] = []) => { await assert.rejects(pool.query(sql, params), name); checks.push(name) }
   try {
     for (let attempt = 0; ; attempt++) { try { await pool.query('select 1'); break } catch (error) { if (attempt > 49) throw error; await new Promise(r => setTimeout(r, 100)) } }
     await pool.query('create role anon; create role authenticated; create role service_role bypassrls;')
