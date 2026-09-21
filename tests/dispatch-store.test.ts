@@ -112,6 +112,12 @@ describe('discarding', () => {
     expect(did('dispatch_parcels', 'delete')).toHaveLength(0)
     expect(did('events', 'insert')).toHaveLength(0)
   })
+  it('keeps the parcel, without failing, when an order row is inserted between the emptiness check and the delete', async () => {
+    db.queue.push({ data: solo }, { data: [{ id: 'r1' }] }, { data: [] }, { error: { code: '23503', message: 'violates foreign key constraint' } }, { error: null })
+    await discardParcel({ parcelId: 'p1', by: 'op' })
+    expect(did('dispatch_parcels', 'delete')).toHaveLength(1)
+    expect(did('events', 'insert')[0].args[0]).toMatchObject({ event: 'dispatch.discarded' })
+  })
   it('deletes an all-staged parcel: row delete, emptiness check, then the parcel, then the event', async () => {
     db.queue.push({ data: solo }, { data: [{ id: 'r1' }] }, { data: [] }, { error: null }, { error: null })
     await discardParcel({ parcelId: 'p1', by: 'op' })

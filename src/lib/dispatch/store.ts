@@ -46,13 +46,15 @@ async function createParcel(order: { id: string; name: string }, fields: { track
 const lone = (parcel: ParcelRow) => parcel.orders.length === 1 && !parcel.pushed_at && parcel.orders[0].status === 'staged'
 /** A pushed parcel's number is what a customer was told, so it is frozen: only a discard clears what is left. */
 const frozen = (parcel: ParcelRow) => `Part of this parcel was already pushed with ${parcel.carrier} ${parcel.tracking_number}, so its number can no longer change. Discard the remaining order and stage it again.`
-/** Deletes the parcel only once no order row references it any more — called after a conditional order-row delete. */
+/** Deletes the parcel only once no order row references it any more — called after a conditional order-row delete.
+ * The read is only a fast path: the foreign key is `on delete restrict`, so a row inserted after it makes the
+ * delete itself fail (23503), which means "not empty after all" and leaves the parcel where it belongs. */
 async function deleteParcelIfEmpty(db: ReturnType<typeof supabaseServer>, parcelId: string, failMessage: string): Promise<void> {
   const remaining = await db.from('dispatch_parcel_orders').select('id').eq('parcel_id', parcelId).limit(1)
   if (remaining.error) throw new Error(READ_FAILED)
   if (remaining.data?.length) return
   const gone = await db.from('dispatch_parcels').delete().eq('id', parcelId)
-  if (gone.error) throw new Error(failMessage)
+  if (gone.error && gone.error.code !== '23503') throw new Error(failMessage)
 }
 /** View only: a push that died mid-way (Loupe restarted) reads as failed, so the operator can select and push it again. `claim` accepts the same rows. */
 const presentStale = (parcel: ParcelRow, now: number): ParcelRow => ({ ...parcel, orders: parcel.orders.map(item => item.status === 'pushing' && item.push_started_at && now - Date.parse(item.push_started_at) > STALE_PUSH_MS

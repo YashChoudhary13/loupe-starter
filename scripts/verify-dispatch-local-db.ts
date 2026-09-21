@@ -30,8 +30,10 @@ async function main() {
     await refuses('tracking numbers are stored normalised', "insert into public.dispatch_parcels(shop_domain,tracking_number,staged_by) values($1,'x12 34','op')", [shop])
     await refuses('carrier is one of the three', "insert into public.dispatch_parcels(shop_domain,carrier,staged_by) values($1,'BlueDart','op')", [shop])
     await refuses('two orders cannot share a position', 'insert into public.dispatch_parcel_orders(parcel_id,shop_domain,order_id,order_name,position) values($1,$2,$3,$4,0)', [b, shop, 'gid://shopify/Order/2', 'Qimati2'])
+    await refuses('a parcel that still has orders cannot be deleted', 'delete from public.dispatch_parcels where id=$1', [b])
+    await pool.query('delete from public.dispatch_parcel_orders where parcel_id=$1', [b])
     await pool.query('delete from public.dispatch_parcels where id=$1', [b])
-    assert.equal((await pool.query('select count(*)::int as n from public.dispatch_parcel_orders where parcel_id=$1', [b])).rows[0].n, 0); checks.push('deleting a parcel removes its orders')
+    assert.equal((await pool.query('select count(*)::int as n from public.dispatch_parcels where id=$1', [b])).rows[0].n, 0); checks.push('an emptied parcel can be deleted')
     const anon = await pool.connect()
     try { await anon.query('set role anon'); await assert.rejects(anon.query('select 1 from public.dispatch_parcels')); checks.push('anon cannot read') } finally { await anon.query('reset role'); anon.release() }
     console.log(`dispatch schema proof: ${checks.length} checks passed\n- ${checks.join('\n- ')}`)

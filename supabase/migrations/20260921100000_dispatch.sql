@@ -14,7 +14,9 @@ create table public.dispatch_parcels (
 );
 create table public.dispatch_parcel_orders (
   id uuid primary key default gen_random_uuid(),
-  parcel_id uuid not null references public.dispatch_parcels(id) on delete cascade,
+  -- restrict, not cascade: a parcel is only ever deleted as the last step of emptying it, so the database makes
+  -- that check atomic — an order row inserted meanwhile fails the delete instead of vanishing with the parcel.
+  parcel_id uuid not null references public.dispatch_parcels(id) on delete restrict,
   shop_domain text not null,
   order_id text not null check (order_id ~ '^gid://shopify/Order/[0-9]+$'),
   order_name text not null,
