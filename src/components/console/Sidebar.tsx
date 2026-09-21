@@ -18,8 +18,8 @@ import { LiveActivity } from '@/components/live/LiveActivity'
  * alive across navigation. The attention badge starts from the server-rendered
  * count and then follows the live heartbeat.
  */
-type SectionKey = 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc'
-type SectionHref = '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc'
+type SectionKey = 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch'
+type SectionHref = '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch'
 
 const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon: React.ReactNode }[] = [
   { key: 'console', href: '/console', label: 'Console', icon: <SearchIcon /> },
@@ -32,6 +32,7 @@ const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon:
   { key: 'workflows', href: '/workflows', label: 'Workflows', icon: <PlayIcon /> },
   { key: 'labels', href: '/labels', label: 'Labels', icon: <ListIcon /> },
   { key: 'qc', href: '/qc', label: 'Order QC', icon: <ListIcon /> },
+  { key: 'dispatch', href: '/dispatch', label: 'Dispatch', icon: <ListIcon /> },
 ]
 
 export function Sidebar({
@@ -58,7 +59,7 @@ export function Sidebar({
   }, [])
 
   const active: SectionKey =
-    pathname.startsWith('/qc') ? 'qc' : pathname.startsWith('/labels')
+    pathname.startsWith('/dispatch') ? 'dispatch' : pathname.startsWith('/qc') ? 'qc' : pathname.startsWith('/labels')
       ? 'labels'
       : pathname.startsWith('/workflows')
       ? 'workflows'
