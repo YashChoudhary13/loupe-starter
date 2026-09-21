@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { CameraScanGate, type CameraScanState } from '@/lib/qc/camera-scan-gate'
+import type { DecodeHintType as HintType } from '@zxing/library'
 
 const PREFERENCE = 'loupe.qc.camera'
 /** Off unless this browser last chose the camera; the 2D scanner gun is the usual tool (D128). */
@@ -51,10 +52,12 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
     async function start() {
       try {
         if (!navigator.mediaDevices?.getUserMedia || !element) throw new Error('Camera scanning needs HTTPS and camera access. You can also use a USB scanner or enter the code.')
-        const [{ BrowserMultiFormatReader }, { NotFoundException, ChecksumException, FormatException }] = await Promise.all([import('@zxing/browser'), import('@zxing/library')])
+        const [{ BrowserMultiFormatReader }, { NotFoundException, ChecksumException, FormatException, BarcodeFormat, DecodeHintType }] = await Promise.all([import('@zxing/browser'), import('@zxing/library')])
         if (cancelled) return
-        const reader = new BrowserMultiFormatReader(undefined, { delayBetweenScanAttempts: 100, delayBetweenScanSuccess: 100 })
-        controls = await reader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' } }, audio: false }, element, (result, decodeError, scanner) => {
+        // Loupe prints QR (default) or Code 128 labels; trying every symbology on each frame only slows small-label decodes.
+        const reader = new BrowserMultiFormatReader(new Map<HintType, unknown>([[DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE, BarcodeFormat.CODE_128]], [DecodeHintType.TRY_HARDER, true]]), { delayBetweenScanAttempts: 100, delayBetweenScanSuccess: 100 })
+        // A 0.5 mm QR module is 1–2 px in the browser's default 640×480 stream; ask for 1080p so it is 4–5 px at 15 cm.
+        controls = await reader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }, element, (result, decodeError, scanner) => {
           if (cancelled) { scanner.stop(); return }
           if (decodeError && !(decodeError instanceof NotFoundException || decodeError instanceof ChecksumException || decodeError instanceof FormatException)) {
             scanner.stop(); cameraFailed(); return
@@ -70,6 +73,12 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
         cameraTrack = (element.srcObject as MediaStream | null)?.getVideoTracks()[0]
         cameraTrack?.addEventListener('ended', cameraFailed)
         cameraTrack?.addEventListener('mute', resetGate)
+        // Continuous focus (Android; iOS focuses by itself) and 2× zoom so a 10 mm label fills the frame from 15 cm, beyond the lens's
+        // minimum focus distance. Each advanced set is skipped, not fatal, where the phone cannot satisfy it.
+        const zoom = (cameraTrack?.getCapabilities?.() as { zoom?: { min: number; max: number } } | undefined)?.zoom
+        const advanced: Record<string, unknown>[] = [{ focusMode: 'continuous' }]
+        if (zoom && zoom.max > 1) advanced.push({ zoom: Math.min(2, zoom.max) })
+        await cameraTrack?.applyConstraints({ advanced: advanced as MediaTrackConstraintSet[] }).catch(() => undefined)
       } catch (cause) {
         if (!cancelled) { setError(cause instanceof Error ? cause.message : 'Could not open the camera. Check browser camera permission.'); setOpen(false) }
       }
@@ -97,7 +106,7 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
       {/* Status and Stop sit on the preview itself at every width, so the camera costs one short band, not three rows. */}
       <p role="status" aria-live="polite" className="absolute left-2 top-2 z-10 max-w-[70%] truncate rounded-pill bg-white/90 px-2.5 py-1 text-[11px] font-medium md:text-[12px]">{status}</p>
       <button type="button" onClick={toggle} aria-label="Stop camera" className="absolute right-2 top-2 z-10 rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:text-[12px]">Stop</button>
-      <video ref={video} muted playsInline className="h-28 w-full rounded-panel bg-ink object-cover md:h-40" aria-label="Barcode camera preview" />
+      <video ref={video} muted playsInline className="h-36 w-full rounded-panel bg-ink object-cover md:h-44" aria-label="Barcode camera preview" />
     </div>}
     {error && <p role="alert" className="mt-2 text-[12px] text-amber">{error}</p>}
   </div>
