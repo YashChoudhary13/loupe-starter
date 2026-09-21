@@ -54,7 +54,12 @@ export async function pushParcel(parcelId: string, by: string, deps: PushDeps): 
   for (const item of pending) {
     const plan = plans.get(item.id)!
     const requestId = deps.newId()
-    if (!(await deps.store.claim(item.id, requestId, deps.now()))) { results.push({ orderId: item.order_id, orderName: item.order_name, status: 'busy', message: 'Another push is handling this order.' }); continue }
+    // A claim that throws is the one store call before anything is sent, so saying nothing went out is true —
+    // and skipping to the next order keeps an earlier order's fulfilment, markPushed and audit event.
+    let claimed: boolean
+    try { claimed = await deps.store.claim(item.id, requestId, deps.now()) }
+    catch (cause) { console.error('dispatch claim failed', cause); results.push({ orderId: item.order_id, orderName: item.order_name, status: 'failed', message: 'Loupe could not start this order, so nothing was sent for it. Push again.' }); continue }
+    if (!claimed) { results.push({ orderId: item.order_id, orderName: item.order_name, status: 'busy', message: 'Another push is handling this order.' }); continue }
     let fulfillmentId = plan.kind === 'done' ? plan.fulfillmentId : null
     let failure: string | null = null
     if (plan.kind === 'fulfil') {
