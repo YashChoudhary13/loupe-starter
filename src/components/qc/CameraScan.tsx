@@ -5,6 +5,7 @@ import { CameraScanGate, type CameraScanState } from '@/lib/qc/camera-scan-gate'
 import type { DecodeHintType as HintType } from '@zxing/library'
 
 const PREFERENCE = 'loupe.qc.camera'
+const DEVICE = 'loupe.qc.camera.device'
 /** Off unless this browser last chose the camera; the 2D scanner gun is the usual tool (D128). */
 function preferredOpen(): boolean {
   try { return localStorage.getItem(PREFERENCE) === 'on' } catch { return false }
@@ -12,11 +13,19 @@ function preferredOpen(): boolean {
 function remember(open: boolean): void {
   try { localStorage.setItem(PREFERENCE, open ? 'on' : 'off') } catch { /* private mode */ }
 }
+/** Multi-lens phones list several back cameras; `facingMode` alone may pick a fixed-focus one, so the chosen lens is remembered. */
+function rememberDevice(id: string): void {
+  try { localStorage.setItem(DEVICE, id) } catch { /* private mode */ }
+}
 
 export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: string) => void; paused: boolean; onOpenChange: (open: boolean) => void }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [state, setState] = useState<CameraScanState | 'starting'>('starting')
+  const [deviceId, setDeviceId] = useState('')
+  const [currentId, setCurrentId] = useState('')
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [info, setInfo] = useState('')
   const video = useRef<HTMLVideoElement>(null)
   const callback = useRef(onCode)
   const pausedRef = useRef(paused)
@@ -24,7 +33,7 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
   useEffect(() => { callback.current = onCode }, [onCode])
   // Browser-only preference after hydration; server rendering always starts closed.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (preferredOpen()) setOpen(true) }, [])
+  useEffect(() => { if (preferredOpen()) setOpen(true); try { setDeviceId(localStorage.getItem(DEVICE) ?? '') } catch { /* private mode */ } }, [])
   useEffect(() => {
     pausedRef.current = paused
     if (paused) gate.current.pause()
@@ -57,7 +66,8 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
         // Loupe prints QR (default) or Code 128 labels; trying every symbology on each frame only slows small-label decodes.
         const reader = new BrowserMultiFormatReader(new Map<HintType, unknown>([[DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE, BarcodeFormat.CODE_128]], [DecodeHintType.TRY_HARDER, true]]), { delayBetweenScanAttempts: 100, delayBetweenScanSuccess: 100 })
         // A 0.5 mm QR module is 1–2 px in the browser's default 640×480 stream; ask for 1080p so it is 4–5 px at 15 cm.
-        controls = await reader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }, element, (result, decodeError, scanner) => {
+        const lens: MediaTrackConstraints = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }
+        controls = await reader.decodeFromConstraints({ video: { ...lens, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }, element, (result, decodeError, scanner) => {
           if (cancelled) { scanner.stop(); return }
           if (decodeError && !(decodeError instanceof NotFoundException || decodeError instanceof ChecksumException || decodeError instanceof FormatException)) {
             scanner.stop(); cameraFailed(); return
@@ -79,8 +89,18 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
         const advanced: Record<string, unknown>[] = [{ focusMode: 'continuous' }]
         if (zoom && zoom.max > 1) advanced.push({ zoom: Math.min(2, zoom.max) })
         await cameraTrack?.applyConstraints({ advanced: advanced as MediaTrackConstraintSet[] }).catch(() => undefined)
+        // What the phone actually gave: shown on the preview so a blurred or low-detail stream can be diagnosed from the floor.
+        const settings = (cameraTrack?.getSettings() ?? {}) as MediaTrackSettings & { focusMode?: string; zoom?: number }
+        if (!cancelled) {
+          setCurrentId(settings.deviceId ?? '')
+          setInfo(`${settings.width ?? '?'}×${settings.height ?? '?'}${settings.zoom ? ` · ${settings.zoom}×` : ''}${settings.focusMode ? ` · ${settings.focusMode}` : ''} · ${cameraTrack?.label || 'camera'}`)
+          navigator.mediaDevices.enumerateDevices().then(list => { if (!cancelled) setDevices(list.filter(item => item.kind === 'videoinput')) }).catch(() => undefined)
+        }
       } catch (cause) {
-        if (!cancelled) { setError(cause instanceof Error ? cause.message : 'Could not open the camera. Check browser camera permission.'); setOpen(false) }
+        if (cancelled) return
+        // A remembered lens that no longer exists (new phone, browser reset): fall back to the default back camera once.
+        if (deviceId) { rememberDevice(''); setDeviceId(''); return }
+        setError(cause instanceof Error ? cause.message : 'Could not open the camera. Check browser camera permission.'); setOpen(false)
       }
     }
     void start()
@@ -94,18 +114,27 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
       const stream = element?.srcObject
       if (typeof MediaStream !== 'undefined' && stream instanceof MediaStream) stream.getTracks().forEach(track => track.stop())
     }
-  }, [open])
+  }, [open, deviceId])
   const status = paused ? 'Scanning paused — wait for QC or follow the message above.' : {
     starting: 'Opening camera…', ready: 'Ready for the next pouch', steady: 'Hold the label steady…',
     remove: 'Remove this pouch from view. Wait for Ready before the next one.', paused: 'Waiting for a clear camera view…',
   }[state]
   const toggle = () => { setError(''); setState('starting'); remember(!open); setOpen(!open) }
+  const nextLens = () => {
+    const ids = devices.map(item => item.deviceId)
+    const next = ids[(ids.indexOf(currentId) + 1) % ids.length]
+    rememberDevice(next); setDeviceId(next); setState('starting'); setInfo('')
+  }
   return <div className="mt-2">
     {!open && <button type="button" disabled={paused} onClick={toggle} className="rounded-pill bg-chip px-3 py-1.5 text-[12px] focus-visible:outline-2 disabled:opacity-40 md:px-4 md:py-2">Use phone camera instead</button>}
     {open && <div className="relative">
       {/* Status and Stop sit on the preview itself at every width, so the camera costs one short band, not three rows. */}
       <p role="status" aria-live="polite" className="absolute left-2 top-2 z-10 max-w-[70%] truncate rounded-pill bg-white/90 px-2.5 py-1 text-[11px] font-medium md:text-[12px]">{status}</p>
-      <button type="button" onClick={toggle} aria-label="Stop camera" className="absolute right-2 top-2 z-10 rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:text-[12px]">Stop</button>
+      <div className="absolute right-2 top-2 z-10 flex gap-1.5">
+        {devices.length > 1 && <button type="button" onClick={nextLens} className="rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:text-[12px]">Lens {Math.max(0, devices.findIndex(item => item.deviceId === currentId)) + 1}/{devices.length}</button>}
+        <button type="button" onClick={toggle} aria-label="Stop camera" className="rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:text-[12px]">Stop</button>
+      </div>
+      {info && <p className="absolute bottom-1 left-2 z-10 max-w-[95%] truncate rounded-pill bg-white/80 px-2 py-0.5 font-mono text-[10px]">{info}</p>}
       <video ref={video} muted playsInline className="h-36 w-full rounded-panel bg-ink object-cover md:h-44" aria-label="Barcode camera preview" />
     </div>}
     {error && <p role="alert" className="mt-2 text-[12px] text-amber">{error}</p>}
