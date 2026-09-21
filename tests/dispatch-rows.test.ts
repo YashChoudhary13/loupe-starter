@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRows, duplicateTracking, isStaged } from '@/lib/dispatch/rows'
+import { buildRows, duplicateTracking, isStaged, rowLocked } from '@/lib/dispatch/rows'
 import type { DispatchOrderSummary, ParcelOrderRow, ParcelRow } from '@/lib/dispatch/types'
 
 const order = (n: number, addressKey = 'aaaa'): DispatchOrderSummary => ({ id: `gid://shopify/Order/${n}`, name: `Qimati${n}`, createdAt: `2026-09-2${n}T05:00:00Z`, customer: `Customer ${n}`, addressKey })
@@ -25,5 +25,13 @@ describe('dispatch rows', () => {
   it('reports a number used by two parcels, and only that', () => {
     const rows = buildRows([order(1), order(2), order(3)], {}, [parcel('p1', [item(1, 0)]), parcel('p2', [{ ...item(2, 0), parcel_id: 'p2' }]), parcel('p3', [{ ...item(3, 0), parcel_id: 'p3' }], 'X7654321')])
     expect([...duplicateTracking(rows)]).toEqual([['X1234567', ['Qimati2', 'Qimati1']]])
+  })
+  it('locks a row only while it is pushing, or while a push is running screen-wide', () => {
+    expect(rowLocked('staged', false)).toBe(false)
+    expect(rowLocked('failed', false)).toBe(false)
+    expect(rowLocked(null, false)).toBe(false)
+    expect(rowLocked('pushing', false)).toBe(true)
+    expect(rowLocked('staged', true)).toBe(true)
+    expect(rowLocked(null, true)).toBe(true)
   })
 })

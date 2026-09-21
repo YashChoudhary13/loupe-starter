@@ -1,14 +1,15 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { discardParcelAction, groupOrderAction, pushParcelAction, stageTrackingAction, ungroupOrderAction } from '@/app/(shell)/dispatch/actions'
 import { detectCarrier, normalizeTracking } from '@/lib/dispatch/carrier'
-import { buildRows, duplicateTracking, isStaged, type DispatchRowModel } from '@/lib/dispatch/rows'
+import { buildRows, duplicateTracking, isStaged, rowLocked, type DispatchRowModel } from '@/lib/dispatch/rows'
+import { runPush, type PushTarget } from '@/lib/dispatch/push-loop'
 import { CARRIERS, type DispatchOrderSummary, type ParcelRow } from '@/lib/dispatch/types'
 import type { PushResult } from '@/lib/dispatch/push'
 
-export interface DispatchScreenProps { orders: DispatchOrderSummary[]; qcPassed: Record<string, boolean>; open: ParcelRow[]; recent: ParcelRow[]; truncated: boolean; error?: string }
+export interface DispatchScreenProps { orders: DispatchOrderSummary[]; qcPassed: Record<string, boolean>; open: ParcelRow[]; recent: ParcelRow[]; truncated: boolean; ordersLoaded: boolean; error?: string }
 
 const when = (value: string) => new Date(value).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
 const field = 'min-w-0 rounded-pill bg-chip px-4 py-2 text-[13px] focus:outline-2 focus:outline-ink disabled:opacity-40'
@@ -21,7 +22,7 @@ function QcBadge({ passed }: { passed: boolean }) {
   </span>
 }
 
-export function DispatchScreen({ orders, qcPassed, open, recent, truncated, error }: DispatchScreenProps) {
+export function DispatchScreen({ orders, qcPassed, open, recent, truncated, ordersLoaded, error }: DispatchScreenProps) {
   const router = useRouter()
   const rows = useMemo(() => buildRows(orders, qcPassed, open), [orders, qcPassed, open])
   const duplicates = useMemo(() => duplicateTracking(rows), [rows])
@@ -32,31 +33,42 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, erro
   const [search, setSearch] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [results, setResults] = useState<PushResult[]>([])
-  const [busy, startTransition] = useTransition()
+  const [pushing, setPushing] = useState(false)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
   const staged = rows.filter(isStaged)
   const chosen = staged.filter(row => selected.has(row.order.id))
   const chosenOrders = chosen.reduce((sum, row) => sum + 1 + row.children.length, 0)
   const note = (id: string, message: string) => setMessages(current => ({ ...current, [id]: message }))
-  const act = (id: string, work: () => Promise<{ ok: boolean; message: string }>, after?: () => void) => startTransition(async () => {
-    const state = await work()
-    note(id, state.ok ? '' : state.message)
-    if (state.ok) { after?.(); router.refresh() }
-  })
+  /** A rejected action (dropped connection, session redirect) must still tell the row something went wrong. */
+  const act = (id: string, work: () => Promise<{ ok: boolean; message: string }>, after?: () => void) => {
+    work()
+      .then(state => { note(id, state.ok ? '' : state.message); if (state.ok) { after?.(); router.refresh() } })
+      .catch(() => note(id, 'Loupe could not be reached, so nothing was saved. Try again.'))
+  }
   const save = (row: DispatchRowModel, tracking: string, carrier?: string) => act(row.order.id,
     () => stageTrackingAction({ orderId: row.order.id, orderName: row.order.name, tracking, carrier }),
     () => setDrafts(current => { const next = { ...current }; delete next[row.order.id]; return next }))
   const toggle = (id: string) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
-  const push = () => startTransition(async () => {
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    if (confirming) { if (!dialog.open) dialog.showModal(); cancelRef.current?.focus() }
+    else if (dialog.open) dialog.close()
+  }, [confirming])
+
+  const push = () => {
     setConfirming(false)
-    const all: PushResult[] = []
-    for (const row of chosen) {
-      const outcome = await pushParcelAction(row.parcel!.id)
-      all.push(...(outcome.results.length ? outcome.results : [{ orderId: row.order.id, orderName: row.order.name, status: 'failed' as const, message: outcome.message }]))
-      setResults([...all])
-    }
-    setSelected(new Set()); router.refresh()
-  })
+    setPushing(true)
+    setResults([])
+    const targets: PushTarget[] = chosen.map(row => ({ parcelId: row.parcel!.id, orderId: row.order.id, orderName: row.order.name }))
+    void (async () => {
+      try { await runPush(targets, pushParcelAction, setResults) }
+      finally { setPushing(false); setSelected(new Set()); router.refresh() }
+    })()
+  }
 
   return <section className="h-full overflow-auto px-3 py-4 md:px-8 md:py-6">
     <h1 className="text-[26px] font-medium tracking-[-0.025em]">Dispatch</h1>
@@ -69,13 +81,13 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, erro
         <h2 className="text-[15px] font-medium">In progress · {rows.length}</h2>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={`${pill} bg-chip`} disabled={staged.length === 0} onClick={() => setSelected(new Set(staged.map(row => row.order.id)))}>Select all staged ({staged.length})</button>
-          <button type="button" className={`${pill} bg-ink text-white`} disabled={chosen.length === 0 || busy} onClick={() => setConfirming(true)}>Push {chosen.length} parcel{chosen.length === 1 ? '' : 's'} · {chosenOrders} order{chosenOrders === 1 ? '' : 's'}</button>
+          <button type="button" className={`${pill} bg-ink text-white`} disabled={chosen.length === 0 || pushing} onClick={() => setConfirming(true)}>Push {chosen.length} parcel{chosen.length === 1 ? '' : 's'} · {chosenOrders} order{chosenOrders === 1 ? '' : 's'}</button>
         </div>
       </div>
       {rows.length === 0 && !error && <p className="py-8 text-[13px] text-ink-soft">Nothing is marked In progress in Shopify.</p>}
       <div className="grid gap-3">{rows.map((row, index) => {
         const id = row.order.id
-        const locked = row.status === 'pushing' || busy
+        const locked = rowLocked(row.status, pushing)
         const tracking = drafts[id] ?? row.parcel?.tracking_number ?? ''
         const carrier = row.parcel?.carrier ?? detectCarrier(normalizeTracking(tracking)) ?? ''
         const sharing = row.parcel?.tracking_number && duplicates.has(row.parcel.tracking_number) ? rows.filter(other => other.order.id !== id && other.parcel?.tracking_number === row.parcel!.tracking_number) : []
@@ -101,7 +113,7 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, erro
           {row.children.map(child => <div key={child.orderId} className="mt-2 flex flex-wrap items-center gap-2 border-l-2 border-chip pl-3 text-[13px] md:ml-12">
             <QcBadge passed={child.qcPassed} /><span className="font-medium">{child.orderName}</span><span className="text-[12px] text-ink-soft">same parcel</span>
             {child.differentAddress && <span className="text-[12px] text-amber">different delivery address</span>}
-            {!child.listed && <span className="text-[12px] text-amber">no longer In progress</span>}
+            {ordersLoaded && !child.listed && <span className="text-[12px] text-amber">no longer In progress</span>}
             {child.error && <span className="text-[12px] text-amber">{child.error}</span>}
             <button type="button" aria-label={`Remove ${child.orderName} from this parcel`} disabled={locked || child.status === 'pushing'} onClick={() => act(id, () => ungroupOrderAction(child.orderId))} className="inline-grid h-6 w-6 place-items-center rounded-full bg-chip leading-none focus-visible:outline-2">×</button>
           </div>)}
@@ -110,7 +122,7 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, erro
             <div className="mt-2 flex flex-wrap gap-2">{candidates.map(other => <button key={other.order.id} type="button" className={`${pill} bg-white`} onClick={() => act(id, () => groupOrderAction({ primaryOrderId: id, primaryOrderName: row.order.name, orderId: other.order.id, orderName: other.order.name }), () => setAdding(null))}>{other.order.name}{other.order.addressKey && other.order.addressKey === row.order.addressKey ? ' · same address' : ''}</button>)}
               {candidates.length === 0 && <span className="text-[12px] text-ink-soft">No other In-progress order matches. Mark it In progress in Shopify first.</span>}</div>
           </div>}
-          {!row.listed && <p className="mt-2 text-[12px] text-amber">{row.order.name} is no longer In progress in Shopify. <button type="button" className="underline" disabled={locked} onClick={() => act(id, () => discardParcelAction(row.parcel!.id))}>Discard this staged number</button></p>}
+          {ordersLoaded && !row.listed && <p className="mt-2 text-[12px] text-amber">{row.order.name} is no longer In progress in Shopify. <button type="button" className="underline" disabled={locked} onClick={() => act(id, () => discardParcelAction(row.parcel!.id))}>Discard this staged number</button></p>}
           {sharing.map(other => <p key={other.order.id} className="mt-2 text-[12px] text-amber">Same number as {other.order.name}. <button type="button" className="underline" disabled={locked} onClick={() => act(id, () => groupOrderAction({ primaryOrderId: id, primaryOrderName: row.order.name, orderId: other.order.id, orderName: other.order.name }))}>Group them into one parcel</button></p>)}
           {row.error && <p className="mt-2 text-[12px] text-amber">{row.error}</p>}
           {messages[id] && <p role="alert" className="mt-2 text-[12px] text-amber">{messages[id]}</p>}
@@ -130,13 +142,13 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, erro
       </div>)}</div>
     </div>
 
-    {confirming && <div role="dialog" aria-modal="true" aria-label="Confirm push" className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div className="max-h-[80vh] w-full max-w-lg overflow-auto rounded-card bg-white p-5">
-        <h2 className="text-[17px] font-medium">Fulfil {chosenOrders} order{chosenOrders === 1 ? '' : 's'}?</h2>
-        <p className="mt-2 text-[13px] text-ink-soft">Shopify emails each customer and the WhatsApp bot sends the shipped message. This cannot be recalled.</p>
-        <div className="mt-4 grid gap-2 text-[13px]">{chosen.map(row => <p key={row.order.id}><span className="font-medium">{[row.order.name, ...row.children.map(child => child.orderName)].join(' + ')}</span> → {row.parcel!.carrier} {row.parcel!.tracking_number}</p>)}</div>
-        <div className="mt-5 flex justify-end gap-2"><button type="button" className={`${pill} bg-chip`} onClick={() => setConfirming(false)}>Cancel</button><button type="button" className={`${pill} bg-ink text-white`} onClick={push}>Fulfil and notify customers</button></div>
-      </div>
-    </div>}
+    <dialog ref={dialogRef} aria-label="Confirm push" onClose={() => setConfirming(false)}
+      onClick={event => { if (event.target === dialogRef.current) dialogRef.current?.close() }}
+      className="m-auto max-h-[80vh] w-full max-w-lg overflow-auto rounded-card bg-white p-5 backdrop:bg-black/40">
+      <h2 className="text-[17px] font-medium">Fulfil {chosenOrders} order{chosenOrders === 1 ? '' : 's'}?</h2>
+      <p className="mt-2 text-[13px] text-ink-soft">Shopify emails each customer and the WhatsApp bot sends the shipped message. This cannot be recalled.</p>
+      <div className="mt-4 grid gap-2 text-[13px]">{chosen.map(row => <p key={row.order.id}><span className="font-medium">{[row.order.name, ...row.children.map(child => child.orderName)].join(' + ')}</span> → {row.parcel!.carrier} {row.parcel!.tracking_number}</p>)}</div>
+      <div className="mt-5 flex justify-end gap-2"><button ref={cancelRef} type="button" className={`${pill} bg-chip`} onClick={() => setConfirming(false)}>Cancel</button><button type="button" className={`${pill} bg-ink text-white`} onClick={push}>Fulfil and notify customers</button></div>
+    </dialog>
   </section>
 }

@@ -34,3 +34,9 @@ export function duplicateTracking(rows: readonly DispatchRowModel[]): Map<string
   for (const row of rows) { const number = row.parcel?.tracking_number; if (number) names.set(number, [...(names.get(number) ?? []), row.order.name]) }
   return new Map([...names].filter(([, list]) => list.length > 1))
 }
+
+/** A field is disabled only while its own row is being pushed, or while a push is running screen-wide;
+ * a save, group, ungroup or discard in flight never locks a field, so scanner focus survives it. */
+export function rowLocked(status: ParcelOrderStatus | null, pushRunning: boolean): boolean {
+  return status === 'pushing' || pushRunning
+}
