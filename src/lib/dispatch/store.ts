@@ -44,6 +44,14 @@ async function createParcel(order: { id: string; name: string }, fields: { track
   return parcel.data.id
 }
 const lone = (parcel: ParcelRow) => parcel.orders.length === 1 && !parcel.pushed_at && parcel.orders[0].status === 'staged'
+/** Deletes the parcel only once no order row references it any more — called after a conditional order-row delete. */
+async function deleteParcelIfEmpty(db: ReturnType<typeof supabaseServer>, parcelId: string, failMessage: string): Promise<void> {
+  const remaining = await db.from('dispatch_parcel_orders').select('id').eq('parcel_id', parcelId).limit(1)
+  if (remaining.error) throw new Error(READ_FAILED)
+  if (remaining.data?.length) return
+  const gone = await db.from('dispatch_parcels').delete().eq('id', parcelId)
+  if (gone.error) throw new Error(failMessage)
+}
 /** View only: a push that died mid-way (Loupe restarted) reads as failed, so the operator can select and push it again. `claim` accepts the same rows. */
 const presentStale = (parcel: ParcelRow, now: number): ParcelRow => ({ ...parcel, orders: parcel.orders.map(item => item.status === 'pushing' && item.push_started_at && now - Date.parse(item.push_started_at) > STALE_PUSH_MS
   ? { ...item, status: 'failed' as const, error: 'The last push was interrupted. Push again; Loupe re-checks Shopify first.' } : item) })
@@ -81,12 +89,18 @@ export async function stageTracking(input: StageInput): Promise<void> {
     if (!tracking && next.source === 'auto') return
     parcelId = await createParcel(order, fields, input.by)
   } else if (!tracking && next.source === 'auto' && lone(parcel)) {
-    const gone = await db.from('dispatch_parcels').delete().eq('id', parcel.id)
+    const openOrder = parcel.orders[0]
+    const gone = await db.from('dispatch_parcel_orders').delete().eq('id', openOrder.id).in('status', ['staged', 'failed']).select('id')
     if (gone.error) throw new Error('The tracking number could not be cleared. Try again.')
+    if (!gone.data?.length) throw new Error('This parcel is being pushed. Wait for it to finish.')
+    await deleteParcelIfEmpty(db, parcel.id, 'The tracking number could not be cleared. Try again.')
+    if (parcel.tracking_number) await record(parcel.id, 'dispatch.unstaged', { order: order.name, tracking: parcel.tracking_number }, input.by)
     return
   } else {
+    // ponytail: read-then-act. An edit racing the first second of a push can leave this row's number differing from what was sent; Shopify and the dispatch.pushed event hold the sent number. Upgrade path: a pushing_since lock column on dispatch_parcels set by one conditional update.
     const saved = await db.from('dispatch_parcels').update(fields).eq('id', parcel.id)
     if (saved.error) throw new Error('The tracking number could not be saved. Try again.')
+    if (!tracking && parcel.tracking_number) await record(parcel.id, 'dispatch.unstaged', { order: order.name, tracking: parcel.tracking_number }, input.by)
   }
   if (tracking) await record(parcelId, 'dispatch.staged', { order: order.name, tracking, carrier: next.carrier, carrier_source: next.source }, input.by)
 }
@@ -105,16 +119,23 @@ export async function groupOrder(input: GroupInput): Promise<void> {
   if (parcel.orders.some(item => item.status === 'pushing')) throw new Error('This parcel is being pushed. Wait for it to finish.')
   const childRow = await openRowFor(child.id)
   if (childRow?.parcel_id === parcelId) return
+  let absorbed: { parcelId: string; tracking: string | null } | null = null
   if (childRow) {
     const other = await loadParcel(childRow.parcel_id)
     if (!other || !lone(other)) throw new Error(`${child.name} is already in another parcel. Remove it there first.`)
-    const gone = await db.from('dispatch_parcels').delete().eq('id', other.id)
+    const gone = await db.from('dispatch_parcel_orders').delete().eq('id', other.orders[0].id).in('status', ['staged', 'failed']).select('id')
     if (gone.error) throw new Error(`${child.name} could not be moved. Try again.`)
+    if (!gone.data?.length) throw new Error(`${child.name} is being pushed. Wait for it to finish.`)
+    await deleteParcelIfEmpty(db, other.id, `${child.name} could not be moved. Try again.`)
+    absorbed = { parcelId: other.id, tracking: other.tracking_number }
   }
   const position = Math.max(...parcel.orders.map(item => item.position)) + 1
   const added = await db.from('dispatch_parcel_orders').insert({ parcel_id: parcelId, shop_domain: shop(), order_id: child.id, order_name: child.name, position })
-  if (added.error) throw new Error(added.error.code === '23505' ? `${child.name} was just added elsewhere. Reload Dispatch.` : `${child.name} could not be added. Try again.`)
-  await record(parcelId, 'dispatch.grouped', { parcel_of: primary.name, added: child.name }, input.by)
+  if (added.error) {
+    if (absorbed?.tracking) await record(absorbed.parcelId, 'dispatch.unstaged', { order: child.name, tracking: absorbed.tracking }, input.by)
+    throw new Error(added.error.code === '23505' ? `${child.name} was just added elsewhere. Reload Dispatch.` : `${child.name} could not be added. Try again.`)
+  }
+  await record(parcelId, 'dispatch.grouped', { parcel_of: primary.name, added: child.name, absorbed_tracking: absorbed?.tracking ?? null }, input.by)
 }
 
 /** Removes an added order that has not been fulfilled; it returns to the main list. */
@@ -122,8 +143,9 @@ export async function ungroupOrder(input: { orderId: string; by: string }): Prom
   const row = await openRowFor(orderGid(input.orderId))
   if (!row || row.position === 0) throw new Error('Only an added order can be removed from a parcel.')
   if (row.status === 'pushing') throw new Error('This order is being pushed. Wait for it to finish.')
-  const gone = await supabaseServer().from('dispatch_parcel_orders').delete().eq('id', row.id).in('status', ['staged', 'failed'])
+  const gone = await supabaseServer().from('dispatch_parcel_orders').delete().eq('id', row.id).in('status', ['staged', 'failed']).select('id')
   if (gone.error) throw new Error('The order could not be removed. Try again.')
+  if (!gone.data?.length) throw new Error('This order is being pushed. Wait for it to finish.')
   await record(row.parcel_id, 'dispatch.ungrouped', { order_id: input.orderId }, input.by)
 }
 
@@ -133,11 +155,14 @@ export async function discardParcel(input: { parcelId: string; by: string }): Pr
   if (!parcel) return
   if (parcel.orders.some(item => item.status === 'pushing')) throw new Error('This parcel is being pushed. Wait for it to finish.')
   const db = supabaseServer()
-  const gone = parcel.orders.some(item => item.status === 'fulfilled')
-    ? await db.from('dispatch_parcel_orders').delete().eq('parcel_id', parcel.id).in('status', ['staged', 'failed'])
-    : await db.from('dispatch_parcels').delete().eq('id', parcel.id)
-  if (gone.error) throw new Error('The parcel could not be discarded. Try again.')
-  await record(parcel.id, 'dispatch.discarded', { orders: parcel.orders.filter(item => item.status !== 'fulfilled').map(item => item.order_name) }, input.by)
+  const open = parcel.orders.filter(item => item.status !== 'fulfilled')
+  if (open.length) {
+    const gone = await db.from('dispatch_parcel_orders').delete().eq('parcel_id', parcel.id).in('status', ['staged', 'failed']).select('id')
+    if (gone.error) throw new Error('The parcel could not be discarded. Try again.')
+    if (!gone.data?.length) throw new Error('This parcel is being pushed. Wait for it to finish.')
+  }
+  await deleteParcelIfEmpty(db, parcel.id, 'The parcel could not be discarded. Try again.')
+  await record(parcel.id, 'dispatch.discarded', { orders: open.map(item => item.order_name) }, input.by)
 }
 
 export function supabasePushStore(): PushStore {

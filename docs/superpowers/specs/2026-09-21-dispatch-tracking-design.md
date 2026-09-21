@@ -71,7 +71,7 @@ screen calls a row "staged" when its parcel has both a tracking number and a car
 survive a refresh and are shared between the packer's phone and the owner's screen. The same rows
 are the 30-day "Recently pushed" history.
 
-Every transition writes an `events` row: `dispatch.staged`, `dispatch.grouped`,
+Every transition writes an `events` row: `dispatch.staged`, `dispatch.unstaged`, `dispatch.grouped`,
 `dispatch.ungrouped`, `dispatch.discarded`, `dispatch.pushed`, `dispatch.failed`.
 
 ### Carrier detection
