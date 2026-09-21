@@ -126,6 +126,13 @@ dispatch schema proof: 9 checks passed
 - No live push has been attempted — no single-order parcel, no grouped parcel.
 - The memory vault (`/Users/yash/Desktop/Qimati Memory/systems/loupe.md`, `operations/credential-register.md`, a `log.md` entry) has not been touched.
 
+**Known open, none blocks the merge (whole-branch review and its re-review, 2026-09-21):**
+- Scanner path: Enter moves focus to `index + 1`; when that row is frozen or pushing its field is disabled and focus is dropped. Advance to the next enabled field instead. A just-scanned field also blinks empty for one round trip (the draft is dropped before the refresh lands), and the row sort has no tiebreaker for two orders with the same `createdAt`.
+- Push path: an order that is already done inside a refused parcel is reported failed instead of being settled; `confirmsPush` and `planPush`'s done branch accept an older or non-SUCCESS fulfilment carrying the same company and number; `push()` on the screen has no re-entry guard of its own; `markPushed` overwrites `pushed_by`/`pushed_at` on the second push of a partly pushed parcel; `order_name` comes from the browser and is never checked against the Shopify read.
+- Store: `lone()` requires `staged` while the conditional deletes accept `failed`, so a once-failed lone order can never be absorbed; a 23505 on the child insert always says "added elsewhere" even for a position collision; `discardParcel`'s event names rows that survived as `pushing`; `createParcel`'s compensating delete is unchecked under `on delete restrict`; `listParcels` sends up to 1000 ids in one GET.
+- Screen: a frozen row still offers the duplicate-number "Group them" link and can be picked in another row's `+` search (both refused server-side with a sentence); `+` lacks `aria-expanded` and does not warn that the chosen order's own staged number is absorbed; clicking the dialog's padding closes the confirm sheet.
+- Proof and tests: the schema proof checks only `anon` (add `authenticated` and a zero-`pg_policy` count); the 60 s timeout wrapper is verified by inspection only, and it would overwrite a caller's own `signal`; the atomic `claim` filter is proven only against a call-recording fake, so at the first live push call `claim` twice on one row against the real project and confirm the second returns false.
+
 **Next session should start with:** owner go-ahead for Step 6.1 — add the two merchant-managed fulfilment-order scopes to Loupe's Shopify app in the Dev Dashboard, re-approve the install, and verify both scope handles with a read-only `currentAppInstallation { accessScopes { handle } }` query before anything else in Step 6 proceeds.
 
 ---
