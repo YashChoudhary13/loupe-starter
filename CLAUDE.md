@@ -82,6 +82,10 @@ are resolved in **Restock** (D112). The matching itself runs on the owner's Wind
 
 Of the twelve fields on a product, only **two** need human judgement: **category** and **price**. Everything else is derived.
 
+**Dispatch** (`/dispatch`, D135) is the last step after QC: operators stage courier tracking numbers against
+orders marked In progress in Shopify, group orders that share a parcel, and push — Loupe fulfils each order
+with carrier and number and Shopify notifies the customer. It is the only place Loupe writes to orders.
+
 ---
 
 ## Domain facts (verified against the live store — do not guess these)

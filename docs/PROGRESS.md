@@ -29,6 +29,69 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-21 — Dispatch: stage tracking numbers, push fulfilments (D135)
+
+**Goal this session:** ship the Dispatch feature — stage courier tracking numbers against In-progress orders and push them as Shopify fulfilments — then record the decision, verify the whole branch once, and write this entry. Branch starts from `claude/qc-v2` (`9a2cb93`), so D134 and the material script ship with it.
+
+**Built:**
+- `src/lib/dispatch/types.ts`, `src/lib/dispatch/carrier.ts` → tracking-number normalisation and carrier detection (`X`/`D` DTDC, `ER` India Post, digits Tirupati Courier).
+- `supabase/migrations/20260921100000_dispatch.sql` → `dispatch_parcels` + `dispatch_parcel_orders`, a partial unique index keeping an order in at most one open parcel, RLS enabled with zero policies.
+- `src/lib/shopify/dispatch-orders.ts` → list open paid orders with an In-progress fulfilment order, read one order for a push, `fulfillmentCreate` with tracking.
+- `src/lib/dispatch/plan.ts` → pure push decision: In-progress fulfilment orders only, an identical fulfilment already done, never overwrite tracking.
+- `src/lib/dispatch/push.ts`, `src/lib/dispatch/push-loop.ts` → push a parcel — whole-parcel pre-check (fulfils none if one order is refused), one `fulfillmentCreate` per order through a single-attempt client, only a re-read decides the outcome; the screen's push loop stops at the first unanswered call and marks the remaining parcels not attempted.
+- `src/lib/dispatch/store.ts` → Supabase store — stage, group, discard, 30-day history, single-claim `pushing` rows reclaimable after two minutes; deletes are conditional on `staged`/`failed` rows so a push in flight is never discarded; clearing a number or absorbing a lone parcel while grouping writes `dispatch.unstaged`; a failed Loupe write after a confirmed fulfilment is reported on the row, never thrown.
+- `src/app/(shell)/dispatch/actions.ts` → server actions — session actor, one parcel per push call, single-attempt mutation client.
+- `src/lib/dispatch/rows.ts` → row model — parcels with nested orders, unlisted staged work, duplicate numbers.
+- `src/components/dispatch/DispatchScreen.tsx`, `src/app/(shell)/dispatch/page.tsx` → `/dispatch` — stage by typing or scanning, `+` to group a parcel, confirm sheet, push one parcel at a time; saving never locks a field (scanner Enter moves focus to the next row) and Push waits for saves in flight so the confirm sheet always shows the number that will be sent.
+- `docs/DECISIONS.md` (D135), `CLAUDE.md` (Dispatch paragraph) → this entry.
+
+**Verified:**
+```
+✓ tests/dispatch-screen-render.test.ts (5 tests) 45ms
+✓ tests/qc-orders.test.ts (11 tests) 14ms
+✓ tests/dispatch-rows.test.ts (7 tests) 10ms
+✓ tests/dispatch-store.test.ts (17 tests) 8ms
+✓ tests/dispatch-push.test.ts (12 tests) 6ms
+✓ tests/dispatch-orders.test.ts (8 tests) 5ms
+✓ tests/dispatch-actions.test.ts (5 tests) 3ms
+✓ tests/dispatch-plan.test.ts (10 tests) 3ms
+✓ tests/dispatch-carrier.test.ts (12 tests) 3ms
+✓ tests/dispatch-push-loop.test.ts (3 tests) 2ms
+
+Test Files  10 passed (10)
+     Tests  90 passed (90)
+```
+`npx tsx scripts/verify-dispatch-local-db.ts`:
+```
+dispatch schema proof: 8 checks passed
+- an order cannot sit in two open parcels
+- fulfilled needs a fulfilment id
+- a fulfilled row no longer blocks a new parcel for the same order
+- tracking numbers are stored normalised
+- carrier is one of the three
+- two orders cannot share a position
+- deleting a parcel removes its orders
+- anon cannot read
+```
+`npm run typecheck` — clean, no output (`tsc --noEmit` exits 0).
+`npm run lint` — 5 errors, all in the known pre-existing baseline (`scripts/tmp-promote-worn.ts` ×3 `no-explicit-any`, `src/components/live/LiveActivity.tsx` ×1 `react-hooks/refs`, `tests/app-shell-render.test.ts` ×1 `react/no-children-prop`); `git diff --name-only 9a2cb93..HEAD` confirms none of the three are in this branch's changed files.
+`npm run build` — `next build` compiled successfully, `/dispatch` listed as a dynamic route alongside the rest of the app.
+`wc -l` (largest file first): `src/lib/dispatch/store.ts` 193, `src/components/dispatch/DispatchScreen.tsx` 166, `src/lib/dispatch/push.ts` 87, `src/lib/shopify/dispatch-orders.ts` 89, `src/lib/dispatch/rows.ts` 49, `src/app/(shell)/dispatch/actions.ts` 49, `src/lib/dispatch/push-loop.ts` 32, `src/lib/dispatch/carrier.ts` 30, `src/lib/dispatch/plan.ts` 27, `src/lib/dispatch/types.ts` 25, `src/app/(shell)/dispatch/page.tsx` 22 — every dispatch file well under 500 lines.
+
+**Surprises:** the task reviews (Tasks 5, 6, 9) caught several brief-code defects before this landed: an invalid `assert.rejects` overload in the schema proof; a test that never actually reached the cancelled-fulfilment filter it claimed to cover; unguarded settle writes that could throw after a fulfilment had already succeeded; read-then-act deletes in the store that could race a push and discard it mid-flight; a screen-wide lock that broke the barcode scanner's Enter-to-next-row focus advance; and no guard stopping Push from firing while a save was still in flight. All were fixed in the tasks that found them (see D135's second paragraph). This branch starts from `claude/qc-v2` (`9a2cb93`), not `main`, so D134 and the material-change script ship with it when this merges.
+
+**Not finished — none of Step 6's rollout has happened yet:**
+- Shopify scopes: Loupe's own app does not yet have `read_merchant_managed_fulfillment_orders` / `write_merchant_managed_fulfillment_orders`; not added, not re-approved, not verified.
+- Migration `20260921100000_dispatch.sql` has not been applied to production.
+- No `npm run dev` look at `/dispatch` against a live order at desktop or phone width.
+- Not merged into `main`; nothing has been pushed or deployed.
+- No live push has been attempted — no single-order parcel, no grouped parcel.
+- The memory vault (`/Users/yash/Desktop/Qimati Memory/systems/loupe.md`, `operations/credential-register.md`, a `log.md` entry) has not been touched.
+
+**Next session should start with:** owner go-ahead for Step 6.1 — add the two merchant-managed fulfilment-order scopes to Loupe's Shopify app in the Dev Dashboard, re-approve the install, and verify both scope handles with a read-only `currentAppInstallation { accessScopes { handle } }` query before anything else in Step 6 proceeds.
+
+---
+
 ## 2026-09-19 — ER713–ER731 material 304 → 316L via the publisher
 
 **Goal:** owner: make these earrings 316L — tags, description and custom.material.
