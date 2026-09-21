@@ -78,6 +78,44 @@ dispatch schema proof: 8 checks passed
 `npm run build` — `next build` compiled successfully, `/dispatch` listed as a dynamic route alongside the rest of the app.
 `wc -l` (largest file first): `src/lib/dispatch/store.ts` 193, `src/components/dispatch/DispatchScreen.tsx` 166, `src/lib/dispatch/push.ts` 87, `src/lib/shopify/dispatch-orders.ts` 89, `src/lib/dispatch/rows.ts` 49, `src/app/(shell)/dispatch/actions.ts` 49, `src/lib/dispatch/push-loop.ts` 32, `src/lib/dispatch/carrier.ts` 30, `src/lib/dispatch/plan.ts` 27, `src/lib/dispatch/types.ts` 25, `src/app/(shell)/dispatch/page.tsx` 22 — every dispatch file well under 500 lines.
 
+**Final-review fix wave (whole branch, after the ten tasks):** the whole-branch review found one Critical and two Important cross-module defects, all now fixed on this branch.
+- **C1 — a pushed parcel is frozen.** A parcel where one order was fulfilled and a sibling failed was still editable, so retyping the number rewrote the shared parcel row and the 30-day history showed a number no customer was ever told. `stageTracking` now refuses once `pushed_at` is set and its parcel `update` is conditional on `pushed_at is null`; `groupOrder` refuses to add an order to a pushed parcel; `markPushed` re-asserts the carrier and number the push actually sent, so an edit that raced the push is superseded rather than kept. The screen freezes such a row's number, carrier and `+`, keeps its checkbox usable (pushing the remaining order again with the same number is the documented retry) and offers "Discard the remaining order".
+- **I1 — the confirm sheet is bound to what is sent.** `PushTarget` now carries `expected` (the carrier, number and order ids the sheet rendered); `pushParcel` compares it with the loaded parcel and refuses with "This parcel changed on another screen. Reload Dispatch and check it before pushing." before the first Shopify read, so a packer's edit on another device can no longer make the owner fulfil orders nobody confirmed. `pushParcelAction` validates the shape (two strings, 1–50 Shopify order gids).
+- **I2 — a claim that throws fails only its own order.** A database error on the second order's claim used to throw out of `pushParcel` after the first order had been fulfilled and its customer notified, skipping `markPushed` and the audit event. That order now gets a `failed` result saying nothing was sent for it, and the loop finishes.
+- **Cheaper now than ever** (the migration has not been applied anywhere): the `dispatch_parcel_orders.parcel_id` foreign key is `on delete restrict`, so `deleteParcelIfEmpty` is atomic in the database (23503 means "not empty after all"); the writer `ShopifyClient` gets a 60 s `AbortSignal.timeout`, inside the 120 s stale-claim takeover that undici's 300 s default outlived; `page.tsx` passes `ordersLoaded && !truncated`, so orders past the 300-order cut are never offered for discard.
+
+**Verified after the fix wave:**
+```
+✓ tests/dispatch-screen-render.test.ts (6 tests) 26ms
+✓ tests/qc-orders.test.ts (11 tests) 14ms
+✓ tests/app-shell-render.test.ts (1 test) 12ms
+✓ tests/dispatch-rows.test.ts (8 tests) 10ms
+✓ tests/dispatch-store.test.ts (22 tests) 8ms
+✓ tests/dispatch-push.test.ts (19 tests) 8ms
+✓ tests/dispatch-orders.test.ts (8 tests) 5ms
+✓ tests/dispatch-actions.test.ts (6 tests) 4ms
+✓ tests/dispatch-carrier.test.ts (12 tests) 3ms
+✓ tests/dispatch-plan.test.ts (10 tests) 3ms
+✓ tests/dispatch-push-loop.test.ts (4 tests) 2ms
+
+Test Files  11 passed (11)
+     Tests  107 passed (107)
+```
+`npx tsx scripts/verify-dispatch-local-db.ts`:
+```
+dispatch schema proof: 9 checks passed
+- an order cannot sit in two open parcels
+- fulfilled needs a fulfilment id
+- a fulfilled row no longer blocks a new parcel for the same order
+- tracking numbers are stored normalised
+- carrier is one of the three
+- two orders cannot share a position
+- a parcel that still has orders cannot be deleted
+- an emptied parcel can be deleted
+- anon cannot read
+```
+`npm run typecheck` — clean, no output. `npm run lint` — the same 5 pre-existing errors in the same three untouched files, none in a file this branch touches. `npm run build` — compiled successfully, `/dispatch` listed as a dynamic route. `wc -l`: `store.ts` 201, `DispatchScreen.tsx` 173, `push.ts` 99, `actions.ts` 61, `rows.ts` 53, `push-loop.ts` 33 — every file still well under 500 lines.
+
 **Surprises:** the task reviews (Tasks 5, 6, 9) caught several brief-code defects before this landed: an invalid `assert.rejects` overload in the schema proof; a test that never actually reached the cancelled-fulfilment filter it claimed to cover; unguarded settle writes that could throw after a fulfilment had already succeeded; read-then-act deletes in the store that could race a push and discard it mid-flight; a screen-wide lock that broke the barcode scanner's Enter-to-next-row focus advance; and no guard stopping Push from firing while a save was still in flight. All were fixed in the tasks that found them (see D135's second paragraph). This branch starts from `claude/qc-v2` (`9a2cb93`), not `main`, so D134 and the material-change script ship with it when this merges.
 
 **Not finished — none of Step 6's rollout has happened yet:**

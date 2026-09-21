@@ -131,9 +131,15 @@ re-reading the order, never by sending the mutation again unseen: the list shows
 last push was interrupted"), and the next push starts with the usual fresh read, which finds the
 fulfilment if it landed.
 
+The carrier, number and order ids the confirm sheet showed travel with the push and are checked
+against the parcel before anything is read from Shopify; if another device changed any of them since
+the sheet was drawn, nothing is sent and the operator is told to reload and check.
+
 If the first order of a parcel is fulfilled and a later one fails, the first stays fulfilled and
 the failed order stays staged under the same tracking number for another push. Other parcels
-continue regardless.
+continue regardless. A pushed parcel is then frozen: its number and carrier are what a customer was
+already told, so they can no longer be edited and no further order can be added — the remaining
+order is either pushed again with that same number, or discarded and staged afresh.
 
 An order that already carries an active fulfilment with the same company and number counts as
 done (someone fulfilled it in Shopify Admin meanwhile). One with a *different* tracking number and nothing left In progress is
