@@ -49,7 +49,10 @@ export async function pushParcelAction(parcelId: string, expected: PushExpectati
   const state = await run(async by => {
     if (!UUID.test(String(parcelId))) throw new Error('Reload Dispatch and try again.')
     const reader = new ShopifyClient()
-    const writer = new ShopifyClient({ retryDelaysMs: [0], tokens: reader.tokens })
+    // 60 s, because undici's default of 300 s outlives the 120 s stale-claim takeover: a hung mutation could
+    // otherwise still be in flight when a second push claims the row. An abort is an ordinary failure here —
+    // the re-read, not the response, decides whether the fulfilment landed.
+    const writer = new ShopifyClient({ retryDelaysMs: [0], tokens: reader.tokens, fetchImpl: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(60_000) }) })
     results = await pushParcel(parcelId, by, { store: supabasePushStore(), readOrder: id => readDispatchOrder(reader, id), fulfil: input => createFulfillment(writer, input), now: () => new Date(), newId: randomUUID }, confirmed(expected))
     const fulfilled = results.filter(result => result.status === 'fulfilled').length
     return fulfilled === results.length ? `${fulfilled} order${fulfilled === 1 ? '' : 's'} fulfilled.` : `${fulfilled} of ${results.length} orders fulfilled. See each row.`

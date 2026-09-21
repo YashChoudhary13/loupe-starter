@@ -32,6 +32,7 @@ describe('dispatch actions', () => {
     expect(outcome).toMatchObject({ ok: true, message: '1 order fulfilled.' })
     expect(mocks.clientOptions[0]).toBeUndefined()
     expect(mocks.clientOptions[1]).toEqual(expect.objectContaining({ retryDelaysMs: [0], tokens: 'shared-tokens' }))
+    expect(typeof (mocks.clientOptions[1] as { fetchImpl?: unknown }).fetchImpl).toBe('function')
     expect(mocks.push.mock.calls[0].slice(0, 2)).toEqual([PARCEL, 'owner@example.test'])
     expect(mocks.push.mock.calls[0][3]).toEqual(expected())
   })
