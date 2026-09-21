@@ -36,11 +36,24 @@ describe('staging', () => {
   })
   it('keeps a grouped parcel when its number is cleared, and records what was cleared', async () => {
     const grouped = { ...solo, orders: [...solo.orders, { ...solo.orders[0], id: 'r2', order_id: 'gid://shopify/Order/2', order_name: 'Qimati2', position: 1 }] }
-    db.queue.push({ data: { id: 'r1', parcel_id: 'p1', position: 0, status: 'staged' } }, { data: grouped }, { error: null }, { error: null })
+    db.queue.push({ data: { id: 'r1', parcel_id: 'p1', position: 0, status: 'staged' } }, { data: grouped }, { data: [{ id: 'p1' }] }, { error: null })
     await stageTracking({ orderId: '1', orderName: 'Qimati1', tracking: '', by: 'op' })
     expect(did('dispatch_parcels', 'delete')).toHaveLength(0)
     expect(did('dispatch_parcels', 'update')[0].args[0]).toMatchObject({ tracking_number: null, carrier: null })
     expect(did('events', 'insert')[0].args[0]).toMatchObject({ event: 'dispatch.unstaged', detail: { order: 'Qimati1', tracking: 'X1234567' } })
+  })
+  it('refuses to change the number of a parcel part of which was already pushed, and writes nothing', async () => {
+    const pushed = { ...solo, pushed_by: 'owner@example.test', pushed_at: '2026-09-21T06:00:00Z', orders: [{ ...solo.orders[0], status: 'fulfilled', fulfillment_id: 'f1' }, { ...solo.orders[0], id: 'r2', order_id: 'gid://shopify/Order/2', order_name: 'Qimati2', position: 1, status: 'failed' }] }
+    db.queue.push({ data: { id: 'r2', parcel_id: 'p1', position: 1, status: 'failed' } }, { data: pushed })
+    await expect(stageTracking({ orderId: '2', orderName: 'Qimati2', tracking: 'X7654321', by: 'op' })).rejects.toThrow('Part of this parcel was already pushed with DTDC X1234567, so its number can no longer change. Discard the remaining order and stage it again.')
+    expect(did('dispatch_parcels', 'update')).toHaveLength(0); expect(did('events', 'insert')).toHaveLength(0)
+  })
+  it('tells the operator when the parcel is pushed between the read and the save', async () => {
+    const grouped = { ...solo, orders: [...solo.orders, { ...solo.orders[0], id: 'r2', order_id: 'gid://shopify/Order/2', order_name: 'Qimati2', position: 1 }] }
+    db.queue.push({ data: { id: 'r1', parcel_id: 'p1', position: 0, status: 'staged' } }, { data: grouped }, { data: [] })
+    await expect(stageTracking({ orderId: '1', orderName: 'Qimati1', tracking: 'X7654321', by: 'op' })).rejects.toThrow(/already pushed with DTDC X1234567/)
+    expect(did('dispatch_parcels', 'is')[0].args).toEqual(['pushed_at', null])
+    expect(did('events', 'insert')).toHaveLength(0)
   })
   it('refuses edits while the parcel is being pushed', async () => {
     db.queue.push({ data: { id: 'r1', parcel_id: 'p1', position: 0, status: 'pushing' } }, { data: { ...solo, orders: [{ ...solo.orders[0], status: 'pushing' }] } })
@@ -65,6 +78,11 @@ describe('grouping and claiming', () => {
     expect(did('dispatch_parcel_orders', 'or')[0].args[0]).toBe('status.in.(staged,failed),and(status.eq.pushing,push_started_at.lt."2026-09-21T06:00:00.000Z")')
     db.queue.push({ data: null })
     expect(await supabasePushStore().claim('r1', 'req-2', new Date())).toBe(false)
+  })
+  it('refuses to add an order to a parcel that was already pushed', async () => {
+    db.queue.push({ data: { id: 'r1', parcel_id: 'p1', position: 0, status: 'staged' } }, { data: { ...solo, pushed_by: 'owner@example.test', pushed_at: '2026-09-21T06:00:00Z' } })
+    await expect(groupOrder({ primaryOrderId: '1', primaryOrderName: 'Qimati1', orderId: '2', orderName: 'Qimati2', by: 'op' })).rejects.toThrow('That parcel was already pushed. Stage this order on its own.')
+    expect(did('dispatch_parcel_orders', 'insert')).toHaveLength(0)
   })
   it('refuses to move a child whose lone parcel started pushing between the read and the delete', async () => {
     const otherParcel = { ...solo, id: 'p2', orders: [{ ...solo.orders[0], id: 'r2', order_id: 'gid://shopify/Order/2', order_name: 'Qimati2' }] }
@@ -132,5 +150,12 @@ describe('push store row operations', () => {
     db.queue.push({ error: null })
     await supabasePushStore().finish('r2', 'req-2', { error: 'Shopify refused.' }, now)
     expect(did('dispatch_parcel_orders', 'update')[0].args[0]).toMatchObject({ status: 'failed', error: 'Shopify refused.', finished_at: now.toISOString() })
+  })
+  it('markPushed re-asserts the carrier and number that were actually sent', async () => {
+    const now = new Date('2026-09-21T06:05:00.000Z')
+    db.queue.push({ error: null })
+    await supabasePushStore().markPushed('p1', 'owner@example.test', now, { carrier: 'DTDC', number: 'X1234567' })
+    expect(did('dispatch_parcels', 'update')[0].args[0]).toEqual({ tracking_number: 'X1234567', carrier: 'DTDC', pushed_by: 'owner@example.test', pushed_at: now.toISOString() })
+    expect(did('dispatch_parcels', 'eq')[0].args).toEqual(['id', 'p1'])
   })
 })

@@ -44,6 +44,8 @@ async function createParcel(order: { id: string; name: string }, fields: { track
   return parcel.data.id
 }
 const lone = (parcel: ParcelRow) => parcel.orders.length === 1 && !parcel.pushed_at && parcel.orders[0].status === 'staged'
+/** A pushed parcel's number is what a customer was told, so it is frozen: only a discard clears what is left. */
+const frozen = (parcel: ParcelRow) => `Part of this parcel was already pushed with ${parcel.carrier} ${parcel.tracking_number}, so its number can no longer change. Discard the remaining order and stage it again.`
 /** Deletes the parcel only once no order row references it any more — called after a conditional order-row delete. */
 async function deleteParcelIfEmpty(db: ReturnType<typeof supabaseServer>, parcelId: string, failMessage: string): Promise<void> {
   const remaining = await db.from('dispatch_parcel_orders').select('id').eq('parcel_id', parcelId).limit(1)
@@ -81,6 +83,7 @@ export async function stageTracking(input: StageInput): Promise<void> {
   const row = await openRowFor(order.id)
   const parcel = row ? await loadParcel(row.parcel_id) : null
   if (parcel?.orders.some(item => item.status === 'pushing')) throw new Error('This parcel is being pushed. Wait for it to finish.')
+  if (parcel?.pushed_at) throw new Error(frozen(parcel))
   const next = resolveCarrier(parcel ? { carrier: parcel.carrier, source: parcel.carrier_source } : null, tracking, input.carrier)
   const fields = { tracking_number: tracking || null, carrier: next.carrier, carrier_source: next.source }
   const db = supabaseServer()
@@ -97,9 +100,10 @@ export async function stageTracking(input: StageInput): Promise<void> {
     if (parcel.tracking_number) await record(parcel.id, 'dispatch.unstaged', { order: order.name, tracking: parcel.tracking_number }, input.by)
     return
   } else {
-    // ponytail: read-then-act. An edit racing the first second of a push can leave this row's number differing from what was sent; Shopify and the dispatch.pushed event hold the sent number. Upgrade path: a pushing_since lock column on dispatch_parcels set by one conditional update.
-    const saved = await db.from('dispatch_parcels').update(fields).eq('id', parcel.id)
+    // ponytail: read-then-act. An edit racing a push can still be accepted and is then superseded by the number markPushed re-asserts at the end of that push; its dispatch.staged event is the trace. Upgrade path: a pushing_since lock column on dispatch_parcels set by one conditional update, if such an edit should be refused outright.
+    const saved = await db.from('dispatch_parcels').update(fields).eq('id', parcel.id).is('pushed_at', null).select('id')
     if (saved.error) throw new Error('The tracking number could not be saved. Try again.')
+    if (!saved.data?.length) throw new Error(frozen(parcel))
     if (!tracking && parcel.tracking_number) await record(parcel.id, 'dispatch.unstaged', { order: order.name, tracking: parcel.tracking_number }, input.by)
   }
   if (tracking) await record(parcelId, 'dispatch.staged', { order: order.name, tracking, carrier: next.carrier, carrier_source: next.source }, input.by)
@@ -117,6 +121,7 @@ export async function groupOrder(input: GroupInput): Promise<void> {
   const parcel = await loadParcel(parcelId)
   if (!parcel) throw new Error(READ_FAILED)
   if (parcel.orders.some(item => item.status === 'pushing')) throw new Error('This parcel is being pushed. Wait for it to finish.')
+  if (parcel.pushed_at) throw new Error('That parcel was already pushed. Stage this order on its own.')
   const childRow = await openRowFor(child.id)
   if (childRow?.parcel_id === parcelId) return
   let absorbed: { parcelId: string; tracking: string | null } | null = null
@@ -185,8 +190,9 @@ export function supabasePushStore(): PushStore {
       const { error } = await db.from('dispatch_parcel_orders').update({ ...values, finished_at: now.toISOString() }).eq('id', rowId).eq('request_id', requestId)
       if (error) throw new Error('The push result could not be saved. Reload Dispatch; the Shopify order is the truth.')
     },
-    async markPushed(parcelId, by, now) {
-      const { error } = await db.from('dispatch_parcels').update({ pushed_by: by, pushed_at: now.toISOString() }).eq('id', parcelId)
+    async markPushed(parcelId, by, now, sent) {
+      // Re-asserts what was actually sent, so an edit that raced this push is superseded rather than left as history.
+      const { error } = await db.from('dispatch_parcels').update({ tracking_number: sent.number, carrier: sent.carrier, pushed_by: by, pushed_at: now.toISOString() }).eq('id', parcelId)
       if (error) throw new Error('The push time could not be saved.')
     },
   }

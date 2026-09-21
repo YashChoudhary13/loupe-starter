@@ -30,6 +30,14 @@ describe('Dispatch screen', () => {
     expect(render(props({ truncated: true }))).toContain('more than 300 open orders')
   })
   it('offers a way out for staged work whose order left the list', () => { expect(render(props({ orders: [] }))).toContain('no longer In progress') })
+  it('freezes the fields of a pushed parcel but still offers its remaining order for a retry or a discard', () => {
+    const html = render(props({ orders: [order(2)], open: [{ id: 'p1', tracking_number: 'X1234567', carrier: 'DTDC', carrier_source: 'auto', staged_by: 'op', staged_at: '2026-09-21T05:00:00Z', pushed_by: 'owner@example.test', pushed_at: '2026-09-21T06:00:00Z', orders: [item(1, 0, 'fulfilled'), item(2, 1, 'failed')] as never }] }))
+    expect(html).toMatch(/<input[^>]*aria-label="Tracking number for Qimati2"[^>]*disabled=""/)
+    expect(html).toMatch(/<select[^>]*aria-label="Carrier for Qimati2"[^>]*disabled=""/)
+    expect(html).toMatch(/<button[^>]*aria-label="Add another order to the parcel of Qimati2"[^>]*disabled=""/)
+    expect(html).toMatch(/<input[^>]*aria-label="Select Qimati2"(?![^>]*disabled)[^>]*>/)
+    expect(html).toContain('Discard the remaining order')
+  })
   it('does not invite a discard while the Shopify order list itself failed to load', () => {
     const html = render(props({ orders: [], ordersLoaded: false }))
     expect(html).not.toContain('no longer In progress'); expect(html).not.toContain('Discard')

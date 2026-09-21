@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRows, canPush, duplicateTracking, isStaged, rowLocked } from '@/lib/dispatch/rows'
+import { buildRows, canPush, duplicateTracking, isStaged, parcelFrozen, rowLocked } from '@/lib/dispatch/rows'
 import type { DispatchOrderSummary, ParcelOrderRow, ParcelRow } from '@/lib/dispatch/types'
 
 const order = (n: number, addressKey = 'aaaa'): DispatchOrderSummary => ({ id: `gid://shopify/Order/${n}`, name: `Qimati${n}`, createdAt: `2026-09-2${n}T05:00:00Z`, customer: `Customer ${n}`, addressKey })
@@ -33,6 +33,11 @@ describe('dispatch rows', () => {
     expect(rowLocked('pushing', false)).toBe(true)
     expect(rowLocked('staged', true)).toBe(true)
     expect(rowLocked(null, true)).toBe(true)
+  })
+  it('freezes a parcel once any part of it has been pushed', () => {
+    expect(parcelFrozen(null)).toBe(false)
+    expect(parcelFrozen(parcel('p1', [item(1, 0)]))).toBe(false)
+    expect(parcelFrozen({ ...parcel('p1', [item(1, 0, 'fulfilled'), item(2, 1, 'failed')]), pushed_by: 'owner@example.test', pushed_at: '2026-09-21T06:00:00Z' })).toBe(true)
   })
   it('allows Push only when something is chosen, no push is already running, and every save has settled', () => {
     expect(canPush(0, false, 0)).toBe(false)

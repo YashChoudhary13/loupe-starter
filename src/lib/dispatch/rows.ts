@@ -29,6 +29,10 @@ export function buildRows(orders: readonly DispatchOrderSummary[], qcPassed: Rea
 /** Ready to push: the parcel has both a number and a carrier. */
 export function isStaged(row: DispatchRowModel): boolean { return !!row.parcel?.tracking_number && !!row.parcel.carrier }
 
+/** Once any order of a parcel has been pushed, its number is what a customer was told: it can no longer be
+ * edited, only discarded. The remaining order may still be pushed again with that same number. */
+export function parcelFrozen(parcel: ParcelRow | null): boolean { return !!parcel?.pushed_at }
+
 export function duplicateTracking(rows: readonly DispatchRowModel[]): Map<string, string[]> {
   const names = new Map<string, string[]>()
   for (const row of rows) { const number = row.parcel?.tracking_number; if (number) names.set(number, [...(names.get(number) ?? []), row.order.name]) }

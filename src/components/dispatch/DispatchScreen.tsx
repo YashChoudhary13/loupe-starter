@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { discardParcelAction, groupOrderAction, pushParcelAction, stageTrackingAction, ungroupOrderAction } from '@/app/(shell)/dispatch/actions'
 import { detectCarrier, normalizeTracking } from '@/lib/dispatch/carrier'
-import { buildRows, canPush, duplicateTracking, isStaged, rowLocked, type DispatchRowModel } from '@/lib/dispatch/rows'
+import { buildRows, canPush, duplicateTracking, isStaged, parcelFrozen, rowLocked, type DispatchRowModel } from '@/lib/dispatch/rows'
 import { runPush, type PushTarget } from '@/lib/dispatch/push-loop'
 import { CARRIERS, type DispatchOrderSummary, type ParcelRow } from '@/lib/dispatch/types'
 import type { PushResult } from '@/lib/dispatch/push'
@@ -100,6 +100,8 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, orde
       <div className="grid gap-3">{rows.map((row, index) => {
         const id = row.order.id
         const locked = rowLocked(row.status, pushing)
+        // Part of this parcel is already with a customer: its number can only be discarded, never re-typed.
+        const frozen = parcelFrozen(row.parcel)
         const tracking = drafts[id] ?? row.parcel?.tracking_number ?? ''
         const carrier = row.parcel?.carrier ?? detectCarrier(normalizeTracking(tracking)) ?? ''
         const sharing = row.parcel?.tracking_number && duplicates.has(row.parcel.tracking_number) ? rows.filter(other => other.order.id !== id && other.parcel?.tracking_number === row.parcel!.tracking_number) : []
@@ -110,13 +112,13 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, orde
             <input type="checkbox" aria-label={`Select ${row.order.name}`} checked={selected.has(id)} disabled={!isStaged(row) || locked} onChange={() => toggle(id)} className="h-4 w-4" />
             <QcBadge passed={row.qcPassed} />
             <div className="flex items-center gap-2"><span className="text-[15px] font-medium">{row.order.name}</span>
-              <button type="button" aria-label={`Add another order to the parcel of ${row.order.name}`} title="Add an order that travels in the same parcel" disabled={locked} onClick={() => { setAdding(adding === id ? null : id); setSearch('') }} className="inline-grid h-6 w-6 place-items-center rounded-full bg-chip text-[15px] leading-none focus-visible:outline-2">+</button></div>
+              <button type="button" aria-label={`Add another order to the parcel of ${row.order.name}`} title="Add an order that travels in the same parcel" disabled={locked || frozen} onClick={() => { setAdding(adding === id ? null : id); setSearch('') }} className="inline-grid h-6 w-6 place-items-center rounded-full bg-chip text-[15px] leading-none focus-visible:outline-2">+</button></div>
             <span className="truncate text-[12px] text-ink-soft">{row.order.customer}</span>
-            <select aria-label={`Carrier for ${row.order.name}`} value={carrier} disabled={locked} onChange={event => save(row, tracking, event.target.value)} className={field}>
+            <select aria-label={`Carrier for ${row.order.name}`} value={carrier} disabled={locked || frozen} onChange={event => save(row, tracking, event.target.value)} className={field}>
               <option value="">{row.parcel?.carrier_source === 'manual' ? 'Detect automatically' : '— carrier —'}</option>
               {CARRIERS.map(name => <option key={name} value={name}>{name}</option>)}
             </select>
-            <input aria-label={`Tracking number for ${row.order.name}`} data-tracking-index={index} value={tracking} disabled={locked} maxLength={40} placeholder="Tracking number" autoComplete="off" spellCheck={false} className={field}
+            <input aria-label={`Tracking number for ${row.order.name}`} data-tracking-index={index} value={tracking} disabled={locked || frozen} maxLength={40} placeholder="Tracking number" autoComplete="off" spellCheck={false} className={field}
               onChange={event => setDrafts(current => ({ ...current, [id]: event.target.value }))}
               onBlur={() => { if (id in drafts && normalizeTracking(drafts[id]) !== (row.parcel?.tracking_number ?? '')) save(row, drafts[id]) }}
               onKeyDown={event => { if (event.key !== 'Enter') return; event.preventDefault(); event.currentTarget.blur(); document.querySelector<HTMLInputElement>(`[data-tracking-index="${index + 1}"]`)?.focus() }} />
@@ -134,7 +136,9 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, orde
             <div className="mt-2 flex flex-wrap gap-2">{candidates.map(other => <button key={other.order.id} type="button" className={`${pill} bg-white`} onClick={() => act(id, () => groupOrderAction({ primaryOrderId: id, primaryOrderName: row.order.name, orderId: other.order.id, orderName: other.order.name }), () => setAdding(null))}>{other.order.name}{other.order.addressKey && other.order.addressKey === row.order.addressKey ? ' · same address' : ''}</button>)}
               {candidates.length === 0 && <span className="text-[12px] text-ink-soft">No other In-progress order matches. Mark it In progress in Shopify first.</span>}</div>
           </div>}
-          {ordersLoaded && !row.listed && <p className="mt-2 text-[12px] text-amber">{row.order.name} is no longer In progress in Shopify. <button type="button" className="underline" disabled={locked} onClick={() => act(id, () => discardParcelAction(row.parcel!.id))}>Discard this staged number</button></p>}
+          {frozen
+            ? <p className="mt-2 text-[12px] text-amber">Part of this parcel was already pushed with {row.parcel!.carrier} {row.parcel!.tracking_number}, so its number can no longer change. Push {row.order.name} again with that number, or <button type="button" className="underline" disabled={locked} onClick={() => act(id, () => discardParcelAction(row.parcel!.id))}>Discard the remaining order</button>.</p>
+            : ordersLoaded && !row.listed && <p className="mt-2 text-[12px] text-amber">{row.order.name} is no longer In progress in Shopify. <button type="button" className="underline" disabled={locked} onClick={() => act(id, () => discardParcelAction(row.parcel!.id))}>Discard this staged number</button></p>}
           {sharing.map(other => <p key={other.order.id} className="mt-2 text-[12px] text-amber">Same number as {other.order.name}. <button type="button" className="underline" disabled={locked} onClick={() => act(id, () => groupOrderAction({ primaryOrderId: id, primaryOrderName: row.order.name, orderId: other.order.id, orderName: other.order.name }))}>Group them into one parcel</button></p>)}
           {row.error && <p className="mt-2 text-[12px] text-amber">{row.error}</p>}
           {messages[id] && <p role="alert" className="mt-2 text-[12px] text-amber">{messages[id]}</p>}

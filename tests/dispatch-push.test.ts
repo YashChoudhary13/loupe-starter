@@ -42,6 +42,13 @@ describe('pushParcel', () => {
     expect(h.parcel.pushed_by).toBe('owner@example.test')
     expect(h.events).toEqual(['dispatch.pushed'])
   })
+  it('re-asserts the carrier and number it actually sent when it records the push', async () => {
+    const h = harness(parcelOf([row(1)]), { 'gid://shopify/Order/1': snapshot(1) })
+    const marked: Parameters<PushStore['markPushed']>[] = []
+    h.deps.store.markPushed = async (...args) => { marked.push(args) }
+    await pushParcel('p1', 'owner@example.test', h.deps)
+    expect(marked).toEqual([['p1', 'owner@example.test', new Date('2026-09-21T06:00:00Z'), { carrier: 'DTDC', number: 'X1234567' }]])
+  })
   it('fulfils nothing when any order of the parcel fails the pre-check', async () => {
     const h = harness(parcelOf([row(1), row(2)]), { ...two(), 'gid://shopify/Order/2': snapshot(2, { cancelledAt: '2026-09-21T01:00:00Z' }) })
     const results = await pushParcel('p1', 'owner@example.test', h.deps)

@@ -9,7 +9,8 @@ export interface PushStore {
   fail(rowId: string, message: string): Promise<void>
   /** Settles the row this push claimed; a row claimed by a different request is left alone. */
   finish(rowId: string, requestId: string, result: { fulfillmentId: string } | { error: string }, now: Date): Promise<void>
-  markPushed(parcelId: string, by: string, now: Date): Promise<void>
+  /** Records who pushed and when, and re-asserts the carrier and number actually sent, so an edit that raced this push cannot survive as the parcel's history. */
+  markPushed(parcelId: string, by: string, now: Date, sent: { carrier: Carrier; number: string }): Promise<void>
   record(parcelId: string, event: string, detail: Record<string, unknown>, by: string): Promise<void>
 }
 export interface PushDeps {
@@ -71,7 +72,7 @@ export async function pushParcel(parcelId: string, by: string, deps: PushDeps): 
       results.push({ orderId: item.order_id, orderName: item.order_name, status: 'failed', message })
     }
   }
-  if (results.some(result => result.status === 'fulfilled')) await guard('dispatch markPushed write failed', () => deps.store.markPushed(parcelId, by, deps.now()))
+  if (results.some(result => result.status === 'fulfilled')) await guard('dispatch markPushed write failed', () => deps.store.markPushed(parcelId, by, deps.now(), { carrier, number }))
   await audit(deps, parcelId, results.every(result => result.status === 'fulfilled') ? 'dispatch.pushed' : 'dispatch.failed', { tracking: number, carrier, orders: results.map(result => ({ order: result.orderName, status: result.status })) }, by)
   return results
 }
