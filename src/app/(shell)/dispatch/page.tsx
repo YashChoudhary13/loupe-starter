@@ -18,5 +18,7 @@ export default async function DispatchPage() {
   let qcPassed: Record<string, boolean> = {}
   try { const statuses = await qcOrderStatuses(ids); qcPassed = Object.fromEntries(ids.map(id => [id, statuses[id]?.status === 'passed'])) }
   catch { problems.push('QC status could not be loaded, so every QC badge shows as not checked.') }
-  return <DispatchScreen orders={orders} qcPassed={qcPassed} open={open} recent={recent} truncated={truncated} ordersLoaded={ordersLoaded} error={problems.join(' ') || undefined} />
+  // A truncated list is not a loaded list: an order past the 300-order cut is missing, not gone, so it must
+  // never be offered for discard.
+  return <DispatchScreen orders={orders} qcPassed={qcPassed} open={open} recent={recent} truncated={truncated} ordersLoaded={ordersLoaded && !truncated} error={problems.join(' ') || undefined} />
 }
