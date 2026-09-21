@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { discardParcelAction, groupOrderAction, pushParcelAction, stageTrackingAction, ungroupOrderAction } from '@/app/(shell)/dispatch/actions'
 import { detectCarrier, normalizeTracking } from '@/lib/dispatch/carrier'
-import { buildRows, duplicateTracking, isStaged, rowLocked, type DispatchRowModel } from '@/lib/dispatch/rows'
+import { buildRows, canPush, duplicateTracking, isStaged, rowLocked, type DispatchRowModel } from '@/lib/dispatch/rows'
 import { runPush, type PushTarget } from '@/lib/dispatch/push-loop'
 import { CARRIERS, type DispatchOrderSummary, type ParcelRow } from '@/lib/dispatch/types'
 import type { PushResult } from '@/lib/dispatch/push'
@@ -34,6 +34,11 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, orde
   const [confirming, setConfirming] = useState(false)
   const [results, setResults] = useState<PushResult[]>([])
   const [pushing, setPushing] = useState(false)
+  // In-flight save count. Read synchronously by event handlers (so a click cannot race a stale render);
+  // mirrored into state only so the Push label can show "Saving…". Never feeds `rowLocked` — the round-1
+  // scanner-focus fix depends on a save never disabling a field.
+  const savingRef = useRef(0)
+  const [saving, setSaving] = useState(0)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
 
@@ -43,9 +48,12 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, orde
   const note = (id: string, message: string) => setMessages(current => ({ ...current, [id]: message }))
   /** A rejected action (dropped connection, session redirect) must still tell the row something went wrong. */
   const act = (id: string, work: () => Promise<{ ok: boolean; message: string }>, after?: () => void) => {
+    savingRef.current += 1
+    setSaving(savingRef.current)
     work()
       .then(state => { note(id, state.ok ? '' : state.message); if (state.ok) { after?.(); router.refresh() } })
       .catch(() => note(id, 'Loupe could not be reached, so nothing was saved. Try again.'))
+      .finally(() => { savingRef.current -= 1; setSaving(savingRef.current) })
   }
   const save = (row: DispatchRowModel, tracking: string, carrier?: string) => act(row.order.id,
     () => stageTrackingAction({ orderId: row.order.id, orderName: row.order.name, tracking, carrier }),
@@ -59,7 +67,11 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, orde
     else if (dialog.open) dialog.close()
   }, [confirming])
 
+  /** Guards against a click racing a stale render: reads the ref directly, not the mirrored `saving` state. */
+  const openConfirm = () => { if (savingRef.current > 0) return; setConfirming(true) }
+
   const push = () => {
+    if (savingRef.current > 0) return
     setConfirming(false)
     setPushing(true)
     setResults([])
@@ -81,7 +93,7 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, orde
         <h2 className="text-[15px] font-medium">In progress · {rows.length}</h2>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={`${pill} bg-chip`} disabled={staged.length === 0} onClick={() => setSelected(new Set(staged.map(row => row.order.id)))}>Select all staged ({staged.length})</button>
-          <button type="button" className={`${pill} bg-ink text-white`} disabled={chosen.length === 0 || pushing} onClick={() => setConfirming(true)}>Push {chosen.length} parcel{chosen.length === 1 ? '' : 's'} · {chosenOrders} order{chosenOrders === 1 ? '' : 's'}</button>
+          <button type="button" className={`${pill} bg-ink text-white`} disabled={!canPush(chosen.length, pushing, saving)} onClick={openConfirm}>{saving > 0 ? 'Saving…' : `Push ${chosen.length} parcel${chosen.length === 1 ? '' : 's'} · ${chosenOrders} order${chosenOrders === 1 ? '' : 's'}`}</button>
         </div>
       </div>
       {rows.length === 0 && !error && <p className="py-8 text-[13px] text-ink-soft">Nothing is marked In progress in Shopify.</p>}

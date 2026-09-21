@@ -40,3 +40,10 @@ export function duplicateTracking(rows: readonly DispatchRowModel[]): Map<string
 export function rowLocked(status: ParcelOrderStatus | null, pushRunning: boolean): boolean {
   return status === 'pushing' || pushRunning
 }
+
+/** The one irreversible action must never race an in-flight save: disabled unless something is chosen,
+ * no push is already running, and every save has settled — so the confirm sheet always shows the number
+ * that will actually be sent. */
+export function canPush(chosen: number, pushRunning: boolean, saving: number): boolean {
+  return chosen > 0 && !pushRunning && saving === 0
+}
