@@ -8,6 +8,8 @@ vi.mock('@/lib/dispatch/store', () => ({ stageTracking: mocks.stage, groupOrder:
 vi.mock('@/lib/dispatch/push', () => ({ pushParcel: mocks.push }))
 import { pushParcelAction, stageTrackingAction } from '@/app/(shell)/dispatch/actions'
 
+const PARCEL = '3f0c5a0e-6d0b-4a53-9d2e-0a4a3b1f7c11'
+const expected = () => ({ carrier: 'DTDC', tracking: 'X1234567', orderIds: ['gid://shopify/Order/1'] })
 beforeEach(() => { vi.clearAllMocks(); mocks.clientOptions.length = 0; mocks.operator.mockResolvedValue({ id: 'u1', email: 'owner@example.test', name: 'Owner', role: 'admin' }) })
 
 describe('dispatch actions', () => {
@@ -22,14 +24,27 @@ describe('dispatch actions', () => {
   })
   it('refuses when nobody is signed in, before any work', async () => {
     mocks.operator.mockRejectedValue(new Error('Sign in again.'))
-    expect((await pushParcelAction('3f0c5a0e-6d0b-4a53-9d2e-0a4a3b1f7c11')).ok).toBe(false); expect(mocks.push).not.toHaveBeenCalled()
+    expect((await pushParcelAction(PARCEL, expected())).ok).toBe(false); expect(mocks.push).not.toHaveBeenCalled()
   })
-  it('pushes with a single-attempt writer that shares the reader\'s token manager', async () => {
+  it('pushes with a single-attempt writer that shares the reader\'s token manager, and forwards what was confirmed', async () => {
     mocks.push.mockResolvedValue([{ orderId: 'gid://shopify/Order/1', orderName: 'Qimati1', status: 'fulfilled', message: 'Fulfilled with DTDC X1234567.' }])
-    const outcome = await pushParcelAction('3f0c5a0e-6d0b-4a53-9d2e-0a4a3b1f7c11')
+    const outcome = await pushParcelAction(PARCEL, expected())
     expect(outcome).toMatchObject({ ok: true, message: '1 order fulfilled.' })
-    expect(mocks.clientOptions).toEqual([undefined, { retryDelaysMs: [0], tokens: 'shared-tokens' }])
-    expect(mocks.push.mock.calls[0].slice(0, 2)).toEqual(['3f0c5a0e-6d0b-4a53-9d2e-0a4a3b1f7c11', 'owner@example.test'])
+    expect(mocks.clientOptions[0]).toBeUndefined()
+    expect(mocks.clientOptions[1]).toEqual(expect.objectContaining({ retryDelaysMs: [0], tokens: 'shared-tokens' }))
+    expect(mocks.push.mock.calls[0].slice(0, 2)).toEqual([PARCEL, 'owner@example.test'])
+    expect(mocks.push.mock.calls[0][3]).toEqual(expected())
   })
-  it('rejects a parcel id that is not a uuid', async () => { expect((await pushParcelAction('1; drop table')).ok).toBe(false); expect(mocks.push).not.toHaveBeenCalled() })
+  it('rejects a parcel id that is not a uuid', async () => { expect((await pushParcelAction('1; drop table', expected())).ok).toBe(false); expect(mocks.push).not.toHaveBeenCalled() })
+  it('rejects confirmed values that are not a carrier, a number and 1-50 Shopify order ids', async () => {
+    for (const bad of [
+      { ...expected(), carrier: 7 },
+      { ...expected(), tracking: null },
+      { ...expected(), orderIds: [] },
+      { ...expected(), orderIds: ['1; drop table'] },
+      { ...expected(), orderIds: Array.from({ length: 51 }, (_, n) => `gid://shopify/Order/${n + 1}`) },
+      undefined,
+    ]) expect((await pushParcelAction(PARCEL, bad as never)).ok).toBe(false)
+    expect(mocks.push).not.toHaveBeenCalled()
+  })
 })

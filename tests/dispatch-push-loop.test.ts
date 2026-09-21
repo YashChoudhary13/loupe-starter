@@ -2,14 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { runPush, type PushTarget } from '@/lib/dispatch/push-loop'
 import type { PushResult } from '@/lib/dispatch/push'
 
-const target = (n: number): PushTarget => ({ parcelId: `p${n}`, orderId: `o${n}`, orderName: `Qimati${n}` })
+const target = (n: number): PushTarget => ({ parcelId: `p${n}`, orderId: `o${n}`, orderName: `Qimati${n}`, expected: { carrier: 'DTDC', tracking: `X123456${n}`, orderIds: [`gid://shopify/Order/${n}`] } })
 const fulfilled = (n: number): PushResult => ({ orderId: `o${n}`, orderName: `Qimati${n}`, status: 'fulfilled', message: 'Fulfilled.' })
 
 describe('runPush', () => {
+  it('hands pushOne the whole target, so what the owner confirmed travels with the push', async () => {
+    const seen: PushTarget[] = []
+    await runPush([target(1)], async target => { seen.push(target); return { ok: true, message: 'ok', results: [fulfilled(1)] } }, () => {})
+    expect(seen).toEqual([target(1)])
+  })
+
   it('pushes one parcel at a time, in order, and streams progress after each', async () => {
     const calls: string[] = []
     const progress: PushResult[][] = []
-    const results = await runPush([target(1), target(2)], async parcelId => {
+    const results = await runPush([target(1), target(2)], async ({ parcelId }) => {
       calls.push(parcelId)
       return { ok: true, message: 'ok', results: [fulfilled(Number(parcelId.slice(1)))] }
     }, snapshot => progress.push(snapshot))
@@ -25,7 +31,7 @@ describe('runPush', () => {
 
   it('stops on a rejection, marks every later parcel not attempted, and resolves rather than throwing', async () => {
     const calls: string[] = []
-    const results = await runPush([target(1), target(2), target(3)], async parcelId => {
+    const results = await runPush([target(1), target(2), target(3)], async ({ parcelId }) => {
       calls.push(parcelId)
       if (parcelId === 'p2') throw new Error('network down')
       return { ok: true, message: 'ok', results: [fulfilled(1)] }

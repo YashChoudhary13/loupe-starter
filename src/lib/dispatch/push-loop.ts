@@ -1,6 +1,7 @@
-import type { PushResult } from './push'
+import type { PushExpectation, PushResult } from './push'
 
-export interface PushTarget { parcelId: string; orderId: string; orderName: string }
+/** `expected` is what the confirm sheet showed for this parcel; the server refuses the push if the row has changed since. */
+export interface PushTarget { parcelId: string; orderId: string; orderName: string; expected: PushExpectation }
 
 /**
  * Strictly serial: one parcel per `pushOne` call, in order, streaming progress after each.
@@ -11,14 +12,14 @@ export interface PushTarget { parcelId: string; orderId: string; orderName: stri
  */
 export async function runPush(
   targets: readonly PushTarget[],
-  pushOne: (parcelId: string) => Promise<{ ok: boolean; message: string; results: PushResult[] }>,
+  pushOne: (target: PushTarget) => Promise<{ ok: boolean; message: string; results: PushResult[] }>,
   onProgress: (results: PushResult[]) => void,
 ): Promise<PushResult[]> {
   const all: PushResult[] = []
   for (let i = 0; i < targets.length; i++) {
     const target = targets[i]
     try {
-      const outcome = await pushOne(target.parcelId)
+      const outcome = await pushOne(target)
       all.push(...(outcome.results.length ? outcome.results : [{ orderId: target.orderId, orderName: target.orderName, status: 'failed' as const, message: outcome.message }]))
     } catch {
       all.push({ orderId: target.orderId, orderName: target.orderName, status: 'failed', message: 'Loupe did not get an answer for this parcel. Check the order in Shopify before pushing it again.' })

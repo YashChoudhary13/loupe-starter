@@ -75,9 +75,12 @@ export function DispatchScreen({ orders, qcPassed, open, recent, truncated, orde
     setConfirming(false)
     setPushing(true)
     setResults([])
-    const targets: PushTarget[] = chosen.map(row => ({ parcelId: row.parcel!.id, orderId: row.order.id, orderName: row.order.name }))
+    // `expected` is exactly what the sheet just rendered for this row, so the server can refuse a parcel
+    // another device changed since the last refresh rather than fulfil orders nobody confirmed.
+    const targets: PushTarget[] = chosen.map(row => ({ parcelId: row.parcel!.id, orderId: row.order.id, orderName: row.order.name,
+      expected: { carrier: row.parcel!.carrier!, tracking: row.parcel!.tracking_number!, orderIds: [row.order.id, ...row.children.map(child => child.orderId)] } }))
     void (async () => {
-      try { await runPush(targets, pushParcelAction, setResults) }
+      try { await runPush(targets, target => pushParcelAction(target.parcelId, target.expected), setResults) }
       finally { setPushing(false); setSelected(new Set()); router.refresh() }
     })()
   }

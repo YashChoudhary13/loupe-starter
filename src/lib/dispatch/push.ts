@@ -22,15 +22,21 @@ export interface PushDeps {
   newId(): string
 }
 export interface PushResult { orderId: string; orderName: string; status: 'fulfilled' | 'failed' | 'busy'; message: string }
+/** Exactly what the owner saw on the confirm sheet. Another device can change a parcel after the owner's last
+ * refresh, so this travels with the push and is checked against the row before anything is read from Shopify. */
+export interface PushExpectation { carrier: string; tracking: string; orderIds: string[] }
 
 const CHECK = 'Check the order in Shopify, then push again.'
+const CHANGED = 'This parcel changed on another screen. Reload Dispatch and check it before pushing.'
 
-export async function pushParcel(parcelId: string, by: string, deps: PushDeps): Promise<PushResult[]> {
+export async function pushParcel(parcelId: string, by: string, deps: PushDeps, expected: PushExpectation): Promise<PushResult[]> {
   const parcel = await deps.store.loadParcel(parcelId)
   if (!parcel) throw new Error('This parcel no longer exists. Reload Dispatch.')
+  const pending = parcel.orders.filter(item => item.status !== 'fulfilled').sort((a, b) => a.position - b.position)
+  const confirmed = new Set(expected.orderIds)
+  if (parcel.tracking_number !== expected.tracking || parcel.carrier !== expected.carrier || pending.length !== confirmed.size || pending.some(item => !confirmed.has(item.order_id))) throw new Error(CHANGED)
   if (!parcel.tracking_number || !parcel.carrier) throw new Error('Add a tracking number and carrier before pushing.')
   const number = parcel.tracking_number, carrier = parcel.carrier
-  const pending = parcel.orders.filter(item => item.status !== 'fulfilled').sort((a, b) => a.position - b.position)
   if (pending.length === 0) return []
 
   // 1. The whole parcel is checked against fresh Shopify reads before anything is written.
