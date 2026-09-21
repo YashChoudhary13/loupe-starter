@@ -21,6 +21,11 @@ describe('planPush', () => {
   it('counts an identical existing fulfilment as done', () => { expect(planPush(order({ fulfillmentOrders: [fo({ status: 'CLOSED', remaining: 0 })], fulfillments: [done('DTDC', 'X1234567')] }), 'DTDC', 'X1234567')).toEqual({ kind: 'done', fulfillmentId: 'f1' }) })
   it('never overwrites a different tracking number', () => { expect(reason(order({ fulfillmentOrders: [fo({ status: 'CLOSED', remaining: 0 })], fulfillments: [done('India Post', 'ER999999999IN')] }))).toMatch(/already fulfilled with India Post ER999999999IN/) })
   it('ignores a cancelled fulfilment', () => { expect(planPush(order({ fulfillments: [done('DTDC', 'X1234567', 'CANCELLED')] }), 'DTDC', 'X1234567').kind).toBe('fulfil') })
+  it('does not let a cancelled fulfilment stand for done or for another tracking number', () => {
+    const closed = [fo({ status: 'CLOSED', remaining: 0 })]
+    expect(reason(order({ fulfillmentOrders: closed, fulfillments: [done('DTDC', 'X1234567', 'CANCELLED')] }))).toMatch(/Mark it In progress/)
+    expect(reason(order({ fulfillmentOrders: closed, fulfillments: [done('India Post', 'ER999999999IN', 'CANCELLED')] }))).toMatch(/Mark it In progress/)
+  })
   it('fulfils the In-progress remainder of a partly shipped order', () => { expect(planPush(order({ fulfillments: [done('India Post', 'ER111111111IN')] }), 'DTDC', 'X1234567')).toEqual({ kind: 'fulfil', fulfillmentOrderIds: ['fo1'] }) })
   it('refuses what it cannot see completely or fulfil in one call', () => {
     expect(reason(order({ fulfillmentOrdersComplete: false }))).toMatch(/too large/)
