@@ -488,7 +488,7 @@ main().catch(error => { console.error(error); process.exit(1) })
 - [ ] **Step 6: Run the tests, the proof, typecheck, lint**
 
 Run: `npx vitest run tests/home-probes.test.ts tests/shopify-client.test.ts && npx tsx scripts/verify-home-local-db.ts && npm run typecheck && npx eslint src/lib/home/probes.ts src/lib/home/probes.config.ts src/lib/shopify/client.ts src/lib/tables.ts scripts/verify-home-local-db.ts tests/home-probes.test.ts`
-Expected: both test files PASS; `home schema proof: 7 checks passed`; typecheck and lint clean.
+Expected: both test files PASS; `home schema proof: 8 checks passed`; typecheck and lint clean.
 
 - [ ] **Step 7: Commit**
 
