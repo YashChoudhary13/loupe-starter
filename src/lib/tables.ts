@@ -32,6 +32,7 @@ export const TABLES = [
   'match_jobs',
   'match_workers',
   'restock_decisions',
+  'home_probe_state',
 ] as const
 
 export type TableName = (typeof TABLES)[number]

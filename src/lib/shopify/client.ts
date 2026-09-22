@@ -32,7 +32,7 @@ interface GraphqlErrorShape {
 interface GraphqlEnvelope<T> {
   data?: T
   errors?: readonly GraphqlErrorShape[]
-  extensions?: { cost?: unknown }
+  extensions?: { cost?: { throttleStatus?: { currentlyAvailable?: number; maximumAvailable?: number } } }
 }
 
 export interface ShopifyClientOptions {
@@ -52,6 +52,9 @@ export class ShopifyClient {
   private readonly sleep: (ms: number) => Promise<void>
 
   private requestCount = 0
+
+  /** Throttle status from the cost extension of the last successful response — the Home probe's headroom reading. */
+  lastThrottle: { currentlyAvailable: number; maximumAvailable: number } | null = null
 
   constructor(options: ShopifyClientOptions = {}) {
     this.config = options.config ?? shopifyConfig()
@@ -188,6 +191,9 @@ export class ShopifyClient {
         detail: body.slice(0, 400),
       })
     }
+
+    const throttle = envelope.extensions?.cost?.throttleStatus
+    if (typeof throttle?.currentlyAvailable === 'number' && typeof throttle.maximumAvailable === 'number') this.lastThrottle = { currentlyAvailable: throttle.currentlyAvailable, maximumAvailable: throttle.maximumAvailable }
 
     return envelope.data
   }
