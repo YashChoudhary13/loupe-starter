@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 import type { Operator } from '@/lib/auth/authorize'
+import { FACE_KEYS, FACES, screenAllowed, type Face } from '@/lib/faces/faces'
 import { LIVE_ACTIVITY_EVENT, type LiveActivityUpdate } from '@/lib/live/types'
 import { cn } from '@/lib/utils'
 
@@ -13,15 +14,18 @@ import { LiveActivity } from '@/components/live/LiveActivity'
 /**
  * Shared authenticated navigation for the operator workspace.
  *
- * Rendered once by the (shell) layout, so it survives section switches instead
- * of remounting — which also keeps the LiveActivity poller and its cursor
- * alive across navigation. The attention badge starts from the server-rendered
- * count and then follows the live heartbeat.
+ * Rendered once by the (shell) layout with the face the proxy chose (D136):
+ * only that face's screens are listed, and an Apps switcher links the other
+ * three hosts. Rendering once here also keeps it mounted across section
+ * switches instead of remounting — which keeps the LiveActivity poller and
+ * its cursor alive across navigation. The attention badge starts from the
+ * server-rendered count and then follows the live heartbeat.
  */
-type SectionKey = 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch'
-type SectionHref = '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch'
+type SectionKey = 'home' | 'console' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch'
+type SectionHref = '/home' | '/console' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch'
 
 const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon: React.ReactNode }[] = [
+  { key: 'home', href: '/home', label: 'Home', icon: <HomeIcon /> },
   { key: 'console', href: '/console', label: 'Console', icon: <SearchIcon /> },
   { key: 'upload', href: '/upload', label: 'Upload', icon: <UploadIcon /> },
   { key: 'identify', href: '/identify', label: 'Identify', icon: <SearchIcon /> },
@@ -37,11 +41,13 @@ const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon:
 
 export function Sidebar({
   operator,
+  face,
   initialAttentionCount,
   collapsed,
   onToggle,
 }: {
   operator: Operator
+  face: Face | null
   initialAttentionCount: number
   collapsed: boolean
   onToggle: () => void
@@ -58,33 +64,20 @@ export function Sidebar({
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLive)
   }, [])
 
-  const active: SectionKey =
-    pathname.startsWith('/dispatch') ? 'dispatch' : pathname.startsWith('/qc') ? 'qc' : pathname.startsWith('/labels')
-      ? 'labels'
-      : pathname.startsWith('/workflows')
-      ? 'workflows'
-      : pathname.startsWith('/tracking')
-      ? 'tracking'
-      : pathname.startsWith('/prompts')
-        ? 'prompts'
-        : pathname.startsWith('/models')
-          ? 'models'
-          : pathname.startsWith('/upload')
-            ? 'upload'
-            : pathname.startsWith('/identify')
-              ? 'identify'
-              : pathname.startsWith('/restock')
-                ? 'restock'
-                : 'console'
+  // The face's own screens only (every screen on a dev machine without FACE_DEV). The current one is the longest-prefix match.
+  const items = ITEMS.filter((item) => screenAllowed(face, item.href))
+  const active = items.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.key ?? items[0]?.key
+  const brand = face ? FACES[face].label : 'Loupe'
+  const others = face ? FACE_KEYS.filter((key) => key !== face) : []
 
   return (
     <>
       {/* Phone top bar: same destinations, horizontally scrollable; the desktop aside below is display:none here
           but stays mounted so its LiveActivity poller keeps the attention badge current. */}
       <header className="flex shrink-0 items-center gap-2 md:hidden">
-        <div className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-[14px] font-semibold text-white">L</div>
+        <div className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-[14px] font-semibold text-white">{brand[0]}</div>
         <nav aria-label="Sections" className="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {ITEMS.map((item) => (
+          {items.map((item) => (
             <NavItem
               key={item.href}
               href={item.href}
@@ -95,6 +88,11 @@ export function Sidebar({
               icon={item.icon}
               badge={item.key === 'tracking' && attentionCount > 0 ? attentionCount : null}
             />
+          ))}
+          {others.map((key) => (
+            <a key={key} href={`https://${FACES[key].host}/`} aria-label={`Open ${FACES[key].label}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border border-chip px-3 py-2 text-[12px] font-medium text-ink-soft">
+              {FACES[key].label}
+            </a>
           ))}
         </nav>
         <form action="/api/auth/signout" method="post" className="shrink-0">
@@ -111,10 +109,10 @@ export function Sidebar({
     <aside className="hidden min-h-0 flex-col gap-[22px] overflow-hidden px-1 pt-2 md:flex">
       <div className={cn('flex items-center gap-2.5', collapsed ? 'flex-col px-0' : 'px-3')}>
         <div className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-[14px] font-semibold text-white">
-          L
+          {brand[0]}
         </div>
         {collapsed ? null : (
-          <span className="font-medium tracking-[-0.01em]">Loupe</span>
+          <span className="font-medium tracking-[-0.01em]">{brand}</span>
         )}
         <button
           type="button"
@@ -146,7 +144,7 @@ export function Sidebar({
             Workspace
           </div>
         )}
-        {ITEMS.map((item) => (
+        {items.map((item) => (
           <NavItem
             key={item.href}
             href={item.href}
@@ -158,6 +156,26 @@ export function Sidebar({
           />
         ))}
       </nav>
+
+      {others.length > 0 ? (
+        <nav aria-label="Apps" className="flex flex-col gap-1">
+          {collapsed ? null : (
+            <div className="mb-2 px-3.5 text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Apps</div>
+          )}
+          {others.map((key) => (
+            <a
+              key={key}
+              href={`https://${FACES[key].host}/`}
+              title={collapsed ? FACES[key].label : undefined}
+              aria-label={`Open ${FACES[key].label}`}
+              className={cn('flex items-center gap-3 rounded-pill font-medium text-ink-soft transition-colors duration-150 hover:bg-chip', collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5')}
+            >
+              <span className="grid size-4 shrink-0 place-items-center rounded-[5px] bg-chip text-[10px] font-semibold" aria-hidden>{FACES[key].label[0]}</span>
+              {collapsed ? null : FACES[key].label}
+            </a>
+          ))}
+        </nav>
+      ) : null}
 
       <LiveActivity compact={collapsed} />
 
@@ -254,6 +272,15 @@ function NavItem({
         )
       ) : null}
     </Link>
+  )
+}
+
+function HomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="size-4 shrink-0 opacity-85" aria-hidden>
+      <path d="M4 11l8-7 8 7" />
+      <path d="M6 10v9h12v-9" />
+    </svg>
   )
 }
 

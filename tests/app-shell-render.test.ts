@@ -11,7 +11,7 @@ const operator = { id: 'op', email: 'checker@example.test', name: 'Checker', rol
 
 describe('workspace frame on phones and desktops', () => {
   it('renders a phone top bar plus a desktop-only aside, and keeps the section as a sized grid item', () => {
-    const html = renderToString(createElement(AppShell, { operator, initialAttentionCount: 3, initialCollapsed: false, children: createElement('section', { className: 'h-full' }, 'content') })).replace(/<!-- -->/g, '')
+    const html = renderToString(createElement(AppShell, { operator, face: null, initialAttentionCount: 3, initialCollapsed: false, children: createElement('section', { className: 'h-full' }, 'content') })).replace(/<!-- -->/g, '')
     expect(html).toContain('<header class="flex shrink-0 items-center gap-2 md:hidden">')
     expect(html).toContain('<aside class="hidden min-h-0 flex-col gap-[22px] overflow-hidden px-1 pt-2 md:flex">')
     expect(html).toMatch(/class="flex h-dvh flex-col gap-3 overflow-hidden p-3 md:grid/)
