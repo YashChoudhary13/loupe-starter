@@ -174,9 +174,9 @@ git commit -m "feat(home): n8n client — workflows, executions and the bot webh
 
 ```ts
 // tests/home-probes.test.ts
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { N8nClient } from '@/lib/home/n8n'
-import { cached, memoryProbeStore, probeHttp, probeN8n, probeShopify, probeSupabase, runProbes, type ProbeOutcome } from '@/lib/home/probes'
+import { cached, memoryProbeStore, PROBE_TIMEOUT_MS, probeHttp, probeN8n, probeShopify, probeSupabase, runProbes, type ProbeOutcome } from '@/lib/home/probes'
 import { probeDefs, STATIC_PROBES } from '@/lib/home/probes.config'
 
 const clock = () => { let t = 1_000_000; return { now: () => t, tick: (ms: number) => { t += ms } } }
@@ -198,6 +198,14 @@ describe('http probe', () => {
     expect((await probeHttp('https://a.example/', { fetchImpl: fetchWith([hop, () => new Response('', { status: 200 })], () => { calls++ }), now: c.now })).status).toBe('green'); expect(calls).toBe(2)
     calls = 0
     expect((await probeHttp('https://a.example/', { fetchImpl: fetchWith([hop, hop, hop], () => { calls++ }), now: c.now })).status).toBe('green'); expect(calls).toBe(2)
+  })
+  it('shares one 5 s abort signal across the redirect and its target', async () => {
+    const c = clock()
+    const seen: RequestInit[] = []
+    const fetchImpl = (async (_url: string, init: RequestInit) => { seen.push(init); return seen.length === 1 ? new Response('', { status: 302, headers: { location: '/next' } }) : new Response('', { status: 200 }) }) as unknown as typeof fetch
+    await probeHttp('https://a.example/', { fetchImpl, now: c.now })
+    expect(seen).toHaveLength(2)
+    expect(seen[0].signal).toBe(seen[1].signal)
   })
 })
 describe('n8n probe', () => {
@@ -247,6 +255,22 @@ describe('running probes with state', () => {
     const store = memoryProbeStore(); store.load = async () => { throw new Error('db down') }; store.changed = async () => { throw new Error('db down') }
     const lights = await runProbes(defs, async def => { if (def.key === 'a') throw new Error('boom'); return outcome('green') }, store, () => 0)
     expect(lights).toMatchObject([{ key: 'a', status: 'red', detail: 'boom' }, { key: 'b', status: 'green' }])
+  })
+  it('an unknown previous state (a failed load) is never treated as a change', async () => {
+    const store = memoryProbeStore(); store.load = async () => { throw new Error('db down') }
+    const lights = await runProbes(defs, async def => outcome(def.key === 'a' ? 'green' : 'red'), store, () => Date.parse('2026-09-23T03:12:00Z'))
+    expect(lights).toMatchObject([{ key: 'a', status: 'green', since: '2026-09-23T03:12:00.000Z' }, { key: 'b', status: 'red', since: '2026-09-23T03:12:00.000Z' }])
+    expect(store.changes).toEqual([])
+  })
+  it('bounds a hung load so probes still resolve within the timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const store = memoryProbeStore(); store.load = () => new Promise(() => {})
+      const pending = runProbes(defs, async def => outcome(def.key === 'a' ? 'green' : 'red'), store, () => Date.parse('2026-09-23T03:12:00Z'))
+      await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS + 1)
+      const lights = await pending
+      expect(lights).toMatchObject([{ key: 'a', status: 'green', since: '2026-09-23T03:12:00.000Z' }, { key: 'b', status: 'red', since: '2026-09-23T03:12:00.000Z' }])
+    } finally { vi.useRealTimers() }
   })
   it('caches a value for the ttl and shares one refresh between concurrent callers', async () => {
     let refreshes = 0
@@ -315,15 +339,16 @@ export interface ProbeLight extends ProbeOutcome { key: string; label: string; k
 export const PROBE_TIMEOUT_MS = 5_000
 const red = (detail: string, ms: number): ProbeOutcome => ({ status: 'red', detail, ms })
 const reason = (error: unknown): string => error instanceof Error ? (error.name === 'TimeoutError' ? 'timed out' : error.message) : String(error)
-const getInit = (): RequestInit => ({ method: 'GET', redirect: 'manual', headers: { 'User-Agent': 'Qimati-home-probe' }, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+const getInit = (signal: AbortSignal): RequestInit => ({ method: 'GET', redirect: 'manual', headers: { 'User-Agent': 'Qimati-home-probe' }, signal })
 
-/** GET, one redirect followed by hand, 5 s. 2xx–3xx under 2 s green; slower or 4xx amber; 5xx, timeout or a network error red. */
+/** GET, one redirect followed by hand, one 5 s signal shared by both hops. 2xx–3xx under 2 s green; slower or 4xx amber; 5xx, timeout or a network error red. */
 export async function probeHttp(url: string, deps: { fetchImpl: typeof fetch; now: () => number }): Promise<ProbeOutcome> {
   const started = deps.now()
+  const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS)
   try {
-    let response = await deps.fetchImpl(url, getInit())
+    let response = await deps.fetchImpl(url, getInit(signal))
     const location = response.headers.get('location')
-    if (response.status >= 300 && response.status < 400 && location) response = await deps.fetchImpl(new URL(location, url).toString(), getInit())
+    if (response.status >= 300 && response.status < 400 && location) response = await deps.fetchImpl(new URL(location, url).toString(), getInit(signal))
     const ms = deps.now() - started
     if (response.status >= 500) return red(`HTTP ${response.status}`, ms)
     if (response.status >= 400) return { status: 'amber', detail: `HTTP ${response.status}`, ms }
@@ -390,18 +415,20 @@ export function memoryProbeStore(initial: Record<string, ProbeState> = {}): Prob
   return store
 }
 
-/** Every probe in parallel. A light's `since` moves only when its status changes, only a change reaches the store, and a store failure never hides a light. */
+/** Every probe in parallel. A light's `since` moves only when its status changes, only a change reaches the store, and a store failure or hang never hides a light. A `load` that fails or takes longer than 5 s leaves the previous state unknown, so nothing counts as a change that round; the resulting `changed` writes are themselves bounded and run in parallel. */
 export async function runProbes(defs: readonly ProbeDef[], run: (def: ProbeDef) => Promise<ProbeOutcome>, store: ProbeStateStore, now: () => number): Promise<ProbeLight[]> {
-  const previous = await store.load().catch((): Record<string, ProbeState> => ({}))
+  const previous = await withTimeout(store.load(), PROBE_TIMEOUT_MS).catch((): Record<string, ProbeState> | null => null)
   const checkedAt = new Date(now()).toISOString()
   const outcomes = await Promise.all(defs.map(def => run(def).catch((error: unknown) => red(reason(error), 0))))
   const lights: ProbeLight[] = []
+  const pairs: [ProbeLight, ProbeStatus | null][] = []
   for (const [index, def] of defs.entries()) {
-    const outcome = outcomes[index], before = previous[def.key]
+    const outcome = outcomes[index], before = previous?.[def.key]
     const light: ProbeLight = { key: def.key, label: def.label, kind: def.kind, ...outcome, since: before && before.status === outcome.status ? before.since : checkedAt, checkedAt }
-    if (!before || before.status !== outcome.status) await store.changed(light, before?.status ?? null).catch(() => undefined)
+    if (previous && (!before || before.status !== outcome.status)) pairs.push([light, before?.status ?? null])
     lights.push(light)
   }
+  await Promise.all(pairs.map(([light, before]) => withTimeout(store.changed(light, before), PROBE_TIMEOUT_MS).catch(() => undefined)))
   return lights
 }
 
@@ -466,6 +493,7 @@ async function main() {
   try {
     for (let attempt = 0; ; attempt++) { try { await pool.query('select 1'); break } catch (error) { if (attempt > 49) throw error; await new Promise(r => setTimeout(r, 100)) } }
     await pool.query('create role anon; create role authenticated; create role service_role bypassrls;')
+    await pool.query('alter default privileges in schema public grant all on tables to anon, authenticated, service_role;')
     await pool.query(readFileSync('supabase/migrations/20260923100000_home_probe_state.sql', 'utf8'))
     await pool.query("insert into public.home_probe_state(probe_key,status,detail) values('shopify','green','300 ms')")
     await refuses('a probe has one row', "insert into public.home_probe_state(probe_key,status) values('shopify','red')")
@@ -479,6 +507,13 @@ async function main() {
       const conn = await pool.connect()
       try { await conn.query(`set role ${role}`); await assert.rejects(conn.query('select 1 from public.home_probe_state')); checks.push(`${role} cannot read`) } finally { await conn.query('reset role'); conn.release() }
     }
+    const admin = await pool.connect()
+    try {
+      await admin.query('set role service_role')
+      await admin.query("insert into public.home_probe_state(probe_key,status,detail) values('linkedin','green','ok')")
+      assert.equal((await admin.query("select status from public.home_probe_state where probe_key='linkedin'")).rows[0].status, 'green')
+      checks.push('service_role can read and write')
+    } finally { await admin.query('reset role'); admin.release() }
     console.log(`home schema proof: ${checks.length} checks passed\n- ${checks.join('\n- ')}`)
   } finally { await pool.end(); child.kill('SIGINT') }
 }
@@ -488,7 +523,7 @@ main().catch(error => { console.error(error); process.exit(1) })
 - [ ] **Step 6: Run the tests, the proof, typecheck, lint**
 
 Run: `npx vitest run tests/home-probes.test.ts tests/shopify-client.test.ts && npx tsx scripts/verify-home-local-db.ts && npm run typecheck && npx eslint src/lib/home/probes.ts src/lib/home/probes.config.ts src/lib/shopify/client.ts src/lib/tables.ts scripts/verify-home-local-db.ts tests/home-probes.test.ts`
-Expected: both test files PASS; `home schema proof: 8 checks passed`; typecheck and lint clean.
+Expected: both test files PASS; `home schema proof: 9 checks passed`; typecheck and lint clean.
 
 - [ ] **Step 7: Commit**
 

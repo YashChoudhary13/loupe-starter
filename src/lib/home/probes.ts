@@ -7,15 +7,16 @@ export interface ProbeLight extends ProbeOutcome { key: string; label: string; k
 export const PROBE_TIMEOUT_MS = 5_000
 const red = (detail: string, ms: number): ProbeOutcome => ({ status: 'red', detail, ms })
 const reason = (error: unknown): string => error instanceof Error ? (error.name === 'TimeoutError' ? 'timed out' : error.message) : String(error)
-const getInit = (): RequestInit => ({ method: 'GET', redirect: 'manual', headers: { 'User-Agent': 'Qimati-home-probe' }, signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+const getInit = (signal: AbortSignal): RequestInit => ({ method: 'GET', redirect: 'manual', headers: { 'User-Agent': 'Qimati-home-probe' }, signal })
 
-/** GET, one redirect followed by hand, 5 s. 2xx–3xx under 2 s green; slower or 4xx amber; 5xx, timeout or a network error red. */
+/** GET, one redirect followed by hand, one 5 s signal shared by both hops. 2xx–3xx under 2 s green; slower or 4xx amber; 5xx, timeout or a network error red. */
 export async function probeHttp(url: string, deps: { fetchImpl: typeof fetch; now: () => number }): Promise<ProbeOutcome> {
   const started = deps.now()
+  const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS)
   try {
-    let response = await deps.fetchImpl(url, getInit())
+    let response = await deps.fetchImpl(url, getInit(signal))
     const location = response.headers.get('location')
-    if (response.status >= 300 && response.status < 400 && location) response = await deps.fetchImpl(new URL(location, url).toString(), getInit())
+    if (response.status >= 300 && response.status < 400 && location) response = await deps.fetchImpl(new URL(location, url).toString(), getInit(signal))
     const ms = deps.now() - started
     if (response.status >= 500) return red(`HTTP ${response.status}`, ms)
     if (response.status >= 400) return { status: 'amber', detail: `HTTP ${response.status}`, ms }
@@ -82,18 +83,20 @@ export function memoryProbeStore(initial: Record<string, ProbeState> = {}): Prob
   return store
 }
 
-/** Every probe in parallel. A light's `since` moves only when its status changes, only a change reaches the store, and a store failure never hides a light. */
+/** Every probe in parallel. A light's `since` moves only when its status changes, only a change reaches the store, and a store failure or hang never hides a light. A `load` that fails or takes longer than 5 s leaves the previous state unknown, so nothing counts as a change that round; the resulting `changed` writes are themselves bounded and run in parallel. */
 export async function runProbes(defs: readonly ProbeDef[], run: (def: ProbeDef) => Promise<ProbeOutcome>, store: ProbeStateStore, now: () => number): Promise<ProbeLight[]> {
-  const previous = await store.load().catch((): Record<string, ProbeState> => ({}))
+  const previous = await withTimeout(store.load(), PROBE_TIMEOUT_MS).catch((): Record<string, ProbeState> | null => null)
   const checkedAt = new Date(now()).toISOString()
   const outcomes = await Promise.all(defs.map(def => run(def).catch((error: unknown) => red(reason(error), 0))))
   const lights: ProbeLight[] = []
+  const pairs: [ProbeLight, ProbeStatus | null][] = []
   for (const [index, def] of defs.entries()) {
-    const outcome = outcomes[index], before = previous[def.key]
+    const outcome = outcomes[index], before = previous?.[def.key]
     const light: ProbeLight = { key: def.key, label: def.label, kind: def.kind, ...outcome, since: before && before.status === outcome.status ? before.since : checkedAt, checkedAt }
-    if (!before || before.status !== outcome.status) await store.changed(light, before?.status ?? null).catch(() => undefined)
+    if (previous && (!before || before.status !== outcome.status)) pairs.push([light, before?.status ?? null])
     lights.push(light)
   }
+  await Promise.all(pairs.map(([light, before]) => withTimeout(store.changed(light, before), PROBE_TIMEOUT_MS).catch(() => undefined)))
   return lights
 }
 

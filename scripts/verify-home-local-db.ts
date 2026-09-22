@@ -17,6 +17,7 @@ async function main() {
   try {
     for (let attempt = 0; ; attempt++) { try { await pool.query('select 1'); break } catch (error) { if (attempt > 49) throw error; await new Promise(r => setTimeout(r, 100)) } }
     await pool.query('create role anon; create role authenticated; create role service_role bypassrls;')
+    await pool.query('alter default privileges in schema public grant all on tables to anon, authenticated, service_role;')
     await pool.query(readFileSync('supabase/migrations/20260923100000_home_probe_state.sql', 'utf8'))
     await pool.query("insert into public.home_probe_state(probe_key,status,detail) values('shopify','green','300 ms')")
     await refuses('a probe has one row', "insert into public.home_probe_state(probe_key,status) values('shopify','red')")
@@ -30,6 +31,13 @@ async function main() {
       const conn = await pool.connect()
       try { await conn.query(`set role ${role}`); await assert.rejects(conn.query('select 1 from public.home_probe_state')); checks.push(`${role} cannot read`) } finally { await conn.query('reset role'); conn.release() }
     }
+    const admin = await pool.connect()
+    try {
+      await admin.query('set role service_role')
+      await admin.query("insert into public.home_probe_state(probe_key,status,detail) values('linkedin','green','ok')")
+      assert.equal((await admin.query("select status from public.home_probe_state where probe_key='linkedin'")).rows[0].status, 'green')
+      checks.push('service_role can read and write')
+    } finally { await admin.query('reset role'); admin.release() }
     console.log(`home schema proof: ${checks.length} checks passed\n- ${checks.join('\n- ')}`)
   } finally { await pool.end(); child.kill('SIGINT') }
 }

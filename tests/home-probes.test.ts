@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { N8nClient } from '@/lib/home/n8n'
-import { cached, memoryProbeStore, probeHttp, probeN8n, probeShopify, probeSupabase, runProbes, type ProbeOutcome } from '@/lib/home/probes'
+import { cached, memoryProbeStore, PROBE_TIMEOUT_MS, probeHttp, probeN8n, probeShopify, probeSupabase, runProbes, type ProbeOutcome } from '@/lib/home/probes'
 import { probeDefs, STATIC_PROBES } from '@/lib/home/probes.config'
 
 const clock = () => { let t = 1_000_000; return { now: () => t, tick: (ms: number) => { t += ms } } }
@@ -22,6 +22,14 @@ describe('http probe', () => {
     expect((await probeHttp('https://a.example/', { fetchImpl: fetchWith([hop, () => new Response('', { status: 200 })], () => { calls++ }), now: c.now })).status).toBe('green'); expect(calls).toBe(2)
     calls = 0
     expect((await probeHttp('https://a.example/', { fetchImpl: fetchWith([hop, hop, hop], () => { calls++ }), now: c.now })).status).toBe('green'); expect(calls).toBe(2)
+  })
+  it('shares one 5 s abort signal across the redirect and its target', async () => {
+    const c = clock()
+    const seen: RequestInit[] = []
+    const fetchImpl = (async (_url: string, init: RequestInit) => { seen.push(init); return seen.length === 1 ? new Response('', { status: 302, headers: { location: '/next' } }) : new Response('', { status: 200 }) }) as unknown as typeof fetch
+    await probeHttp('https://a.example/', { fetchImpl, now: c.now })
+    expect(seen).toHaveLength(2)
+    expect(seen[0].signal).toBe(seen[1].signal)
   })
 })
 describe('n8n probe', () => {
@@ -71,6 +79,22 @@ describe('running probes with state', () => {
     const store = memoryProbeStore(); store.load = async () => { throw new Error('db down') }; store.changed = async () => { throw new Error('db down') }
     const lights = await runProbes(defs, async def => { if (def.key === 'a') throw new Error('boom'); return outcome('green') }, store, () => 0)
     expect(lights).toMatchObject([{ key: 'a', status: 'red', detail: 'boom' }, { key: 'b', status: 'green' }])
+  })
+  it('an unknown previous state (a failed load) is never treated as a change', async () => {
+    const store = memoryProbeStore(); store.load = async () => { throw new Error('db down') }
+    const lights = await runProbes(defs, async def => outcome(def.key === 'a' ? 'green' : 'red'), store, () => Date.parse('2026-09-23T03:12:00Z'))
+    expect(lights).toMatchObject([{ key: 'a', status: 'green', since: '2026-09-23T03:12:00.000Z' }, { key: 'b', status: 'red', since: '2026-09-23T03:12:00.000Z' }])
+    expect(store.changes).toEqual([])
+  })
+  it('bounds a hung load so probes still resolve within the timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      const store = memoryProbeStore(); store.load = () => new Promise(() => {})
+      const pending = runProbes(defs, async def => outcome(def.key === 'a' ? 'green' : 'red'), store, () => Date.parse('2026-09-23T03:12:00Z'))
+      await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS + 1)
+      const lights = await pending
+      expect(lights).toMatchObject([{ key: 'a', status: 'green', since: '2026-09-23T03:12:00.000Z' }, { key: 'b', status: 'red', since: '2026-09-23T03:12:00.000Z' }])
+    } finally { vi.useRealTimers() }
   })
   it('caches a value for the ttl and shares one refresh between concurrent callers', async () => {
     let refreshes = 0
