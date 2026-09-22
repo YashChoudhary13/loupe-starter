@@ -65,6 +65,51 @@
   --radius: 999px;
 }
 
+/*
+ * Per-face palettes (D136). `data-face` on <html> is set by the root layout from the
+ * header the proxy derived from the hostname. Loupe keeps the monochrome tokens above —
+ * the photographs stay the only colour there. The other faces re-tint the SAME tokens
+ * from the owner's three mood images, so every component, radius and layout is shared
+ * and untouched. --face-accent / --face-accent-2 exist for Home's tiles and lights.
+ */
+:root {
+  --face-accent: var(--ink);
+  --face-accent-2: var(--chip);
+}
+/* Home: white, orange, deep green. */
+:root[data-face="home"] {
+  --bg: #f4efe6;
+  --surface: #fffdf8;
+  --ink: #1b3f31;
+  --ink-soft: #3f5b4e;
+  --chip: #efe7d8;
+  --line: #e6dfd0;
+  --face-accent: #e8752e;
+  --face-accent-2: #1b3f31;
+}
+/* Order QC: soft pink, cream. */
+:root[data-face="qc"] {
+  --bg: #f7edf0;
+  --surface: #fffaf8;
+  --ink: #4a2233;
+  --ink-soft: #6d4557;
+  --chip: #f4e0e5;
+  --line: #ecd9de;
+  --face-accent: #d98a9c;
+  --face-accent-2: #f3dcc8;
+}
+/* Fulfilment: teal, sand. */
+:root[data-face="ship"] {
+  --bg: #ebf2f1;
+  --surface: #fbfaf5;
+  --ink: #103c45;
+  --ink-soft: #36595f;
+  --chip: #dfe9e7;
+  --line: #d6e2df;
+  --face-accent: #2a9d8f;
+  --face-accent-2: #e6dab9;
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
@@ -74,6 +119,8 @@
   --color-amber: var(--amber);
   --color-green: var(--green);
   --color-line: var(--line);
+  --color-face-accent: var(--face-accent);
+  --color-face-accent-2: var(--face-accent-2);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
