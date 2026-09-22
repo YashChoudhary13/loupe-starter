@@ -1,5 +1,5 @@
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
-import { serverEnv } from '@/lib/env'
+import { isOwnOrigin } from '@/lib/faces/server'
 import { supabaseServer } from '@/lib/supabase/server'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { applyProductCodes, planProductCodes } from '@/lib/labels/prepare-codes'
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
   try {
     const operator = await requireOperatorForAction()
-    if (request.headers.get('origin') !== new URL(serverEnv.authBaseUrl).origin) return reply({ error: 'Open Labels in Loupe first.' }, 403)
+    if (!isOwnOrigin(request.headers.get('origin'))) return reply({ error: 'Open Labels in Loupe first.' }, 403)
     if (!request.headers.get('content-type')?.startsWith('application/json')) return reply({ error: 'Use the Labels form.' }, 415)
     const reader = request.body?.getReader()
     let raw = ''; let bytes = 0
