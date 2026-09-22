@@ -27,7 +27,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  if (await currentOperator()) redirect('/console')
+  if (await currentOperator()) redirect('/') // the proxy sends `/` to the face's first screen
 
   const jar = await cookies()
   const denied = decodeSignedValue<{ email: string }>(

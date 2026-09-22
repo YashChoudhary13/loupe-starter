@@ -13,6 +13,7 @@ import {
   SESSION_COOKIE,
 } from '@/lib/auth/session'
 import { serverEnv } from '@/lib/env'
+import { faceReturnUrl } from '@/lib/faces/faces'
 import { supabaseServer } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +23,7 @@ const DENIAL_TTL_SECONDS = 300
 interface Handshake {
   state: string
   codeVerifier: string
+  face?: string
 }
 
 function backToLogin(reason: string): NextResponse {
@@ -97,7 +99,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const { value, payload } = issueSession(serverEnv.authSessionSecret, operator)
 
-  const response = NextResponse.redirect(new URL('/console', serverEnv.authBaseUrl))
+  // `/` on that host is sent by the proxy to the face's first screen.
+  const response = NextResponse.redirect(faceReturnUrl(handshake.face, serverEnv.authBaseUrl))
   response.cookies.set(SESSION_COOKIE, value, sessionCookieOptions())
   response.cookies.set(OAUTH_COOKIE, '', clearedCookieOptions())
   response.cookies.set(DENIED_COOKIE, '', clearedCookieOptions())
