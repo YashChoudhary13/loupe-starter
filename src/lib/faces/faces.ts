@@ -11,19 +11,20 @@ export const FACE_KEYS = Object.keys(FACES) as Face[]
 /** Served by every face: the API, sign-in, diagnostics, Next's own assets and any file with an extension. */
 const OPEN_PREFIXES = ['/api/', '/login', '/health', '/_next/']
 
-export function isFace(value: unknown): value is Face { return typeof value === 'string' && value in FACES }
+export function isFace(value: unknown): value is Face { return typeof value === 'string' && Object.hasOwn(FACES, value) }
 /** The `x-face` request header the proxy sets. Anything else (including a client-sent value the proxy dropped) is no face. */
 export function faceFromHeader(value: string | null | undefined): Face | null { return isFace(value) ? value : null }
 export function faceOfHost(host: string | null | undefined): Face | null {
   const name = (host ?? '').trim().toLowerCase().replace(/:\d+$/, '')
   return FACE_KEYS.find(face => FACES[face].host === name) ?? null
 }
-/** A real face host wins; otherwise FACE_DEV picks one; production falls back to Loupe so a stray DNS record never shows a blank page; a dev machine with neither is unrestricted (null). */
+/** A real face host wins; production always falls back to Loupe so a stray DNS record never shows a blank page — FACE_DEV is for local work only; a dev machine with neither is unrestricted (null). */
 export function faceForHost(host: string | null | undefined, options: { dev?: string; production: boolean }): Face | null {
   const real = faceOfHost(host)
   if (real) return real
+  if (options.production) return 'loupe'
   if (isFace(options.dev)) return options.dev
-  return options.production ? 'loupe' : null
+  return null
 }
 const under = (pathname: string, screen: string) => pathname === screen || pathname.startsWith(`${screen}/`)
 export function screenAllowed(face: Face | null, pathname: string): boolean {
@@ -38,11 +39,11 @@ export function faceOrigins(): string[] { return FACE_KEYS.map(face => `https://
 export function faceReturnUrl(face: unknown, fallbackBase: string): string { return isFace(face) ? `https://${FACES[face].host}/` : `${fallbackBase.replace(/\/+$/, '')}/` }
 
 export interface FaceRoute { face: Face | null; redirect: string | null }
-/** The proxy's decision for one request. A redirect is absolute whenever the request arrived on a real face host, so it can never resolve against 127.0.0.1 behind nginx. */
+/** The proxy's decision for one request. A redirect is absolute whenever the request arrived on a real face host or the app is in production, so it can never resolve against a bind address like 127.0.0.1 behind nginx. */
 export function faceRoute(input: { host: string | null | undefined; pathname: string; dev?: string; production: boolean }): FaceRoute {
   const face = faceForHost(input.host, input)
   const real = faceOfHost(input.host)
-  const origin = real ? `https://${FACES[real].host}` : ''
+  const origin = face && (real || input.production) ? `https://${FACES[face].host}` : ''
   if (input.pathname === '/') return { face, redirect: `${origin}${faceHome(face)}` }
   if (screenAllowed(face, input.pathname)) return { face, redirect: null }
   const owner = owningFace(input.pathname)

@@ -14,8 +14,9 @@ describe('faces by host', () => {
     expect(faceForHost('localhost:3000', { production: false, dev: 'home' })).toBe('home')
     expect(faceForHost('localhost:3000', { production: false, dev: 'nope' })).toBeNull()
     expect(faceForHost('qc.qimati-eng.site', { production: false, dev: 'home' })).toBe('qc')
+    expect(faceForHost('203.0.113.9', { production: true, dev: 'ship' })).toBe('loupe')
   })
-  it('reads the proxy header and nothing else', () => { expect(faceFromHeader('ship')).toBe('ship'); expect(faceFromHeader('evil')).toBeNull(); expect(faceFromHeader(null)).toBeNull() })
+  it('reads the proxy header and nothing else', () => { expect(faceFromHeader('ship')).toBe('ship'); expect(faceFromHeader('evil')).toBeNull(); expect(faceFromHeader(null)).toBeNull(); expect(faceFromHeader('constructor')).toBeNull(); expect(faceFromHeader('__proto__')).toBeNull() })
 })
 describe('screens', () => {
   it("allows only the face's own screens, plus the api, sign-in, health and assets", () => {
@@ -36,6 +37,7 @@ describe('routing one request', () => {
     expect(faceRoute({ host: 'qc.qimati-eng.site', pathname: '/', production: true })).toEqual({ face: 'qc', redirect: 'https://qc.qimati-eng.site/qc' })
     expect(faceRoute({ host: 'localhost:3000', pathname: '/', production: false })).toEqual({ face: null, redirect: '/console' })
     expect(faceRoute({ host: 'localhost:3000', pathname: '/', production: false, dev: 'home' })).toEqual({ face: 'home', redirect: '/home' })
+    expect(faceRoute({ host: '127.0.0.1:3000', pathname: '/', production: true })).toEqual({ face: 'loupe', redirect: 'https://loupe.qimati-eng.site/console' })
   })
   it("sends another face's screen to that face, keeps its own, and leaves unknown paths to 404", () => {
     expect(faceRoute({ host: 'qc.qimati-eng.site', pathname: '/console/drafts/1', production: true })).toEqual({ face: 'qc', redirect: 'https://loupe.qimati-eng.site/console/drafts/1' })
