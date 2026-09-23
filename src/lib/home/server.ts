@@ -4,6 +4,7 @@ import { listRecentPasses, qcOrderStatuses } from '@/lib/qc/server'
 import { listShortages } from '@/lib/qc/shortages'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { supabaseServer } from '@/lib/supabase/server'
+import { availableActions, botConfig } from './actions'
 import { n8nFromEnv, workflowMap } from './n8n'
 import { computeNumbers, type HomeNumbers } from './numbers'
 import { probeDefs } from './probes.config'
@@ -29,12 +30,12 @@ const lights = cached(30_000, () => {
 })
 const numbers = cached(60_000, () => computeNumbers({ shop: homeReadOnlyShopify(), qcPassed, openParcels: async () => (await listParcels(1)).open.length, openShortages: async () => (await listShortages(1)).open.length, now: () => new Date() }))
 
-export interface HomeSnapshot { lights: ProbeLight[]; numbers: HomeNumbers }
+export interface HomeSnapshot { lights: ProbeLight[]; numbers: HomeNumbers; actionsConnected: boolean }
 /** Lights at most 30 s old, numbers at most 60 s old, per process. */
 export async function homeSnapshot(): Promise<HomeSnapshot> {
   const now = Date.now()
   const [l, n] = await Promise.all([lights(now), numbers(now)])
-  return { lights: l, numbers: n }
+  return { lights: l, numbers: n, actionsConnected: availableActions(botConfig()).length > 0 }
 }
 
 /** What the assistant's tools may reach. Shopify only through the read-only wrapper; nothing here can write. */
