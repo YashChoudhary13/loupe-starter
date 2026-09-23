@@ -39,7 +39,7 @@ const parseArgs = (raw: string): Record<string, unknown> | null => { try { const
 /** OpenRouter content is a string for most models but some return an array of parts (`[{ type: 'text', text: '…' }, …]`); either way we want plain text. */
 const textOf = (content: unknown): string => typeof content === 'string' ? content : Array.isArray(content) ? content.filter(part => part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string').map(part => (part as { text: string }).text).join('') : ''
 
-/** One user message → at most 6 tool calls → one answer. Read tools run here; an action only becomes a confirm card. Model calls are not streamed; progress is. */
+/** One user message → at most 6 tool calls → one answer. Read tools run here; an action only becomes a confirm card. Model calls are not streamed; progress is. Every throw below carries the usage accumulated so far as `.usage`, so a caller that logs a failed turn still gets its cost line. */
 export async function runChatTurn(input: TurnInput): Promise<TurnUsage> {
   const doFetch = input.fetchImpl ?? fetch, now = input.now ?? (() => new Date())
   const messages: Record<string, unknown>[] = [{ role: 'system', content: input.system }, ...trimHistory(input.history), { role: 'user', content: input.message.slice(0, 8_000) }]
@@ -56,11 +56,11 @@ export async function runChatTurn(input: TurnInput): Promise<TurnUsage> {
     const response = await doFetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${input.apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Qimati Home' }, signal: AbortSignal.timeout(60_000),
       body: JSON.stringify({ model: input.model, messages, ...(specs.length ? { tools: specs, tool_choice: exhausted ? 'none' : 'auto' } : {}), max_tokens: Math.max(256, remaining), stream: false }) })
     const body = (await response.json().catch(() => ({}))) as Completion
-    if (!response.ok) throw new Error(body.error?.message ?? `The model answered ${response.status}.`)
+    if (!response.ok) throw Object.assign(new Error(body.error?.message ?? `The model answered ${response.status}.`), { usage })
     add(body.usage); if (body.model) usage.model = body.model
     const choice = body.choices?.[0]
-    if (choice?.error) throw new Error(choice.error.message ?? 'The model returned an error.')
-    if (!choice?.message) throw new Error(body.error?.message ?? 'The model returned no answer.')
+    if (choice?.error) throw Object.assign(new Error(choice.error.message ?? 'The model returned an error.'), { usage })
+    if (!choice?.message) throw Object.assign(new Error(body.error?.message ?? 'The model returned no answer.'), { usage })
     const reply = choice.message
     const calls = (reply.tool_calls ?? []).filter(item => item?.function?.name)
     if (!calls.length || exhausted) { input.emit({ type: 'text', text: textOf(reply.content).trim() || 'I have nothing to add.' }); return usage }

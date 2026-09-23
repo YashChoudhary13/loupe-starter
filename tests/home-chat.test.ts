@@ -79,6 +79,14 @@ describe('a chat turn', () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ error: { message: 'Insufficient credits' } }), { status: 402 })) as unknown as typeof fetch
     await expect(runChatTurn({ apiKey: 'k', model: 'm', system: 's', history: [], message: 'x', tools, actions: [], ctx, uid: 'u1', secret: SECRET, fetchImpl, emit: () => {} })).rejects.toThrow('Insufficient credits')
   })
+  it('a thrown error carries the usage accumulated in the turn so far', async () => {
+    const queue = [{ status: 200, body: reply({ content: null, tool_calls: [call('list_orders', { filter: 'today' })] }) }, { status: 402, body: { error: { message: 'Insufficient credits' } } }]
+    const fetchImpl = (async () => { const next = queue.shift() ?? { status: 200, body: reply({ content: 'done' }) }; return new Response(JSON.stringify(next.body), { status: next.status }) }) as unknown as typeof fetch
+    const error: unknown = await runChatTurn({ apiKey: 'k', model: 'm', system: 's', history: [], message: 'x', tools, actions, ctx, uid: 'u1', secret: SECRET, fetchImpl, emit: () => {} }).catch(e => e)
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toBe('Insufficient credits')
+    expect((error as { usage?: { toolCalls: number } }).usage).toMatchObject({ toolCalls: 1 })
+  })
   it('a response with no choices is an error, not a silent answer', async () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ id: 'r', model: 'm', usage: { prompt_tokens: 1, completion_tokens: 1 } }), { status: 200 })) as unknown as typeof fetch
     await expect(runChatTurn({ apiKey: 'k', model: 'm', system: 's', history: [], message: 'x', tools, actions: [], ctx, uid: 'u1', secret: SECRET, fetchImpl, emit: () => {} })).rejects.toThrow(/no answer/)

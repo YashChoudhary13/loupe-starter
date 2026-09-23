@@ -101,6 +101,14 @@ describe('a chat turn', () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ error: { message: 'Insufficient credits' } }), { status: 402 })) as unknown as typeof fetch
     await expect(runChatTurn({ apiKey: 'k', model: 'm', system: 's', history: [], message: 'x', tools, actions: [], ctx, uid: 'u1', secret: SECRET, fetchImpl, emit: () => {} })).rejects.toThrow('Insufficient credits')
   })
+  it('a thrown error carries the usage accumulated in the turn so far', async () => {
+    const queue = [{ status: 200, body: reply({ content: null, tool_calls: [call('list_orders', { filter: 'today' })] }) }, { status: 402, body: { error: { message: 'Insufficient credits' } } }]
+    const fetchImpl = (async () => { const next = queue.shift() ?? { status: 200, body: reply({ content: 'done' }) }; return new Response(JSON.stringify(next.body), { status: next.status }) }) as unknown as typeof fetch
+    const error: unknown = await runChatTurn({ apiKey: 'k', model: 'm', system: 's', history: [], message: 'x', tools, actions, ctx, uid: 'u1', secret: SECRET, fetchImpl, emit: () => {} }).catch(e => e)
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toBe('Insufficient credits')
+    expect((error as { usage?: { toolCalls: number } }).usage).toMatchObject({ toolCalls: 1 })
+  })
   it('a response with no choices is an error, not a silent answer', async () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ id: 'r', model: 'm', usage: { prompt_tokens: 1, completion_tokens: 1 } }), { status: 200 })) as unknown as typeof fetch
     await expect(runChatTurn({ apiKey: 'k', model: 'm', system: 's', history: [], message: 'x', tools, actions: [], ctx, uid: 'u1', secret: SECRET, fetchImpl, emit: () => {} })).rejects.toThrow(/no answer/)
@@ -181,7 +189,7 @@ const parseArgs = (raw: string): Record<string, unknown> | null => { try { const
 /** OpenRouter content is a string for most models but some return an array of parts (`[{ type: 'text', text: '…' }, …]`); either way we want plain text. */
 const textOf = (content: unknown): string => typeof content === 'string' ? content : Array.isArray(content) ? content.filter(part => part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string').map(part => (part as { text: string }).text).join('') : ''
 
-/** One user message → at most 6 tool calls → one answer. Read tools run here; an action only becomes a confirm card. Model calls are not streamed; progress is. */
+/** One user message → at most 6 tool calls → one answer. Read tools run here; an action only becomes a confirm card. Model calls are not streamed; progress is. Every throw below carries the usage accumulated so far as `.usage`, so a caller that logs a failed turn still gets its cost line. */
 export async function runChatTurn(input: TurnInput): Promise<TurnUsage> {
   const doFetch = input.fetchImpl ?? fetch, now = input.now ?? (() => new Date())
   const messages: Record<string, unknown>[] = [{ role: 'system', content: input.system }, ...trimHistory(input.history), { role: 'user', content: input.message.slice(0, 8_000) }]
@@ -198,11 +206,11 @@ export async function runChatTurn(input: TurnInput): Promise<TurnUsage> {
     const response = await doFetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${input.apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Qimati Home' }, signal: AbortSignal.timeout(60_000),
       body: JSON.stringify({ model: input.model, messages, ...(specs.length ? { tools: specs, tool_choice: exhausted ? 'none' : 'auto' } : {}), max_tokens: Math.max(256, remaining), stream: false }) })
     const body = (await response.json().catch(() => ({}))) as Completion
-    if (!response.ok) throw new Error(body.error?.message ?? `The model answered ${response.status}.`)
+    if (!response.ok) throw Object.assign(new Error(body.error?.message ?? `The model answered ${response.status}.`), { usage })
     add(body.usage); if (body.model) usage.model = body.model
     const choice = body.choices?.[0]
-    if (choice?.error) throw new Error(choice.error.message ?? 'The model returned an error.')
-    if (!choice?.message) throw new Error(body.error?.message ?? 'The model returned no answer.')
+    if (choice?.error) throw Object.assign(new Error(choice.error.message ?? 'The model returned an error.'), { usage })
+    if (!choice?.message) throw Object.assign(new Error(body.error?.message ?? 'The model returned no answer.'), { usage })
     const reply = choice.message
     const calls = (reply.tool_calls ?? []).filter(item => item?.function?.name)
     if (!calls.length || exhausted) { input.emit({ type: 'text', text: textOf(reply.content).trim() || 'I have nothing to add.' }); return usage }
@@ -269,4 +277,20 @@ Expected: PASS (14 tests); clean.
 ```bash
 git add src/lib/home/chat.ts tests/home-chat.test.ts docs/superpowers/plans/2026-09-23-platform-6-chat-turn.md
 git commit -m "fix(home): the output budget is per turn, a failed 200 is an error not an answer, text parts and malformed tool arguments are handled"
+```
+
+- [x] **Step 7: Fix round 2 (review)**
+
+One finding from the Task 12 review, fixed in `src/lib/home/chat.ts` (the Step 3 block above already reflects it) and covered by a new test in `tests/home-chat.test.ts` (the Step 1 block above already reflects it):
+
+A turn that threw — a non-200 response, a choice carrying its own `error`, or a missing `choice.message` — discarded whatever usage (prompt/completion tokens, cost, tool calls) had accumulated before the failure, so a caller logging the turn had nothing but zeros to log against a failed call. All three throw sites in `runChatTurn` now throw `Object.assign(new Error(message), { usage })` instead of a plain `Error`, so the live `usage` object — mutated in place through the loop, and therefore accurate as of the moment of the throw — travels with the rejection. The new test drives one successful tool-calling round (`list_orders`) followed by a 402 provider error and asserts the rejected error's `usage.toolCalls` is 1, which only a real accumulation (not the initial all-zero shape) can satisfy.
+
+This is consumed by `src/app/api/home/chat/route.ts`'s own fix round (part 7 of the plan, Task 12 Step 7): its `catch` reads `(error as { usage?: TurnUsage }).usage` to log a failed turn's real cost instead of nothing.
+
+Run: `npx vitest run tests/home-chat.test.ts tests/home-routes.test.ts && npm run typecheck && npx eslint src/lib/home/chat.ts tests/home-chat.test.ts src/app/api/home/chat/route.ts src/app/api/home/action/route.ts src/lib/home/body.ts tests/home-routes.test.ts`
+Expected: PASS (25 tests across both files); clean.
+
+```bash
+git add src/lib/home/chat.ts tests/home-chat.test.ts src/app/api/home/chat/route.ts src/app/api/home/action/route.ts src/lib/home/body.ts tests/home-routes.test.ts docs/superpowers/plans/2026-09-23-platform-6-chat-turn.md docs/superpowers/plans/2026-09-23-platform-7-routes-home.md
+git commit -m "fix(home): bodies are capped before they are read, a failed turn still writes its cost line, a null body is a 400"
 ```
