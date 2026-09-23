@@ -12,7 +12,7 @@ export function HomeScreen({ lights, numbers, actionsConnected }: HomeSnapshot) 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-medium tracking-[-0.025em]">Qimati</h1>
-          <p className="mt-1 text-[13px] text-ink-soft">{worst === 'green' ? 'Everything is answering.' : worst === 'amber' ? 'Something is slow or partly down.' : 'Something is down.'} Checked {clock(lights[0]?.checkedAt ?? numbers.computedAt)} IST.</p>
+          <p className="mt-1 text-[13px] text-ink-soft">{lights.length === 0 ? 'No probes configured.' : worst === 'green' ? 'Everything is answering.' : worst === 'amber' ? 'Something is slow or partly down.' : 'Something is down.'} Checked {clock(lights[0]?.checkedAt ?? numbers.computedAt)} IST.</p>
         </div>
         <span className="rounded-pill bg-chip px-3 py-1 text-[11.5px] text-ink-soft">Numbers as of {clock(numbers.computedAt)}</span>
       </div>
