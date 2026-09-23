@@ -37,6 +37,7 @@ cd "$RELEASE"
 export NEXT_TELEMETRY_DISABLED=1
 npm ci --no-audit --no-fund
 npm run build
+touch "$RELEASE/.deploy-complete"
 
 echo "==> installing service + nginx config"
 sudo install -m 644 deploy/loupe.service /etc/systemd/system/loupe.service
@@ -46,6 +47,7 @@ sudo nginx -t
 sudo systemctl daemon-reload
 
 PREVIOUS=$(readlink -f "$ROOT/current" 2>/dev/null || true)
+if [ -n "$PREVIOUS" ] && [ -d "$PREVIOUS" ]; then touch "$PREVIOUS/.deploy-complete"; fi
 switch() { ln -sfn "$1" "$ROOT/current.new" && mv -T "$ROOT/current.new" "$ROOT/current"; }
 
 echo "==> switching traffic"
