@@ -1,15 +1,16 @@
 import 'server-only'
 import { listParcels } from '@/lib/dispatch/store'
-import { qcOrderStatuses } from '@/lib/qc/server'
+import { listRecentPasses, qcOrderStatuses } from '@/lib/qc/server'
 import { listShortages } from '@/lib/qc/shortages'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { supabaseServer } from '@/lib/supabase/server'
-import { n8nFromEnv } from './n8n'
+import { n8nFromEnv, workflowMap } from './n8n'
 import { computeNumbers, type HomeNumbers } from './numbers'
 import { probeDefs } from './probes.config'
 import { supabaseProbeStore } from './probe-store'
 import { cached, probeHttp, probeN8n, probeShopify, probeSupabase, runProbes, type ProbeLight } from './probes'
 import { readOnlyShopify, type ReadOnlyShopify } from './shopify-reads'
+import type { ToolContext } from './tools'
 
 let shopifyClient: ShopifyClient | null = null
 /** One client per process: its token manager caches the 24 h token, so a 30 s probe cycle never re-mints. Null when Shopify is not configured. */
@@ -34,4 +35,13 @@ export async function homeSnapshot(): Promise<HomeSnapshot> {
   const now = Date.now()
   const [l, n] = await Promise.all([lights(now), numbers(now)])
   return { lights: l, numbers: n }
+}
+
+/** What the assistant's tools may reach. Shopify only through the read-only wrapper; nothing here can write. */
+export function homeToolContext(): ToolContext {
+  return {
+    shop: homeReadOnlyShopify(), n8n: n8nFromEnv(), workflows: workflowMap(process.env.HOME_N8N_WORKFLOWS), now: () => new Date(),
+    status: async () => { const snapshot = await homeSnapshot(); return { lights: snapshot.lights, numbers: snapshot.numbers } },
+    qcPassed, passes: listRecentPasses, shortages: listShortages, parcels: listParcels,
+  }
 }

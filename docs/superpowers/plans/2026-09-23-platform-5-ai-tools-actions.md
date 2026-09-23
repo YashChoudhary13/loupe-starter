@@ -31,7 +31,7 @@ function context(): ToolContext & { calls: { query: string; variables?: Record<s
   const calls: { query: string; variables?: Record<string, unknown> }[] = []
   return {
     calls,
-    shop: { async graphql<T>(query: string, variables?: Record<string, unknown>) { calls.push({ query, variables }); return (query === LOW_STOCK_QUERY ? { productVariants: { nodes: [{ sku: 'RS004-C-GOLD', title: 'Gold', inventoryQuantity: 0, product: { title: 'Rings 004' } }] } } : { orders: { nodes: [order(1), order(2), order(3)] } }) as T } },
+    shop: { readOnly: true as const, async graphql<T>(query: string, variables?: Record<string, unknown>) { calls.push({ query, variables }); return (query === LOW_STOCK_QUERY ? { productVariants: { nodes: [{ sku: 'RS004-C-GOLD', title: 'Gold', inventoryQuantity: 0, product: { title: 'Rings 004' } }] } } : { orders: { nodes: [order(1), order(2), order(3)] } }) as T } },
     n8n: { async workflow(id) { return { id, name: 'Main', active: true } }, async executions(id, limit) { return [{ id: `${id}-1`, status: 'success', startedAt: null, stoppedAt: null }].slice(0, limit) } },
     workflows: { 'Main bot': 'abc' },
     now: () => new Date('2026-09-23T10:00:00Z'),
