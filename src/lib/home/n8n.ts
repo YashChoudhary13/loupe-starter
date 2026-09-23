@@ -38,9 +38,9 @@ export function n8nClient(options: { baseUrl: string; apiKey: string; fetchImpl?
   }
 }
 
-/** The two bot webhooks carry the shared secret, never the API key; 15 s because the bot may send before it answers. */
+/** The two bot webhooks carry the shared secret, never the API key; 15 s because the bot may send before it answers. `redirect: 'error'` so the secret header can never follow a redirect to another host. */
 export const postWebhook: WebhookPost = async (url, secret, body, fetchImpl = fetch) => {
-  const response = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Loupe-Secret': secret }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) })
+  const response = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Loupe-Secret': secret }, body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(15_000) })
   return { status: response.status, text: (await response.text()).slice(0, 300) }
 }
 

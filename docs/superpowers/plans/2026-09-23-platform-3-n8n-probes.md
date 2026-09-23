@@ -23,11 +23,11 @@ Read part 1 (`2026-09-23-platform-1-faces-auth.md`) first: its **Global Constrai
 import { describe, expect, it } from 'vitest'
 import { n8nClient, n8nFromEnv, postWebhook, workflowId, workflowMap } from '@/lib/home/n8n'
 
-interface Seen { url: string; method: string; headers: Record<string, string>; body: string | null }
+interface Seen { url: string; method: string; headers: Record<string, string>; body: string | null; redirect: RequestRedirect | undefined }
 function fake(responses: Array<() => Response>) {
   const seen: Seen[] = []
   const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
-    seen.push({ url: String(url), method: init?.method ?? 'GET', headers: Object.fromEntries(new Headers(init?.headers).entries()), body: typeof init?.body === 'string' ? init.body : null })
+    seen.push({ url: String(url), method: init?.method ?? 'GET', headers: Object.fromEntries(new Headers(init?.headers).entries()), body: typeof init?.body === 'string' ? init.body : null, redirect: init?.redirect })
     return (responses.shift() ?? (() => new Response('{}', { status: 200 })))()
   }) as unknown as typeof fetch
   return { seen, fetchImpl }
@@ -58,7 +58,7 @@ describe('n8n client', () => {
   it('posts a webhook with the shared secret header and no API key', async () => {
     const { seen, fetchImpl } = fake([() => new Response('ok', { status: 200 })])
     expect(await postWebhook('https://n8n.example/webhook/report', 's3cret', { from: '2026-09-01' }, fetchImpl)).toEqual({ status: 200, text: 'ok' })
-    expect(seen[0]).toMatchObject({ method: 'POST', url: 'https://n8n.example/webhook/report', body: '{"from":"2026-09-01"}' })
+    expect(seen[0]).toMatchObject({ method: 'POST', url: 'https://n8n.example/webhook/report', body: '{"from":"2026-09-01"}', redirect: 'error' })
     expect(seen[0].headers['x-loupe-secret']).toBe('s3cret'); expect(seen[0].headers['x-n8n-api-key']).toBeUndefined()
   })
 })
@@ -123,9 +123,9 @@ export function n8nClient(options: { baseUrl: string; apiKey: string; fetchImpl?
   }
 }
 
-/** The two bot webhooks carry the shared secret, never the API key; 15 s because the bot may send before it answers. */
+/** The two bot webhooks carry the shared secret, never the API key; 15 s because the bot may send before it answers. `redirect: 'error'` so the secret header can never follow a redirect to another host. */
 export const postWebhook: WebhookPost = async (url, secret, body, fetchImpl = fetch) => {
-  const response = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Loupe-Secret': secret }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) })
+  const response = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Loupe-Secret': secret }, body: JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(15_000) })
   return { status: response.status, text: (await response.text()).slice(0, 300) }
 }
 

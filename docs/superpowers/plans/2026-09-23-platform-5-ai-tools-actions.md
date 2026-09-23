@@ -279,17 +279,23 @@ describe('validation', () => {
     expect(validate({ from: '2026-09-10', to: '2026-09-01' })).toMatchObject({ ok: false })
     expect(validate({ from: '2026-06-01', to: '2026-09-23' })).toMatchObject({ ok: false, error: expect.stringMatching(/92/) })
     expect(validate({ from: '1 Sep', to: '2026-09-23' })).toMatchObject({ ok: false })
+    expect(validate({ from: '2026-02-01', to: '2026-02-31' })).toMatchObject({ ok: false })
+    expect(validate({ from: '2026-06-23', to: '2026-09-23' })).toMatchObject({ ok: false })
+    expect(validate({ from: '2026-06-24', to: '2026-09-23' })).toMatchObject({ ok: true })
+    expect(action('send_finance_report').validate({ from: '2026-09-23', to: '2026-09-23' }, new Date('2026-09-22T19:00:00Z'))).toMatchObject({ ok: true })
   })
   it('staff text: 1–900 characters, trimmed', () => {
     const validate = (args: Record<string, unknown>) => action('send_staff_text').validate(args, now)
     expect(validate({ text: '  Pack Qimati5713 first  ' })).toEqual({ ok: true, params: { text: 'Pack Qimati5713 first' }, summary: 'Pack Qimati5713 first' })
     expect(validate({ text: '' })).toMatchObject({ ok: false }); expect(validate({ text: 'x'.repeat(STAFF_TEXT_MAX + 1) })).toMatchObject({ ok: false })
+    expect(validate({ text: {} })).toMatchObject({ ok: false })
   })
   it('list as text: a title and 1–50 flat rows, formatted within the text limit', () => {
     const validate = (args: Record<string, unknown>) => action('send_list_as_text').validate(args, now)
     expect(validate({ title: 'Low stock', list: [{ sku: 'RS004', quantity: 0 }, { sku: 'NK970', quantity: 2 }] })).toEqual({ ok: true, params: { text: 'Low stock\nsku: RS004 · quantity: 0\nsku: NK970 · quantity: 2' }, summary: 'Low stock\nsku: RS004 · quantity: 0\nsku: NK970 · quantity: 2' })
     expect(validate({ title: 'x', list: [] })).toMatchObject({ ok: false }); expect(validate({ title: 'x', list: [{ nested: { a: 1 } }] })).toMatchObject({ ok: false })
     expect(validate({ title: 'x', list: Array.from({ length: 51 }, () => ({ a: 1 })) })).toMatchObject({ ok: false })
+    expect(validate({ title: 'Pushed', list: [{ tracking: 'X1234567', orders: ['Qimati1', 'Qimati2'] }] })).toEqual({ ok: true, params: { text: 'Pushed\ntracking: X1234567 · orders: Qimati1, Qimati2' }, summary: 'Pushed\ntracking: X1234567 · orders: Qimati1, Qimati2' })
     const long = formatListAsText('Orders', Array.from({ length: 50 }, (_, n) => ({ order: `Qimati${5000 + n}`, total: '1,234.00 INR', items: 12 })))
     expect(long.length).toBeLessThanOrEqual(STAFF_TEXT_MAX); expect(long).toMatch(/…and \d+ more$/)
   })
@@ -303,9 +309,14 @@ describe('confirm tokens', () => {
     expect(readConfirmToken(SECRET, token, 'u1', 1_300)).toMatchObject({ ok: false, error: expect.stringMatching(/expired/) })
     expect(readConfirmToken(SECRET, `${token.slice(0, -2)}xx`, 'u1', 1_100)).toMatchObject({ ok: false }); expect(readConfirmToken(SECRET, 7, 'u1', 1_100)).toMatchObject({ ok: false })
   })
+  it('refuses a non-hex secret before doing anything else', () => {
+    const token = issueConfirmToken(SECRET, { uid: 'u1', action: 'send_staff_text', params: { text: 'hi' } }, 1_000)
+    expect(() => issueConfirmToken('s3cret', { uid: 'u1', action: 'send_staff_text', params: {} })).toThrow(/64 hex/)
+    expect(() => readConfirmToken('s3cret', token, 'u1')).toThrow(/64 hex/)
+  })
   it('a nonce can be spent once, and forgotten once expired', () => {
     expect(consumeNonce('n1', 2_000, 1_000)).toBe(true); expect(consumeNonce('n1', 2_000, 1_001)).toBe(false)
-    expect(consumeNonce('n2', 1_500, 1_000)).toBe(true); expect(consumeNonce('n2', 1_500, 1_600)).toBe(true)
+    expect(consumeNonce('n2', 1_500, 1_000)).toBe(true); expect(consumeNonce('n2', 1_500, 1_600)).toBe(false)
   })
 })
 describe('execution', () => {
@@ -315,7 +326,7 @@ describe('execution', () => {
   it('posts to the configured webhook with the shared secret and the actor, and reports the bot\'s refusal', async () => {
     expect(await action('send_staff_text').run({ text: 'hi' }, { post, config: connected, actor: 'owner@example.test' })).toBe('Sent to the WhatsApp bot.')
     expect(posts[0]).toEqual({ url: connected.staffText, secret: 's3cret', body: { action: 'staff_text', text: 'hi', requested_by: 'owner@example.test' } })
-    await expect(action('send_finance_report').run({ from: '2026-09-01', to: '2026-09-23' }, { post, config: connected, actor: 'owner@example.test' })).rejects.toThrow(/500: boom/)
+    await expect(action('send_finance_report').run({ from: '2026-09-01', to: '2026-09-23' }, { post, config: connected, actor: 'owner@example.test' })).rejects.toThrow(/500/)
     expect(posts[1].body).toEqual({ action: 'finance_report', from: '2026-09-01', to: '2026-09-23', requested_by: 'owner@example.test' })
   })
 })
@@ -330,7 +341,7 @@ Expected: FAIL — cannot resolve `@/lib/home/actions`.
 
 ```ts
 // src/lib/home/actions.ts
-import { decodeSignedValue, encodeSignedValue, randomToken } from '@/lib/auth/session'
+import { decodeSignedValue, encodeSignedValue, randomToken, validatedSessionSecret } from '@/lib/auth/session'
 import type { WebhookPost } from './n8n'
 import type { JsonSchema } from './tools'
 
@@ -347,9 +358,11 @@ export interface ActionDef { name: string; label: string; description: string; p
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const istToday = (now: Date) => new Date(now.getTime() + 330 * 60_000).toISOString().slice(0, 10)
 export const STAFF_TEXT_MAX = 900
-/** One line per row, `key: value` pairs joined by · ; rows that would not fit are counted at the end. */
+const primitive = (value: unknown): boolean => value === null || ['string', 'number', 'boolean'].includes(typeof value)
+/** One line per row, `key: value` pairs joined by · ; an array value is joined with ', '. Rows that would not fit are counted at the end. */
 export function formatListAsText(title: string, rows: readonly Record<string, unknown>[]): string {
-  const lines = rows.map(row => Object.entries(row).filter(([, value]) => value !== null && value !== undefined && typeof value !== 'object').map(([key, value]) => `${key}: ${String(value)}`).join(' · '))
+  const cell = (value: unknown): string | null => value === null || value === undefined ? null : Array.isArray(value) ? value.map(String).join(', ') : typeof value === 'object' ? null : String(value)
+  const lines = rows.map(row => Object.entries(row).flatMap(([key, value]) => { const rendered = cell(value); return rendered === null ? [] : [`${key}: ${rendered}`] }).join(' · '))
   let text = `${title}\n`, shown = 0
   for (const line of lines) { if (`${text}${line}\n`.length > STAFF_TEXT_MAX - 24) break; text += `${line}\n`; shown++ }
   if (shown < lines.length) text += `…and ${lines.length - shown} more`
@@ -357,10 +370,10 @@ export function formatListAsText(title: string, rows: readonly Record<string, un
 }
 async function post(deps: ActionDeps, url: string, body: Record<string, unknown>): Promise<string> {
   const { status, text } = await deps.post(url, deps.config.secret ?? '', body)
-  if (status < 200 || status >= 300) throw new Error(`The bot answered ${status}${text ? `: ${text}` : ''}.`)
+  if (status < 200 || status >= 300) { console.warn('bot webhook', url, status, text); throw new Error(`The bot answered ${status}.`) }
   return 'Sent to the WhatsApp bot.'
 }
-const flat = (row: unknown): row is Record<string, unknown> => !!row && typeof row === 'object' && !Array.isArray(row) && Object.values(row as object).every(value => value === null || ['string', 'number', 'boolean'].includes(typeof value))
+const flat = (row: unknown): row is Record<string, unknown> => !!row && typeof row === 'object' && !Array.isArray(row) && Object.values(row as object).every(value => primitive(value) || (Array.isArray(value) && value.every(primitive)))
 
 export const ACTIONS: readonly ActionDef[] = [
   { name: 'send_finance_report', label: 'Send the finance report', needs: 'report', description: 'Ask the WhatsApp bot to send the finance report for a date range (at most 92 days, not in the future) to the staff group. The operator must confirm.',
@@ -368,16 +381,17 @@ export const ACTIONS: readonly ActionDef[] = [
     validate(args, now) {
       const from = String(args.from ?? ''), to = String(args.to ?? '')
       if (!DATE.test(from) || !DATE.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) return { ok: false, error: 'Dates must be YYYY-MM-DD.' }
+      if (new Date(from).toISOString().slice(0, 10) !== from || new Date(to).toISOString().slice(0, 10) !== to) return { ok: false, error: 'Dates must be YYYY-MM-DD.' }
       if (from > to) return { ok: false, error: 'from must not be after to.' }
       if (to > istToday(now)) return { ok: false, error: 'The range cannot reach into the future.' }
-      if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 92) return { ok: false, error: 'At most 92 days at a time.' }
+      if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 91) return { ok: false, error: 'At most 92 days at a time.' }
       return { ok: true, params: { from, to }, summary: `Finance report ${from} → ${to}` }
     },
     run: (params, deps) => post(deps, deps.config.report ?? '', { action: 'finance_report', from: params.from, to: params.to, requested_by: deps.actor }) },
   { name: 'send_staff_text', label: 'Send a message to staff', needs: 'staffText', description: 'Send a short text (at most 900 characters) through the WhatsApp bot to its fixed staff list. No recipient can be chosen. The operator must confirm.',
     parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
     validate(args) {
-      const text = String(args.text ?? '').trim()
+      const text = typeof args.text === 'string' ? args.text.trim() : ''
       if (!text) return { ok: false, error: 'Nothing to send.' }
       if (text.length > STAFF_TEXT_MAX) return { ok: false, error: `At most ${STAFF_TEXT_MAX} characters.` }
       return { ok: true, params: { text }, summary: text }
@@ -386,7 +400,7 @@ export const ACTIONS: readonly ActionDef[] = [
   { name: 'send_list_as_text', label: 'Send a list to staff', needs: 'staffText', description: 'Format rows a read tool just returned as plain text and send them to staff through the WhatsApp bot. The operator must confirm.',
     parameters: { type: 'object', properties: { title: { type: 'string' }, list: { type: 'array', description: 'The rows exactly as a read tool returned them, at most 50' } }, required: ['title', 'list'], additionalProperties: false },
     validate(args) {
-      const title = String(args.title ?? '').trim().slice(0, 80), list = Array.isArray(args.list) ? args.list : null
+      const title = typeof args.title === 'string' ? args.title.trim().slice(0, 80) : '', list = Array.isArray(args.list) ? args.list : null
       if (!title || !list || list.length === 0 || list.length > 50 || !list.every(flat)) return { ok: false, error: 'Give a title and 1–50 flat rows.' }
       const text = formatListAsText(title, list)
       return { ok: true, params: { text }, summary: text }
@@ -395,14 +409,17 @@ export const ACTIONS: readonly ActionDef[] = [
 ]
 export function availableActions(config: BotConfig): ActionDef[] { return config.secret ? ACTIONS.filter(action => config[action.needs]) : [] }
 
+/** Signed with AUTH_SESSION_SECRET (the console's own session secret) — never `BotConfig.secret`, which is shared with n8n and is not required to be hex. */
 export interface ConfirmPayload { uid: string; action: string; params: ActionParams; nonce: string; exp: number }
 export const CONFIRM_TTL_SECONDS = 300
 export function issueConfirmToken(secret: string, input: { uid: string; action: string; params: ActionParams }, nowSeconds = Math.floor(Date.now() / 1000)): string {
-  const payload: ConfirmPayload = { ...input, nonce: randomToken(16), exp: nowSeconds + CONFIRM_TTL_SECONDS }
-  return encodeSignedValue(secret, payload)
+  const key = validatedSessionSecret(secret)
+  const payload: ConfirmPayload = { uid: input.uid, action: input.action, params: input.params, nonce: randomToken(16), exp: nowSeconds + CONFIRM_TTL_SECONDS }
+  return encodeSignedValue(key, payload)
 }
 export function readConfirmToken(secret: string, token: unknown, uid: string, nowSeconds = Math.floor(Date.now() / 1000)): { ok: true; payload: ConfirmPayload } | { ok: false; error: string } {
-  const payload = typeof token === 'string' ? decodeSignedValue<ConfirmPayload>(secret, token) : null
+  const key = validatedSessionSecret(secret)
+  const payload = typeof token === 'string' ? decodeSignedValue<ConfirmPayload>(key, token) : null
   if (!payload || typeof payload.action !== 'string' || typeof payload.nonce !== 'string' || typeof payload.exp !== 'number' || !payload.params || typeof payload.params !== 'object') return { ok: false, error: 'That confirm card is not valid.' }
   if (payload.uid !== uid) return { ok: false, error: 'That confirm card belongs to another sign-in.' }
   if (payload.exp <= nowSeconds) return { ok: false, error: 'That confirm card has expired. Ask again.' }
@@ -411,6 +428,7 @@ export function readConfirmToken(secret: string, token: unknown, uid: string, no
 // ponytail: per-process nonce memory. One Node process serves the platform and every token dies after five minutes; a shared table if that ever changes.
 const used = new Map<string, number>()
 export function consumeNonce(nonce: string, expSeconds: number, nowSeconds = Math.floor(Date.now() / 1000)): boolean {
+  if (expSeconds <= nowSeconds) return false
   for (const [key, exp] of used) if (exp <= nowSeconds) used.delete(key)
   if (used.has(nonce)) return false
   used.set(nonce, expSeconds)
