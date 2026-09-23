@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react'
 
 import type { Operator } from '@/lib/auth/authorize'
+import type { Face } from '@/lib/faces/faces'
 
 import { Sidebar } from '@/components/console/Sidebar'
 
@@ -26,14 +27,16 @@ const COLLAPSED_PX = 68
  */
 export function AppShell({
   operator,
+  face,
   initialAttentionCount,
   initialCollapsed,
   children,
 }: {
   operator: Operator
+  face: Face | null
   initialAttentionCount: number
   initialCollapsed: boolean
-  children: ReactNode
+  children?: ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(initialCollapsed)
 
@@ -53,6 +56,7 @@ export function AppShell({
     >
       <Sidebar
         operator={operator}
+        face={face}
         initialAttentionCount={initialAttentionCount}
         collapsed={collapsed}
         onToggle={toggle}

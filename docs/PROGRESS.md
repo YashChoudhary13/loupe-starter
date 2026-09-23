@@ -29,6 +29,242 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-23 — Platform: four faces, one sign-in, Home with lights, numbers and a read-only assistant (D136, D137)
+
+**Goal this session:** turn Loupe into one codebase wearing four faces by hostname — Home at `qimati-eng.site`, Loupe, Order QC and Fulfilment each on their own subdomain, one Google sign-in across all four — and build the Home dashboard: health lights with a change log, five cached numbers, and a read-only assistant whose only actions are three confirm-gated WhatsApp-bot calls. Then record the decisions, verify the whole branch once, and write this entry.
+
+**Built:**
+- `src/lib/faces/faces.ts`, `src/proxy.ts` → the face table (`qimati-eng.site` → Home, `loupe.` → Loupe, `qc.` → Order QC, `ship.` → Fulfilment) and the proxy that reads Host, sets `x-face`, and 307s a screen to the host that owns it; production redirects are absolute and `isFace` ignores prototype keys.
+- `src/lib/faces/server.ts`, `src/app/api/qc/[orderId]/route.ts`, `src/app/api/labels/prepare/route.ts`, `src/app/api/labels/print/route.ts`, `scripts/apply-migration.ts` → `isOwnOrigin` accepts every face origin instead of only `AUTH_BASE_URL`, so QC scans and label prints work on `qc.`; the migration runner accepts the Home origin too.
+- `src/lib/auth/cookies.ts`, the Google start/callback/signout routes, `src/app/login/page.tsx` → session, handshake and denied cookies carry `domain=.qimati-eng.site` in production; the start route records which face began the sign-in and the callback returns there; sign-out clears both the domain cookie and the pre-platform host-only one.
+- `src/components/console/Sidebar.tsx`, `src/components/shell/AppShell.tsx`, `src/app/layout.tsx`, `src/app/(shell)/layout.tsx`, `src/app/globals.css`, `deploy/loupe.nginx.conf` → the shell reads `x-face` for its own menu plus an Apps switcher to the other three hosts; `<html data-face>` selects one of four palettes on the shared tokens; nginx serves all four hostnames.
+- `src/lib/home/n8n.ts` → n8n client for workflows, executions and the two bot webhooks, every id validated before a request leaves the process.
+- `src/lib/home/probes.ts`, `src/lib/home/probes.config.ts`, `supabase/migrations/20260923100000_home_probe_state.sql`, `scripts/verify-home-local-db.ts` → the four health probes (http, n8n, Supabase, Shopify) as a table, run in parallel, each bounded at 5 s (an http probe shares one 5 s signal across its two hops); an unknown state (a failed load) is never counted as a change.
+- `src/lib/home/shopify-reads.ts`, `src/lib/home/numbers.ts`, `src/lib/home/probe-store.ts`, `src/lib/home/server.ts` → the branded read-only Shopify wrapper, the five cached numbers (each bounded at 10 s), the probe-state store, and the cached server snapshot `/home` reads.
+- `src/lib/home/tools.ts` → seven read tools with typed parameters and constant queries; no tool can request a customer field or write.
+- `src/lib/home/actions.ts` → the three WhatsApp-bot actions, validated, hidden until their webhooks and secret exist, executed only on a confirmed single-use signed token.
+- `src/lib/home/chat.ts` → the OpenRouter tool loop — at most six tool calls and 4 000 output tokens for the whole turn; a failed 200 becomes an error event, never a clean answer.
+- `src/app/api/home/chat/route.ts`, `src/app/api/home/action/route.ts`, `src/lib/home/body.ts` → the NDJSON chat stream and the confirm-and-execute action route; both cap the request body before parsing and log every turn, including `ok: false` ones, to `events`.
+- `src/components/home/HomeScreen.tsx`, `src/components/home/ChatPanel.tsx`, `src/components/home/HealthLight.tsx`, `src/components/home/NumberTile.tsx`, `src/lib/home/chat-panel.ts` → `/home` itself — lights with "since" times, five number tiles, a chat panel that finds its confirm card by token and scrolls its own box.
+- `docs/DECISIONS.md` (D136, D137), `CLAUDE.md` (four edits), `docs/PROGRESS.md` → this entry.
+
+**Verified:**
+```
+✓ tests/dispatch-push.test.ts (19 tests) 10ms
+✓ tests/dispatch-store.test.ts (22 tests) 9ms
+✓ tests/qc-orders.test.ts (11 tests) 15ms
+✓ tests/home-routes.test.ts (10 tests) 49ms
+✓ tests/home-screen-render.test.ts (8 tests) 24ms
+✓ tests/home-chat.test.ts (15 tests) 22ms
+✓ tests/app-shell-render.test.ts (1 test) 13ms
+✓ tests/home-probes.test.ts (12 tests) 8ms
+✓ tests/auth-session.test.ts (20 tests) 7ms
+✓ tests/shopify-client.test.ts (8 tests) 7ms
+✓ tests/home-actions.test.ts (8 tests) 6ms
+✓ tests/home-tools.test.ts (10 tests) 5ms
+✓ tests/dispatch-orders.test.ts (8 tests) 5ms
+✓ tests/home-shopify-reads.test.ts (7 tests) 4ms
+✓ tests/faces.test.ts (13 tests) 4ms
+✓ tests/dispatch-plan.test.ts (10 tests) 3ms
+✓ tests/qc-screen-render.test.ts (2 tests) 22ms
+✓ tests/dispatch-screen-render.test.ts (6 tests) 27ms
+✓ tests/home-n8n.test.ts (7 tests) 6ms
+✓ tests/dispatch-actions.test.ts (6 tests) 4ms
+✓ tests/dispatch-rows.test.ts (8 tests) 10ms
+✓ tests/label-print-route.test.ts (5 tests) 24ms
+✓ tests/dispatch-push-loop.test.ts (4 tests) 2ms
+✓ tests/face-shell-render.test.ts (2 tests) 14ms
+✓ tests/prepare-codes-route.test.ts (5 tests) 7ms
+✓ tests/qc-route.test.ts (5 tests) 7ms
+✓ tests/proxy.test.ts (7 tests) 7ms
+✓ tests/auth-routes.test.ts (3 tests) 5ms
+✓ tests/home-numbers.test.ts (4 tests) 4ms
+✓ tests/home-probe-store.test.ts (3 tests) 3ms
+✓ tests/dispatch-carrier.test.ts (12 tests) 3ms
+✓ tests/face-theme.test.ts (5 tests) 3ms
+✓ tests/auth-cookies.test.ts (3 tests) 2ms
+✓ tests/faces-origin.test.ts (1 test) 1ms
+
+Test Files  34 passed (34)
+     Tests  270 passed (270)
+```
+(The stderr lines under `home-routes.test.ts` and `home-actions.test.ts` are the tests' own deliberate failure fixtures — a simulated Supabase outage, an insufficient-credits provider error and a bot webhook 500 — asserting the code logs and recovers; they are not failures.)
+
+`npx tsx scripts/verify-home-local-db.ts`:
+```
+home schema proof: 9 checks passed
+- a probe has one row
+- status is green, amber or red
+- a key is a short slug
+- upsert by key replaces the state
+- row level security is on
+- zero policies
+- anon cannot read
+- authenticated cannot read
+- service_role can read and write
+```
+`npx tsx scripts/verify-dispatch-local-db.ts`:
+```
+dispatch schema proof: 9 checks passed
+- an order cannot sit in two open parcels
+- fulfilled needs a fulfilment id
+- a fulfilled row no longer blocks a new parcel for the same order
+- tracking numbers are stored normalised
+- carrier is one of the three
+- two orders cannot share a position
+- a parcel that still has orders cannot be deleted
+- an emptied parcel can be deleted
+- anon cannot read
+```
+`npm run typecheck` — clean, no output (`tsc --noEmit` exits 0).
+`npm run lint` — exactly the 5 pre-existing baseline errors, all in the known three files, nothing else:
+```
+scripts/tmp-promote-worn.ts        3 × @typescript-eslint/no-explicit-any
+src/components/live/LiveActivity.tsx  1 × react-hooks/refs
+tests/app-shell-render.test.ts     1 × react/no-children-prop
+```
+`npm run build` — `next build` (Turbopack) compiled successfully; the route list includes:
+```
+├ ƒ /api/home/action
+├ ƒ /api/home/chat
+├ ƒ /dispatch
+├ ƒ /home
+...
+ƒ Proxy (Middleware)
+```
+`wc -l` (largest first): `src/components/console/Sidebar.tsx` 329, `src/lib/home/probes.ts` 111, `src/lib/home/chat.ts` 100, `src/components/home/ChatPanel.tsx` 98, `src/lib/home/actions.ts` 94, `src/lib/home/tools.ts` 88, `src/app/api/home/chat/route.ts` 65, `src/lib/home/shopify-reads.ts` 58, `src/lib/faces/faces.ts` 51, `src/lib/home/n8n.ts` 50, `src/lib/home/server.ts` 48, `src/lib/auth/cookies.ts` 44, `src/app/api/home/action/route.ts` 40, `src/components/home/HomeScreen.tsx` 36, `src/lib/home/numbers.ts` 30, `src/lib/home/probes.config.ts` 23, `src/lib/home/chat-panel.ts` 22, `src/lib/home/probe-store.ts` 21, `src/components/home/HealthLight.tsx` 18, `src/lib/home/body.ts` 16, `src/proxy.ts` 15, `src/components/home/NumberTile.tsx` 11, `src/lib/faces/server.ts` 8 — every file well under 500 lines.
+
+**Not finished — none of the rollout has happened yet.** The order was revised by the final whole-branch review; plan part 10 Step 6 (`docs/superpowers/plans/2026-09-23-platform-10-docs-rollout.md`) has the commands. Production keeps `AUTH_BASE_URL=https://loupe.qimati-eng.site` through the deploy, leaves `N8N_*` and `HOME_N8N_WORKFLOWS` unset (bot lights off until a new n8n API key exists) and `HOME_CHAT_MODEL` at its default.
+- Step 1: Shopify scopes for Dispatch — not added, not re-approved, not verified (carried over from the 2026-09-21 entry). Not needed for the deploy; Dispatch shows its "cannot read or fulfil orders yet" message until then, and no live Dispatch push has been made.
+- Step 2: DNS audit — not done. Every `*.qimati-eng.site` record must point at the owner's own infrastructure, with dangling CNAMEs (Railway/Vercel leftovers) and third-party names removed. The apex, `qc.` and `ship.` already resolve through Cloudflare, reaching the Hub only as nginx's fallback server.
+- Step 3: Server — the branch's nginx config not installed by hand; `nginx -t` and the three `/health` checks (apex, `qc.`, `ship.`) not run; certbot has not expanded the certificate to the three names.
+- Step 4: Migrations — neither `20260921100000_dispatch.sql` nor `20260923100000_home_probe_state.sql` has been applied to production.
+- Step 5: `AUTH_SESSION_SECRET` not rotated in `~/loupe/shared/.env` or `.env.railway`.
+- Step 6: Deploy — not merged into `main` (one no-ff merge commit, first parent the current `main`), nothing pushed or deployed.
+- Step 7: Live checks with the owner — none run: the lights; the Awaiting QC tile showing a number (the `ordersCount` search terms and the 300-id lookup); "which orders are awaiting QC?" and "is Shopify healthy?" with their `home.chat_turn` cost row; sign-in on `qc.` returning to `qc.`, then `ship.` with no second sign-in; one QC scan and one label print on `qc.`; sign-out on `loupe.` clearing the old cookie.
+- Step 8: Rollback, only if needed — instant `bash ~/loupe/repo/scripts/rollback.sh b7f5220` on the server, permanent `git revert -m 1 <deploy merge>` and push.
+- Step 9: Later — `AUTH_BASE_URL` to the Home origin (Google redirect URI first, then env and restart, then re-check sign-in and sign-out); the n8n key with `N8N_*` and `HOME_N8N_WORKFLOWS` together; the two bot webhooks, which do not exist in n8n (the three `BOT_*` variables are deliberately not set); the memory vault (`systems/loupe.md`, `operations/credential-register.md`, a `log.md` entry), untouched.
+- No `npm run dev` look at any face (Home, Loupe, QC or Fulfilment) at desktop or phone width.
+- No live chat turn — `runChatTurn` has only run against fakes.
+- No live probe — every health light has only run against injected clocks and fakes.
+- `tests/schema.test.ts`'s `TABLES` assertion has not been run against production; it would fail today because `home_probe_state` does not exist there until Step 4 applies the migration.
+
+**Surprises:** Eight of the thirteen code tasks (1 and 7–13) needed one fix round each; Tasks 2–6 passed review clean. Every fix round was one dispatch and one scoped re-review; none needed a second round. Two things turned up while planning, before any code: the QC scan route and both Labels routes checked only the `AUTH_BASE_URL` origin, which would have refused every scan and print on `qc.` the moment DNS moved; and `scripts/apply-migration.ts` needed to accept the Home origin too, because the rollout as first planned changed `AUTH_BASE_URL` to the Home origin before the migrations ran (the final review later moved that switch to after the deploy; the runner accepts both origins). Both were fixed in Task 2 (`isOwnOrigin`).
+
+From the task reviews: Task 1 — a relative redirect in production would have resolved against Next's own bind address (`127.0.0.1`) instead of the real host, and `isFace` used `in`, so a prototype key such as `constructor` would have counted as a face; both fixed, and `FACE_DEV` was made dev-only in the same round. Task 7 — a failed probe-store load defaulted to "no previous state", which would have made every light look newly changed on any database hiccup; store calls had no time bound, so a hung Supabase could stall every Home request; and the schema proof's anon/authenticated checks could never actually fail, because the throwaway test cluster grants those roles nothing to revoke. All three fixed, plus one shared 5 s signal across both hops of the http probe. Task 8 — `computeNumbers` had no time limit at all, so one stalled Shopify or Supabase read would hang `/home` for every visitor and hide lights that were already red; fixed with a 10 s bound per number, and `ReadOnlyShopify` was branded so a raw `ShopifyClient` can no longer be passed where the read-only wrapper is required. Task 9 — `dispatch_summary` counted a failed order twice when its parcel appeared in both the open and recent lists, and the `awaiting_qc` filter silently stopped at the 100th open order with no signal that more existed; both fixed (a 250-order page, with a note when that page is full — the dashboard's own headline number still covers 300). Task 10 — a confirm token accepted any non-empty string as its signing secret, so a non-hex `AUTH_SESSION_SECRET` would sign with an effectively empty key, forgeable from the public repository; and an impossible calendar date such as 31 February passed the regex check and would have reached the finance webhook and the confirm card. Both fixed, and several smaller guards rode along in the same round: an expired nonce is refused outright, webhook error bodies stay server-side, and the webhook poster refuses to follow a redirect with the shared secret. Task 11 — the 4 000-token output budget was being applied per model call rather than per turn, so a long tool-calling turn could emit up to seven times that; and a 200 response carrying no usable choice printed a calm "I have nothing to add." with a normal usage line, which would read as healthy on an operations dashboard while actually being a failure. Both fixed. Task 12 — the request-body size cap ran only after the whole body had already been buffered by `text()`, so the cap never actually bounded memory use; and a turn that threw wrote neither an `events` row nor a server log, silently losing both the spend already incurred and the error itself. Both fixed. Task 13 — a confirmed action's outcome was written by array index, but the turn's own cleanup removed status entries and shifted every later card's index, so an outcome could land on the wrong card or vanish entirely; and the chat list's `scrollIntoView` fired on every render, including on mount with no messages yet, scrolling the whole phone page instead of just the chat box. Both fixed. One item was accepted rather than fixed: the red health light's `#b3261e` is a deliberate exception to D9 (amber is normally the one accent colour) because the spec explicitly calls for three light colours; a `--red` design token is left as later polish, not a cutover blocker.
+
+**Next session should start with:** rollout Steps 2–7 in order, each with the owner's go-ahead, beginning with the DNS audit. Step 1 (add `read_merchant_managed_fulfillment_orders` and `write_merchant_managed_fulfillment_orders` to Loupe's Shopify app in the Dev Dashboard, re-approve the install, and verify both scope handles with a read-only `currentAppInstallation { accessScopes { handle } }` query) does not gate the deploy and can happen whenever the owner is ready.
+
+---
+
+## 2026-09-21 — Dispatch: stage tracking numbers, push fulfilments (D135)
+
+**Goal this session:** ship the Dispatch feature — stage courier tracking numbers against In-progress orders and push them as Shopify fulfilments — then record the decision, verify the whole branch once, and write this entry. Branch starts from `claude/qc-v2` (`9a2cb93`), so D134 and the material script ship with it.
+
+**Built:**
+- `src/lib/dispatch/types.ts`, `src/lib/dispatch/carrier.ts` → tracking-number normalisation and carrier detection (`X`/`D` DTDC, `ER` India Post, digits Tirupati Courier).
+- `supabase/migrations/20260921100000_dispatch.sql` → `dispatch_parcels` + `dispatch_parcel_orders`, a partial unique index keeping an order in at most one open parcel, RLS enabled with zero policies.
+- `src/lib/shopify/dispatch-orders.ts` → list open paid orders with an In-progress fulfilment order, read one order for a push, `fulfillmentCreate` with tracking.
+- `src/lib/dispatch/plan.ts` → pure push decision: In-progress fulfilment orders only, an identical fulfilment already done, never overwrite tracking.
+- `src/lib/dispatch/push.ts`, `src/lib/dispatch/push-loop.ts` → push a parcel — whole-parcel pre-check (fulfils none if one order is refused), one `fulfillmentCreate` per order through a single-attempt client, only a re-read decides the outcome; the screen's push loop stops at the first unanswered call and marks the remaining parcels not attempted.
+- `src/lib/dispatch/store.ts` → Supabase store — stage, group, discard, 30-day history, single-claim `pushing` rows reclaimable after two minutes; deletes are conditional on `staged`/`failed` rows so a push in flight is never discarded; clearing a number or absorbing a lone parcel while grouping writes `dispatch.unstaged`; a failed Loupe write after a confirmed fulfilment is reported on the row, never thrown.
+- `src/app/(shell)/dispatch/actions.ts` → server actions — session actor, one parcel per push call, single-attempt mutation client.
+- `src/lib/dispatch/rows.ts` → row model — parcels with nested orders, unlisted staged work, duplicate numbers.
+- `src/components/dispatch/DispatchScreen.tsx`, `src/app/(shell)/dispatch/page.tsx` → `/dispatch` — stage by typing or scanning, `+` to group a parcel, confirm sheet, push one parcel at a time; saving never locks a field (scanner Enter moves focus to the next row) and Push waits for saves in flight so the confirm sheet always shows the number that will be sent.
+- `docs/DECISIONS.md` (D135), `CLAUDE.md` (Dispatch paragraph) → this entry.
+
+**Verified:**
+```
+✓ tests/dispatch-screen-render.test.ts (5 tests) 45ms
+✓ tests/qc-orders.test.ts (11 tests) 14ms
+✓ tests/dispatch-rows.test.ts (7 tests) 10ms
+✓ tests/dispatch-store.test.ts (17 tests) 8ms
+✓ tests/dispatch-push.test.ts (12 tests) 6ms
+✓ tests/dispatch-orders.test.ts (8 tests) 5ms
+✓ tests/dispatch-actions.test.ts (5 tests) 3ms
+✓ tests/dispatch-plan.test.ts (10 tests) 3ms
+✓ tests/dispatch-carrier.test.ts (12 tests) 3ms
+✓ tests/dispatch-push-loop.test.ts (3 tests) 2ms
+
+Test Files  10 passed (10)
+     Tests  90 passed (90)
+```
+`npx tsx scripts/verify-dispatch-local-db.ts`:
+```
+dispatch schema proof: 8 checks passed
+- an order cannot sit in two open parcels
+- fulfilled needs a fulfilment id
+- a fulfilled row no longer blocks a new parcel for the same order
+- tracking numbers are stored normalised
+- carrier is one of the three
+- two orders cannot share a position
+- deleting a parcel removes its orders
+- anon cannot read
+```
+`npm run typecheck` — clean, no output (`tsc --noEmit` exits 0).
+`npm run lint` — 5 errors, all in the known pre-existing baseline (`scripts/tmp-promote-worn.ts` ×3 `no-explicit-any`, `src/components/live/LiveActivity.tsx` ×1 `react-hooks/refs`, `tests/app-shell-render.test.ts` ×1 `react/no-children-prop`); `git diff --name-only 9a2cb93..HEAD` confirms none of the three are in this branch's changed files.
+`npm run build` — `next build` compiled successfully, `/dispatch` listed as a dynamic route alongside the rest of the app.
+`wc -l` (largest file first): `src/lib/dispatch/store.ts` 193, `src/components/dispatch/DispatchScreen.tsx` 166, `src/lib/dispatch/push.ts` 87, `src/lib/shopify/dispatch-orders.ts` 89, `src/lib/dispatch/rows.ts` 49, `src/app/(shell)/dispatch/actions.ts` 49, `src/lib/dispatch/push-loop.ts` 32, `src/lib/dispatch/carrier.ts` 30, `src/lib/dispatch/plan.ts` 27, `src/lib/dispatch/types.ts` 25, `src/app/(shell)/dispatch/page.tsx` 22 — every dispatch file well under 500 lines.
+
+**Final-review fix wave (whole branch, after the ten tasks):** the whole-branch review found one Critical and two Important cross-module defects, all now fixed on this branch.
+- **C1 — a pushed parcel is frozen.** A parcel where one order was fulfilled and a sibling failed was still editable, so retyping the number rewrote the shared parcel row and the 30-day history showed a number no customer was ever told. `stageTracking` now refuses once `pushed_at` is set and its parcel `update` is conditional on `pushed_at is null`; `groupOrder` refuses to add an order to a pushed parcel; `markPushed` re-asserts the carrier and number the push actually sent, so an edit that raced the push is superseded rather than kept. The screen freezes such a row's number, carrier and `+`, keeps its checkbox usable (pushing the remaining order again with the same number is the documented retry) and offers "Discard the remaining order".
+- **I1 — the confirm sheet is bound to what is sent.** `PushTarget` now carries `expected` (the carrier, number and order ids the sheet rendered); `pushParcel` compares it with the loaded parcel and refuses with "This parcel changed on another screen. Reload Dispatch and check it before pushing." before the first Shopify read, so a packer's edit on another device can no longer make the owner fulfil orders nobody confirmed. `pushParcelAction` validates the shape (two strings, 1–50 Shopify order gids).
+- **I2 — a claim that throws fails only its own order.** A database error on the second order's claim used to throw out of `pushParcel` after the first order had been fulfilled and its customer notified, skipping `markPushed` and the audit event. That order now gets a `failed` result saying nothing was sent for it, and the loop finishes.
+- **Cheaper now than ever** (the migration has not been applied anywhere): the `dispatch_parcel_orders.parcel_id` foreign key is `on delete restrict`, so `deleteParcelIfEmpty` is atomic in the database (23503 means "not empty after all"); the writer `ShopifyClient` gets a 60 s `AbortSignal.timeout`, inside the 120 s stale-claim takeover that undici's 300 s default outlived; `page.tsx` passes `ordersLoaded && !truncated`, so orders past the 300-order cut are never offered for discard.
+
+**Verified after the fix wave:**
+```
+✓ tests/dispatch-screen-render.test.ts (6 tests) 26ms
+✓ tests/qc-orders.test.ts (11 tests) 14ms
+✓ tests/app-shell-render.test.ts (1 test) 12ms
+✓ tests/dispatch-rows.test.ts (8 tests) 10ms
+✓ tests/dispatch-store.test.ts (22 tests) 8ms
+✓ tests/dispatch-push.test.ts (19 tests) 8ms
+✓ tests/dispatch-orders.test.ts (8 tests) 5ms
+✓ tests/dispatch-actions.test.ts (6 tests) 4ms
+✓ tests/dispatch-carrier.test.ts (12 tests) 3ms
+✓ tests/dispatch-plan.test.ts (10 tests) 3ms
+✓ tests/dispatch-push-loop.test.ts (4 tests) 2ms
+
+Test Files  11 passed (11)
+     Tests  107 passed (107)
+```
+`npx tsx scripts/verify-dispatch-local-db.ts`:
+```
+dispatch schema proof: 9 checks passed
+- an order cannot sit in two open parcels
+- fulfilled needs a fulfilment id
+- a fulfilled row no longer blocks a new parcel for the same order
+- tracking numbers are stored normalised
+- carrier is one of the three
+- two orders cannot share a position
+- a parcel that still has orders cannot be deleted
+- an emptied parcel can be deleted
+- anon cannot read
+```
+`npm run typecheck` — clean, no output. `npm run lint` — the same 5 pre-existing errors in the same three untouched files, none in a file this branch touches. `npm run build` — compiled successfully, `/dispatch` listed as a dynamic route. `wc -l`: `store.ts` 201, `DispatchScreen.tsx` 173, `push.ts` 99, `actions.ts` 61, `rows.ts` 53, `push-loop.ts` 33 — every file still well under 500 lines.
+
+**Surprises:** the task reviews (Tasks 5, 6, 9) caught several brief-code defects before this landed: an invalid `assert.rejects` overload in the schema proof; a test that never actually reached the cancelled-fulfilment filter it claimed to cover; unguarded settle writes that could throw after a fulfilment had already succeeded; read-then-act deletes in the store that could race a push and discard it mid-flight; a screen-wide lock that broke the barcode scanner's Enter-to-next-row focus advance; and no guard stopping Push from firing while a save was still in flight. All were fixed in the tasks that found them (see D135's second paragraph). This branch starts from `claude/qc-v2` (`9a2cb93`), not `main`, so D134 and the material-change script ship with it when this merges.
+
+**Not finished — none of Step 6's rollout has happened yet:**
+- Shopify scopes: Loupe's own app does not yet have `read_merchant_managed_fulfillment_orders` / `write_merchant_managed_fulfillment_orders`; not added, not re-approved, not verified.
+- Migration `20260921100000_dispatch.sql` has not been applied to production.
+- No `npm run dev` look at `/dispatch` against a live order at desktop or phone width.
+- Not merged into `main`; nothing has been pushed or deployed.
+- No live push has been attempted — no single-order parcel, no grouped parcel.
+- The memory vault (`/Users/yash/Desktop/Qimati Memory/systems/loupe.md`, `operations/credential-register.md`, a `log.md` entry) has not been touched.
+
+**Known open, none blocks the merge (whole-branch review and its re-review, 2026-09-21):**
+- Scanner path: Enter moves focus to `index + 1`; when that row is frozen or pushing its field is disabled and focus is dropped. Advance to the next enabled field instead. A just-scanned field also blinks empty for one round trip (the draft is dropped before the refresh lands), and the row sort has no tiebreaker for two orders with the same `createdAt`.
+- Push path: an order that is already done inside a refused parcel is reported failed instead of being settled; `confirmsPush` and `planPush`'s done branch accept an older or non-SUCCESS fulfilment carrying the same company and number; `push()` on the screen has no re-entry guard of its own; `markPushed` overwrites `pushed_by`/`pushed_at` on the second push of a partly pushed parcel; `order_name` comes from the browser and is never checked against the Shopify read.
+- Store: `lone()` requires `staged` while the conditional deletes accept `failed`, so a once-failed lone order can never be absorbed; a 23505 on the child insert always says "added elsewhere" even for a position collision; `discardParcel`'s event names rows that survived as `pushing`; `createParcel`'s compensating delete is unchecked under `on delete restrict`; `listParcels` sends up to 1000 ids in one GET.
+- Screen: a frozen row still offers the duplicate-number "Group them" link and can be picked in another row's `+` search (both refused server-side with a sentence); `+` lacks `aria-expanded` and does not warn that the chosen order's own staged number is absorbed; clicking the dialog's padding closes the confirm sheet.
+- Proof and tests: the schema proof checks only `anon` (add `authenticated` and a zero-`pg_policy` count); the 60 s timeout wrapper is verified by inspection only, and it would overwrite a caller's own `signal`; the atomic `claim` filter is proven only against a call-recording fake, so at the first live push call `claim` twice on one row against the real project and confirm the second returns false.
+
+**Next session should start with:** owner go-ahead for Step 6.1 — add the two merchant-managed fulfilment-order scopes to Loupe's Shopify app in the Dev Dashboard, re-approve the install, and verify both scope handles with a read-only `currentAppInstallation { accessScopes { handle } }` query before anything else in Step 6 proceeds.
+
+---
+
 ## 2026-09-19 — ER713–ER731 material 304 → 316L via the publisher
 
 **Goal:** owner: make these earrings 316L — tags, description and custom.material.

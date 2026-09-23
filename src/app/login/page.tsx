@@ -1,9 +1,10 @@
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { currentOperator } from '@/lib/auth/authorize'
 import { decodeSignedValue, DENIED_COOKIE } from '@/lib/auth/session'
 import { serverEnv } from '@/lib/env'
+import { FACES, faceFromHeader } from '@/lib/faces/faces'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,10 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  if (await currentOperator()) redirect('/console')
+  if (await currentOperator()) redirect('/') // the proxy sends `/` to the face's first screen
+
+  const face = faceFromHeader((await headers()).get('x-face'))
+  const brand = face ? FACES[face].label : 'Loupe'
 
   const jar = await cookies()
   const denied = decodeSignedValue<{ email: string }>(
@@ -43,9 +47,9 @@ export default async function LoginPage({
       <div className="w-full max-w-[420px] rounded-[24px] bg-surface p-8">
         <div className="flex items-center gap-2.5">
           <div className="grid size-[30px] place-items-center rounded-[9px] bg-ink text-[14px] font-semibold text-white">
-            L
+            {brand[0]}
           </div>
-          <span className="font-medium tracking-[-0.01em]">Loupe</span>
+          <span className="font-medium tracking-[-0.01em]">{brand}</span>
         </div>
 
         <h1 className="mt-7 text-[26px] font-medium tracking-[-0.025em]">
@@ -54,13 +58,13 @@ export default async function LoginPage({
 
         {denied ? (
           <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">
-            <span className="font-medium text-ink">{denied.email}</span> is not a Loupe user.
+            <span className="font-medium text-ink">{denied.email}</span> is not a Qimati user.
             Nothing on this account can be seen or changed. Ask an admin to add the address,
             or sign in with the account that was set up for you.
           </p>
         ) : (
           <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">
-            Loupe publishes to a real Shopify store, so access is by named account. Sign in
+            These tools work on a real Shopify store, so access is by named account. Sign in
             with the Google account that was set up for you.
           </p>
         )}

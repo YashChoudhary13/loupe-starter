@@ -2,13 +2,17 @@
  * Adds the narrow browser permission needed by "Upload ready image".
  *
  *   npm run r2:cors
- *   npm run r2:cors -- --origin https://qimati-loupe.vercel.app
+ *   npm run r2:cors -- --origin https://loupe.qimati-eng.site
+ *
+ * Uploads happen on the Loupe face, so its origin is the default. The `--`
+ * matters: without it npm keeps `--origin` for itself and the script never sees it.
  *
  * This does not make the bucket public. It only allows PUT/HEAD requests from
- * the configured console origin; every object write still needs a short-lived
- * signed URL minted by the authenticated server action.
+ * that one origin; every object write still needs a short-lived signed URL
+ * minted by the authenticated server action.
  */
 import { config } from 'dotenv'
+import { FACES } from '../src/lib/faces/faces'
 
 config({ path: '.env', quiet: true })
 config({ path: '.env.local', override: true, quiet: true })
@@ -70,7 +74,7 @@ async function cloudflare<T>(url: string, init: RequestInit): Promise<T> {
 }
 
 async function main(): Promise<void> {
-  const origin = (argument('--origin') ?? required('AUTH_BASE_URL')).replace(/\/+$/, '')
+  const origin = (argument('--origin') ?? `https://${FACES.loupe.host}`).replace(/\/+$/, '')
   const base =
     `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId())}` +
     `/r2/buckets/${encodeURIComponent(required('R2_BUCKET'))}/cors`

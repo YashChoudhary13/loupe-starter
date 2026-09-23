@@ -23,7 +23,7 @@ interface RawOrder {
 }
 const headerFields = 'id name updatedAt cancelledAt displayFulfillmentStatus'
 /** Qimati is prepaid only: an unpaid order is not ready to pack, so it stays off the QC list. */
-const PAID = '(financial_status:paid OR financial_status:partially_paid OR financial_status:partially_refunded)'
+export const PAID = '(financial_status:paid OR financial_status:partially_paid OR financial_status:partially_refunded)'
 
 export function qcShopifyError(error: unknown): string {
   const message = error instanceof Error ? error.message : 'Shopify did not answer.'

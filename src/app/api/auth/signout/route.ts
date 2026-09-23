@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { currentOperator } from '@/lib/auth/authorize'
-import { clearedCookieOptions } from '@/lib/auth/cookies'
+import { clearedCookieOptions, clearHostOnlyCookieHeader } from '@/lib/auth/cookies'
 import { DENIED_COOKIE, OAUTH_COOKIE, SESSION_COOKIE } from '@/lib/auth/session'
 import { serverEnv } from '@/lib/env'
 import { supabaseServer } from '@/lib/supabase/server'
@@ -22,6 +22,8 @@ export async function POST(): Promise<NextResponse> {
   response.cookies.set(SESSION_COOKIE, '', clearedCookieOptions())
   response.cookies.set(OAUTH_COOKIE, '', clearedCookieOptions())
   response.cookies.set(DENIED_COOKIE, '', clearedCookieOptions())
+  // Operators signed in before D136 still hold a host-only cookie on loupe.qimati-eng.site; the domain clear above cannot reach it.
+  response.headers.append('set-cookie', clearHostOnlyCookieHeader(SESSION_COOKIE))
 
   if (operator) {
     await supabaseServer().from('events').insert({

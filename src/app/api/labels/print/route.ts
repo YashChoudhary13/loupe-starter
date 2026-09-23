@@ -1,5 +1,5 @@
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
-import { serverEnv } from '@/lib/env'
+import { isOwnOrigin } from '@/lib/faces/server'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { readLabelVariants, verifyLabelCodes } from '@/lib/labels/catalogue'
 import { parseLabelRequest, renderLabelDocument } from '@/lib/labels/print'
@@ -11,7 +11,7 @@ export const maxDuration = 300
 export async function POST(request: Request) {
   try {
     await requireOperatorForAction()
-    if (request.headers.get('origin') !== new URL(serverEnv.authBaseUrl).origin) return new Response('Open Labels in Loupe before printing.', { status: 403 })
+    if (!isOwnOrigin(request.headers.get('origin'))) return new Response('Open Labels in Loupe before printing.', { status: 403 })
     if (Number(request.headers.get('content-length') ?? '0') > 32000) return new Response('Print selection too large.', { status: 413 })
     if (request.headers.get('content-type')?.split(';')[0] !== 'application/x-www-form-urlencoded') return new Response('Use the label selection form.', { status: 415 })
     const reader = request.body?.getReader()

@@ -163,4 +163,11 @@ describe('ShopifyClient', () => {
     })
     expect(h.graphqlRequests()).toBe(1)
   })
+
+  it('remembers the throttle status of the last response for the Home probe', async () => {
+    const h = harness([() => json({ data: { shop: { name: 'Qimati' } }, extensions: { cost: { throttleStatus: { currentlyAvailable: 800, maximumAvailable: 1000, restoreRate: 50 } } } })])
+    expect(h.client.lastThrottle).toBeNull()
+    await h.client.graphql('{ shop { name } }')
+    expect(h.client.lastThrottle).toEqual({ currentlyAvailable: 800, maximumAvailable: 1000 })
+  })
 })

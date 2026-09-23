@@ -15,7 +15,8 @@ async function main() {
   const [file, envFile, receiptFile] = process.argv.slice(2)
   if (!file || !envFile || !receiptFile || !/^\d{14}_[a-z0-9_]+\.sql$/.test(file)) throw new Error('Usage: <YYYYMMDDHHMMSS_name.sql> <production-env-file> <receipt-file>')
   Object.assign(process.env, parse(readFileSync(envFile)))
-  if (process.env.AUTH_BASE_URL !== 'https://loupe.qimati-eng.site') throw new Error('This rollout targets the configured production Loupe origin.')
+  const PRODUCTION_ORIGINS = ['https://loupe.qimati-eng.site', 'https://qimati-eng.site']
+  if (!PRODUCTION_ORIGINS.includes(process.env.AUTH_BASE_URL ?? '')) throw new Error('This rollout targets the configured production origin (Loupe, or the Qimati home after D136).')
   const version = file.split('_')[0]
   const sql = readFileSync(`supabase/migrations/${file}`, 'utf8')
   const db = pgClient(); await db.connect()

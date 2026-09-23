@@ -4,6 +4,13 @@ Internal tool for Qimati (qimati.in), a wholesale jewellery Shopify store in Jai
 
 **Stack:** Next.js (App Router) + TypeScript · Supabase Postgres · Cloudflare R2 · **self-hosted VPS**
 
+**One app, four faces (D136):** the same deploy answers on `qimati-eng.site` (Home: health lights,
+numbers, the read-only assistant), `loupe.qimati-eng.site` (listing), `qc.qimati-eng.site` (Order QC,
+Labels) and `ship.qimati-eng.site` (Dispatch). `src/proxy.ts` picks the face from the Host header and
+redirects a screen to the host that owns it; the face table is `src/lib/faces/faces.ts`. One Google
+sign-in with a `.qimati-eng.site` cookie covers all four. `FACE_DEV=home npm run dev` shows one face
+locally; without it every screen is allowed.
+
 ⚠️ **Production is `https://loupe.qimati-eng.site` on the Qimati VPS, deployed automatically on
 every push to `main`** (`YashChoudhary13/loupe-starter`): a crontab poller on the server
 (`scripts/autodeploy.sh`, every minute) pulls `main` and runs `scripts/deploy.sh`. It moved off Railway on 2026-09-01 (D119);
@@ -17,8 +24,9 @@ project and a `.vercel/` link also exist and are *not* production.
   repository is public. This Mac's SSH key is installed, so `ssh $SERVER_USER@$SERVER_IP` works
   without the password. Ubuntu 26.04, 2 vCPU, 3.7 GB RAM + 2 GB swap, passwordless sudo.
 - **Neighbours:** `packaging.qimati-eng.site` (:8787) and `linkedin.qimati-eng.site` (:8788) run
-  on the same box as `systemd` units `qimati` and `inpulse`. Do not touch their nginx sites,
-  units or directories.
+  on the same box as `systemd` units `qimati` and `inpulse`, and `print.qimati-eng.site` (:8790,
+  nginx site `office-print-relay`) runs there too. Do not touch their nginx sites, units or
+  directories.
 - **Domain:** `loupe.qimati-eng.site`, Cloudflare-proxied A record → nginx (`deploy/loupe.nginx.conf`,
   TLS from certbot, auto-renewed) → Next.js on `127.0.0.1:3000`.
 - **Layout:** `~/loupe/repo` = checkout of `main` (source only) · `~/loupe/releases/<stamp>-<sha>/`
@@ -44,10 +52,20 @@ project and a `.vercel/` link also exist and are *not* production.
   else. `deploy.sh` holds a lock and skips a sha that is already live, so the two paths never
   collide. Deploy log on the server: `~/loupe/shared/autodeploy.log`.
 - **Everything that knows the public URL** (repoint all of it if the domain ever changes):
-  `AUTH_BASE_URL` + `CRON_BASE_URL` in the server `.env`, the `loupe_cron_base_url` vault secret
-  (`npm run cron:configure` on the server), Shopify webhook callbacks (shopify-reconcile
-  re-registers them), the R2 CORS origin (`npm run r2:cors`), the Google OAuth redirect URI
-  (Google Cloud console, by hand) and `LOUPE_BASE_URL` in `worker/.env` on the GPU laptop.
+  `AUTH_BASE_URL` and `CRON_BASE_URL` in the server `.env`, both the Loupe host
+  (`https://loupe.qimati-eng.site`) for now; the four face hosts are constants in
+  `src/lib/faces/faces.ts` and `deploy/loupe.nginx.conf`; the `loupe_cron_base_url` vault secret
+  (`npm run cron:configure` on the server); Shopify webhook callbacks (shopify-reconcile re-registers
+  them); the R2 CORS origin stays `https://loupe.qimati-eng.site`
+  (`npm run r2:cors -- --origin https://loupe.qimati-eng.site`); the Google OAuth redirect URI
+  `https://loupe.qimati-eng.site/api/auth/google/callback` (Google Cloud console, by hand);
+  `LOUPE_BASE_URL` in `worker/.env` on the GPU laptop. Every face signs in through that one Loupe
+  callback; the session cookie is on `.qimati-eng.site` either way (D136).
+  **Moving `AUTH_BASE_URL` to the Home origin (`https://qimati-eng.site`) is a later step**, in this
+  order: add `https://qimati-eng.site/api/auth/google/callback` in the Google console first, then
+  edit `~/loupe/shared/.env` (and `.env.railway`) and `sudo systemctl restart loupe`, then re-check
+  sign-in and sign-out. After that switch, rolling back to any pre-platform release needs
+  `AUTH_BASE_URL` reverted first.
 **Volume:** ~300 products/month, 1–2 images each
 
 ---
@@ -81,6 +99,17 @@ are resolved in **Restock** (D112). The matching itself runs on the owner's Wind
 (`worker/`, D111) through `/api/worker/*`; Loupe owns every write and searches pgvector.
 
 Of the twelve fields on a product, only **two** need human judgement: **category** and **price**. Everything else is derived.
+
+**Dispatch** (`/dispatch`, D135) is the last step after QC: operators stage courier tracking numbers against
+orders marked In progress in Shopify, group orders that share a parcel, and push — Loupe fulfils each order
+with carrier and number and Shopify notifies the customer. It is the only place Loupe writes to orders.
+
+**Home** (`/home` on `qimati-eng.site`, D137) shows a health light per service (Loupe, Packaging,
+LinkedIn, the bot's n8n workflows, DTDC reachability, Supabase, Shopify), five numbers (orders today,
+paid unfulfilled, awaiting QC, awaiting tracking, open shortages) and an assistant that answers from
+those facts and seven read tools. **The assistant never writes** to Shopify, the website, products,
+discounts, customers or orders; its only actions are three WhatsApp-bot calls behind a confirm card,
+hidden until the bot's webhooks exist.
 
 ---
 
@@ -468,6 +497,10 @@ from sequence maxima (D69).
 `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_PASSWORD` are different credentials. The
 service-role key is a JWT for the PostgREST API; it cannot authenticate a Postgres wire
 connection, which is what `db:push` and the direct-connection tests need.
+
+Home needs `N8N_URL`, `N8N_API_KEY`, `HOME_N8N_WORKFLOWS` (JSON label → id) and optionally
+`HOME_CHAT_MODEL`; the bot actions need `BOT_REPORT_WEBHOOK_URL`, `BOT_STAFF_TEXT_WEBHOOK_URL`,
+`BOT_WEBHOOK_SECRET` and stay hidden without them. `FACE_DEV` is dev-only.
 
 ## UI
 
