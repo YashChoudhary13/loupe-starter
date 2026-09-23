@@ -2,7 +2,7 @@ import type { ParcelRow } from '@/lib/dispatch/types'
 import type { QcPass, QcShortage } from '@/lib/qc/types'
 import type { N8nClient } from './n8n'
 import type { HomeNumbers } from './numbers'
-import type { ProbeLight } from './probes'
+import { withTimeout, type ProbeLight } from './probes'
 import { listOrders, lowStock, orderQuery, ORDER_FILTERS, type ReadOnlyShopify } from './shopify-reads'
 
 /** Everything a tool may reach. Shopify only through the read-only wrapper; Loupe records through the existing readers. */
@@ -80,9 +80,11 @@ export const READ_TOOLS: readonly ToolDef[] = [
 export function toolSpecs(tools: readonly { name: string; description: string; parameters: JsonSchema }[]) {
   return tools.map(tool => ({ type: 'function' as const, function: { name: tool.name, description: tool.description, parameters: tool.parameters } }))
 }
-/** Runs one tool for the model. Never throws: a failure is `{ error }` text the model can read out. Output capped so one answer cannot flood the context. */
+export const TOOL_TIMEOUT_MS = 15_000
+/** Runs one tool for the model. Never throws: a failure is `{ error }` text the model can read out, and a call still running after TOOL_TIMEOUT_MS is cut off so one hung read cannot stall the turn. Output capped so one answer cannot flood the context. */
 export async function runTool(tools: readonly ToolDef[], name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
   const tool = tools.find(item => item.name === name)
   if (!tool) return JSON.stringify({ error: `No tool named ${name}.` })
-  try { return JSON.stringify(await tool.run(args, ctx)).slice(0, 12_000) } catch (error) { return JSON.stringify({ error: error instanceof Error ? error.message : 'The tool failed.' }) }
+  try { return JSON.stringify(await withTimeout(Promise.resolve().then(() => tool.run(args, ctx)), TOOL_TIMEOUT_MS)).slice(0, 12_000) }
+  catch (error) { return JSON.stringify({ error: error instanceof Error ? (error.name === 'TimeoutError' ? 'That check took too long. Try again shortly.' : error.message) : 'The tool failed.' }) }
 }

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { boundedInt, oneOf, READ_TOOLS, runTool, toolSpecs, type ToolContext } from '@/lib/home/tools'
+import { describe, expect, it, vi } from 'vitest'
+import { boundedInt, oneOf, READ_TOOLS, runTool, TOOL_TIMEOUT_MS, toolSpecs, type ToolContext, type ToolDef } from '@/lib/home/tools'
 import { LOW_STOCK_QUERY, OPEN_PAID_QUERY, ORDERS_QUERY } from '@/lib/home/shopify-reads'
 
 const order = (n: number) => ({ id: `gid://shopify/Order/${n}`, name: `Qimati${n}`, createdAt: '2026-09-23T05:00:00Z', displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', subtotalLineItemsQuantity: n, totalPriceSet: { shopMoney: { amount: '10.00', currencyCode: 'INR' } } })
@@ -81,6 +81,16 @@ describe('read tools', () => {
     const broken = context(); broken.shop = null
     expect((await run('low_stock', {}, broken)).result).toEqual({ error: 'Shopify is not configured.' })
     expect(JSON.parse(await runTool(READ_TOOLS, 'delete_everything', {}, context()))).toEqual({ error: 'No tool named delete_everything.' })
+  })
+  it('a tool that never answers is cut off at TOOL_TIMEOUT_MS; a synchronous throw is an error object too', async () => {
+    const tool = (run: ToolDef['run']): ToolDef => ({ name: 'probe', description: 'test', parameters: { type: 'object', properties: {}, additionalProperties: false }, run })
+    vi.useFakeTimers()
+    try {
+      const pending = runTool([tool(() => new Promise(() => {}))], 'probe', {}, context())
+      await vi.advanceTimersByTimeAsync(TOOL_TIMEOUT_MS + 1)
+      expect(JSON.parse(await pending)).toEqual({ error: 'That check took too long. Try again shortly.' })
+    } finally { vi.useRealTimers() }
+    expect(JSON.parse(await runTool([tool(() => { throw new Error('boom') })], 'probe', {}, context()))).toEqual({ error: 'boom' })
   })
   it('describes every tool to the model as a function with a closed schema, and none can write', () => {
     const specs = toolSpecs(READ_TOOLS)
