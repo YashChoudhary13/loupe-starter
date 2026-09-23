@@ -5,7 +5,8 @@ import { MAX_HISTORY_CHARS, MAX_TOOL_CALLS, rateLimiter, runChatTurn, systemProm
 import type { ToolContext, ToolDef } from '@/lib/home/tools'
 
 const SECRET = 'c'.repeat(64)
-const tools: ToolDef[] = [{ name: 'list_orders', description: 'orders', parameters: { type: 'object', properties: {}, additionalProperties: false }, async run(args) { return [{ name: 'Qimati1', filter: args.filter }] } }]
+const runCalls: unknown[] = []
+const tools: ToolDef[] = [{ name: 'list_orders', description: 'orders', parameters: { type: 'object', properties: {}, additionalProperties: false }, async run(args) { runCalls.push(args); return [{ name: 'Qimati1', filter: args.filter }] } }]
 const actions: ActionDef[] = [{ name: 'send_staff_text', label: 'Send a message to staff', description: 'text', needs: 'staffText', parameters: { type: 'object', properties: { text: { type: 'string' } }, additionalProperties: false },
   validate: args => typeof args.text === 'string' && args.text ? { ok: true, params: { text: args.text }, summary: args.text } : { ok: false, error: 'Nothing to send.' }, async run() { throw new Error('must never run from a chat turn') } }]
 const ctx = {} as ToolContext
@@ -25,6 +26,11 @@ describe('a chat turn', () => {
     expect(h.events).toEqual([{ type: 'text', text: 'All green.' }])
     expect(h.requests[0]).toMatchObject({ model: 'anthropic/claude-haiku-4.5', max_tokens: 4000, stream: false, tool_choice: 'auto', messages: [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hello' }] })
     expect((h.requests[0].tools as { function: { name: string } }[]).map(tool => tool.function.name)).toEqual(['list_orders', 'send_staff_text'])
+  })
+  it('content that arrives as an array of parts is joined into plain text', async () => {
+    const h = harness([reply({ content: [{ type: 'text', text: 'All ' }, { type: 'text', text: 'green.' }] })])
+    await h.turn()
+    expect(h.events).toEqual([{ type: 'text', text: 'All green.' }])
   })
   it('runs a read tool, feeds the result back, and emits a status line', async () => {
     const h = harness([reply({ content: null, tool_calls: [call('list_orders', { filter: 'today' })] }), reply({ content: 'One order today: Qimati1.' })])
@@ -48,6 +54,13 @@ describe('a chat turn', () => {
     expect(h.events.some(event => event.type === 'confirm')).toBe(false)
     expect((h.requests[1].messages as Record<string, unknown>[]).at(-1)).toEqual({ role: 'tool', tool_call_id: 'c1', content: '{"error":"Nothing to send."}' })
   })
+  it('malformed tool arguments become an error without running the tool or validating an action', async () => {
+    runCalls.length = 0
+    const h = harness([reply({ content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'list_orders', arguments: '{not json' } }] }), reply({ content: 'Fixed.' })])
+    await h.turn()
+    expect(runCalls).toHaveLength(0)
+    expect((h.requests[1].messages as Record<string, unknown>[]).at(-1)).toEqual({ role: 'tool', tool_call_id: 'c1', content: '{"error":"Malformed tool arguments; send a JSON object."}' })
+  })
   it(`stops running tools after ${MAX_TOOL_CALLS} calls and forces a final answer`, async () => {
     const calls = Array.from({ length: MAX_TOOL_CALLS + 1 }, (_, n) => call('list_orders', {}, `c${n}`))
     const h = harness([reply({ content: null, tool_calls: calls }), reply({ content: 'Enough.' })])
@@ -56,9 +69,23 @@ describe('a chat turn', () => {
     expect(toolMessages).toHaveLength(MAX_TOOL_CALLS + 1); expect(toolMessages.at(-1)?.content).toMatch(/budget/)
     expect(h.requests[1].tool_choice).toBe('none'); expect(h.events.at(-1)).toEqual({ type: 'text', text: 'Enough.' })
   })
+  it('the 4 000-token output budget is tracked for the whole turn, not per call', async () => {
+    const h = harness([reply({ content: null, tool_calls: [call('list_orders', { filter: 'today' })] }, { prompt_tokens: 100, completion_tokens: 3800, cost: 0.01 }), reply({ content: 'Trimmed.' })])
+    await h.turn()
+    expect(h.requests[1]).toMatchObject({ max_tokens: 256, tool_choice: 'none' })
+    expect(h.events.at(-1)).toEqual({ type: 'text', text: 'Trimmed.' })
+  })
   it('a provider error is thrown with its message', async () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ error: { message: 'Insufficient credits' } }), { status: 402 })) as unknown as typeof fetch
     await expect(runChatTurn({ apiKey: 'k', model: 'm', system: 's', history: [], message: 'x', tools, actions: [], ctx, uid: 'u1', secret: SECRET, fetchImpl, emit: () => {} })).rejects.toThrow('Insufficient credits')
+  })
+  it('a response with no choices is an error, not a silent answer', async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ id: 'r', model: 'm', usage: { prompt_tokens: 1, completion_tokens: 1 } }), { status: 200 })) as unknown as typeof fetch
+    await expect(runChatTurn({ apiKey: 'k', model: 'm', system: 's', history: [], message: 'x', tools, actions: [], ctx, uid: 'u1', secret: SECRET, fetchImpl, emit: () => {} })).rejects.toThrow(/no answer/)
+  })
+  it('a choice carrying its own error is thrown, not swallowed as an empty answer', async () => {
+    const h = harness([{ id: 'r', model: 'm', choices: [{ error: { message: 'Overloaded' } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }])
+    await expect(h.turn()).rejects.toThrow('Overloaded')
   })
 })
 describe('budgets and prompt', () => {

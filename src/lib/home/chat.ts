@@ -32,9 +32,12 @@ export function systemPrompt(input: { now: Date; lights: readonly ProbeLight[]; 
 }
 
 interface ToolCall { id: string; type?: string; function: { name: string; arguments: string } }
-interface Completion { model?: string; choices?: { message?: { content?: string | null; tool_calls?: ToolCall[] } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number | string }; error?: { message?: string } }
+type ContentPart = { type?: string; text?: string }
+interface Completion { model?: string; choices?: { message?: { content?: string | ContentPart[] | null; tool_calls?: ToolCall[] }; error?: { message?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number | string }; error?: { message?: string } }
 export interface TurnInput { apiKey: string; model: string; system: string; history: readonly ChatMessage[]; message: string; tools: readonly ToolDef[]; actions: readonly ActionDef[]; ctx: ToolContext; uid: string; secret: string; fetchImpl?: typeof fetch; now?: () => Date; emit(event: ChatEvent): void }
-const parseArgs = (raw: string): Record<string, unknown> => { try { const value: unknown = JSON.parse(raw || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {} } catch { return {} } }
+const parseArgs = (raw: string): Record<string, unknown> | null => { try { const value: unknown = JSON.parse(raw || '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null } catch { return null } }
+/** OpenRouter content is a string for most models but some return an array of parts (`[{ type: 'text', text: '…' }, …]`); either way we want plain text. */
+const textOf = (content: unknown): string => typeof content === 'string' ? content : Array.isArray(content) ? content.filter(part => part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string').map(part => (part as { text: string }).text).join('') : ''
 
 /** One user message → at most 6 tool calls → one answer. Read tools run here; an action only becomes a confirm card. Model calls are not streamed; progress is. */
 export async function runChatTurn(input: TurnInput): Promise<TurnUsage> {
@@ -48,20 +51,25 @@ export async function runChatTurn(input: TurnInput): Promise<TurnUsage> {
     const cost = Number(u.cost); if (u.cost !== undefined && Number.isFinite(cost)) usage.cost = (usage.cost ?? 0) + cost
   }
   for (let round = 0; round <= MAX_TOOL_CALLS; round++) {
-    const exhausted = usage.toolCalls >= MAX_TOOL_CALLS
+    // The 4 000-token budget is for the whole turn, not per call: track what's left and force a final answer once it runs low, same as running out of tool calls.
+    const remaining = MAX_OUTPUT_TOKENS - (usage.completionTokens ?? 0), exhausted = usage.toolCalls >= MAX_TOOL_CALLS || remaining < 512
     const response = await doFetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${input.apiKey}`, 'Content-Type': 'application/json', 'X-Title': 'Qimati Home' }, signal: AbortSignal.timeout(60_000),
-      body: JSON.stringify({ model: input.model, messages, ...(specs.length ? { tools: specs, tool_choice: exhausted ? 'none' : 'auto' } : {}), max_tokens: MAX_OUTPUT_TOKENS, stream: false }) })
+      body: JSON.stringify({ model: input.model, messages, ...(specs.length ? { tools: specs, tool_choice: exhausted ? 'none' : 'auto' } : {}), max_tokens: Math.max(256, remaining), stream: false }) })
     const body = (await response.json().catch(() => ({}))) as Completion
     if (!response.ok) throw new Error(body.error?.message ?? `The model answered ${response.status}.`)
     add(body.usage); if (body.model) usage.model = body.model
-    const reply = body.choices?.[0]?.message
-    const calls = (reply?.tool_calls ?? []).filter(item => item?.function?.name)
-    if (!calls.length || exhausted) { input.emit({ type: 'text', text: reply?.content?.trim() || 'I have nothing to add.' }); return usage }
-    messages.push({ role: 'assistant', content: reply?.content ?? null, tool_calls: calls })
+    const choice = body.choices?.[0]
+    if (choice?.error) throw new Error(choice.error.message ?? 'The model returned an error.')
+    if (!choice?.message) throw new Error(body.error?.message ?? 'The model returned no answer.')
+    const reply = choice.message
+    const calls = (reply.tool_calls ?? []).filter(item => item?.function?.name)
+    if (!calls.length || exhausted) { input.emit({ type: 'text', text: textOf(reply.content).trim() || 'I have nothing to add.' }); return usage }
+    messages.push({ role: 'assistant', content: textOf(reply.content) || null, tool_calls: calls })
     for (const item of calls) {
       const args = parseArgs(item.function.arguments), action = input.actions.find(candidate => candidate.name === item.function.name)
       let result: string
       if (usage.toolCalls >= MAX_TOOL_CALLS) result = JSON.stringify({ error: 'The tool budget for this turn is spent; answer with what you have.' })
+      else if (args === null) { usage.toolCalls++; result = JSON.stringify({ error: 'Malformed tool arguments; send a JSON object.' }) }
       else if (action) {
         usage.toolCalls++
         const verdict = action.validate(args, now())
