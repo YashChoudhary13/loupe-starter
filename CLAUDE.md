@@ -51,13 +51,20 @@ project and a `.vercel/` link also exist and are *not* production.
   else. `deploy.sh` holds a lock and skips a sha that is already live, so the two paths never
   collide. Deploy log on the server: `~/loupe/shared/autodeploy.log`.
 - **Everything that knows the public URL** (repoint all of it if the domain ever changes):
-  `AUTH_BASE_URL` is the Home origin (`https://qimati-eng.site`) and `CRON_BASE_URL` stays the Loupe
-  host, both in the server `.env`; the four face hosts are constants in `src/lib/faces/faces.ts` and
-  `deploy/loupe.nginx.conf`; the `loupe_cron_base_url` vault secret (`npm run cron:configure` on the
-  server); Shopify webhook callbacks (shopify-reconcile re-registers them); the R2 CORS origin stays
-  `https://loupe.qimati-eng.site` (`npm run r2:cors -- --origin https://loupe.qimati-eng.site`); the
-  Google OAuth redirect URI `https://qimati-eng.site/api/auth/google/callback` (Google Cloud console,
-  by hand); `LOUPE_BASE_URL` in `worker/.env` on the GPU laptop.
+  `AUTH_BASE_URL` and `CRON_BASE_URL` in the server `.env`, both the Loupe host
+  (`https://loupe.qimati-eng.site`) for now; the four face hosts are constants in
+  `src/lib/faces/faces.ts` and `deploy/loupe.nginx.conf`; the `loupe_cron_base_url` vault secret
+  (`npm run cron:configure` on the server); Shopify webhook callbacks (shopify-reconcile re-registers
+  them); the R2 CORS origin stays `https://loupe.qimati-eng.site`
+  (`npm run r2:cors -- --origin https://loupe.qimati-eng.site`); the Google OAuth redirect URI
+  `https://loupe.qimati-eng.site/api/auth/google/callback` (Google Cloud console, by hand);
+  `LOUPE_BASE_URL` in `worker/.env` on the GPU laptop. Every face signs in through that one Loupe
+  callback; the session cookie is on `.qimati-eng.site` either way (D136).
+  **Moving `AUTH_BASE_URL` to the Home origin (`https://qimati-eng.site`) is a later step**, in this
+  order: add `https://qimati-eng.site/api/auth/google/callback` in the Google console first, then
+  edit `~/loupe/shared/.env` (and `.env.railway`) and `sudo systemctl restart loupe`, then re-check
+  sign-in and sign-out. After that switch, rolling back to any pre-platform release needs
+  `AUTH_BASE_URL` reverted first.
 **Volume:** ~300 products/month, 1–2 images each
 
 ---
