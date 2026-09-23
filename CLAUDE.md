@@ -55,7 +55,7 @@ project and a `.vercel/` link also exist and are *not* production.
   host, both in the server `.env`; the four face hosts are constants in `src/lib/faces/faces.ts` and
   `deploy/loupe.nginx.conf`; the `loupe_cron_base_url` vault secret (`npm run cron:configure` on the
   server); Shopify webhook callbacks (shopify-reconcile re-registers them); the R2 CORS origin stays
-  `https://loupe.qimati-eng.site` (`npm run r2:cors --origin https://loupe.qimati-eng.site`); the
+  `https://loupe.qimati-eng.site` (`npm run r2:cors -- --origin https://loupe.qimati-eng.site`); the
   Google OAuth redirect URI `https://qimati-eng.site/api/auth/google/callback` (Google Cloud console,
   by hand); `LOUPE_BASE_URL` in `worker/.env` on the GPU laptop.
 **Volume:** ~300 products/month, 1–2 images each
