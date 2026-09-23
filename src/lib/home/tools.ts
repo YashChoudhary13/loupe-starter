@@ -31,15 +31,16 @@ const days = (value: unknown, fallback: number) => boundedInt(value, 1, 30, fall
 
 export const READ_TOOLS: readonly ToolDef[] = [
   { name: 'get_status', description: 'Current health lights of every service and the five headline numbers. Already in your context; call only to refresh.', parameters: { type: 'object', properties: {}, additionalProperties: false }, run: (_args, ctx) => ctx.status() },
-  { name: 'list_orders', description: 'Shopify orders by filter: unfulfilled (paid, open), awaiting_qc, awaiting_tracking (staged in Dispatch), today, on_hold. Returns order number, date, payment and fulfilment status, total and item count only.',
+  { name: 'list_orders', description: 'Shopify orders by filter: unfulfilled (paid, open), awaiting_qc (checks the newest 250 open orders), awaiting_tracking (staged in Dispatch), today, on_hold. Returns order number, date, payment and fulfilment status, total and item count only.',
     parameters: { type: 'object', properties: { filter: { type: 'string', enum: ORDER_FILTERS }, limit: { type: 'integer', minimum: 1, maximum: 50 } }, required: ['filter'], additionalProperties: false },
     async run(args, ctx) {
       const filter = oneOf(args.filter, ORDER_FILTERS, 'unfulfilled'), limit = boundedInt(args.limit, 1, 50, 20)
       if (filter === 'awaiting_tracking') return (await ctx.parcels(30)).open.flatMap(parcel => parcel.orders.map(item => ({ order: item.order_name, status: item.status, carrier: parcel.carrier, tracking: parcel.tracking_number }))).slice(0, limit)
-      const { rows, ids } = await listOrders(needsShop(ctx), orderQuery(filter, ctx.now()), filter === 'awaiting_qc' ? 100 : limit)
+      const { rows, ids } = await listOrders(needsShop(ctx), orderQuery(filter, ctx.now()), filter === 'awaiting_qc' ? 250 : limit)
       if (filter !== 'awaiting_qc') return rows
       const passed = await ctx.qcPassed(ids)
-      return rows.filter((_, index) => !passed[ids[index]]).slice(0, limit)
+      const waiting = rows.filter((_, index) => !passed[ids[index]]).slice(0, limit)
+      return rows.length === 250 ? [...waiting, { note: 'Only the newest 250 open orders were checked; older ones may also be waiting. The Awaiting QC number on the dashboard covers 300.' }] : waiting
     } },
   { name: 'low_stock', description: 'Active product variants at or below a stock threshold (default 5, at most 20).', parameters: { type: 'object', properties: { threshold: { type: 'integer', minimum: 0, maximum: 20 }, limit: { type: 'integer', minimum: 1, maximum: 50 } }, additionalProperties: false },
     run: (args, ctx) => lowStock(needsShop(ctx), boundedInt(args.threshold, 0, 20, 5), boundedInt(args.limit, 1, 50, 20)) },
@@ -54,7 +55,7 @@ export const READ_TOOLS: readonly ToolDef[] = [
     async run(args, ctx) {
       const n = days(args.days, 7)
       const { open, recent } = await ctx.parcels(n)
-      return { days: n, openParcels: open.length, staged: open.filter(parcel => parcel.tracking_number).length, pushed: recent.length, failedOrders: [...open, ...recent].flatMap(parcel => parcel.orders).filter(item => item.status === 'failed').length,
+      return { days: n, openParcels: open.length, staged: open.filter(parcel => parcel.tracking_number).length, pushed: recent.length, failedOrders: open.flatMap(parcel => parcel.orders).filter(item => item.status === 'failed').length,
         recent: recent.slice(0, 20).map(parcel => ({ carrier: parcel.carrier, tracking: parcel.tracking_number, orders: parcel.orders.map(item => item.order_name), pushedAt: parcel.pushed_at })) }
     } },
   { name: 'bot_status', description: 'Whether each configured WhatsApp-bot workflow is active in n8n, with its last run.', parameters: { type: 'object', properties: {}, additionalProperties: false },

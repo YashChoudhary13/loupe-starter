@@ -55,6 +55,22 @@ describe('read tools', () => {
     expect(dispatch).toMatchObject({ days: 7, openParcels: 2, staged: 2, pushed: 1, failedOrders: 1 })
     expect(dispatch.recent[0]).toEqual({ carrier: 'DTDC', tracking: 'X1234567', orders: ['Qimati7'], pushedAt: '2026-09-22T09:00:00Z' })
   })
+  it('dispatch_summary counts a failed order once even when its parcel also appears in recent', async () => {
+    const mixed = { ...parcel(8, 'fulfilled'), pushed_at: '2026-09-22T09:00:00Z', pushed_by: 'owner', orders: [...parcel(8, 'fulfilled').orders, { id: 'r8b', parcel_id: 'p8', order_id: 'gid://shopify/Order/8b', order_name: 'Qimati8b', position: 1, status: 'failed', fulfillment_id: null, error: 'no stock', push_started_at: null, finished_at: null }] }
+    const ctx = context()
+    ctx.parcels = async () => ({ open: [mixed] as never, recent: [mixed] as never })
+    const dispatch = (await run('dispatch_summary', {}, ctx)).result
+    expect(dispatch.failedOrders).toBe(1)
+  })
+  it('awaiting_qc appends a note when the newest-250 page comes back full', async () => {
+    const ctx = context()
+    ctx.shop = { readOnly: true as const, async graphql<T>(query: string, variables?: Record<string, unknown>) { ctx.calls.push({ query, variables }); return { orders: { nodes: Array.from({ length: 250 }, (_, i) => order(i + 1)) } } as T } }
+    ctx.qcPassed = async () => ({})
+    const { result } = await run('list_orders', { filter: 'awaiting_qc' }, ctx)
+    expect(ctx.calls[0].variables).toEqual({ query: OPEN_PAID_QUERY, first: 250 })
+    expect(result).toHaveLength(21)
+    expect(result[20]).toEqual({ note: 'Only the newest 250 open orders were checked; older ones may also be waiting. The Awaiting QC number on the dashboard covers 300.' })
+  })
   it('bot_status reports each configured workflow; bot_executions refuses an unknown label', async () => {
     expect((await run('bot_status', {})).result).toEqual([{ workflow: 'Main bot', active: true, lastRun: { id: 'abc-1', status: 'success', startedAt: null, stoppedAt: null } }])
     expect((await run('bot_executions', { workflow: 'Main bot', limit: 99 })).result).toHaveLength(1)
