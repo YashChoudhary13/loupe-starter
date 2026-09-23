@@ -1,4 +1,4 @@
-# Qimati Platform — Implementation Plan, part 4 of 8 (read-only Shopify, numbers, server wiring)
+# Qimati Platform — Implementation Plan, part 5 of 10 (read-only Shopify, numbers, server wiring)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -1,4 +1,4 @@
-# Qimati Platform — Implementation Plan, part 6 of 8 (the chat turn)
+# Qimati Platform — Implementation Plan, part 7 of 10 (the chat turn)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -275,7 +275,7 @@ Run: `npx vitest run tests/home-chat.test.ts && npm run typecheck && npx eslint 
 Expected: PASS (14 tests); clean.
 
 ```bash
-git add src/lib/home/chat.ts tests/home-chat.test.ts docs/superpowers/plans/2026-09-23-platform-6-chat-turn.md
+git add src/lib/home/chat.ts tests/home-chat.test.ts docs/superpowers/plans/2026-09-23-platform-7-chat-turn.md
 git commit -m "fix(home): the output budget is per turn, a failed 200 is an error not an answer, text parts and malformed tool arguments are handled"
 ```
 
@@ -291,6 +291,6 @@ Run: `npx vitest run tests/home-chat.test.ts tests/home-routes.test.ts && npm ru
 Expected: PASS (25 tests across both files); clean.
 
 ```bash
-git add src/lib/home/chat.ts tests/home-chat.test.ts src/app/api/home/chat/route.ts src/app/api/home/action/route.ts src/lib/home/body.ts tests/home-routes.test.ts docs/superpowers/plans/2026-09-23-platform-6-chat-turn.md docs/superpowers/plans/2026-09-23-platform-7-routes-home.md
+git add src/lib/home/chat.ts tests/home-chat.test.ts src/app/api/home/chat/route.ts src/app/api/home/action/route.ts src/lib/home/body.ts tests/home-routes.test.ts docs/superpowers/plans/2026-09-23-platform-7-chat-turn.md docs/superpowers/plans/2026-09-23-platform-8-routes.md
 git commit -m "fix(home): bodies are capped before they are read, a failed turn still writes its cost line, a null body is a 400"
 ```

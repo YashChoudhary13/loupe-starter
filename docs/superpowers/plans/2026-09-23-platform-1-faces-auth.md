@@ -1,10 +1,10 @@
-# Qimati Platform — Implementation Plan, part 1 of 8 (faces, proxy, origins, one sign-in)
+# Qimati Platform — Implementation Plan, part 1 of 10 (faces, proxy, origins, one sign-in)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** One codebase wearing four faces chosen by hostname (`qimati-eng.site` Home, `qc.` Order QC, `ship.` Fulfilment, `loupe.` Loupe), one Google sign-in shared across them, and a Home dashboard with health lights, five numbers and a read-only AI whose only actions are three confirm-gated WhatsApp-bot calls.
 
-**Architecture:** A pure face table (`src/lib/faces/faces.ts`) drives a Next 16 `proxy.ts` that sets `x-face` and redirects foreign screens to their owning host; the shell reads the header for the menu and the palette. Session cookies gain the `.qimati-eng.site` domain in production. Home is three server-side libraries — probes, numbers, and an AI tool loop over a `ReadOnlyShopify` wrapper — with every external call injected so it is unit-tested against fakes. The plan is split into eight files so each stays under 500 lines; do them in order.
+**Architecture:** A pure face table (`src/lib/faces/faces.ts`) drives a Next 16 `proxy.ts` that sets `x-face` and redirects foreign screens to their owning host; the shell reads the header for the menu and the palette. Session cookies gain the `.qimati-eng.site` domain in production. Home is three server-side libraries — probes, numbers, and an AI tool loop over a `ReadOnlyShopify` wrapper — with every external call injected so it is unit-tested against fakes. The plan is split into ten files so each stays under 500 lines; do them in order.
 
 **Tech Stack:** Next.js 16 App Router (`src/proxy.ts`), TypeScript strict, Supabase Postgres (service role, RLS deny-all), Shopify Admin GraphQL via `ShopifyClient`, OpenRouter chat completions with tool calling, n8n public REST API, vitest (`environment: 'node'`, `renderToString` for components).
 
@@ -14,17 +14,19 @@
 
 1. `2026-09-23-platform-1-faces-auth.md` — Tasks 1–3: face table + proxy; own-origin checks; domain cookies and face-aware sign-in
 2. `2026-09-23-platform-2-shell-look.md` — Tasks 4–5: per-face shell and Apps switcher; palettes, nginx names
-3. `2026-09-23-platform-3-n8n-probes.md` — Tasks 6–7: n8n client; probes, state table, schema proof
-4. `2026-09-23-platform-4-reads-numbers.md` — Task 8: read-only Shopify, the numbers, the cached server snapshot
-5. `2026-09-23-platform-5-ai-tools-actions.md` — Tasks 9–10: read tools; confirm-gated actions
-6. `2026-09-23-platform-6-chat-turn.md` — Task 11: the chat turn (OpenRouter tool loop, budgets, rate limit)
-7. `2026-09-23-platform-7-routes-home.md` — Tasks 12–13: chat/action routes; the Home screen
-8. `2026-09-23-platform-8-docs-rollout.md` — Task 14: decisions, CLAUDE.md, full verification, progress entry, rollout
+3. `2026-09-23-platform-3-n8n.md` — Task 6: the n8n client
+4. `2026-09-23-platform-4-probes.md` — Task 7: probes, state table, schema proof, the Shopify throttle reading
+5. `2026-09-23-platform-5-reads-numbers.md` — Task 8: read-only Shopify, the numbers, the probe store, the cached server snapshot
+6. `2026-09-23-platform-6-tools-actions.md` — Tasks 9–10: read tools; confirm-gated actions
+7. `2026-09-23-platform-7-chat-turn.md` — Task 11: the chat turn (OpenRouter tool loop, budgets, rate limit)
+8. `2026-09-23-platform-8-routes.md` — Task 12: the chat stream route and the confirm route
+9. `2026-09-23-platform-9-home-screen.md` — Task 13: the Home screen
+10. `2026-09-23-platform-10-docs-rollout.md` — Task 14: decisions, CLAUDE.md, full verification, progress entry, rollout
 
 ## Global Constraints
 
 - Work only in `/Users/yash/Desktop/Qimati-worktrees/loupe-platform` on branch `claude/platform`. Commit locally with the exact message given. **Never push, never merge, never switch or delete branches** — a push to `main` deploys production within a minute.
-- Never apply a migration, never run `scripts/apply-migration.ts` or `npm run db:push`, never run the dev server against production, never change Shopify scopes, DNS or the server, never send any message. Those are the owner's rollout steps (part 8, Task 14).
+- Never apply a migration, never run `scripts/apply-migration.ts` or `npm run db:push`, never run the dev server against production, never change Shopify scopes, DNS or the server, never send any message. Those are the owner's rollout steps (part 10, Task 14).
 - No test or script may fulfil, edit or message a real order, or touch a real database or Shopify. Fake every external system at the client boundary (`fetchImpl`, a fake `supabaseServer`, a fake `ShopifyClient`). No `.env` exists in this worktree and none is needed; never look for credentials.
 - **Never run the whole test suite** — some files write to the real Supabase project. Run only the focused files named in each task: `npx vitest run tests/<file>`.
 - The AI reads only. It never gets a way to write to Shopify, the website, products, discounts, customers or orders. Its only actions are the three WhatsApp-bot actions, hidden until `BOT_REPORT_WEBHOOK_URL` / `BOT_STAFF_TEXT_WEBHOOK_URL` and `BOT_WEBHOOK_SECRET` exist. No customer name, phone or address reaches the model; every Shopify query the AI can trigger is a constant string in source.
