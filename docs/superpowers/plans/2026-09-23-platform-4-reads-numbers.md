@@ -41,17 +41,24 @@ describe('read-only Shopify', () => {
     expect(orderQuery('today', new Date('2026-09-23T17:00:00Z'))).toBe("created_at:>='2026-09-23T00:00:00+05:30' -status:cancelled")
     expect(orderQuery('on_hold', new Date())).toBe('status:open fulfillment_status:on_hold')
   })
+  it('a raw client is not assignable as read-only (compile-time)', () => {
+    // @ts-expect-error a raw client is not read-only
+    const notReadOnly: ReadOnlyShopify = { async graphql() { return {} } }
+    void notReadOnly
+  })
 })
 describe('readers', () => {
   it('maps orders to the six safe fields', async () => {
-    const shop: ReadOnlyShopify = { async graphql<T>() { return { orders: { nodes: [{ id: 'gid://shopify/Order/1', name: 'Qimati1', createdAt: '2026-09-23T05:00:00Z', displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', subtotalLineItemsQuantity: 3, totalPriceSet: { shopMoney: { amount: '1200.00', currencyCode: 'INR' } } }] } } as T } }
+    const shop: ReadOnlyShopify = { readOnly: true, async graphql<T>() { return { orders: { nodes: [{ id: 'gid://shopify/Order/1', name: 'Qimati1', createdAt: '2026-09-23T05:00:00Z', displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', subtotalLineItemsQuantity: 3, totalPriceSet: { shopMoney: { amount: '1200.00', currencyCode: 'INR' } } }] } } as T } }
     expect(await listOrders(shop, 'q', 5)).toEqual({ ids: ['gid://shopify/Order/1'], rows: [{ name: 'Qimati1', createdAt: '2026-09-23T05:00:00Z', payment: 'PAID', fulfilment: 'UNFULFILLED', total: '1200.00 INR', items: 3 }] })
   })
   it('pages ids up to the cap and says when it stopped early', async () => {
     let page = 0
-    const shop: ReadOnlyShopify = { async graphql<T>() { page++; return { orders: { nodes: Array.from({ length: 100 }, (_, n) => ({ id: `gid://shopify/Order/${page * 100 + n}` })), pageInfo: { hasNextPage: true, endCursor: `c${page}` } } } as T } }
+    const afters: unknown[] = []
+    const shop: ReadOnlyShopify = { readOnly: true, async graphql<T>(_query: string, variables?: Record<string, unknown>) { afters.push(variables?.after); page++; return { orders: { nodes: Array.from({ length: 100 }, (_, n) => ({ id: `gid://shopify/Order/${page * 100 + n}` })), pageInfo: { hasNextPage: true, endCursor: `c${page}` } } } as T } }
     const result = await listOrderIds(shop, 'q', 250)
     expect(result.ids).toHaveLength(250); expect(result.truncated).toBe(true); expect(page).toBe(3)
+    expect(afters).toEqual([null, 'c1', 'c2'])
   })
   it('counts through ordersCount and reads low stock with the threshold in the search', async () => {
     const { calls, client } = record()
@@ -66,11 +73,11 @@ describe('readers', () => {
 
 ```ts
 // tests/home-numbers.test.ts
-import { describe, expect, it } from 'vitest'
-import { computeNumbers } from '@/lib/home/numbers'
+import { describe, expect, it, vi } from 'vitest'
+import { computeNumbers, NUMBERS_TIMEOUT_MS } from '@/lib/home/numbers'
 import { COUNT_QUERY, ORDER_IDS_QUERY, OPEN_PAID_QUERY, orderQuery, type ReadOnlyShopify } from '@/lib/home/shopify-reads'
 
-const shop = (counts: Record<string, number>, ids: string[]): ReadOnlyShopify => ({ async graphql<T>(query: string, variables?: Record<string, unknown>) {
+const shop = (counts: Record<string, number>, ids: string[]): ReadOnlyShopify => ({ readOnly: true, async graphql<T>(query: string, variables?: Record<string, unknown>) {
   if (query === COUNT_QUERY) return { ordersCount: { count: counts[String(variables?.query)] ?? 0, precision: 'EXACT' } } as T
   if (query === ORDER_IDS_QUERY) return { orders: { nodes: ids.map(id => ({ id })), pageInfo: { hasNextPage: false, endCursor: null } } } as T
   throw new Error(`unexpected query ${query}`)
@@ -84,7 +91,7 @@ describe('home numbers', () => {
     expect(numbers).toMatchObject({ ordersToday: 4, paidUnfulfilled: 12, awaitingQc: 2, awaitingQcCapped: false, awaitingTracking: 5, openShortages: 2, problems: [], computedAt: '2026-09-23T20:30:00.000Z' })
   })
   it('a failed check is a null with its reason, never a thrown page', async () => {
-    const client: ReadOnlyShopify = { async graphql() { throw new Error('Shopify 502') } }
+    const client: ReadOnlyShopify = { readOnly: true, async graphql() { throw new Error('Shopify 502') } }
     const numbers = await computeNumbers({ shop: client, qcPassed: async () => ({}), openParcels: async () => { throw new Error('db down') }, openShortages: async () => 0, now })
     expect(numbers).toMatchObject({ ordersToday: null, paidUnfulfilled: null, awaitingQc: null, awaitingTracking: null, openShortages: 0 })
     expect(numbers.problems).toEqual(expect.arrayContaining([expect.stringContaining('Shopify 502'), expect.stringContaining('db down')]))
@@ -92,6 +99,19 @@ describe('home numbers', () => {
   it('without Shopify configured the Shopify numbers are null and it says so', async () => {
     const numbers = await computeNumbers({ shop: null, qcPassed: async () => ({}), openParcels: async () => 0, openShortages: async () => 0, now })
     expect(numbers.ordersToday).toBeNull(); expect(numbers.problems).toContain('Shopify is not configured.')
+  })
+  it('a stalled Shopify read times out instead of hanging the page', async () => {
+    vi.useFakeTimers()
+    try {
+      const client: ReadOnlyShopify = { readOnly: true, async graphql() { return new Promise(() => {}) } }
+      const pending = computeNumbers({ shop: client, qcPassed: async () => ({}), openParcels: async () => 5, openShortages: async () => 2, now })
+      await vi.advanceTimersByTimeAsync(NUMBERS_TIMEOUT_MS + 1)
+      const numbers = await pending
+      expect(numbers).toMatchObject({ ordersToday: null, awaitingTracking: 5, openShortages: 2 })
+      expect(numbers.problems).toContain('orders today: timed out')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 ```
@@ -144,10 +164,11 @@ Expected: FAIL — modules missing.
 import type { ShopifyClient } from '@/lib/shopify/client'
 import { PAID } from '@/lib/shopify/qc-orders'
 
-export interface ReadOnlyShopify { graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> }
+/** `readOnly` brands this type so a raw `ShopifyClient` (structurally just `{ graphql }`) cannot stand in for it by accident — only `readOnlyShopify()` below can produce one. */
+export interface ReadOnlyShopify { readonly readOnly: true; graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> }
 /** The assistant's only route to Shopify (D137). A document containing a mutation is refused before it is sent, and every query it carries is a constant in this file. */
 export function readOnlyShopify(client: Pick<ShopifyClient, 'graphql'>): ReadOnlyShopify {
-  return { graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+  return { readOnly: true, graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
     if (/\bmutation\b/i.test(query)) return Promise.reject(new Error('The home assistant is read-only: mutations are refused.'))
     return client.graphql<T>(query, variables)
   } }
@@ -205,14 +226,24 @@ export async function lowStock(shop: ReadOnlyShopify, threshold: number, limit: 
 ```ts
 // src/lib/home/numbers.ts
 import { countOrders, listOrderIds, OPEN_PAID_QUERY, orderQuery, type ReadOnlyShopify } from './shopify-reads'
+import { withTimeout } from './probes'
 
 export interface HomeNumbers { ordersToday: number | null; paidUnfulfilled: number | null; awaitingQc: number | null; awaitingQcCapped: boolean; awaitingTracking: number | null; openShortages: number | null; problems: string[]; computedAt: string }
 export interface NumberDeps { shop: ReadOnlyShopify | null; qcPassed(ids: string[]): Promise<Record<string, boolean>>; openParcels(): Promise<number>; openShortages(): Promise<number>; now: () => Date }
 
-/** The five headline numbers. A check that fails is a null plus a sentence in `problems`; the page never throws over one of them. */
+export const NUMBERS_TIMEOUT_MS = 10_000
+
+/** The five headline numbers. A check that fails or hangs past NUMBERS_TIMEOUT_MS is a null plus a sentence in `problems`; the page never throws or hangs over one of them. */
 export async function computeNumbers(deps: NumberDeps): Promise<HomeNumbers> {
   const problems: string[] = []
-  const attempt = async <T>(label: string, work: () => Promise<T>): Promise<T | null> => { try { return await work() } catch (error) { problems.push(`${label}: ${error instanceof Error ? error.message : String(error)}`); return null } }
+  const attempt = async <T>(label: string, work: () => Promise<T>): Promise<T | null> => {
+    try { return await withTimeout(work(), NUMBERS_TIMEOUT_MS) }
+    catch (error) {
+      const reason = error instanceof Error ? (error.name === 'TimeoutError' ? 'timed out' : error.message) : String(error)
+      problems.push(`${label}: ${reason}`)
+      return null
+    }
+  }
   const shop = deps.shop
   if (!shop) problems.push('Shopify is not configured.')
   const [ordersToday, paidUnfulfilled, awaiting, awaitingTracking, openShortages] = await Promise.all([

@@ -64,7 +64,7 @@ export async function probeShopify(client: ShopifyProbeClient, now: () => number
   } catch (error) { return red(reason(error), now() - started) }
 }
 
-function withTimeout<T>(work: PromiseLike<T>, ms: number): Promise<T> {
+export function withTimeout<T>(work: PromiseLike<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(Object.assign(new Error('timed out'), { name: 'TimeoutError' })), ms)
     Promise.resolve(work).then(value => { clearTimeout(timer); resolve(value) }, error => { clearTimeout(timer); reject(error) })

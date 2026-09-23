@@ -1,10 +1,11 @@
 import type { ShopifyClient } from '@/lib/shopify/client'
 import { PAID } from '@/lib/shopify/qc-orders'
 
-export interface ReadOnlyShopify { graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> }
+/** `readOnly` brands this type so a raw `ShopifyClient` (structurally just `{ graphql }`) cannot stand in for it by accident — only `readOnlyShopify()` below can produce one. */
+export interface ReadOnlyShopify { readonly readOnly: true; graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> }
 /** The assistant's only route to Shopify (D137). A document containing a mutation is refused before it is sent, and every query it carries is a constant in this file. */
 export function readOnlyShopify(client: Pick<ShopifyClient, 'graphql'>): ReadOnlyShopify {
-  return { graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+  return { readOnly: true, graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
     if (/\bmutation\b/i.test(query)) return Promise.reject(new Error('The home assistant is read-only: mutations are refused.'))
     return client.graphql<T>(query, variables)
   } }

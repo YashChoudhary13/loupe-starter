@@ -19,17 +19,24 @@ describe('read-only Shopify', () => {
     expect(orderQuery('today', new Date('2026-09-23T17:00:00Z'))).toBe("created_at:>='2026-09-23T00:00:00+05:30' -status:cancelled")
     expect(orderQuery('on_hold', new Date())).toBe('status:open fulfillment_status:on_hold')
   })
+  it('a raw client is not assignable as read-only (compile-time)', () => {
+    // @ts-expect-error a raw client is not read-only
+    const notReadOnly: ReadOnlyShopify = { async graphql() { return {} } }
+    void notReadOnly
+  })
 })
 describe('readers', () => {
   it('maps orders to the six safe fields', async () => {
-    const shop: ReadOnlyShopify = { async graphql<T>() { return { orders: { nodes: [{ id: 'gid://shopify/Order/1', name: 'Qimati1', createdAt: '2026-09-23T05:00:00Z', displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', subtotalLineItemsQuantity: 3, totalPriceSet: { shopMoney: { amount: '1200.00', currencyCode: 'INR' } } }] } } as T } }
+    const shop: ReadOnlyShopify = { readOnly: true, async graphql<T>() { return { orders: { nodes: [{ id: 'gid://shopify/Order/1', name: 'Qimati1', createdAt: '2026-09-23T05:00:00Z', displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', subtotalLineItemsQuantity: 3, totalPriceSet: { shopMoney: { amount: '1200.00', currencyCode: 'INR' } } }] } } as T } }
     expect(await listOrders(shop, 'q', 5)).toEqual({ ids: ['gid://shopify/Order/1'], rows: [{ name: 'Qimati1', createdAt: '2026-09-23T05:00:00Z', payment: 'PAID', fulfilment: 'UNFULFILLED', total: '1200.00 INR', items: 3 }] })
   })
   it('pages ids up to the cap and says when it stopped early', async () => {
     let page = 0
-    const shop: ReadOnlyShopify = { async graphql<T>() { page++; return { orders: { nodes: Array.from({ length: 100 }, (_, n) => ({ id: `gid://shopify/Order/${page * 100 + n}` })), pageInfo: { hasNextPage: true, endCursor: `c${page}` } } } as T } }
+    const afters: unknown[] = []
+    const shop: ReadOnlyShopify = { readOnly: true, async graphql<T>(_query: string, variables?: Record<string, unknown>) { afters.push(variables?.after); page++; return { orders: { nodes: Array.from({ length: 100 }, (_, n) => ({ id: `gid://shopify/Order/${page * 100 + n}` })), pageInfo: { hasNextPage: true, endCursor: `c${page}` } } } as T } }
     const result = await listOrderIds(shop, 'q', 250)
     expect(result.ids).toHaveLength(250); expect(result.truncated).toBe(true); expect(page).toBe(3)
+    expect(afters).toEqual([null, 'c1', 'c2'])
   })
   it('counts through ordersCount and reads low stock with the threshold in the search', async () => {
     const { calls, client } = record()

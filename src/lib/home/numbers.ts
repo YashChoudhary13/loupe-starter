@@ -1,12 +1,22 @@
 import { countOrders, listOrderIds, OPEN_PAID_QUERY, orderQuery, type ReadOnlyShopify } from './shopify-reads'
+import { withTimeout } from './probes'
 
 export interface HomeNumbers { ordersToday: number | null; paidUnfulfilled: number | null; awaitingQc: number | null; awaitingQcCapped: boolean; awaitingTracking: number | null; openShortages: number | null; problems: string[]; computedAt: string }
 export interface NumberDeps { shop: ReadOnlyShopify | null; qcPassed(ids: string[]): Promise<Record<string, boolean>>; openParcels(): Promise<number>; openShortages(): Promise<number>; now: () => Date }
 
-/** The five headline numbers. A check that fails is a null plus a sentence in `problems`; the page never throws over one of them. */
+export const NUMBERS_TIMEOUT_MS = 10_000
+
+/** The five headline numbers. A check that fails or hangs past NUMBERS_TIMEOUT_MS is a null plus a sentence in `problems`; the page never throws or hangs over one of them. */
 export async function computeNumbers(deps: NumberDeps): Promise<HomeNumbers> {
   const problems: string[] = []
-  const attempt = async <T>(label: string, work: () => Promise<T>): Promise<T | null> => { try { return await work() } catch (error) { problems.push(`${label}: ${error instanceof Error ? error.message : String(error)}`); return null } }
+  const attempt = async <T>(label: string, work: () => Promise<T>): Promise<T | null> => {
+    try { return await withTimeout(work(), NUMBERS_TIMEOUT_MS) }
+    catch (error) {
+      const reason = error instanceof Error ? (error.name === 'TimeoutError' ? 'timed out' : error.message) : String(error)
+      problems.push(`${label}: ${reason}`)
+      return null
+    }
+  }
   const shop = deps.shop
   if (!shop) problems.push('Shopify is not configured.')
   const [ordersToday, paidUnfulfilled, awaiting, awaitingTracking, openShortages] = await Promise.all([
