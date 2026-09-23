@@ -24,8 +24,9 @@ project and a `.vercel/` link also exist and are *not* production.
   repository is public. This Mac's SSH key is installed, so `ssh $SERVER_USER@$SERVER_IP` works
   without the password. Ubuntu 26.04, 2 vCPU, 3.7 GB RAM + 2 GB swap, passwordless sudo.
 - **Neighbours:** `packaging.qimati-eng.site` (:8787) and `linkedin.qimati-eng.site` (:8788) run
-  on the same box as `systemd` units `qimati` and `inpulse`. Do not touch their nginx sites,
-  units or directories.
+  on the same box as `systemd` units `qimati` and `inpulse`, and `print.qimati-eng.site` (:8790,
+  nginx site `office-print-relay`) runs there too. Do not touch their nginx sites, units or
+  directories.
 - **Domain:** `loupe.qimati-eng.site`, Cloudflare-proxied A record → nginx (`deploy/loupe.nginx.conf`,
   TLS from certbot, auto-renewed) → Next.js on `127.0.0.1:3000`.
 - **Layout:** `~/loupe/repo` = checkout of `main` (source only) · `~/loupe/releases/<stamp>-<sha>/`
