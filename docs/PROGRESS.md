@@ -29,6 +29,25 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-28 — Order QC: orders on hold are listed and checked, with a Hold badge (D138)
+
+**Goal this session:** let the team QC an order that is on hold in Shopify, since they check first and hold after.
+
+**Built:**
+- `src/lib/shopify/qc-orders.ts` → the open list also searches `fulfillment_status:on_hold`; a held order is no longer refused (`SCHEDULED` still is)
+- `src/app/(shell)/qc/page.tsx`, `src/components/qc/QcScreen.tsx` → amber **Hold** pill beside the order number on the list row and the order screen
+- `tests/qc-orders.test.ts` → query strings updated; new case: a held order reads with `blockedReason` null and `fulfillmentStatus` `ON_HOLD`
+
+**Verified:** `vitest run tests/qc-orders.test.ts tests/qc-server.test.ts` → 21 passed; `tsc --noEmit` clean; eslint clean on the four files. Live evidence for the gap: a read-only Hub-app pull the same morning found 48 open orders on hold that the `unfulfilled OR partial` search omitted. `next build` not run this session.
+
+**Not finished / known broken:**
+- Not deployed. Branch `claude/qc-hold` in worktree `Qimati-worktrees/loupe-qc-hold`, uncommitted; pushing to `main` deploys.
+- Not tried on the live store: open a held order on `qc.` and pass it, release the hold, reopen — the checklist should still read passed.
+
+**Surprises:** none.
+
+**Next session should start with:** owner commits and pushes, then opens one held order (for example Qimati6110) on the QC face.
+
 ## 2026-09-23 — Platform: four faces, one sign-in, Home with lights, numbers and a read-only assistant (D136, D137)
 
 **Goal this session:** turn Loupe into one codebase wearing four faces by hostname — Home at `qimati-eng.site`, Loupe, Order QC and Fulfilment each on their own subdomain, one Google sign-in across all four — and build the Home dashboard: health lights with a change log, five cached numbers, and a read-only assistant whose only actions are three confirm-gated WhatsApp-bot calls. Then record the decisions, verify the whole branch once, and write this entry.

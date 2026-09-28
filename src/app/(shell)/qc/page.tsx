@@ -37,14 +37,14 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
     </form>
     {error && <p role="alert" className="mb-4 rounded-panel bg-white p-4 text-[13px] text-amber">{error}</p>}
     <div className="rounded-card bg-surface p-4 md:p-6">
-      <div className="mb-4 flex flex-wrap justify-between gap-2"><h2 className="text-[15px] font-medium">{q ? 'Matching open orders' : 'Paid orders awaiting fulfillment'}</h2><span className="text-[12px] text-ink-soft">{q ? 'A searched order is shown whatever its payment status' : 'Payment-pending orders are hidden until paid'} · QC status is verified again when you open an order</span></div>
+      <div className="mb-4 flex flex-wrap justify-between gap-2"><h2 className="text-[15px] font-medium">{q ? 'Matching open orders' : 'Paid orders awaiting fulfillment, including on hold'}</h2><span className="text-[12px] text-ink-soft">{q ? 'A searched order is shown whatever its payment status' : 'Payment-pending orders are hidden until paid'} · QC status is verified again when you open an order</span></div>
       {result?.nodes.length === 0 && <p className="py-8 text-[13px] text-ink-soft">No matching open orders awaiting fulfillment.</p>}
       <div className="grid gap-3">{result?.nodes.map(order => {
         const saved = statuses[order.id]
         const label = saved?.status === 'passed' ? 'Previously passed · recheck' : saved?.status === 'stale' ? 'Order changed · recount' : saved ? 'QC in progress' : 'Not checked'
         const payment = order.displayFinancialStatus.toLowerCase().replaceAll('_', ' ')
         return <Link key={order.id} href={orderPath(order.id)} className="flex flex-wrap items-center justify-between gap-4 rounded-panel border border-chip p-4 hover:border-ink focus-visible:outline-2 focus-visible:outline-ink">
-          <div><div className="text-[16px] font-medium">{order.name}</div><div className="mt-1 text-[12px] text-ink-soft">{day(order.createdAt)} · {order.displayFulfillmentStatus.toLowerCase().replaceAll('_', ' ')} · <span className={payment === 'paid' ? '' : 'text-amber'}>{payment}</span></div></div>
+          <div><div className="flex items-center gap-2 text-[16px] font-medium">{order.name}{order.displayFulfillmentStatus === 'ON_HOLD' && <span className="rounded-pill bg-amber px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">Hold</span>}</div><div className="mt-1 text-[12px] text-ink-soft">{day(order.createdAt)} · {order.displayFulfillmentStatus.toLowerCase().replaceAll('_', ' ')} · <span className={payment === 'paid' ? '' : 'text-amber'}>{payment}</span></div></div>
           <div className="flex items-center gap-4 text-[12px]"><span className="rounded-pill bg-chip px-3 py-2">{label}</span><span>Open QC →</span></div>
         </Link>
       })}</div>

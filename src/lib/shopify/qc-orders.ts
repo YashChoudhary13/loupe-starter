@@ -36,7 +36,8 @@ export async function listQcOrders(client: ShopifyClient, search = '', after: st
   if (term.length > 60 || (term && !/^[#\w -]+$/.test(term))) throw new Error('Search by order number, for example Qimati5019.')
   if (after && (after.length > 1500 || !/^[a-zA-Z0-9+/=_-]+$/.test(after))) throw new Error('Invalid order page. Return to the first page.')
   // A searched order number is shown whatever its payment state, so a specific order can always be opened.
-  const query = `status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial)${term ? ` name:${JSON.stringify(term.replace(/^#/, ''))}` : ` ${PAID}`}`
+  // Orders on hold are listed and checked like any other: the team checks an order and then holds it, so the hold is shown, not enforced (owner, 2026-09-28).
+  const query = `status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial OR fulfillment_status:on_hold)${term ? ` name:${JSON.stringify(term.replace(/^#/, ''))}` : ` ${PAID}`}`
   const data = await client.graphql<{ orders: { nodes: QcOrderSummary[]; pageInfo: PageInfo } }>(`
     query LoupeQcOrders($query: String!, $after: String) {
       orders(first: 30, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
@@ -90,7 +91,7 @@ export async function readQcOrder(client: ShopifyClient, id: string): Promise<Qc
           if (!final.order || first.updatedAt !== final.order.updatedAt || first.cancelledAt !== final.order.cancelledAt) { changed = true; break }
         }
         const blockedReason = first.cancelledAt ? 'This order is cancelled. Do not pack it.'
-          : ['ON_HOLD', 'SCHEDULED'].includes(first.displayFulfillmentStatus) ? 'This order is on hold or scheduled. Resolve its fulfillment status in Shopify before QC.'
+          : first.displayFulfillmentStatus === 'SCHEDULED' ? 'This order is scheduled. Resolve its fulfillment status in Shopify before QC.'
           : lines.length === 0 ? 'There are no remaining shipping units to check.'
           : lines.some(line => !line.variantId) ? 'This order includes a custom or deleted variant. Resolve that line in Shopify before barcode QC.'
           : null

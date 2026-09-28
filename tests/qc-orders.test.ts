@@ -44,10 +44,10 @@ describe('whole-order Shopify QC snapshots', () => {
     expect((await readQcOrder(client(graphql), '1')).lines).toHaveLength(1)
     expect(graphql).toHaveBeenCalledTimes(1)
   })
-  it('blocks cancelled orders, held orders, custom/deleted variants and empty checklists', async () => {
+  it('blocks cancelled orders, scheduled orders, custom/deleted variants and empty checklists', async () => {
     for (const [rows, changes, reason] of [
       [[line()], { cancelledAt: '2026-09-15T08:02:00Z' }, 'cancelled'],
-      [[line()], { displayFulfillmentStatus: 'ON_HOLD' }, 'on hold'],
+      [[line()], { displayFulfillmentStatus: 'SCHEDULED' }, 'scheduled'],
       [[line('1', { variant: null })], {}, 'custom or deleted'],
       [[line('1', { fulfillableQuantity: 0 })], {}, 'no remaining'],
     ] as const) {
@@ -55,16 +55,21 @@ describe('whole-order Shopify QC snapshots', () => {
       expect((await readQcOrder(client(graphql), '1')).blockedReason).toContain(reason)
     }
   })
+  it('checks an order on hold like any other, carrying the hold status for the badge', async () => {
+    const order = await readQcOrder(client(vi.fn().mockResolvedValueOnce(page([line()], null, { displayFulfillmentStatus: 'ON_HOLD' }))), '1')
+    expect(order.blockedReason).toBeNull()
+    expect(order.fulfillmentStatus).toBe('ON_HOLD')
+  })
   it('rejects duplicate line IDs and invalid quantities', async () => {
     await expect(readQcOrder(client(vi.fn().mockResolvedValue(page([line(),line()]))), '1')).rejects.toThrow(/repeated/)
     await expect(readQcOrder(client(vi.fn().mockResolvedValue(page([line('1', { fulfillableQuantity: -1 })]))), '1')).rejects.toThrow(/invalid remaining/)
   })
-  it('lists only paid open orders with unfulfilled units, shows any searched order, and preserves safe cursor pagination', async () => {
+  it('lists paid open orders with unfulfilled units, on hold included, shows any searched order, and preserves safe cursor pagination', async () => {
     const graphql = vi.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } })
     await listQcOrders(client(graphql), '#Qimati5019', 'Y3Vyc29y')
-    expect(graphql.mock.calls[0][1]).toEqual({ query: 'status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial) name:"Qimati5019"', after: 'Y3Vyc29y' })
+    expect(graphql.mock.calls[0][1]).toEqual({ query: 'status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial OR fulfillment_status:on_hold) name:"Qimati5019"', after: 'Y3Vyc29y' })
     await listQcOrders(client(graphql))
-    expect(graphql.mock.calls[1][1].query).toBe('status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial) (financial_status:paid OR financial_status:partially_paid OR financial_status:partially_refunded)')
+    expect(graphql.mock.calls[1][1].query).toBe('status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial OR fulfillment_status:on_hold) (financial_status:paid OR financial_status:partially_paid OR financial_status:partially_refunded)')
     expect(graphql.mock.calls[1][0]).toContain('displayFinancialStatus')
     await expect(listQcOrders(client(graphql), 'foo OR status:any')).rejects.toThrow(/Search by/)
   })
