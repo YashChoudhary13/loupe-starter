@@ -13,7 +13,7 @@ export interface QcOrderSummary {
 interface PageInfo { hasNextPage: boolean; endCursor: string | null }
 interface RawLine {
   id: string; title: string; variantTitle: string | null; sku: string | null
-  requiresShipping: boolean; fulfillableQuantity: number
+  requiresShipping: boolean; unfulfilledQuantity: number
   image: { url: string } | null
   variant: { id: string; sku: string | null; barcode: string | null; title: string } | null
 }
@@ -64,7 +64,7 @@ export async function readQcOrder(client: ShopifyClient, id: string): Promise<Qc
           order(id: $id) {
             ${headerFields}
             lineItems(first: 100, after: $after) {
-              nodes { id title variantTitle sku requiresShipping fulfillableQuantity image { url(transform: { maxWidth: 320, maxHeight: 320 }) } variant { id sku barcode title } }
+              nodes { id title variantTitle sku requiresShipping unfulfilledQuantity image { url(transform: { maxWidth: 320, maxHeight: 320 }) } variant { id sku barcode title } }
               pageInfo { hasNextPage endCursor }
             }
           }
@@ -76,11 +76,13 @@ export async function readQcOrder(client: ShopifyClient, id: string): Promise<Qc
       for (const line of order.lineItems.nodes) {
         if (seen.has(line.id)) throw new Error('Shopify repeated an order line. Refresh before scanning.')
         seen.add(line.id)
-        if (!Number.isSafeInteger(line.fulfillableQuantity) || line.fulfillableQuantity < 0) throw new Error('Shopify returned an invalid remaining quantity. Review the order in Shopify.')
-        if (!line.requiresShipping || line.fulfillableQuantity === 0) continue
+        // unfulfilledQuantity, not fulfillableQuantity: Shopify reports 0 fulfillable on every line of an order on hold, and the two
+        // agree everywhere else (all 37 open orders not on hold, 2026-09-29). Refunded or removed units are excluded from both (D138).
+        if (!Number.isSafeInteger(line.unfulfilledQuantity) || line.unfulfilledQuantity < 0) throw new Error('Shopify returned an invalid remaining quantity. Review the order in Shopify.')
+        if (!line.requiresShipping || line.unfulfilledQuantity === 0) continue
         lines.push({ id: line.id, variantId: line.variant?.id ?? null, title: line.title,
           variantTitle: line.variant?.title === 'Default Title' ? null : (line.variant?.title ?? line.variantTitle),
-          sku: line.variant?.sku ?? line.sku, barcode: line.variant?.barcode ?? null, required: line.fulfillableQuantity,
+          sku: line.variant?.sku ?? line.sku, barcode: line.variant?.barcode ?? null, required: line.unfulfilledQuantity,
           image: /^https:\/\/cdn\.shopify\.com\//.test(line.image?.url ?? '') ? line.image!.url : null })
       }
       if (!order.lineItems.pageInfo.hasNextPage) {

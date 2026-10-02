@@ -29,6 +29,24 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-09-29 — Order QC: held orders open with their real unit count (D138 correction)
+
+**Goal this session:** make orders on hold checkable. The D138 release listed them but opened each one as "no remaining shipping units".
+
+**Built:**
+- `src/lib/shopify/qc-orders.ts` → reads `unfulfilledQuantity` instead of `fulfillableQuantity`; Shopify reports 0 fulfillable on every held line
+- `tests/qc-orders.test.ts` → mocks use `unfulfilledQuantity`; the held-order case now mocks 0 fulfillable, expects the unfulfilled count and checks the query field
+
+**Verified:** read-only Hub-app reads on 2026-09-29 over all 71 open orders: the two fields differ on 34 of 34 held orders and 0 of 37 others; held lines read fulfillable 0 with unfulfilled equal to the ordered quantity; a refunded line reads 0 for both. Test, typecheck and lint results are below.
+
+**Not finished / known broken:**
+- D138 itself went live 2026-09-28 16:35 IST as `b5c8a5f` (release `20260928-110502-b5c8a5f`, owner's own server read). This correction is not deployed yet: branch `claude/qc-hold`, uncommitted.
+- Not tried live: a held order opened, scanned and passed on `qc.`, then released.
+
+**Surprises:** `fulfillableQuantity` excludes units whose fulfillment order is on hold. The earlier test mocked a value Shopify never returns.
+
+**Next session should start with:** owner commits and pushes, then opens one held order on the QC face.
+
 ## 2026-09-28 — Order QC: orders on hold are listed and checked, with a Hold badge (D138)
 
 **Goal this session:** let the team QC an order that is on hold in Shopify, since they check first and hold after.

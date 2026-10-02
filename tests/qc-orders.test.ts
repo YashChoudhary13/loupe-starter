@@ -7,13 +7,13 @@ import type { QcOrder } from '@/lib/qc/types'
 
 const client = (graphql: ReturnType<typeof vi.fn>) => ({ graphql }) as unknown as ShopifyClient
 const header = { id: 'gid://shopify/Order/1', name: 'Qimati1', updatedAt: '2026-09-15T08:00:00Z', cancelledAt: null, displayFulfillmentStatus: 'UNFULFILLED' }
-const line = (id = '1', changes = {}) => ({ id: `gid://shopify/LineItem/${id}`, title: 'Ring', variantTitle: 'Gold / 7', sku: 'RS004', requiresShipping: true, fulfillableQuantity: 2, image: { url: 'https://cdn.shopify.com/s/files/ring.jpg' }, variant: { id: 'gid://shopify/ProductVariant/11', sku: 'RS004-C-GOLD-S-7', barcode: 'RS004-C-GOLD-S-7', title: 'Gold / 7' }, ...changes })
+const line = (id = '1', changes = {}) => ({ id: `gid://shopify/LineItem/${id}`, title: 'Ring', variantTitle: 'Gold / 7', sku: 'RS004', requiresShipping: true, unfulfilledQuantity: 2, image: { url: 'https://cdn.shopify.com/s/files/ring.jpg' }, variant: { id: 'gid://shopify/ProductVariant/11', sku: 'RS004-C-GOLD-S-7', barcode: 'RS004-C-GOLD-S-7', title: 'Gold / 7' }, ...changes })
 const page = (lines = [line()], next: string | null = null, changes = {}) => ({ order: { ...header, ...changes, lineItems: { nodes: lines, pageInfo: { hasNextPage: !!next, endCursor: next } } } })
 
 describe('whole-order Shopify QC snapshots', () => {
   it('paginates all remaining shipping lines and rereads the header after paging', async () => {
     const graphql = vi.fn().mockResolvedValueOnce(page([line(), line('2', { requiresShipping: false })], 'next'))
-      .mockResolvedValueOnce(page([line('3', { fulfillableQuantity: 0 }), line('4', { fulfillableQuantity: 1 })])).mockResolvedValueOnce({ order: header })
+      .mockResolvedValueOnce(page([line('3', { unfulfilledQuantity: 0 }), line('4', { unfulfilledQuantity: 1 })])).mockResolvedValueOnce({ order: header })
     const order = await readQcOrder(client(graphql), '1')
     expect(order.lines.map(x => [x.id, x.required])).toEqual([['gid://shopify/LineItem/1',2],['gid://shopify/LineItem/4',1]])
     expect(order.lines[0].sku).toBe('RS004-C-GOLD-S-7')
@@ -30,7 +30,7 @@ describe('whole-order Shopify QC snapshots', () => {
   })
   it('restarts a paginated read when the order changes in Shopify', async () => {
     const changed = { ...header, updatedAt: '2026-09-15T08:01:00Z' }
-    const graphql = vi.fn().mockResolvedValueOnce(page([line()], 'next')).mockResolvedValueOnce(page([line('2')], null, changed)).mockResolvedValueOnce(page([line('1', { fulfillableQuantity: 1 })], null, changed))
+    const graphql = vi.fn().mockResolvedValueOnce(page([line()], 'next')).mockResolvedValueOnce(page([line('2')], null, changed)).mockResolvedValueOnce(page([line('1', { unfulfilledQuantity: 1 })], null, changed))
     expect((await readQcOrder(client(graphql), '1')).lines[0].required).toBe(1)
     expect(graphql).toHaveBeenCalledTimes(3)
   })
@@ -49,20 +49,24 @@ describe('whole-order Shopify QC snapshots', () => {
       [[line()], { cancelledAt: '2026-09-15T08:02:00Z' }, 'cancelled'],
       [[line()], { displayFulfillmentStatus: 'SCHEDULED' }, 'scheduled'],
       [[line('1', { variant: null })], {}, 'custom or deleted'],
-      [[line('1', { fulfillableQuantity: 0 })], {}, 'no remaining'],
+      [[line('1', { unfulfilledQuantity: 0 })], {}, 'no remaining'],
     ] as const) {
       const graphql = vi.fn().mockResolvedValueOnce(page([...rows], null, changes))
       expect((await readQcOrder(client(graphql), '1')).blockedReason).toContain(reason)
     }
   })
-  it('checks an order on hold like any other, carrying the hold status for the badge', async () => {
-    const order = await readQcOrder(client(vi.fn().mockResolvedValueOnce(page([line()], null, { displayFulfillmentStatus: 'ON_HOLD' }))), '1')
+  it('checks an order on hold by its unfulfilled units, because Shopify reports 0 fulfillable on held lines', async () => {
+    const graphql = vi.fn().mockResolvedValueOnce(page([line('1', { fulfillableQuantity: 0, unfulfilledQuantity: 3 })], null, { displayFulfillmentStatus: 'ON_HOLD' }))
+    const order = await readQcOrder(client(graphql), '1')
     expect(order.blockedReason).toBeNull()
     expect(order.fulfillmentStatus).toBe('ON_HOLD')
+    expect(order.lines.map(x => x.required)).toEqual([3])
+    expect(graphql.mock.calls[0][0]).toContain('unfulfilledQuantity')
+    expect(graphql.mock.calls[0][0]).not.toContain('fulfillableQuantity')
   })
   it('rejects duplicate line IDs and invalid quantities', async () => {
     await expect(readQcOrder(client(vi.fn().mockResolvedValue(page([line(),line()]))), '1')).rejects.toThrow(/repeated/)
-    await expect(readQcOrder(client(vi.fn().mockResolvedValue(page([line('1', { fulfillableQuantity: -1 })]))), '1')).rejects.toThrow(/invalid remaining/)
+    await expect(readQcOrder(client(vi.fn().mockResolvedValue(page([line('1', { unfulfilledQuantity: -1 })]))), '1')).rejects.toThrow(/invalid remaining/)
   })
   it('lists paid open orders with unfulfilled units, on hold included, shows any searched order, and preserves safe cursor pagination', async () => {
     const graphql = vi.fn().mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } })
