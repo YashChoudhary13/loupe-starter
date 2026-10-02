@@ -475,6 +475,35 @@ Read-only Shopify check: 68 open orders, no next page, requested/actual cost 13/
 
 **Next session should start with:** owner reviews `output/playwright/qc/README.md` and its screenshots, then checks the approved layout on the real iPad and scanner before planning deployment.
 
+---
+
+## 2026-10-02 — Draft label popup: every variant, direct print, no search-index wait (D139, local, not deployed)
+
+**Goal this session:** the popup after Save draft appears sooner, lists every variant, and Print opens the print dialog instead of a new tab.
+
+**Built:**
+- `src/lib/labels/catalogue.ts` → `readProductLabelVariants` reads `product(id).variants`; `verifyLabelCodes` blocks only on a different variant holding the code and checks all codes in one search.
+- `src/lib/shopify/barcode-lookup.ts` → `findCodeMatches` accepts a list (twenty codes per search); `assertVariantCodesAvailable` uses it, one round trip per product before `productSet`.
+- `src/lib/console/draft-labels.ts` → the offer comes from the direct product read, not the SKU search.
+- `src/components/console/DraftLabelPrintDialog.tsx` → `printLabelSheet` prints the sheet from a hidden frame.
+- `src/components/console/ConsoleScreen.tsx` → Print uses it; the offer check runs every 500 ms for up to 60 attempts.
+
+**Verified:**
+- Branch `claude/draft-label-print`, rebased onto `origin/main` `1149888`. Focused offline run: `tests/barcode-labels.test.ts`, `variant-barcodes`, `label-print-route`, `draft-label-print`, `colour-size-barcodes`, `qc-server` → 6 files, 51 tests passed. `tsc --noEmit` exit 0; eslint clean on the changed files. The full suite was not run (it talks to the live database).
+- Headless Chromium against the real `renderLabelDocument` output and the real `printLabelSheet` (3 variants, copies 2/1/3): `print()` was called inside the frame, not the top window; the frame held 6 labels in order with `@page{size:38mm 25mm;margin:0}`; the tab count stayed at 1; a second Print replaced the frame; under print media the toolbar is hidden and each label breaks the page.
+- Timing read from `events` for the twelve most recent drafts: `draft.saved` → `draft.sent_to_shopify` 7.8–10.5 s; `draft.labels_printed` followed 5.2–11.8 s after `draft.shopify_synced`.
+
+**Not finished / known broken:**
+- Not deployed, not pushed. Not exercised against live Shopify: no real draft was saved with this build, so the popup timing and the print dialog on the office printer are unobserved.
+- The popup still waits for the Shopify draft (about nine seconds). How much of the old wait was the search index is not measured, so the size of the gain is unknown until a real draft is saved.
+- `/labels` still opens its preview tab.
+
+**Surprises:** the existing test "does not print a code Shopify search cannot confirm yet" encoded the search-index wait as intended behaviour; it is replaced (D139).
+
+**Next session should start with:** owner go-ahead to push `claude/draft-label-print` to `main`, then save one multi-colour draft and watch the popup list every colour and Print open the dialog.
+
+---
+
 ## 2026-09-29 — Order QC: held orders open with their real unit count (D138 correction)
 
 **Goal this session:** make orders on hold checkable. The D138 release listed them but opened each one as "no remaining shipping units".

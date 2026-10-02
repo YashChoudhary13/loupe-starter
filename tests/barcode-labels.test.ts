@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { barcodeSvg, qrSvg, parseLabelRequest, renderLabelDocument } from '@/lib/labels/print'
-import { readLabelVariants, searchLabelVariants, verifyLabelCodes, type LabelVariant } from '@/lib/labels/catalogue'
+import { readLabelVariants, readProductLabelVariants, searchLabelVariants, verifyLabelCodes, type LabelVariant } from '@/lib/labels/catalogue'
 import type { ShopifyClient } from '@/lib/shopify/client'
 
 const variant: LabelVariant = { id: 'gid://shopify/ProductVariant/1', sku: 'NK1333-C-WHITE', barcode: 'NK1333-C-WHITE', title: 'White', inventoryQuantity: 12, product: { id: 'p1', title: 'Necklace 1333' } }
@@ -61,9 +61,25 @@ describe('saved Shopify label data', () => {
     const graphql = vi.fn().mockResolvedValue(page([shared, { ...shared, id: 'gid://shopify/ProductVariant/2' }]))
     await expect(verifyLabelCodes(clientFor(graphql), [shared])).rejects.toThrow(/another variant/)
   })
-  it('does not print a code Shopify search cannot confirm yet', async () => {
+  it('prints a new draft before Shopify search has indexed it, in one search for every variant', async () => {
+    const green = { ...variant, id: 'gid://shopify/ProductVariant/2', sku: 'NK1333-C-GREEN', barcode: 'NK1333-C-GREEN', title: 'Green' }
     const graphql = vi.fn().mockResolvedValue(page([]))
-    await expect(verifyLabelCodes(clientFor(graphql), [variant])).rejects.toThrow(/missing/)
+    await expect(verifyLabelCodes(clientFor(graphql), [variant, green])).resolves.toBeUndefined()
+    expect(graphql).toHaveBeenCalledOnce()
+    expect(graphql.mock.calls[0][1].query).toBe('(sku:"NK1333-C-WHITE" OR barcode:"NK1333-C-WHITE" OR sku:"NK1333-C-GREEN" OR barcode:"NK1333-C-GREEN")')
+  })
+  it('blocks two selected variants sharing a barcode even when search lists neither yet', async () => {
+    const graphql = vi.fn().mockResolvedValue(page([]))
+    await expect(verifyLabelCodes(clientFor(graphql), [variant, { ...variant, id: 'gid://shopify/ProductVariant/2' }])).rejects.toThrow(/another variant/)
+    await expect(verifyLabelCodes(clientFor(graphql), [{ ...variant, barcode: null }])).rejects.toThrow(/no saved barcode/)
+  })
+  it('offers every variant of a new draft by reading the product, not the lagging search', async () => {
+    const green = { ...variant, id: 'gid://shopify/ProductVariant/2', sku: 'NK1333-C-GREEN', barcode: 'NK1333-C-GREEN', title: 'Green' }
+    const graphql = vi.fn().mockResolvedValueOnce({ product: { variants: { nodes: [variant, green] } } }).mockResolvedValueOnce({ product: null })
+    expect(await readProductLabelVariants(clientFor(graphql), 'gid://shopify/Product/1')).toEqual([variant, green])
+    expect(graphql.mock.calls[0][0]).not.toContain('productVariants(')
+    expect(graphql.mock.calls[0][1]).toEqual({ id: 'gid://shopify/Product/1' })
+    expect(await readProductLabelVariants(clientFor(graphql), 'gid://shopify/Product/1')).toEqual([])
   })
   it('finds all colour codes from a parent SKU while filtering prefix near-matches', async () => {
     const graphql = vi.fn().mockResolvedValue(page([variant, { ...variant, id: 'v2', sku: 'NK13330' }]))

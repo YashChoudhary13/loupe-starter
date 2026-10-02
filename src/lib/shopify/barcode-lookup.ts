@@ -8,32 +8,39 @@ export interface CodeMatch {
 }
 
 /** Shopify does not enforce barcode or SKU uniqueness. Always verify exact values. */
-export async function findCodeMatches(client: ShopifyClient, code: string): Promise<CodeMatch[]> {
+export async function findCodeMatches(client: ShopifyClient, code: string | readonly string[]): Promise<CodeMatch[]> {
+  const codes = typeof code === 'string' ? [code] : code
   const matches: CodeMatch[] = []
-  let after: string | null = null
-  for (let page = 0; page < 20; page++) {
-    const data: { productVariants: { nodes: CodeMatch[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } = await client.graphql(`
-      query LoupeCodeMatches($query: String!, $after: String) {
-        productVariants(first: 100, query: $query, after: $after) {
-          nodes { id sku barcode product { id status } }
-          pageInfo { hasNextPage endCursor }
-        }
-      }`, { query: `(sku:${JSON.stringify(code)} OR barcode:${JSON.stringify(code)})`, after })
-    matches.push(...data.productVariants.nodes.filter(v => v.sku === code || v.barcode === code))
-    if (!data.productVariants.pageInfo.hasNextPage) return matches
-    const next = data.productVariants.pageInfo.endCursor
-    if (!next || next === after) break
-    after = next
+  // One search per 20 codes: a many-variant product costs one round trip, not one per variant (D139).
+  for (let start = 0; start < codes.length; start += 20) {
+    const batch = codes.slice(start, start + 20)
+    const query = `(${batch.map(c => `sku:${JSON.stringify(c)} OR barcode:${JSON.stringify(c)}`).join(' OR ')})`
+    let after: string | null = null
+    let complete = false
+    for (let page = 0; page < 20 && !complete; page++) {
+      const data: { productVariants: { nodes: CodeMatch[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } } = await client.graphql(`
+        query LoupeCodeMatches($query: String!, $after: String) {
+          productVariants(first: 100, query: $query, after: $after) {
+            nodes { id sku barcode product { id status } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }`, { query, after })
+      matches.push(...data.productVariants.nodes.filter(v => (v.sku !== null && batch.includes(v.sku)) || (v.barcode !== null && batch.includes(v.barcode))))
+      const next = data.productVariants.pageInfo.endCursor
+      if (!data.productVariants.pageInfo.hasNextPage) complete = true
+      else if (!next || next === after) break
+      else after = next
+    }
+    if (!complete) throw new Error('Too many matching product codes. Resolve the duplicate codes before continuing.')
   }
-  throw new Error('Too many matching product codes. Resolve the duplicate codes before continuing.')
+  return matches
 }
 
 export async function assertVariantCodesAvailable(client: ShopifyClient, codes: readonly string[], productId: string | null): Promise<void> {
   if (new Set(codes).size !== codes.length) throw new Error('Each variant needs a distinct SKU and barcode.')
-  for (const code of codes) {
-    const matches = await findCodeMatches(client, code)
-    if (matches.some(match => match.product.id !== productId)) {
-      throw new Error(`Code ${code} already belongs to another Shopify product. Resolve the collision before publishing.`)
-    }
+  const taken = (await findCodeMatches(client, codes)).find(match => match.product.id !== productId)
+  if (taken) {
+    const code = codes.find(c => c === taken.sku || c === taken.barcode)
+    throw new Error(`Code ${code} already belongs to another Shopify product. Resolve the collision before publishing.`)
   }
 }

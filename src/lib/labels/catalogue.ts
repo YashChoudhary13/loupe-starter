@@ -49,12 +49,35 @@ export async function readLabelVariants(client: ShopifyClient, ids: readonly str
   return data.nodes as LabelVariant[]
 }
 
+/**
+ * A product's variants read by product id. Variant search lags a product Shopify
+ * has just created and fills in one variant at a time, so a new draft must not
+ * be looked up through it (D139).
+ */
+export async function readProductLabelVariants(client: ShopifyClient, productId: string): Promise<LabelVariant[]> {
+  const data = await client.graphql<{ product: { variants: { nodes: LabelVariant[] } } | null }>(`
+    query LoupeProductLabelVariants($id: ID!) {
+      product(id: $id) { variants(first: 100) { nodes { ${FIELDS} } } }
+    }`, { id: productId })
+  return data.product?.variants.nodes ?? []
+}
+
+/**
+ * Only a *different* variant holding the code blocks printing. The variants
+ * were just read by id, so search need not list them yet — requiring that made
+ * every new draft wait for Shopify's index (D139).
+ */
 export async function verifyLabelCodes(client: ShopifyClient, variants: readonly LabelVariant[]): Promise<void> {
-  for (const variant of variants) {
+  const codes = variants.map(variant => {
     if (!variant.barcode) throw new Error(`${variant.sku ?? variant.title} has no saved barcode. Assign it in Shopify first.`)
-    const matches = await findCodeMatches(client, variant.barcode)
-    if (!matches.some(v => v.id === variant.id && v.barcode === variant.barcode) || matches.some(v => v.id !== variant.id)) {
-      throw new Error(`Barcode ${variant.barcode} is missing or also identifies another variant. Resolve it before printing.`)
+    return variant.barcode
+  })
+  const matches = await findCodeMatches(client, [...new Set(codes)])
+  for (const variant of variants) {
+    const shared = (other: { id: string; sku?: string | null; barcode: string | null }) =>
+      other.id !== variant.id && (other.barcode === variant.barcode || other.sku === variant.barcode)
+    if (matches.some(shared) || variants.some(other => other.id !== variant.id && other.barcode === variant.barcode)) {
+      throw new Error(`Barcode ${variant.barcode} also identifies another variant. Resolve it before printing.`)
     }
   }
 }

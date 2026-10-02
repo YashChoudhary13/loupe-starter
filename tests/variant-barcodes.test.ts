@@ -62,6 +62,14 @@ describe('Shopify code consumers', () => {
     await expect(assertVariantCodesAvailable(clientFor(graphql), ['NK1333-C-WHITE'], null)).rejects.toThrow(/another Shopify product/)
     await expect(assertVariantCodesAvailable(clientFor(graphql), ['NK1333-C-WHITE'], 'p1')).resolves.toBeUndefined()
   })
+  it('checks every code of a product in one search per twenty and names the code that collides', async () => {
+    const codes = Array.from({ length: 21 }, (_, i) => `RS004-N-${i + 1}`)
+    const graphql = vi.fn().mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([{ id: 'v9', sku: 'RS004-N-21', barcode: null, product: { id: 'p9' } }]))
+    await expect(assertVariantCodesAvailable(clientFor(graphql), codes, 'p1')).rejects.toThrow(/Code RS004-N-21 already belongs/)
+    expect(graphql).toHaveBeenCalledTimes(2)
+    expect(graphql.mock.calls[0][1].query).toContain('sku:"RS004-N-20" OR barcode:"RS004-N-20"')
+    expect(graphql.mock.calls[1][1].query).toBe('(sku:"RS004-N-21" OR barcode:"RS004-N-21")')
+  })
   it('restocks the entire paginated family when given one colour, excluding neighbouring product numbers', async () => {
     const node = (id: string, sku: string, option: string) => ({ id, sku, inventoryQuantity: 12, inventoryItem: { id: `i${id}` }, selectedOptions: [{ name: 'Color', value: option }], product: { id: 'p1', title: 'Necklace 1333', handle: 'necklace-1333', status: 'ACTIVE' } })
     const graphql = vi.fn().mockResolvedValueOnce(page([node('v1', 'NK1333-C-WHITE', 'White'), node('v3', 'NK13330', 'Gold')], 'next')).mockResolvedValueOnce(page([node('v2', 'NK1333-C-GREEN', 'Green')]))

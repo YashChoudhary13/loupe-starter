@@ -1,7 +1,7 @@
 import 'server-only'
 import type { Operator } from '@/lib/auth/authorize'
 import { ShopifyClient } from '@/lib/shopify/client'
-import { searchLabelVariants, type LabelVariant } from '@/lib/labels/catalogue'
+import { readProductLabelVariants, type LabelVariant } from '@/lib/labels/catalogue'
 import { draftLabelCopies, type DraftLabelOffer } from '@/lib/labels/draft-print'
 import { supabaseServer } from '@/lib/supabase/server'
 
@@ -22,7 +22,7 @@ export async function loadDraftLabelOffer(id: string): Promise<DraftLabelOffer |
     .maybeSingle()
   if (error) throw new Error('Could not read this draft to print labels.')
   if (!data?.shopify_product_id || !data.reserved_sku) return null
-  const variants: LabelVariant[] = await searchLabelVariants(new ShopifyClient(), data.reserved_sku)
+  const variants: LabelVariant[] = await readProductLabelVariants(new ShopifyClient(), data.shopify_product_id)
   if (!variants.length) return null
   return {
     draftId: data.id,

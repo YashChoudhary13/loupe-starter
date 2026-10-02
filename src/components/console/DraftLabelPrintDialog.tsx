@@ -6,6 +6,32 @@ import type { DraftLabelOffer } from '@/lib/labels/draft-print'
 const field = 'rounded-pill bg-chip px-4 py-2.5 text-[13px] text-ink focus:outline-2 focus:outline-ink'
 const button = 'rounded-pill px-5 py-3 text-[13px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
 
+/**
+ * Opens the browser's print dialog on the label sheet from a hidden frame, so
+ * Print is one click instead of a new tab with a second Print button (D139).
+ */
+export function printLabelSheet(html: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    document.getElementById('label-print-frame')?.remove()
+    const frame = document.createElement('iframe')
+    frame.id = 'label-print-frame'
+    frame.setAttribute('aria-hidden', 'true')
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+    frame.onload = () => {
+      const sheet = frame.contentWindow
+      if (!sheet) {
+        reject(new Error('Could not open the print dialog. This draft is still label not printed.'))
+        return
+      }
+      sheet.focus()
+      sheet.print()
+      resolve()
+    }
+    frame.srcdoc = html
+    document.body.append(frame)
+  })
+}
+
 export function DraftLabelPrintDialog({
   offer,
   busy,

@@ -3641,6 +3641,19 @@ The team's practice is to QC an order first and then put it on hold in Shopify (
 
 **Correction (2026-09-29).** Shopify reports `fulfillableQuantity` 0 on every line of an order on hold, so the first D138 release (`b5c8a5f`) listed held orders but opened each one as "There are no remaining shipping units to check." `readQcOrder` now counts `unfulfilledQuantity`. A read-only check of all 71 open orders that day found the two fields equal on all 37 orders not on hold and different on all 34 held ones; held lines read 0 fulfillable and the full ordered quantity unfulfilled, and a refunded line reads 0 for both. The `b5c8a5f` test mocked a held line with a fulfillable quantity Shopify never returns; the new test mocks 0 fulfillable and asserts the query asks for `unfulfilledQuantity`.
 
+### D139 — The draft label popup reads the product directly, checks codes in one search and prints without a new tab (2026-10-02)
+
+The owner reported three things about the popup that follows Save draft (D127): it takes long to appear, Print opens a new tab with a second Print button, and a product with variants offers only one of them, so the rest are printed from Labels.
+
+One cause explains the first and third. The popup looked the new product up through `productVariants(query: "sku:…")`, and Shopify's variant search is eventually consistent for a product it has just created. The popup opened on the first poll that returned anything, so a partly indexed product showed a single variant. This is read from the code and the symptom; the index delay itself was not measured. `loadDraftLabelOffer` now reads `product(id).variants` by the recorded `shopify_product_id`, which is consistent the moment `productSet` returns. The console checks twice a second (one database read per check until the Shopify draft exists) instead of once a second.
+
+`verifyLabelCodes` no longer requires search to list the variant being printed. Its values were read by id a moment earlier, so that clause proved nothing about the variant and only failed while the index was behind; with the direct read above it would have rejected every prompt Print. Any *different* variant holding the code still blocks, and two selected variants sharing a barcode block even when search lists neither. `findCodeMatches` takes a list and searches twenty codes per request, so the print check and the pre-publish `assertVariantCodesAvailable` cost one Shopify round trip for a product instead of one per variant.
+
+Print renders the returned sheet in a hidden same-origin frame and calls `print()` on it, so the browser's print dialog opens on the click. `labels_printed` is still set only after the sheet was handed to the browser, and Cancel or a failed request still leaves it false. The `/labels` screen keeps its preview tab.
+
+Not changed: the popup still waits for the Shopify draft to exist (D127). Measured on twelve drafts on 2026-10-02, `draft.saved` to `draft.sent_to_shopify` is 7.8–10.5 s, about five of them in the Shopify calls around `productSet`, and that is now the whole wait.
+
+Rejected: opening the popup from local draft data before Shopify has the product (a label could be printed for a product whose push then fails on a code collision); recording `shopify_product_id` before the channel and media steps (changes crash recovery, hard rule 2).
 
 ### D140 — Order QC is a fixed scanner station beside a scrolling checklist on iPad (2026-10-02)
 

@@ -55,7 +55,7 @@ import type { PublishBlock } from '@/lib/publish/validate'
 import { putUploadedObject } from '@/components/upload/put-object'
 
 import { DraftEditor, type EditorForm } from './DraftEditor'
-import { DraftLabelPrintDialog } from './DraftLabelPrintDialog'
+import { DraftLabelPrintDialog, printLabelSheet } from './DraftLabelPrintDialog'
 import { NewCategoryDialog } from './NewCategoryDialog'
 import { Card, Notice, StatPill } from './primitives'
 import { QueueGrid } from './QueueGrid'
@@ -688,7 +688,9 @@ export function ConsoleScreen({
     refreshQueueSoon()
     pendingLabelDraftIdRef.current = draftId
     void (async () => {
-      for (let attempt = 0; attempt < 20; attempt += 1) {
+      // Each check is one database read until the Shopify draft exists, so it
+      // can run twice a second; the push itself takes about nine seconds.
+      for (let attempt = 0; attempt < 60; attempt += 1) {
         if (pendingLabelDraftIdRef.current !== draftId) return
         const print = await settled(loadDraftLabelPrintAction(draftId))
         if (print.ok && print.data.offer) {
@@ -696,7 +698,7 @@ export function ConsoleScreen({
           setLabelOffer(print.data.offer)
           return
         }
-        await new Promise(resolve => window.setTimeout(resolve, 1000))
+        await new Promise(resolve => window.setTimeout(resolve, 500))
       }
     })()
   }, [ensureDraft, handleResult, refreshQueueSoon, rememberSticky, saveRequest])
@@ -1041,10 +1043,7 @@ export function ConsoleScreen({
       const response = await fetch('/api/labels/print', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form, credentials: 'same-origin' })
       const html = await response.text()
       if (!response.ok) throw new Error(html || 'Could not prepare labels.')
-      const preview = window.open('', '_blank')
-      if (!preview) throw new Error('Allow pop-ups to print labels. Cancel keeps this as label not printed.')
-      preview.document.write(html)
-      preview.document.close()
+      await printLabelSheet(html)
       const marked = await settled(confirmDraftLabelsPrintedAction(labelOffer.draftId))
       if (!marked.ok) throw new Error(marked.error.message)
       pendingLabelDraftIdRef.current = null
