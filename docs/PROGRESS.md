@@ -491,10 +491,12 @@ Read-only Shopify check: 68 open orders, no next page, requested/actual cost 13/
 **Verified:**
 - Branch `claude/draft-label-print`, rebased onto `origin/main` `1149888`. Focused offline run: `tests/barcode-labels.test.ts`, `variant-barcodes`, `label-print-route`, `draft-label-print`, `colour-size-barcodes`, `qc-server` → 6 files, 51 tests passed. `tsc --noEmit` exit 0; eslint clean on the changed files. The full suite was not run (it talks to the live database).
 - Headless Chromium against the real `renderLabelDocument` output and the real `printLabelSheet` (3 variants, copies 2/1/3): `print()` was called inside the frame, not the top window; the frame held 6 labels in order with `@page{size:38mm 25mm;margin:0}`; the tab count stayed at 1; a second Print replaced the frame; under print media the toolbar is hidden and each label breaks the page.
+- Read-only comparison against the live store (2026-10-02, 24 recent drafts, 58 variants, 16 of them multi-variant): the direct product read and the old SKU search returned the same variants with the same SKU, barcode, title and stock, in the same order, on 24 of 24; live stock equalled the draft's saved stock on 24 of 24; the batched code search equalled the per-code searches on 24 of 24 and on one 51-code batch (three requests); the old and new print checks agreed on 24 of 24 (all printable); the rendered sheet was byte-identical on 24 of 24. No write was made.
+- After the rebase: 7 focused files, 63 tests passed; `tsc --noEmit` exit 0; `next build --webpack` completed (Turbopack refuses this worktree's symlinked `node_modules`). `eslint src` reports one error in `src/components/live/LiveActivity.tsx:55`, a file this change does not touch.
 - Timing read from `events` for the twelve most recent drafts: `draft.saved` → `draft.sent_to_shopify` 7.8–10.5 s; `draft.labels_printed` followed 5.2–11.8 s after `draft.shopify_synced`.
 
 **Not finished / known broken:**
-- Not deployed, not pushed. Not exercised against live Shopify: no real draft was saved with this build, so the popup timing and the print dialog on the office printer are unobserved.
+- Not deployed: the push to `main` is the owner's step. No real draft was saved with this build, so a product still inside Shopify's indexing delay, the popup timing and the print dialog on the office printer are unobserved.
 - The popup still waits for the Shopify draft (about nine seconds). How much of the old wait was the search index is not measured, so the size of the gain is unknown until a real draft is saved.
 - `/labels` still opens its preview tab.
 
