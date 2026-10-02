@@ -73,6 +73,6 @@ async function render() {
   const content = location.pathname === '/qc' ? await QcOrdersPage({ searchParams: Promise.resolve({}) })
     : params.has('history') ? <QcHistoryScreen session={state.session} events={state.events} shortages={state.shortages} />
     : <QcScreen initialView={structuredClone(state)} />
-  createRoot(document.getElementById('root')!).render(<AppShell operator={operator} face="qc" initialAttentionCount={0} initialCollapsed={params.has('collapsed')}>{content}</AppShell>)
+  createRoot(document.getElementById('root')!).render(<AppShell operator={operator} face="qc" initialAttentionCount={0} initialCollapsed={params.has('collapsed') || document.cookie.split('; ').includes('loupe_nav_collapsed=1')}>{content}</AppShell>)
 }
 void render()

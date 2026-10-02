@@ -107,34 +107,34 @@ export function Sidebar({
         </form>
       </header>
     <aside className="hidden min-h-0 flex-col gap-[22px] overflow-hidden px-1 pt-2 md:flex">
-      <div className={cn('flex items-center gap-2.5', collapsed ? 'flex-col px-0' : 'px-3')}>
-        <div className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-[14px] font-semibold text-white">
-          {brand[0]}
+      <div className="flex flex-col gap-3">
+        <div className={cn('flex items-center gap-2.5', collapsed ? 'justify-center' : 'px-3')}>
+          <div className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-ink text-[14px] font-semibold text-white">
+            {brand[0]}
+          </div>
+          {collapsed ? null : (
+            <span className="font-medium tracking-[-0.01em]">{brand}</span>
+          )}
         </div>
-        {collapsed ? null : (
-          <span className="font-medium tracking-[-0.01em]">{brand}</span>
-        )}
         <button
           type="button"
           onClick={onToggle}
-          title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-expanded={!collapsed}
-          className={cn(
-            'grid size-7 shrink-0 place-items-center rounded-full bg-chip text-ink-soft transition-colors hover:bg-[#e6e6e6]',
-            collapsed ? '' : 'ml-auto',
-          )}
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-pill bg-chip px-2 text-[15px] font-medium text-ink transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
           <svg
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             strokeWidth="1.8"
-            className={cn('size-3.5 transition-transform duration-200', collapsed && 'rotate-180')}
+            className={cn('size-5 shrink-0 transition-transform duration-200', collapsed && 'rotate-180')}
             aria-hidden
           >
             <path d="M15 5l-7 7 7 7" />
           </svg>
+          {!collapsed && <span>Collapse sidebar</span>}
         </button>
       </div>
 

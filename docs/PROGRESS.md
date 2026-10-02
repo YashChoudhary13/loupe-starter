@@ -29,6 +29,23 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-03 — Order QC: an obvious sidebar collapse control
+
+**Goal this session:** make the left navigation panel easy to collapse for more QC space.
+
+**Built:**
+- `src/components/console/Sidebar.tsx` → replaced the small arrow with a labelled, 44px-high Collapse sidebar button; the compact rail has an Expand sidebar button. Reuses existing shell state, widths and persistent cookie.
+- `tests/fixtures/qc-preview.tsx` → mirrors the existing cookie on fixture reloads.
+- `output/playwright/qc/` → expanded/collapsed screenshots and `sidebar-proof.json`.
+
+**Verified:** QC tests: 7 files / 43 passed. Typecheck, lint, webpack production build and diff check passed. Chrome at 1180 × 820: sidebar 216 → 68px, checklist 910 → 1058px, collapse button 208 × 44px. Expansion, keyboard toggle, saved preference after reload and scanner typing after collapse all passed. At 390 × 844 the sidebar remains hidden and the phone top bar fits with no horizontal overflow.
+
+**Not finished / known broken:** not tested on physical iPad/scanner hardware; not pushed or deployed.
+
+**Surprises:** collapse and saved state already existed; the old 28px arrow was easy to miss, so the change improves the existing control.
+
+**Next session should start with:** owner reviews `output/playwright/qc/sidebar-collapsed-ipad.png` and `sidebar-expanded-ipad.png` before deployment work.
+
 ## 2026-10-02 — Order QC: iPad list and scanner station (D140)
 
 **Goal this session:** make the QC list, remaining items and exceptions readable and tappable on a landscape iPad, without changing scan rules.

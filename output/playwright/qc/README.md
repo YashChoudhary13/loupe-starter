@@ -4,7 +4,15 @@ Branch: `codex/qc-ipad`, based on `origin/main` at `1149888`. No push or deploym
 
 All screenshots use fictional orders and locally generated jewellery illustrations. The preview bundles the actual QC components, list page and app shell with in-browser API doubles. It does not load `.env`, contact Shopify or Supabase, or run a QC command against a real order. Fonts come from the existing Next build, with Arial as a fallback when no build is available.
 
-## Screenshots
+## Sidebar follow-up — 3 October 2026
+
+The existing collapse control is now a labelled, 44px-high **Collapse sidebar** button. Collapsing leaves a 68px icon rail with an **Expand sidebar** button and gives the checklist 148px more room. The existing cookie preserves this preference; phone navigation stays in its top bar. Browser checks confirmed pointer and keyboard toggles, reload persistence, and scanner typing immediately after collapse. See [sidebar-proof.json](sidebar-proof.json).
+
+- [Expanded sidebar and visible collapse button](sidebar-expanded-ipad.png)
+- [Collapsed sidebar on an order](sidebar-collapsed-ipad.png)
+- [Collapsed sidebar on the order list](list-sidebar-collapsed-ipad.png)
+
+## Screenshots from the initial layout review
 
 - [Order list, 1180 × 820](list-ipad.png)
 - [Order with an attention message, 1180 × 820](order-ipad.png)

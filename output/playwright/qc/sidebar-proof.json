@@ -1,0 +1,36 @@
+{
+  "expanded": {
+    "sidebar": 216,
+    "checklist": 910,
+    "overflow": false,
+    "cookie": ""
+  },
+  "collapsed": {
+    "sidebar": 68,
+    "checklist": 1058,
+    "overflow": false,
+    "cookie": "loupe_nav_collapsed=1"
+  },
+  "reloaded": {
+    "sidebar": 68,
+    "checklist": 1058,
+    "overflow": false,
+    "cookie": "loupe_nav_collapsed=1"
+  },
+  "restored": {
+    "sidebar": 216,
+    "checklist": 910,
+    "overflow": false,
+    "cookie": "loupe_nav_collapsed=0"
+  },
+  "collapseTarget": {
+    "width": 208,
+    "height": 44
+  },
+  "keyboardToggle": true,
+  "scannerCaptureAfterCollapse": true,
+  "phone": {
+    "sidebarDisplay": "none",
+    "overflow": false
+  }
+}
