@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ find: vi.fn(), read: vi.fn(), rpc: vi.fn() }))
+const mocks = vi.hoisted(() => ({ find: vi.fn(), read: vi.fn(), rpc: vi.fn(), from: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/shopify/client', () => ({ ShopifyClient: class { config = { storeDomain: 'qc-test.myshopify.com' } } }))
 vi.mock('@/lib/shopify/barcode-lookup', () => ({ findCodeMatches: mocks.find }))
 vi.mock('@/lib/shopify/qc-orders', () => ({ readQcOrder: mocks.read }))
-vi.mock('@/lib/supabase/server', () => ({ supabaseServer: () => ({ rpc: mocks.rpc }) }))
-import { clearQcResolutionCache, clearQcSnapshotCache, loadQcView, resolveQcCode } from '@/lib/qc/server'
+vi.mock('@/lib/supabase/server', () => ({ supabaseServer: () => ({ rpc: mocks.rpc, from: mocks.from }) }))
+import { clearQcResolutionCache, clearQcSnapshotCache, loadQcView, qcOrderStatuses, resolveQcCode } from '@/lib/qc/server'
 import { ShopifyClient } from '@/lib/shopify/client'
 import type { Operator } from '@/lib/auth/authorize'
 const operator = { id: 'server-actor', name: 'Operator', email: 'checker@example.test', role: 'operator' } as Operator
@@ -108,5 +108,22 @@ describe('QC server authority', () => {
   it('makes an RPC failure explicitly retryable and never invents counts', async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { message: 'timeout' } })
     await expect(loadQcView('1', operator, undefined, noBackground)).rejects.toThrow(/could not save this action.*Retry the same request/)
+  })
+  it('reads saved statuses 100 ids per request, merges the rows and fails as a whole when one batch fails', async () => {
+    const ids = Array.from({ length: 250 }, (_, index) => `gid://shopify/Order/${index + 1}`)
+    const batches: string[][] = []
+    let failing = -1
+    mocks.from.mockImplementation(() => ({ select: () => ({ eq: () => ({ in: async (_column: string, batch: string[]) => {
+      batches.push(batch)
+      return batches.length === failing ? { data: null, error: { message: 'timeout' } } : { data: batch.slice(0, 1).map(order_id => ({ order_id, status: 'passed', checked_at: 't', snapshot: { updatedAt: 'u' } })), error: null }
+    } }) }) }))
+    const statuses = await qcOrderStatuses(ids)
+    expect(batches.map(batch => batch.length)).toEqual([100, 100, 50])
+    expect(batches.flat()).toEqual(ids)
+    expect(Object.keys(statuses)).toEqual([ids[0], ids[100], ids[200]])
+    expect(statuses[ids[100]]).toEqual({ status: 'passed', checked_at: 't', snapshotUpdatedAt: 'u' })
+    batches.length = 0; failing = 2
+    await expect(qcOrderStatuses(ids)).rejects.toThrow(/QC progress could not be loaded/)
+    expect(await qcOrderStatuses([])).toEqual({})
   })
 })

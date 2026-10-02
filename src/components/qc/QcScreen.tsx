@@ -9,6 +9,8 @@ import { playQcTone, toneForOutcome, vibrateQc, type QcTone } from '@/lib/qc/sou
 import { CameraScan } from './CameraScan'
 
 const button = 'min-h-11 min-w-11 rounded-pill px-4 py-2.5 text-[15px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
+// One identity for the whole module: an inline ref callback runs again on every render and would pull focus back from the scan field.
+const focusWithoutScroll = (node: HTMLInputElement | null) => { node?.focus({ preventScroll: true }) }
 const time = (value: string) => new Date(value).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Kolkata' })
 
 interface Feedback { tone: QcTone; headline: string; message: string; image: string | null; title: string | null; variantTitle: string | null; progress: string | null; code: string | null }
@@ -37,7 +39,7 @@ function ReasonAction({ label, confirm, disabled, onConfirm }: { label: string; 
   const [reason, setReason] = useState('')
   if (!open) return <button type="button" disabled={disabled} onClick={() => setOpen(true)} className={`${button} bg-white border border-chip`}>{label}</button>
   return <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); if (reason.trim().length >= 3) { onConfirm(reason.trim()); setOpen(false); setReason('') } }}>
-    <input aria-label="Reason for shortage correction" ref={node => node?.focus({ preventScroll: true })} value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="Reason (for example: not in stock)" className="min-h-11 min-w-0 rounded-pill bg-chip px-4 py-2 text-[16px] focus:outline-2 focus:outline-ink" />
+    <input aria-label="Reason for shortage correction" ref={focusWithoutScroll} value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="Reason (for example: not in stock)" className="min-h-11 min-w-0 rounded-pill bg-chip px-4 py-2 text-[16px] focus:outline-2 focus:outline-ink" />
     <button disabled={disabled || reason.trim().length < 3} className={`${button} bg-ink text-white`}>{confirm}</button>
     <button type="button" onClick={() => { setOpen(false); setReason('') }} className={`${button} bg-white`}>Cancel</button>
   </form>
@@ -214,21 +216,23 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   }
 
   return <section ref={screen} className="h-full min-h-0 min-w-0 overflow-auto [overflow-anchor:none] md:grid md:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.3fr)] md:gap-4 md:overflow-hidden" aria-label="Order QC checklist">
-    <div className="flex min-h-0 min-w-0 flex-col gap-2 rounded-card bg-surface p-3 md:p-4 xl:gap-3" data-qc-controls>
+    <div className="flex min-h-0 min-w-0 flex-col gap-2 rounded-card bg-surface p-3 md:overflow-y-auto md:p-4 xl:gap-3" data-qc-controls>
       <div className="flex items-center justify-between gap-2"><Link href="/qc" className="inline-flex min-h-11 items-center rounded-pill text-[15px] underline">← Order QC</Link><Link href="/qc/shortages" className="inline-flex min-h-11 items-center rounded-pill px-3 text-[15px] underline">Shortages</Link></div>
       <div><h1 className="flex flex-wrap items-center gap-2 text-[26px] font-medium tracking-[-0.025em]">{view.order.name}{view.order.fulfillmentStatus === 'ON_HOLD' && <span className="rounded-pill bg-amber px-3 py-1 text-[15px] font-semibold text-black">Hold</span>}</h1>
         <div className="mt-3 flex items-end justify-between gap-2"><p className="text-[36px] leading-none font-medium tabular-nums">{checked} <span className="text-[22px] text-ink-soft">/ {required}</span></p><p className="text-right text-[15px] text-ink-soft">checked{shortTotal > 0 && <span className="block">{shortTotal} accepted short</span>}</p></div>
         <progress aria-label="Units checked" value={checked} max={Math.max(1, required)} className="mt-2 block h-2 w-full overflow-hidden rounded-pill accent-green [&::-webkit-progress-bar]:bg-chip [&::-webkit-progress-value]:bg-green" />
       </div>
-      <p className="text-[15px] text-ink-soft">Scan a pouch, then box it.</p>
-      {passed ? <div role="status" className="rounded-panel bg-green p-5 text-white">
+      {!passed && <p className="text-[15px] text-ink-soft">Scan a pouch, then box it.</p>}
+      {passed && <div role="status" className="rounded-panel bg-green p-5 text-white">
         <h2 className="text-[24px] font-medium leading-tight">QC passed · {destination}</h2>
         <p className="mt-3 text-[15px]">Checked at {time(view.session.completed_at!)}. Extra items were confirmed removed.{shortTotal > 0 && ` ${shortTotal} unit(s) accepted as short; follow up under Shortages for refund or coupon.`} Fulfil in Shopify after packing. Order changes require a new check.</p>
         <Link href="/qc" className={`${button} mt-4 inline-flex items-center bg-white text-ink`}>Back to order list →</Link>
-      </div> : <>
+      </div>}
+      {/* The scan field stays after a pass: a pouch scanned then is recorded as an extra to remove. */}
+      <>
         <form onSubmit={scan} className="flex items-end gap-2"><label className="grid min-w-0 flex-1 gap-1 text-[15px]" htmlFor="qc-code">Scan or type the SKU<input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked && !busy} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Scan or type SKU" className="min-h-11 min-w-0 rounded-pill bg-chip px-4 py-2.5 font-mono text-[16px] focus:outline-2 focus:outline-ink" /></label><button disabled={(blocked && !busy) || !code.trim()} className={`${button} shrink-0 bg-ink text-white`}>Check ↵</button></form>
-        <div className="flex items-center justify-between gap-2 text-[15px] text-ink-soft"><span>{busy ? (queued > 0 ? `${queued} waiting · keep scanning` : 'Checking…') : verified ? 'Shopify verified' : 'Verifying Shopify…'}{view.timings && <span className="block text-[13px] md:text-[15px]">Last check {(view.timings.totalMs / 1000).toFixed(2)} s</span>}</span><button disabled={busy || !!pending} onClick={() => void refresh()} className={`${button} px-2 underline`}>Refresh</button></div>
-      </>}
+        {!passed && <div className="flex items-center justify-between gap-2 text-[15px] text-ink-soft"><span>{busy ? (queued > 0 ? `${queued} waiting · keep scanning` : 'Checking…') : verified ? 'Shopify verified' : 'Verifying Shopify…'}{view.timings && <span className="block text-[13px] md:text-[15px]">Last check {(view.timings.totalMs / 1000).toFixed(2)} s</span>}</span><button disabled={busy || !!pending} onClick={() => void refresh()} className={`${button} px-2 underline`}>Refresh</button></div>}
+      </>
       <div className={`min-h-[72px] shrink-0 rounded-panel p-3 text-[16px] leading-snug ${attention.length ? 'bg-amber text-black' : 'bg-chip text-ink'}`} role={attention.length ? 'alert' : 'status'} aria-live={attention.length ? 'assertive' : 'polite'} aria-atomic="true" data-qc-message>
         {attention.length ? attention.map(message => <p key={message}>{message}</p>) : <p>{notice?.text || (passed ? 'QC saved.' : 'Ready for the next pouch.')}</p>}
         {pending && !busy && <button onClick={() => void send(pending)} className={`${button} mt-2 bg-ink text-white`}>Retry the same request safely</button>}
@@ -244,7 +248,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
         <CameraScan paused={blocked || resetOpen} onCode={submitCode} onOpenChange={cameraOpenChanged} onErrorChange={setCameraError} />
       </div>}
       <div className="mt-auto grid shrink-0 gap-2">
-        <button disabled={blocked || !wrap.canPass || passed} onClick={() => void send({ action: 'complete', requestId: crypto.randomUUID(), expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>{shortTotal > 0 ? `Complete QC · ${shortTotal} short` : 'Complete QC'}</button>
+        {!passed && <button disabled={blocked || !wrap.canPass} onClick={() => void send({ action: 'complete', requestId: crypto.randomUUID(), expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>{shortTotal > 0 ? `Complete QC · ${shortTotal} short` : 'Complete QC'}</button>}
         <button disabled={busy || !!pending} onClick={() => { setResetOpen(!resetOpen); setReason('') }} className={`${button} bg-chip`}>Recount / undo</button>
       </div>
     </div>
@@ -273,7 +277,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
     </div>
     {resetOpen && <dialog ref={node => { if (node && !node.open) node.showModal() }} onCancel={() => setResetOpen(false)} onClose={() => setResetOpen(false)} aria-labelledby="qc-correction-title" className="fixed inset-0 m-auto max-h-[90dvh] w-[min(92vw,480px)] overflow-auto rounded-card bg-surface p-5 text-ink backdrop:bg-black/40">
       <h2 id="qc-correction-title" className="text-[20px] font-medium">Correct the checklist</h2><p className="mt-2 text-[15px] text-ink-soft">Undo one of your counted units, or start fresh. A fresh checklist clears counts and accepted shortages; earlier work stays in history.</p>
-      <label className="mt-4 grid gap-2 text-[15px]">Reason<input ref={node => node?.focus({ preventScroll: true })} value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="For example: repacking into a new box" className="min-h-11 rounded-pill bg-chip px-4 py-3 text-[16px] focus:outline-2 focus:outline-ink" /></label>
+      <label className="mt-4 grid gap-2 text-[15px]">Reason<input ref={focusWithoutScroll} value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="For example: repacking into a new box" className="min-h-11 rounded-pill bg-chip px-4 py-3 text-[16px] focus:outline-2 focus:outline-ink" /></label>
       <div className="mt-4 grid gap-2"><button disabled={blocked || !lastOwn || reason.trim().length < 3} onClick={() => lastOwn && void send({ action: 'undo', requestId: crypto.randomUUID(), undoEventId: lastOwn.id, expectedVersion: view.session.version, reason })} className={`${button} bg-chip`}>Undo my last counted unit</button><button disabled={busy || !!pending || !verified || !!view.order.blockedReason || reason.trim().length < 3} onClick={() => void send({ action: 'reset', requestId: crypto.randomUUID(), expectedVersion: view.session.version, reason })} className={`${button} bg-ink text-white`}>Start fresh · recount all {required} units</button><button onClick={() => setResetOpen(false)} className={`${button} bg-white`}>Cancel</button></div>
     </dialog>}
   </section>

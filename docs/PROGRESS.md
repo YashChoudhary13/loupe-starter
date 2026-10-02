@@ -29,6 +29,27 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-03 — Order QC: review of the iPad branch before release (D140 follow-up)
+
+**Goal this session:** confirm the iPad layout breaks no QC function, fix what it did break, release.
+
+**Built:**
+- `src/components/qc/QcScreen.tsx` → the reason fields focus through one module-level ref callback. The inline callbacks ran on every render, so an open "mark short" reason box pulled focus back from the scan field after one keystroke; in Chrome a scan typed into the scan field landed as `A` there and `BC-123` in the reason box, and Enter would have marked units short with that text as the reason.
+- `src/components/qc/QcScreen.tsx` → the scan field stays under the green passed panel. Without it a pouch scanned after a pass was dropped; the database command records it as an extra to remove. To keep the pane inside 1024 × 768, a passed order hides the hint line, the Shopify status row and the disabled Complete QC button, and the control pane can scroll from `md` upward.
+- `src/lib/qc/server.ts` → `qcOrderStatuses` asks 100 ids per request. The list now loads up to 250 orders and the ids travel in the URL; one request was only proven with 68 ids.
+- `tests/qc-server.test.ts` → 250 ids go out as 100, 100, 50, rows merge, one failed batch fails the whole lookup.
+
+**Verified:** `npx vitest run tests/qc tests/app-shell-render.test.ts` 45 passed. The full suite without credentials fails the same 25 files and 3 tests as `main` at `1149888`, all for missing environment. `tsc`, `eslint` clean; `next build --webpack` compiles. Offline fixture preview in Chrome at 1180 × 820: scan field kept `ABC-123` with a reason box open; gun typing with nothing focused 6 / 20 → 7 / 20; By hand at the bottom kept the pane at 3494.5; Tick removed kept 300; mark short, start fresh and Complete QC returned their messages; a scan after the pass returned "Extra unit — remove it from this order's box." Passed and open screens at 1024 × 768, 1180 × 820 and 1366 × 1024: every control inside the pane, no horizontal overflow.
+
+**Not finished / known broken:**
+- Not tried on a physical iPad or with the scanner gun.
+- A passed row says "Ready to ship" from the saved status; an order edited in Shopify after its pass is only marked for recount when someone opens it, as before.
+- If a recount or undo request fails while the correction dialog is open, the Retry button sits behind the dialog until Cancel is tapped.
+
+**Surprises:** `src/lib/qc/server.ts` contains bytes that make `grep` treat it as binary and print nothing; search it with `awk` or the editor.
+
+**Next session should start with:** owner opens one held order on the iPad, scans it through and passes it.
+
 ## 2026-10-03 — Order QC: an obvious sidebar collapse control
 
 **Goal this session:** make the left navigation panel easy to collapse for more QC space.
