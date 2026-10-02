@@ -1,0 +1,408 @@
+{
+  "viewport": {
+    "width": 1180,
+    "height": 820
+  },
+  "scroll": [
+    {
+      "action": "By hand from bottom (DOM click)",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Checked 1 unit: Rings 028 \u00b7 Silver / 7"
+    },
+    {
+      "action": "Tick removed from bottom (DOM click)",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Extra item confirmed removed."
+    },
+    {
+      "action": "Refresh",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Extra item confirmed removed."
+    },
+    {
+      "action": "Open recount dialog",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Extra item confirmed removed."
+    },
+    {
+      "action": "Undo counted unit",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Correction saved."
+    },
+    {
+      "action": "Open shortage correction",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Correction saved."
+    },
+    {
+      "action": "Undo shortage",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Correction saved."
+    },
+    {
+      "action": "Mark short",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Missing units accepted as short."
+    },
+    {
+      "action": "Start fresh",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 2204
+      },
+      "message": "Fresh checklist started."
+    },
+    {
+      "action": "By hand (pointer click)",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 4170
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 4170
+      },
+      "message": "Checked 1 unit: Rings 028 \u00b7 Silver / 7"
+    },
+    {
+      "action": "Rejected scan",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 4170
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 4170
+      },
+      "message": "Wrong item \u2014 remove it from this order\u2019s box."
+    },
+    {
+      "action": "30-second automatic refresh",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 4170
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 4170
+      },
+      "message": "Wrong item \u2014 remove it from this order\u2019s box."
+    },
+    {
+      "action": "Complete QC",
+      "before": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 1631
+      },
+      "after": {
+        "page": 0,
+        "screen": 0,
+        "controls": 0,
+        "items": 1631
+      },
+      "message": "QC passed."
+    }
+  ],
+  "layouts": [
+    {
+      "width": 1024,
+      "height": 768,
+      "documentWidth": 1024,
+      "sectionWidth": 754,
+      "sectionClientWidth": 754,
+      "controlsHeight": 732,
+      "controlsScrollHeight": 732,
+      "message": {
+        "top": 367,
+        "bottom": 439,
+        "width": 269.90625,
+        "height": 72
+      },
+      "details": {
+        "top": 447,
+        "bottom": 630,
+        "width": 269.90625,
+        "height": 183
+      },
+      "messageFont": "16px"
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "documentWidth": 1180,
+      "sectionWidth": 910,
+      "sectionClientWidth": 910,
+      "controlsHeight": 784,
+      "controlsScrollHeight": 784,
+      "message": {
+        "top": 367,
+        "bottom": 439,
+        "width": 333.71875,
+        "height": 72
+      },
+      "details": {
+        "top": 447,
+        "bottom": 682,
+        "width": 333.71875,
+        "height": 235
+      },
+      "messageFont": "16px"
+    },
+    {
+      "width": 1366,
+      "height": 1024,
+      "documentWidth": 1366,
+      "sectionWidth": 1096,
+      "sectionClientWidth": 1096,
+      "controlsHeight": 988,
+      "controlsScrollHeight": 988,
+      "message": {
+        "top": 387,
+        "bottom": 459,
+        "width": 409.8125,
+        "height": 72
+      },
+      "details": {
+        "top": 471,
+        "bottom": 882,
+        "width": 409.8125,
+        "height": 411
+      },
+      "messageFont": "16px"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "documentWidth": 1440,
+      "sectionWidth": 1170,
+      "sectionClientWidth": 1170,
+      "controlsHeight": 864,
+      "controlsScrollHeight": 864,
+      "message": {
+        "top": 387,
+        "bottom": 459,
+        "width": 440.078125,
+        "height": 72
+      },
+      "details": {
+        "top": 471,
+        "bottom": 758,
+        "width": 440.078125,
+        "height": 287
+      },
+      "messageFont": "16px"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "documentWidth": 390,
+      "sectionWidth": 366,
+      "sectionClientWidth": 366,
+      "controlsHeight": 709,
+      "controlsScrollHeight": 709,
+      "message": {
+        "top": 405,
+        "bottom": 477,
+        "width": 342,
+        "height": 72
+      },
+      "details": {
+        "top": 485,
+        "bottom": 653,
+        "width": 342,
+        "height": 168
+      },
+      "messageFont": "16px"
+    }
+  ],
+  "rejectedMessage": {
+    "before": "Wrong item \u2014 remove it from this order\u2019s box.",
+    "after": "Wrong item \u2014 remove it from this order\u2019s box.",
+    "role": "alert"
+  },
+  "listRows": [
+    {
+      "text": "Demo90005\n\n2 Oct 2026 \u00b7 paid\n\nIn progress\n\u2192",
+      "height": 90.5
+    },
+    {
+      "text": "Demo90006\n\n2 Oct 2026 \u00b7 paid\n\nIn progress\n\u2192",
+      "height": 90.5
+    },
+    {
+      "text": "Demo90007\nHold\n\n2 Oct 2026 \u00b7 paid\n\nRecount needed\n\u2192",
+      "height": 91
+    },
+    {
+      "text": "Demo90008\n\n2 Oct 2026 \u00b7 paid\n\nRecount needed\n\u2192",
+      "height": 90.5
+    },
+    {
+      "text": "Demo90009\n\n2 Oct 2026 \u00b7 paid\n\nNot checked\n\u2192",
+      "height": 90.5
+    },
+    {
+      "text": "Demo90010\nHold\n\n2 Oct 2026 \u00b7 paid\n\nNot checked\n\u2192",
+      "height": 91
+    },
+    {
+      "text": "Demo90011\n\n2 Oct 2026 \u00b7 paid\n\nNot checked\n\u2192",
+      "height": 90.5
+    },
+    {
+      "text": "Demo90012\n\n2 Oct 2026 \u00b7 paid\n\nNot checked\n\u2192",
+      "height": 90.5
+    },
+    {
+      "text": "Demo90001\nHold\n\n2 Oct 2026 \u00b7 paid\n\nHOLD box\n1 short\n\u2192",
+      "height": 141.5
+    },
+    {
+      "text": "Demo90002\n\n2 Oct 2026 \u00b7 paid\n\nReady to ship\n\u2192",
+      "height": 90.5
+    },
+    {
+      "text": "Demo90003\n\n2 Oct 2026 \u00b7 paid\n\nReady to ship\n\u2192",
+      "height": 90.5
+    },
+    {
+      "text": "Demo90004\nHold\n\n2 Oct 2026 \u00b7 paid\n\nHOLD box\n\u2192",
+      "height": 91
+    }
+  ],
+  "acceptedPhoto": {
+    "width": 96,
+    "height": 96,
+    "top": 461,
+    "bottom": 557,
+    "paneTop": 448,
+    "paneBottom": 630,
+    "visible": true
+  },
+  "baseline": {
+    "commit": "1149888",
+    "viewport": {
+      "width": 1180,
+      "height": 820
+    },
+    "byHand": {
+      "before": 2290,
+      "after": 0
+    },
+    "tickRemoved": {
+      "before": 3413,
+      "after": 0
+    },
+    "note": "Before layout changes: focus() scrolled the page back to the input after both fixture actions."
+  }
+}

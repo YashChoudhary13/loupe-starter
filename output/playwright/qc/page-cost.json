@@ -1,0 +1,17 @@
+{
+  "checkedAt": "2026-10-02T17:59:40.844Z",
+  "readOnly": true,
+  "pageSize": 250,
+  "orders": 68,
+  "hasNextPage": false,
+  "statusRows": 37,
+  "cost": {
+    "requestedQueryCost": 13,
+    "actualQueryCost": 5,
+    "throttleStatus": {
+      "maximumAvailable": 2000,
+      "currentlyAvailable": 1995,
+      "restoreRate": 100
+    }
+  }
+}

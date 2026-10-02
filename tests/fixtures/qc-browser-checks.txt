@@ -1,0 +1,111 @@
+async page => {
+  const proof = { viewport: { width: 1180, height: 820 }, scroll: [], layouts: [] };
+  const open = async query => {
+    await page.goto(`http://127.0.0.1:4178/qc/90001${query}`);
+    await page.getByText('Shopify verified', { exact: true }).waitFor();
+  };
+  const positions = () => page.evaluate(() => ({
+    page: window.scrollY,
+    screen: document.querySelector('[aria-label="Order QC checklist"]').scrollTop,
+    controls: document.querySelector('[data-qc-controls]').scrollTop,
+    items: document.querySelector('[data-qc-items]').scrollTop,
+  }));
+  const checkScroll = async (action, trigger, expectedMessage) => {
+    const before = await positions();
+    await trigger();
+    await page.waitForTimeout(160);
+    const after = await positions();
+    const message = await page.locator('[data-qc-message]').innerText();
+    proof.scroll.push({ action, before, after, message });
+    if (expectedMessage && !message.includes(expectedMessage)) throw new Error(`${action} did not complete: ${message}`);
+    if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error(`${action} moved scroll: ${JSON.stringify(proof.scroll.at(-1))}`);
+  };
+  const bottom = () => page.locator('[data-qc-items]').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await page.setViewportSize(proof.viewport);
+  await open('');
+  // These controls intentionally live above the bottom viewport. DOM click dispatch
+  // triggers their real handlers without Playwright auto-scrolling them into view.
+  await bottom();
+  await checkScroll('By hand from bottom (DOM click)', () => page.getByRole('button', { name: 'By hand', exact: true }).last().evaluate(el => el.click()), 'Checked 1 unit:');
+  await checkScroll('Tick removed from bottom (DOM click)', () => page.getByRole('button', { name: 'Tick — removed', exact: true }).evaluate(el => el.click()), 'Extra item confirmed removed.');
+  await checkScroll('Refresh', () => page.getByRole('button', { name: 'Refresh', exact: true }).click());
+  await checkScroll('Open recount dialog', () => page.getByRole('button', { name: 'Recount / undo', exact: true }).click());
+  await page.getByRole('textbox', { name: 'Reason', exact: true }).fill('Counted the wrong pouch');
+  await checkScroll('Undo counted unit', () => page.getByRole('button', { name: 'Undo my last counted unit', exact: true }).click(), 'Correction saved.');
+  await checkScroll('Open shortage correction', () => page.getByRole('button', { name: 'Undo shortage', exact: true }).evaluate(el => el.click()));
+  // DOM fill avoids scrollIntoView; React needs its native setter and input event.
+  await page.getByRole('textbox', { name: 'Reason for shortage correction' }).evaluate(el => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'Found in stock');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await checkScroll('Undo shortage', () => page.getByRole('button', { name: 'Undo', exact: true }).evaluate(el => el.click()), 'Correction saved.');
+  await page.locator('details').filter({ has: page.getByText(/Missing items ·/) }).locator('summary').evaluate(el => el.click());
+  await page.getByRole('button', { name: /Don’t have it · mark/ }).last().evaluate(el => el.click());
+  await page.getByRole('textbox', { name: 'Reason for shortage correction' }).evaluate(el => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'Not in stock');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await checkScroll('Mark short', () => page.getByRole('button', { name: 'Mark short', exact: true }).evaluate(el => el.click()), 'Missing units accepted as short.');
+  await page.getByRole('button', { name: 'Recount / undo', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Reason', exact: true }).fill('Repacking into a new box');
+  await checkScroll('Start fresh', () => page.getByRole('button', { name: /Start fresh · recount all/ }).click(), 'Fresh checklist started.');
+  // Exercise a normal visible pointer click too.
+  const hand = page.getByRole('button', { name: 'By hand', exact: true }).last();
+  await hand.scrollIntoViewIfNeeded();
+  await checkScroll('By hand (pointer click)', () => hand.click(), 'Checked 1 unit:');
+  await page.getByRole('textbox', { name: 'Scan or type the SKU' }).fill('WRONG-DEMO');
+  await checkScroll('Rejected scan', () => page.getByRole('button', { name: 'Check ↵', exact: true }).click(), 'Wrong item');
+  const rejected = await page.locator('[data-qc-message]').innerText();
+  await checkScroll('30-second automatic refresh', () => page.waitForTimeout(31000));
+  proof.rejectedMessage = { before: rejected, after: await page.locator('[data-qc-message]').innerText(), role: await page.locator('[data-qc-message]').getAttribute('role') };
+  if (proof.rejectedMessage.before !== proof.rejectedMessage.after || proof.rejectedMessage.role !== 'alert') throw new Error('Refresh cleared the rejected scan alert');
+
+  for (const [width, height] of [[1024,768], [1180,820], [1366,1024], [1440,900], [390,844]]) {
+    await page.setViewportSize({ width, height });
+    await open('');
+    await page.evaluate(() => document.fonts.ready);
+    const layout = await page.evaluate(() => {
+      const controls = document.querySelector('[data-qc-controls]');
+      const section = document.querySelector('[aria-label="Order QC checklist"]');
+      const message = document.querySelector('[data-qc-message]');
+      const photo = document.querySelector('[data-qc-scan-details]');
+      const bounds = el => { const r = el.getBoundingClientRect(); return { top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
+      return { width:innerWidth, height:innerHeight, documentWidth:document.documentElement.scrollWidth, sectionWidth:section.scrollWidth, sectionClientWidth:section.clientWidth, controlsHeight:controls.clientHeight, controlsScrollHeight:controls.scrollHeight, message:bounds(message), details:bounds(photo), messageFont:getComputedStyle(message).fontSize };
+    });
+    proof.layouts.push(layout);
+    if (layout.documentWidth > width || layout.sectionWidth > layout.sectionClientWidth) throw new Error(`Horizontal overflow at ${width}`);
+    if (width >= 768 && (layout.controlsScrollHeight > layout.controlsHeight || layout.message.bottom > height)) throw new Error(`Clipped controls at ${width}`);
+    if (width === 1180 || width === 390) await page.screenshot({ path:`output/playwright/qc/order-${width === 390 ? 'phone' : 'ipad'}.png` });
+  }
+  await page.setViewportSize(proof.viewport);
+  await open('?ready');
+  await bottom();
+  await checkScroll('Complete QC', () => page.getByRole('button', { name: 'Complete QC', exact: true }).click(), 'QC passed.');
+  await page.getByRole('heading', { name: 'QC passed · put this box in the HOLD box', exact: true }).waitFor();
+  await page.screenshot({ path:'output/playwright/qc/passed-hold-ipad.png' });
+  await page.goto('http://127.0.0.1:4178/qc/90001?passed&shipping');
+  await page.getByRole('heading', { name: 'QC passed · ready to ship', exact: true }).waitFor();
+  await page.screenshot({ path:'output/playwright/qc/passed-ready-ipad.png' });
+  await page.goto('http://127.0.0.1:4178/qc');
+  await page.getByRole('heading', { name: 'To check · 8', exact: true }).waitFor();
+  await page.screenshot({ path:'output/playwright/qc/list-ipad.png' });
+  proof.listRows = await page.locator('a[href^="/qc/900"]').evaluateAll(rows => rows.filter(el => !el.closest('details')).map(el => ({ text:el.innerText, height:el.getBoundingClientRect().height })));
+  if (proof.listRows.some(row => row.height < 64)) throw new Error('Order tap target below 64px');
+  for (const [width, height, file] of [[1024,768,'scan-ipad-small'], [1180,820,'scan-ipad'], [390,844,'order-phone-items']]) {
+    await page.setViewportSize({ width, height });
+    await open('');
+    await page.getByRole('button', { name: 'By hand', exact: true }).first().evaluate(el => el.click());
+    await page.waitForTimeout(160);
+    if (width === 1024) {
+      proof.acceptedPhoto = await page.locator('[data-qc-scan-details]').evaluate(el => {
+        const image = el.querySelector('img').getBoundingClientRect();
+        const pane = el.getBoundingClientRect();
+        return { width:image.width, height:image.height, top:image.top, bottom:image.bottom, paneTop:pane.top, paneBottom:pane.bottom, visible:image.top >= pane.top && image.bottom <= pane.bottom };
+      });
+      if (!proof.acceptedPhoto.visible) throw new Error('Last scan photo clipped at 1024px');
+    }
+    if (width === 390) await page.locator('[aria-label="Order QC checklist"]').evaluate(el => { el.scrollTop = 850; });
+    await page.screenshot({ path:`output/playwright/qc/${file}.png` });
+  }
+  return proof;
+}

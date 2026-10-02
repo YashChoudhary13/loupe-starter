@@ -29,6 +29,38 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-02 — Order QC: iPad list and scanner station (D140)
+
+**Goal this session:** make the QC list, remaining items and exceptions readable and tappable on a landscape iPad, without changing scan rules.
+
+**Built:**
+- `src/app/(shell)/qc/page.tsx` → To check / Checked columns, distinct status chips, HOLD box / Ready to ship tags, short counts and collapsed 30-day history.
+- `src/components/qc/QcScreen.tsx` → fixed controls beside a scrolling attention-first checklist, larger scan photo, persistent amber alerts, no-scroll focus/updates, native correction dialog and destination-specific green pass panel.
+- `src/components/qc/CameraScan.tsx`, `QcHistoryScreen.tsx` → readable controls; camera errors report in the fixed message area.
+- `src/lib/shopify/qc-orders.ts` → page size 250 after a read-only cost/status-lookup check. No guessed row unit counts.
+- `scripts/qc-preview.mjs`, `tests/fixtures/qc-*`, `output/playwright/qc/` → isolated fictional preview, repeatable browser checks, screenshots and measured evidence.
+- Three existing lint blockers fixed in a separate commit: media-script response types, LiveActivity ref synchronization, documented typed-child test exception. The media script was not executed.
+
+**Verified:**
+```text
+npx vitest run tests/qc → 7 files, 43 tests passed
+npm run typecheck → exit 0
+npm run lint → exit 0
+npx next build --webpack → exit 0 (no live .env in this worktree)
+git diff --check → exit 0
+```
+Chrome fixtures at 1180 × 820 reproduced the old focus jump (By hand 2290 → 0; Tick removed 3413 → 0). Both now retain right-pane scroll 2204 → 2204; mark short, undo, reset, completion and the 30-second refresh also retain their positions. Rejected scan text and its alert role persist across refresh. Layout checks cover 1024 × 768, 1180 × 820, 1366 × 1024, 1440 × 900 and 390 × 844; no horizontal overflow. The 96px feedback photo stays visible at the smallest iPad size. Screenshots and exact evidence: `output/playwright/qc/README.md` and `browser-proof.json`.
+
+Read-only Shopify check: 68 open orders, no next page, requested/actual cost 13/5, throttle headroom 1995/2000; status lookup accepted all 68 IDs and found 37 sessions. No real QC scan/completion or other production mutation occurred. Only QC tests ran.
+
+**Not finished / known broken:**
+- Physical iPad Safari, Bluetooth scanner and camera hardware have not been tested.
+- Branch `codex/qc-ipad`, new worktree from `origin/main` at `1149888`; not pushed or deployed. Owner screenshot review is required before any deployment work.
+
+**Surprises:** D139 was already taken in the separate unpublished draft-label branch; used D140. Full lint initially found five errors in three pre-existing files; corrected those separately. Next's font download required network-enabled build execution; the final build passed.
+
+**Next session should start with:** owner reviews `output/playwright/qc/README.md` and its screenshots, then checks the approved layout on the real iPad and scanner before planning deployment.
+
 ## 2026-09-29 — Order QC: held orders open with their real unit count (D138 correction)
 
 **Goal this session:** make orders on hold checkable. The D138 release listed them but opened each one as "no remaining shipping units".
