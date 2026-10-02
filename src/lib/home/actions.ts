@@ -25,6 +25,16 @@ export function formatListAsText(title: string, rows: readonly Record<string, un
   if (shown < lines.length) text += `…and ${lines.length - shown} more`
   return text.trim()
 }
+/** One date range rule for every finance-report sender (Home assistant, Workflows card): real YYYY-MM-DD dates, from ≤ to, not past today in IST, at most 92 days. */
+export function financeRange(args: Record<string, unknown>, now: Date): { ok: true; params: ActionParams; summary: string } | { ok: false; error: string } {
+  const from = String(args.from ?? ''), to = String(args.to ?? '')
+  if (!DATE.test(from) || !DATE.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) return { ok: false, error: 'Dates must be YYYY-MM-DD.' }
+  if (new Date(from).toISOString().slice(0, 10) !== from || new Date(to).toISOString().slice(0, 10) !== to) return { ok: false, error: 'Dates must be YYYY-MM-DD.' }
+  if (from > to) return { ok: false, error: 'from must not be after to.' }
+  if (to > istToday(now)) return { ok: false, error: 'The range cannot reach into the future.' }
+  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 91) return { ok: false, error: 'At most 92 days at a time.' }
+  return { ok: true, params: { from, to }, summary: `Finance report ${from} → ${to}` }
+}
 async function post(deps: ActionDeps, url: string, body: Record<string, unknown>): Promise<string> {
   const { status, text } = await deps.post(url, deps.config.secret ?? '', body)
   if (status < 200 || status >= 300) { console.warn('bot webhook', url, status, text); throw new Error(`The bot answered ${status}.`) }
@@ -35,15 +45,7 @@ const flat = (row: unknown): row is Record<string, unknown> => !!row && typeof r
 export const ACTIONS: readonly ActionDef[] = [
   { name: 'send_finance_report', label: 'Send the finance report', needs: 'report', description: 'Ask the WhatsApp bot to send the finance report for a date range (at most 92 days, not in the future) to the staff group. The operator must confirm.',
     parameters: { type: 'object', properties: { from: { type: 'string', description: 'YYYY-MM-DD' }, to: { type: 'string', description: 'YYYY-MM-DD' } }, required: ['from', 'to'], additionalProperties: false },
-    validate(args, now) {
-      const from = String(args.from ?? ''), to = String(args.to ?? '')
-      if (!DATE.test(from) || !DATE.test(to) || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) return { ok: false, error: 'Dates must be YYYY-MM-DD.' }
-      if (new Date(from).toISOString().slice(0, 10) !== from || new Date(to).toISOString().slice(0, 10) !== to) return { ok: false, error: 'Dates must be YYYY-MM-DD.' }
-      if (from > to) return { ok: false, error: 'from must not be after to.' }
-      if (to > istToday(now)) return { ok: false, error: 'The range cannot reach into the future.' }
-      if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 91) return { ok: false, error: 'At most 92 days at a time.' }
-      return { ok: true, params: { from, to }, summary: `Finance report ${from} → ${to}` }
-    },
+    validate: financeRange,
     run: (params, deps) => post(deps, deps.config.report ?? '', { action: 'finance_report', from: params.from, to: params.to, requested_by: deps.actor }) },
   { name: 'send_staff_text', label: 'Send a message to staff', needs: 'staffText', description: 'Send a short text (at most 900 characters) through the WhatsApp bot to its fixed staff list. No recipient can be chosen. The operator must confirm.',
     parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },

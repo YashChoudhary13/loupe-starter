@@ -7,6 +7,7 @@ import { supabaseServer } from '@/lib/supabase/server'
 
 import {
   workflowDefinition,
+  type DateRangeInput,
   type ResultSection,
   type StepState,
   type WorkflowKey,
@@ -89,8 +90,11 @@ function view(row: RunRow): WorkflowRunView {
   }
 }
 
-async function loadProgram(key: WorkflowKey): Promise<WorkflowProgram> {
+async function loadProgram(key: WorkflowKey, input: DateRangeInput | null): Promise<WorkflowProgram> {
   switch (key) {
+    case 'finance_report':
+      if (!input) throw new Error('Pick the from and to dates.')
+      return (await import('./finance-report')).financeReportProgram(input)
     case 'material':
       return (await import('./material')).materialProgram()
     case 'reconciliation':
@@ -146,6 +150,7 @@ export async function startWorkflow(
   key: WorkflowKey,
   actor: string,
   db: SupabaseClient = supabaseServer(),
+  input: DateRangeInput | null = null,
 ): Promise<StartResult> {
   const definition = workflowDefinition(key)
   await failStaleRuns(db)
@@ -180,7 +185,7 @@ export async function startWorkflow(
 
   const runId = data.id
   after(async () => {
-    await execute(runId, key, actor, steps, db).catch(() => undefined)
+    await execute(runId, key, actor, steps, db, input).catch(() => undefined)
   })
   return { run: view(data), started: true }
 }
@@ -191,6 +196,7 @@ async function execute(
   actor: string,
   steps: StepState[],
   db: SupabaseClient,
+  input: DateRangeInput | null,
 ): Promise<void> {
   const log: string[] = []
   const sections: ResultSection[] = []
@@ -214,7 +220,7 @@ async function execute(
   let program: WorkflowProgram
   let failure: string | null = null
   try {
-    program = await loadProgram(key)
+    program = await loadProgram(key, input)
   } catch (cause) {
     program = { steps: [] }
     failure = cause instanceof Error ? cause.message : String(cause)

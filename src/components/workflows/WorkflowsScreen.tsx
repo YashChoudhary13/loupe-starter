@@ -6,6 +6,7 @@ import { listWorkflowRunsAction, startWorkflowAction } from '@/app/(shell)/workf
 import { cn } from '@/lib/utils'
 import {
   WORKFLOWS,
+  type DateRangeInput,
   type StepState,
   type StepStatus,
   type WorkflowDefinition,
@@ -56,10 +57,10 @@ export function WorkflowsScreen({ initialRuns }: { initialRuns: readonly Workflo
     }
   }, [anyRunning])
 
-  const start = async (key: string) => {
+  const start = async (key: string, dates?: DateRangeInput) => {
     setStarting(key)
     setError(null)
-    const result = await startWorkflowAction(key)
+    const result = await startWorkflowAction(key, dates)
     setStarting(null)
     if (!result.ok) {
       setError(result.error)
@@ -83,7 +84,7 @@ export function WorkflowsScreen({ initialRuns }: { initialRuns: readonly Workflo
           runs={runs.filter((run) => run.workflow === definition.key)}
           now={now}
           starting={starting === definition.key}
-          onRun={() => void start(definition.key)}
+          onRun={(dates) => void start(definition.key, dates)}
         />
       ))}
     </div>
@@ -101,10 +102,21 @@ function WorkflowCard({
   runs: readonly WorkflowRunView[]
   now: number
   starting: boolean
-  onRun: () => void
+  onRun: (dates?: DateRangeInput) => void
 }) {
   const latest = runs[0] ?? null
   const running = latest?.status === 'running'
+  const [dates, setDates] = useState(defaultRange)
+  const days = Math.round((Date.parse(dates.to) - Date.parse(dates.from)) / 86_400_000) + 1
+  const rangeProblem = !definition.dateRange
+    ? null
+    : !dates.from || !dates.to || Number.isNaN(days)
+      ? 'Pick both dates.'
+      : days < 1
+        ? 'From must be on or before To.'
+        : days > 92
+          ? 'At most 92 days at a time.'
+          : null
   const steps: readonly StepState[] =
     latest?.steps ??
     definition.steps.map((step) => ({
@@ -124,11 +136,20 @@ function WorkflowCard({
           <p className="mt-1.5 text-[10.5px] text-muted-foreground">
             <span className="uppercase tracking-[0.1em]">Writes</span> · {definition.writes}
           </p>
+          {definition.dateRange ? (
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <DateField label="From" value={dates.from} max={dates.to || istDay(0)} onChange={(from) => setDates((current) => ({ ...current, from }))} />
+              <DateField label="To" value={dates.to} min={dates.from} max={istDay(0)} onChange={(to) => setDates((current) => ({ ...current, to }))} />
+              <span className={cn('pb-2 text-[11.5px] tabular-nums', rangeProblem ? 'text-amber' : 'text-muted-foreground')}>
+                {rangeProblem ?? `${days} day${days === 1 ? '' : 's'}, both dates included`}
+              </span>
+            </div>
+          ) : null}
         </div>
         <button
           type="button"
-          onClick={onRun}
-          disabled={running || starting}
+          onClick={() => onRun(definition.dateRange ? dates : undefined)}
+          disabled={running || starting || rangeProblem !== null}
           className={cn(
             'flex shrink-0 items-center gap-2 rounded-pill px-4 py-2 text-[12px] font-medium text-white transition-opacity',
             'bg-ink disabled:opacity-40',
@@ -141,6 +162,8 @@ function WorkflowCard({
             </>
           ) : starting ? (
             'Starting…'
+          ) : definition.dateRange ? (
+            'Send'
           ) : (
             'Run'
           )}
@@ -268,6 +291,46 @@ function PreviousRuns({ runs }: { runs: readonly WorkflowRunView[] }) {
       ))}
     </ul>
   )
+}
+
+function DateField({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  value: string
+  min?: string
+  max?: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-[10.5px] uppercase tracking-[0.1em] text-muted-foreground">
+      {label}
+      <input
+        type="date"
+        required
+        value={value}
+        min={min}
+        max={max}
+        onChange={(event) => onChange(event.target.value)}
+        className="rounded-pill bg-chip px-4 py-2 text-[12.5px] normal-case tracking-normal text-ink tabular-nums focus:outline-2 focus:outline-ink"
+      />
+    </label>
+  )
+}
+
+/** YYYY-MM-DD in India, `offset` days from today. */
+function istDay(offset: number): string {
+  return new Date(Date.now() + 330 * 60_000 + offset * 86_400_000).toISOString().slice(0, 10)
+}
+
+/** Yesterday and the first of its month: the 1st of a month offers the whole previous month. */
+function defaultRange(): DateRangeInput {
+  const to = istDay(-1)
+  return { from: `${to.slice(0, 8)}01`, to }
 }
 
 function elapsed(startedAt: string, now: number): string {

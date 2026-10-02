@@ -10,6 +10,7 @@ export type WorkflowKey =
   | 'reconciliation'
   | 'copy_rules'
   | 'collections'
+  | 'finance_report'
 
 export type StepStatus = 'pending' | 'running' | 'done' | 'warning' | 'failed' | 'skipped'
 
@@ -49,9 +50,29 @@ export interface WorkflowDefinition {
   /** What Run actually changes in Shopify or Loupe; "Report only" when nothing. */
   readonly writes: string
   readonly steps: readonly { readonly key: string; readonly label: string }[]
+  /** The card asks for a from/to date pair before Run. */
+  readonly dateRange?: true
+}
+
+/** What a dated workflow is started with, YYYY-MM-DD both ends. */
+export interface DateRangeInput {
+  readonly from: string
+  readonly to: string
 }
 
 export const WORKFLOWS: readonly WorkflowDefinition[] = [
+  {
+    key: 'finance_report',
+    title: 'Finance report',
+    description:
+      "The accountant's Excel — the same sheet the WhatsApp bot sends every midnight, with every order, GST, payment and gateway columns — for any dates you pick. Both dates are included, India time. The bot reads Shopify one day at a time, so a month takes about a minute.",
+    writes: 'Sends one WhatsApp message with the Excel to the accountant and the usual copy. Nothing in Shopify changes.',
+    dateRange: true,
+    steps: [
+      { key: 'send', label: 'Build the Excel and send it on WhatsApp' },
+      { key: 'check', label: 'Check WhatsApp accepted it' },
+    ],
+  },
   {
     key: 'material',
     title: 'Material consistency',

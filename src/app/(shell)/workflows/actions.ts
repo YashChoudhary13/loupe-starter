@@ -1,8 +1,9 @@
 'use server'
 
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
+import { financeRange } from '@/lib/home/actions'
 import { listWorkflowRuns, startWorkflow } from '@/lib/workflows/runner'
-import { WORKFLOWS, type WorkflowKey, type WorkflowRunView } from '@/lib/workflows/types'
+import { WORKFLOWS, type DateRangeInput, type WorkflowKey, type WorkflowRunView } from '@/lib/workflows/types'
 
 export type WorkflowActionResult<T> =
   | { readonly ok: true; readonly data: T }
@@ -22,12 +23,19 @@ async function withOperator<T>(run: (email: string) => Promise<T>): Promise<Work
 
 export async function startWorkflowAction(
   key: string,
+  dates?: DateRangeInput,
 ): Promise<WorkflowActionResult<{ run: WorkflowRunView; started: boolean }>> {
   return withOperator(async (email) => {
     // The key arrives from a browser; only the catalogue decides what exists.
     const definition = WORKFLOWS.find((workflow) => workflow.key === key)
     if (!definition) throw new Error('That workflow does not exist.')
-    return startWorkflow(definition.key as WorkflowKey, email)
+    let input: DateRangeInput | null = null
+    if (definition.dateRange) {
+      const checked = financeRange({ from: dates?.from, to: dates?.to }, new Date())
+      if (!checked.ok) throw new Error(checked.error)
+      input = { from: checked.params.from, to: checked.params.to }
+    }
+    return startWorkflow(definition.key as WorkflowKey, email, undefined, input)
   })
 }
 

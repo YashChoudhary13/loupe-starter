@@ -29,6 +29,29 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-03 — Workflows: Finance report card (D141)
+
+**Goal this session:** let the owner send the accountant's finance Excel for any date range from Loupe instead of asking for a webhook call.
+
+**Built:**
+- `src/lib/workflows/finance-report.ts` → two-step program: GET the bot's existing range webhook (`qimati-orders-range`, n8n `umDDGkN9kkpIisLR`) with `start`/`end` and no `to`, then read the accountant's WhatsApp send result from the reply. 524 (Cloudflare's 100 s limit) is an amber "not confirmed", never a failure.
+- `src/lib/workflows/types.ts`, `runner.ts` → `finance_report` catalogue entry (first card) with `dateRange: true`; `startWorkflow` takes an optional `{ from, to }` and hands it to the program.
+- `src/app/(shell)/workflows/actions.ts` → validates the dates server-side before a run row exists.
+- `src/lib/home/actions.ts` → the Home assistant's range rule extracted as `financeRange` and shared, unchanged.
+- `src/components/workflows/WorkflowsScreen.tsx` → From / To date fields (default: first of yesterday's month → yesterday, IST), a day count, and **Send** in place of Run.
+- `tests/workflow-finance-report.test.ts` → URL shape, range refusal before any call, bot 500, WhatsApp refusal, 524 warning.
+
+**Verified:** `tsc --noEmit` clean; eslint clean on changed files; 7 workflow/Home test files, 52 tests passed. Offline fictional preview (scratch script, not committed) at 1280 × 860 and 390 × 844: card renders, Send runs the timeline, no horizontal overflow. The webhook contract itself was exercised live on 2026-10-02 (n8n execution 461078, 1 Sep–1 Oct, 1,356 orders, accepted for both recipients), not through this code.
+
+**Not finished / known broken:**
+- No real Send pressed from Loupe yet. The VPS has not yet been shown to reach `n8n.qimati-eng.site`.
+- Ranges over about two months outrun Cloudflare's 100 s wait (the bot needs ~1.45 s per day); the card then shows amber "not confirmed" although n8n normally still sends.
+- The webhook reply carries only the accountant's send; the 7401 copy is not checked from Loupe.
+
+**Surprises:** none.
+
+**Next session should start with:** owner presses Send for one short range on production and confirms the accountant received it.
+
 ## 2026-10-03 — Order QC: review of the iPad branch before release (D140 follow-up)
 
 **Goal this session:** confirm the iPad layout breaks no QC function, fix what it did break, release.
