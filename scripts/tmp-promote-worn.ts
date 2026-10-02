@@ -4,7 +4,7 @@ config({ path: '.env.local', override: true, quiet: true })
 import { ShopifyClient } from '../src/lib/shopify/client'
 async function main() {
   const shopify = new ShopifyClient()
-  const data = await shopify.graphql<any>(`{
+  const data = await shopify.graphql<{ products: { nodes: { id: string; variants: { nodes: { sku: string | null }[] }; media: { nodes: { id: string; alt: string | null }[] } }[] } }>(`{
     products(first: 250, query: "tag:anklets status:active") {
       nodes { id variants(first:1){nodes{sku}} media(first: 50) { nodes { id alt } } }
     }
@@ -13,9 +13,9 @@ async function main() {
   for (const p of data.products.nodes) {
     const sku = p.variants.nodes[0]?.sku ?? '?'
     const nodes = p.media.nodes
-    const wornIndex = nodes.findIndex((m: any) => m.alt?.startsWith('Worn view'))
+    const wornIndex = nodes.findIndex(m => m.alt?.startsWith('Worn view'))
     if (wornIndex <= 0) continue // none, or already first
-    const res = await shopify.graphql<any>(
+    const res = await shopify.graphql<{ productReorderMedia: { mediaUserErrors: { message: string }[] } }>(
       `mutation ($id: ID!, $moves: [MoveInput!]!) {
         productReorderMedia(id: $id, moves: $moves) { mediaUserErrors { message } }
       }`,

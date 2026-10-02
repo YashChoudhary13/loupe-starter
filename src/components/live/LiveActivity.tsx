@@ -52,7 +52,7 @@ export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
   // Packing is not the moment for enhancement toasts; the badge and heartbeat still run on QC screens.
   const quiet = usePathname().startsWith('/qc')
   const quietRef = useRef(quiet)
-  quietRef.current = quiet
+  useEffect(() => { quietRef.current = quiet }, [quiet])
   const cursorRef = useRef<number | null>(null)
   const instanceRef = useRef(0)
 
