@@ -1,14 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import type { QcCommand, QcView } from '@/lib/qc/types'
 import { parseQcCommand } from '@/lib/qc/validation'
 import { summarizeQc } from '@/lib/qc/summary'
 import { playQcTone, toneForOutcome, vibrateQc, type QcTone } from '@/lib/qc/sound'
 import { CameraScan } from './CameraScan'
 
-const button = 'rounded-pill px-5 py-3 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
+const button = 'min-h-11 min-w-11 rounded-pill px-4 py-2.5 text-[15px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
 const time = (value: string) => new Date(value).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Kolkata' })
 
 interface Feedback { tone: QcTone; headline: string; message: string; image: string | null; title: string | null; variantTitle: string | null; progress: string | null; code: string | null }
@@ -37,7 +37,7 @@ function ReasonAction({ label, confirm, disabled, onConfirm }: { label: string; 
   const [reason, setReason] = useState('')
   if (!open) return <button type="button" disabled={disabled} onClick={() => setOpen(true)} className={`${button} bg-white border border-chip`}>{label}</button>
   return <form className="flex flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); if (reason.trim().length >= 3) { onConfirm(reason.trim()); setOpen(false); setReason('') } }}>
-    <input autoFocus value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="Reason (for example: not in stock)" className="min-w-0 rounded-pill bg-chip px-4 py-2 text-[13px] focus:outline-2 focus:outline-ink" />
+    <input aria-label="Reason for shortage correction" ref={node => node?.focus({ preventScroll: true })} value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="Reason (for example: not in stock)" className="min-h-11 min-w-0 rounded-pill bg-chip px-4 py-2 text-[16px] focus:outline-2 focus:outline-ink" />
     <button disabled={disabled || reason.trim().length < 3} className={`${button} bg-ink text-white`}>{confirm}</button>
     <button type="button" onClick={() => { setOpen(false); setReason('') }} className={`${button} bg-white`}>Cancel</button>
   </form>
@@ -49,6 +49,8 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<QcCommand | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [cameraError, setCameraError] = useState('')
   const [notice, setNotice] = useState<{ text: string; attention: boolean } | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(() => feedbackFor(initialView))
   const [verified, setVerified] = useState(false)
@@ -56,6 +58,21 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const [reason, setReason] = useState('')
   const [resetOpen, setResetOpen] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const screen = useRef<HTMLElement>(null)
+  const itemsPane = useRef<HTMLDivElement>(null)
+  const [minimumItemsHeight, setMinimumItemsHeight] = useState(0)
+  const savedScroll = useRef<{ node: HTMLElement; top: number }[]>([])
+  const applyView = useCallback((payload: QcView) => {
+    savedScroll.current = [screen.current, itemsPane.current].filter((node): node is HTMLElement => node !== null).map(node => ({ node, top: node.scrollTop }))
+    const pane = itemsPane.current
+    // Keep enough space below the viewport when regrouping/removing rows at the bottom.
+    if (pane && window.matchMedia('(min-width: 768px)').matches) setMinimumItemsHeight(pane.scrollTop + pane.clientHeight)
+    setView(payload)
+  }, [])
+  useLayoutEffect(() => {
+    for (const { node, top } of savedScroll.current) node.scrollTo({ top, behavior: 'instant' })
+    savedScroll.current = []
+  }, [view])
   const cameraOpen = useRef(false)
   const cameraOpenChanged = useCallback((open: boolean) => { cameraOpen.current = open }, [])
   const inFlight = useRef(false)
@@ -74,12 +91,12 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Could not refresh Shopify quantities.')
       if (seq !== sequence.current) return
-      setView(payload); setVerified(true); setError(null)
+      applyView(payload); setVerified(true); setRefreshError(null)
     } catch (cause) {
       if (seq !== sequence.current) return
-      setVerified(false); setError(cause instanceof Error ? cause.message : 'Connection interrupted. Refresh before scanning.')
+      setVerified(false); setRefreshError(cause instanceof Error ? cause.message : 'Connection interrupted. Refresh before scanning.')
     }
-  }, [endpoint])
+  }, [endpoint, applyView])
 
   useEffect(() => {
     try {
@@ -95,14 +112,14 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       setNotice({ text: 'The saved retry could not be read. Review the history and start a fresh checklist before scanning again.', attention: true })
     }
     void refresh()
-    input.current?.focus()
+    input.current?.focus({ preventScroll: true })
     const interval = setInterval(() => { if (document.visibilityState === 'visible') void refresh() }, 30000)
     const catchUp = () => { if (document.visibilityState === 'visible') { setVerified(false); void refresh() } }
     // A 2D scanner gun types into whatever is focused: pull stray keystrokes back into the code field.
     const capture = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       const editable = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
-      if (!editable && event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey && !cameraOpen.current) input.current?.focus()
+      if (!editable && event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey && !cameraOpen.current) input.current?.focus({ preventScroll: true })
     }
     document.addEventListener('visibilitychange', catchUp)
     window.addEventListener('focus', catchUp)
@@ -121,7 +138,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(command) })
       const payload: QcView = await response.json()
       if (!response.ok) throw new Error((payload as unknown as { error?: string }).error || 'QC could not confirm this request. Retry it.')
-      setView(payload); setVerified(true)
+      applyView(payload); setVerified(true)
       sessionStorage.removeItem(pendingKey); setPending(null); setCode(''); setReason(''); setResetOpen(false); setRecoveryRequired(false)
       const outcome = payload.event?.outcome
       setNotice({ text: `${payload.replayed ? 'Saved request confirmed. ' : ''}${payload.event?.message ?? 'QC saved.'}`, attention: !['accepted', 'passed', 'undone', 'reset', 'removed', 'short'].includes(outcome ?? '') })
@@ -131,7 +148,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       signal('reject')
       setError(cause instanceof Error ? cause.message : 'No confirmed response. Retry this request before scanning another unit.')
     } finally {
-      inFlight.current = false; setBusy(false); if (!cameraOpen.current) input.current?.focus()
+      inFlight.current = false; setBusy(false); if (!cameraOpen.current) input.current?.focus({ preventScroll: true })
       const next = queue.current.shift(); setQueued(queue.current.length)
       if (next) queueMicrotask(() => submitCode(next))
     }
@@ -160,83 +177,104 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
     }
     if (blocked) return
     try { void send(parseQcCommand({ action: 'scan', requestId: crypto.randomUUID(), code: trimmed, expectedGeneration: view.session.generation })) }
-    catch (cause) { signal('reject'); setError(cause instanceof Error ? cause.message : 'Scan a valid code.'); if (!cameraOpen.current) input.current?.select() }
+    catch (cause) { signal('reject'); setError(cause instanceof Error ? cause.message : 'Scan a valid code.'); if (!cameraOpen.current) { input.current?.focus({ preventScroll: true }); input.current?.setSelectionRange(0, input.current.value.length) } }
   }
 
   function scan(event: FormEvent) { event.preventDefault(); submitCode(code) }
 
-  const feedbackClass = feedback?.tone === 'accept' ? 'border-green bg-white' : feedback?.tone === 'passed' ? 'border-green bg-chip' : 'border-amber bg-white'
-  const feedbackText = feedback?.tone === 'reject' ? 'text-amber' : 'text-green'
+  const toScan = lines.filter(line => (stale ? 0 : (view.session.counts[line.id] ?? 0) + (wrap.shortByLine[line.id] ?? 0)) < line.required)
+  const settledLines = lines.filter(line => !toScan.includes(line))
+  const attention = [...new Set([
+    view.order.blockedReason,
+    stale ? 'Order changed. Start a fresh checklist and recount every unit; previous counts are saved in history.' : null,
+    error, refreshError, cameraError,
+    notice?.attention ? notice.text : !notice && feedback?.tone === 'reject' ? feedback.message : null,
+  ].filter((message): message is string => !!message))]
+  const hasAttention = !stale && (wrap.missing.length > 0 || wrap.extras.length > 0 || view.shortages.length > 0)
+  const destination = view.order.fulfillmentStatus === 'ON_HOLD' ? 'put this box in the HOLD box' : 'ready to ship'
 
-  return <section className="h-full overflow-auto px-3 py-3 md:px-8 md:py-5">
-    <div className="flex items-center justify-between gap-2"><Link href="/qc" className="rounded-pill py-1 text-[13px] underline focus-visible:outline-2 md:py-2">← Order QC</Link><div className="flex gap-2"><Link href="/qc/shortages" className="rounded-pill bg-white px-3 py-1.5 text-[12px] focus-visible:outline-2 md:px-5 md:py-3 md:text-[13px]">Shortages</Link><Link href="/labels" className="hidden rounded-pill bg-white px-5 py-3 text-[13px] focus-visible:outline-2 md:inline-block">Prepare labels</Link></div></div>
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 md:mt-4 md:items-start md:gap-4"><div><h1 className="flex items-center gap-2 text-[22px] font-medium tracking-[-0.025em] md:text-[28px]">{view.order.name}{view.order.fulfillmentStatus === 'ON_HOLD' && <span className="rounded-pill bg-amber px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wide text-white md:text-[13px]">Hold</span>}</h1><p className="mt-0.5 text-[12px] text-ink-soft md:mt-1 md:text-[13px]"><span className="hidden md:inline">All remaining shipping units · </span>checklist {view.session.generation}</p></div><div className="rounded-pill bg-ink px-4 py-2 text-[14px] font-medium text-white md:px-5 md:py-3 md:text-[15px]">{checked} / {required} checked{shortTotal > 0 && <span className="text-amber"> · {shortTotal} short</span>}</div></div>
-    <p className="mt-4 hidden max-w-3xl text-[12px] leading-relaxed text-ink-soft md:block">Scan each pouch with the 2D scanner, listen for the tone, then move it into this order’s box. A pair or set sold as one unit needs one scan. Repeated scans of the same physical pouch cannot be distinguished.</p>
-    {(view.order.blockedReason || stale) && <div role="alert" className="mt-4 rounded-panel bg-white p-4 text-[13px] text-amber">{view.order.blockedReason || 'Shopify changed this order’s items, quantities or codes. Previous counts are preserved in history. Start a fresh checklist and recount every unit.'}</div>}
-    <div className="mt-3 rounded-card bg-white p-3 shadow-sm md:mt-4 md:p-4">
-      {/* Two columns from md: the scan field and its messages on the left, the last-scan card and camera on the right,
-          so the block stays about one card tall on a 10-inch screen instead of stacking everything. The card scrolls with
-          the page (owner request, 2026-09-21); the gun still types into the field wherever the page is scrolled. */}
-      <div className="md:grid md:grid-cols-2 md:items-start md:gap-4">
-        <div>
-          <form onSubmit={scan} className="flex items-end gap-2 md:gap-3"><label className="grid min-w-0 flex-1 gap-1 text-[11px] md:gap-2 md:text-[12px]" htmlFor="qc-code"><span><span className="md:hidden">Scan, or type the SKU under the QR</span><span className="hidden md:inline">Scan the QR, or type the SKU printed under it</span></span><input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked && !busy} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Scan or type SKU" className="min-w-0 rounded-pill bg-chip px-4 py-2.5 font-mono text-[16px] focus:outline-2 focus:outline-ink md:py-3" /></label><button disabled={(blocked && !busy) || !code.trim()} className={`${button} shrink-0 whitespace-nowrap bg-ink px-4 py-2.5 text-white md:px-5 md:py-3`}>{busy ? (queued > 0 ? `${queued} waiting` : 'Checking…') : <><span className="md:hidden">Check ↵</span><span className="hidden md:inline">Check 1 unit ↵</span></>}</button></form>
-          <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-ink-soft md:text-[12px]"><span className="min-w-0 truncate"><span className="md:hidden">{verified ? `✓ Shopify ${time(view.session.checked_at)}` : 'Shopify check needed'}{busy ? ' · checking…' : ''}{view.timings && ` · ${(view.timings.totalMs / 1000).toFixed(2)} s`}</span><span className="hidden md:inline">{verified ? `Shopify verified ${time(view.session.checked_at)}` : 'Shopify verification needed'}{busy ? ' · keep scanning, codes are checked in order' : ''}{view.timings && <span title={`Shopify ${view.timings.shopifyMs} ms · database ${view.timings.rpcMs} ms · order snapshot ${(view.timings.snapshotAgeMs / 1000).toFixed(0)} s old`}> · last check {(view.timings.totalMs / 1000).toFixed(2)} s</span>}</span></span><button disabled={busy || !!pending} onClick={() => void refresh()} className="shrink-0 rounded-pill px-2 py-1 underline focus-visible:outline-2 disabled:opacity-40 md:px-3">Refresh</button></div>
-          {notice && <p role={notice.attention ? 'alert' : 'status'} aria-live="polite" className={`mt-2 text-[12px] md:mt-3 md:text-[13px] ${notice.attention ? 'text-amber' : 'text-ink'}`}>{notice.text}</p>}
-          {error && <p role="alert" className="mt-3 text-[13px] text-amber">{error}</p>}
-          {pending && !busy && <button onClick={() => void send(pending)} className={`${button} mt-3 bg-ink text-white`}>Retry the same request safely</button>}
-        </div>
-        <div>
-          {feedback && <div role="status" aria-live="assertive" className={`mt-2 flex items-center gap-3 rounded-panel border-2 p-2 md:mt-0 md:gap-4 md:p-3 ${feedbackClass}`}>
-        {feedback.image
-          // eslint-disable-next-line @next/next/no-img-element -- Shopify CDN thumbnail of the scanned line.
-          ? <img src={feedback.image} alt="" className="h-16 w-16 shrink-0 rounded-panel bg-chip object-cover md:h-20 md:w-20" />
-          : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-panel bg-chip text-[11px] text-ink-soft md:h-20 md:w-20">No image</div>}
-        <div className="min-w-0 flex-1">
-          <p className={`text-[17px] font-medium md:text-[20px] ${feedbackText}`}>{feedback.headline}{feedback.progress && <span className="ml-2 text-[15px] text-ink md:ml-3 md:text-[16px]">{feedback.progress}</span>}</p>
-          {feedback.title && <p className="mt-0.5 truncate text-[14px] font-medium md:mt-1 md:text-[15px]">{feedback.title}<span className="text-ink-soft"> · {feedback.variantTitle || 'One option'}</span></p>}
-          <p className="mt-0.5 line-clamp-2 text-[11px] text-ink-soft md:mt-1 md:text-[12px]">{feedback.message}{feedback.code && !feedback.title && <span className="font-mono"> · {feedback.code}</span>}</p>
-        </div>
-      </div>}
-          <CameraScan paused={blocked || resetOpen} onCode={submitCode} onOpenChange={cameraOpenChanged} />
-        </div>
+  function renderLine(line: typeof lines[number]) {
+    const count = stale ? 0 : view.session.counts[line.id] ?? 0
+    const short = stale ? 0 : wrap.shortByLine[line.id] ?? 0
+    const done = count === line.required
+    const settled = count + short === line.required
+    const image = images.get(line.id) ?? line.image ?? null
+    return <article key={line.id} className={`flex min-h-28 items-center gap-3 rounded-panel border bg-white p-3 ${settled ? 'border-line' : 'border-transparent'}`}>
+      {image
+        // eslint-disable-next-line @next/next/no-img-element -- Shopify CDN thumbnail.
+        ? <img src={image} alt="" className={`h-[72px] w-[72px] shrink-0 rounded-tile bg-chip object-cover ${settled ? 'opacity-50' : ''}`} />
+        : <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-tile bg-chip text-[15px] text-ink-soft">No image</div>}
+      <div className="min-w-0 flex-1"><h3 className={`text-[15px] font-medium ${settled ? 'text-ink-soft' : ''}`}>{done && '✓ '}{line.title}</h3><p className="text-[15px] text-ink-soft">{line.variantTitle || 'One option'}</p><p className="mt-1 break-all font-mono text-[13px] md:text-[15px]">{line.barcode || line.sku || 'No saved code'}</p>
+        {!line.barcode && <Link href={line.sku ? `/labels?q=${encodeURIComponent(line.sku)}` : '/labels'} className="mt-1 inline-flex min-h-11 items-center rounded-pill text-[15px] underline">Barcode missing · prepare labels</Link>}
       </div>
-      {passed && <div role="status" className="mt-4 rounded-panel bg-chip p-4 text-[13px]"><strong>✓ QC passed</strong><p className="mt-1">Every remaining shipping unit was checked at {time(view.session.completed_at!)}{shortTotal > 0 ? `, with ${shortTotal} unit(s) accepted as short and listed under Shortages for refund or coupon` : ''}. Extra items were confirmed removed. Fulfill the order in Shopify after packing. Order changes will require a new check.</p></div>}
+      <div className="shrink-0 text-right"><p className="text-[24px] font-medium tabular-nums">{count}<span className="text-[15px] text-ink-soft"> / {line.required}</span></p><p className="text-[13px] text-ink-soft md:text-[15px]">{done ? 'Checked' : short > 0 && settled ? `${short} short · accepted` : `${line.required - count - short} to scan${short > 0 ? ` · ${short} short` : ''}`}</p>
+        {!settled && (line.barcode || line.sku) && <button type="button" disabled={blocked && !busy} onClick={() => submitCode(line.barcode || line.sku || '')} title="Use when the QR is cut or will not read; counts one unit exactly like a scan" className={`${button} mt-1 bg-chip`}>By hand</button>}
+      </div>
+    </article>
+  }
+
+  return <section ref={screen} className="h-full min-h-0 min-w-0 overflow-auto [overflow-anchor:none] md:grid md:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.3fr)] md:gap-4 md:overflow-hidden" aria-label="Order QC checklist">
+    <div className="flex min-h-0 min-w-0 flex-col gap-2 rounded-card bg-surface p-3 md:p-4 xl:gap-3" data-qc-controls>
+      <div className="flex items-center justify-between gap-2"><Link href="/qc" className="inline-flex min-h-11 items-center rounded-pill text-[15px] underline">← Order QC</Link><Link href="/qc/shortages" className="inline-flex min-h-11 items-center rounded-pill px-3 text-[15px] underline">Shortages</Link></div>
+      <div><h1 className="flex flex-wrap items-center gap-2 text-[26px] font-medium tracking-[-0.025em]">{view.order.name}{view.order.fulfillmentStatus === 'ON_HOLD' && <span className="rounded-pill bg-amber px-3 py-1 text-[15px] font-semibold text-black">Hold</span>}</h1>
+        <div className="mt-3 flex items-end justify-between gap-2"><p className="text-[36px] leading-none font-medium tabular-nums">{checked} <span className="text-[22px] text-ink-soft">/ {required}</span></p><p className="text-right text-[15px] text-ink-soft">checked{shortTotal > 0 && <span className="block">{shortTotal} accepted short</span>}</p></div>
+        <progress aria-label="Units checked" value={checked} max={Math.max(1, required)} className="mt-2 block h-2 w-full overflow-hidden rounded-pill accent-green [&::-webkit-progress-bar]:bg-chip [&::-webkit-progress-value]:bg-green" />
+      </div>
+      <p className="text-[15px] text-ink-soft">Scan a pouch, then box it.</p>
+      {passed ? <div role="status" className="rounded-panel bg-green p-5 text-white">
+        <h2 className="text-[24px] font-medium leading-tight">QC passed · {destination}</h2>
+        <p className="mt-3 text-[15px]">Checked at {time(view.session.completed_at!)}. Extra items were confirmed removed.{shortTotal > 0 && ` ${shortTotal} unit(s) accepted as short; follow up under Shortages for refund or coupon.`} Fulfil in Shopify after packing. Order changes require a new check.</p>
+        <Link href="/qc" className={`${button} mt-4 inline-flex items-center bg-white text-ink`}>Back to order list →</Link>
+      </div> : <>
+        <form onSubmit={scan} className="flex items-end gap-2"><label className="grid min-w-0 flex-1 gap-1 text-[15px]" htmlFor="qc-code">Scan or type the SKU<input ref={input} id="qc-code" value={code} onChange={event => setCode(event.target.value)} readOnly={blocked && !busy} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={64} placeholder="Scan or type SKU" className="min-h-11 min-w-0 rounded-pill bg-chip px-4 py-2.5 font-mono text-[16px] focus:outline-2 focus:outline-ink" /></label><button disabled={(blocked && !busy) || !code.trim()} className={`${button} shrink-0 bg-ink text-white`}>Check ↵</button></form>
+        <div className="flex items-center justify-between gap-2 text-[15px] text-ink-soft"><span>{busy ? (queued > 0 ? `${queued} waiting · keep scanning` : 'Checking…') : verified ? 'Shopify verified' : 'Verifying Shopify…'}{view.timings && <span className="block text-[13px] md:text-[15px]">Last check {(view.timings.totalMs / 1000).toFixed(2)} s</span>}</span><button disabled={busy || !!pending} onClick={() => void refresh()} className={`${button} px-2 underline`}>Refresh</button></div>
+      </>}
+      <div className={`min-h-[72px] shrink-0 rounded-panel p-3 text-[16px] leading-snug ${attention.length ? 'bg-amber text-black' : 'bg-chip text-ink'}`} role={attention.length ? 'alert' : 'status'} aria-live={attention.length ? 'assertive' : 'polite'} aria-atomic="true" data-qc-message>
+        {attention.length ? attention.map(message => <p key={message}>{message}</p>) : <p>{notice?.text || (passed ? 'QC saved.' : 'Ready for the next pouch.')}</p>}
+        {pending && !busy && <button onClick={() => void send(pending)} className={`${button} mt-2 bg-ink text-white`}>Retry the same request safely</button>}
+      </div>
+      {!passed && <div className="min-h-0 space-y-2 md:flex-1 md:overflow-auto [overflow-anchor:none]" data-qc-scan-details>
+        {feedback && <div className={`flex items-center gap-3 rounded-panel border-2 p-2 ${feedback.tone === 'reject' ? 'border-amber' : 'border-green'}`}>
+          {feedback.image
+            // eslint-disable-next-line @next/next/no-img-element -- Shopify CDN thumbnail of the scanned line.
+            ? <img src={feedback.image} alt="" className="h-24 w-24 shrink-0 rounded-tile bg-chip object-cover" />
+            : <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-tile bg-chip text-[15px] text-ink-soft">No image</div>}
+          <div className="min-w-0"><p className="text-[18px] font-medium">{feedback.headline}</p>{feedback.progress && <p className="text-[20px] tabular-nums">{feedback.progress}</p>}{feedback.title && <p className="line-clamp-2 text-[15px]">{feedback.title} · {feedback.variantTitle || 'One option'}</p>}{feedback.code && !feedback.title && <p className="break-all font-mono text-[15px]">{feedback.code}</p>}</div>
+        </div>}
+        <CameraScan paused={blocked || resetOpen} onCode={submitCode} onOpenChange={cameraOpenChanged} onErrorChange={setCameraError} />
+      </div>}
+      <div className="mt-auto grid shrink-0 gap-2">
+        <button disabled={blocked || !wrap.canPass || passed} onClick={() => void send({ action: 'complete', requestId: crypto.randomUUID(), expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>{shortTotal > 0 ? `Complete QC · ${shortTotal} short` : 'Complete QC'}</button>
+        <button disabled={busy || !!pending} onClick={() => { setResetOpen(!resetOpen); setReason('') }} className={`${button} bg-chip`}>Recount / undo</button>
+      </div>
     </div>
-    <div className="mt-3 grid gap-2 md:mt-4 md:gap-3">{lines.map(line => {
-      const count = stale ? 0 : view.session.counts[line.id] ?? 0
-      const short = stale ? 0 : wrap.shortByLine[line.id] ?? 0
-      const done = count === line.required
-      const settled = count + short === line.required
-      const image = images.get(line.id) ?? line.image ?? null
-      return <article key={line.id} className={`flex items-center gap-3 rounded-panel border bg-white p-2.5 md:gap-4 md:p-4 ${done ? 'border-green' : settled ? 'border-amber' : 'border-transparent'}`}>
-        {image
-          // eslint-disable-next-line @next/next/no-img-element -- Shopify CDN thumbnail.
-          ? <img src={image} alt="" className={`h-14 w-14 shrink-0 rounded-panel bg-chip object-cover md:h-16 md:w-16 ${done ? 'opacity-50' : ''}`} />
-          : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-panel bg-chip text-[10px] text-ink-soft md:h-16 md:w-16">No image</div>}
-        <div className="min-w-0 flex-1"><h2 className={`truncate text-[14px] font-medium ${done ? 'line-through' : ''}`}>{done && '✓ '}{line.title}</h2><p className="mt-0.5 truncate text-[12px] text-ink-soft md:mt-1 md:text-[13px]">{line.variantTitle || 'One option'}</p><p className="mt-1 truncate font-mono text-[11px] md:mt-2 md:break-all md:text-[12px]">{line.barcode || line.sku || 'No saved code'}</p>{!line.barcode && <Link href={line.sku ? `/labels?q=${encodeURIComponent(line.sku)}` : '/labels'} className="mt-1 inline-block text-[12px] text-amber underline">Barcode missing · prepare labels</Link>}</div>
-        <div className="shrink-0 text-right"><p className="text-[18px] font-medium tabular-nums md:text-[20px]">{count}<span className="text-[13px] text-ink-soft md:text-[14px]"> / {line.required}</span></p><p className="mt-0.5 text-[11px] text-ink-soft md:mt-1 md:text-[12px]">{done ? 'Checked' : short > 0 && settled ? `${short} short · accepted` : `${line.required - count - short} to scan${short > 0 ? ` · ${short} short` : ''}`}</p>
-          {!settled && (line.barcode || line.sku) && <button type="button" disabled={blocked && !busy} onClick={() => submitCode(line.barcode || line.sku || '')} title="Use when the QR is cut or will not read; counts one unit exactly like a scan" className="mt-1.5 rounded-pill bg-chip px-2.5 py-1 text-[11px] focus-visible:outline-2 disabled:opacity-40 md:mt-2 md:px-3 md:py-1.5 md:text-[12px]">By hand</button>}</div>
-      </article>
-    })}</div>
-    {(wrap.missing.length > 0 || wrap.extras.length > 0 || view.shortages.length > 0) && !stale && <div className="mt-4 rounded-card bg-white p-5">
-      <h2 className="text-[15px] font-medium">End of QC</h2>
-      <p className="mt-2 text-[12px] text-ink-soft">Missing items still need a scan. If you do not have a unit at all, mark it short: QC can then pass without it, and it goes on the Shortages list until the customer is refunded or sent a coupon. Extra items stay listed until you tick that you took them out of this order’s box.</p>
-      {wrap.missing.length > 0 && <div className="mt-4 grid gap-3">{wrap.missing.map(item => <article key={item.lineId} className="flex flex-wrap items-center justify-between gap-3 rounded-panel bg-chip p-4">
-        <div className="min-w-0"><h3 className="text-[14px] font-medium">{item.title}</h3><p className="mt-1 text-[13px] text-ink-soft">{item.variantTitle || 'One option'} · missing</p></div>
-        <div className="flex flex-wrap items-center gap-3"><p className="text-[20px] font-medium tabular-nums text-amber">{item.remaining}<span className="text-[14px] text-ink-soft"> short</span></p>
-          <ReasonAction label={`Don’t have it · mark ${item.remaining} short`} confirm="Mark short" disabled={actionsBlocked || !!view.order.blockedReason} onConfirm={reasonText => void send({ action: 'short', requestId: crypto.randomUUID(), lineId: item.lineId, expectedVersion: view.session.version, reason: reasonText })} /></div>
-      </article>)}</div>}
-      {view.shortages.length > 0 && <div className="mt-4 grid gap-3"><p className="text-[12px] uppercase tracking-[0.11em] text-ink-soft">Accepted as short</p>{view.shortages.map(item => <article key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-amber bg-white p-4">
-        <div className="min-w-0"><h3 className="text-[14px] font-medium">#{item.ref} · {item.title}</h3><p className="mt-1 text-[13px] text-ink-soft">{item.variant_title || 'One option'} · {item.quantity} short · {item.reason}</p><p className="mt-1 text-[12px] text-ink-soft">Scanning this unit now closes the shortage automatically.</p></div>
-        <ReasonAction label="Undo shortage" confirm="Undo" disabled={actionsBlocked || !!view.order.blockedReason} onConfirm={reasonText => void send({ action: 'undo', requestId: crypto.randomUUID(), undoEventId: item.event_id, expectedVersion: view.session.version, reason: reasonText })} />
-      </article>)}</div>}
-      {wrap.extras.length > 0 && <div className="mt-4 grid gap-3"><p className="text-[12px] uppercase tracking-[0.11em] text-ink-soft">Extra items</p>{wrap.extras.map(item => <article key={item.eventId} className={`flex flex-wrap items-center justify-between gap-3 rounded-panel border bg-white p-4 ${item.removed ? 'border-ink' : 'border-amber'}`}>
-        <div className="min-w-0"><h3 className={`text-[14px] font-medium ${item.removed ? 'line-through' : ''}`}>{item.removed && '✓ '}{item.title}</h3><p className="mt-1 text-[13px] text-ink-soft">{item.kind === 'wrong' ? 'Not on this order' : 'Extra unit of a listed variant'}</p>{item.code && <p className="mt-2 break-all font-mono text-[12px]">{item.code}</p>}</div>
-        {item.removed ? <p className="text-[13px] font-medium">✓ Removed</p> : <button disabled={actionsBlocked} onClick={() => void send({ action: 'clear_extra', requestId: crypto.randomUUID(), extraEventId: item.eventId, expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>Tick — removed</button>}
-      </article>)}</div>}
-    </div>}
-    <div className="mt-5 flex flex-wrap gap-3"><button disabled={blocked || !wrap.canPass || passed} onClick={() => void send({ action: 'complete', requestId: crypto.randomUUID(), expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>{shortTotal > 0 ? `Complete QC · ${shortTotal} short` : 'Complete QC'}</button><button disabled={busy || !!pending} onClick={() => { setResetOpen(!resetOpen); setReason('') }} className={`${button} bg-white`}>Recount / undo</button></div>
-    {resetOpen && <div className="mt-4 rounded-card bg-white p-5"><h2 className="text-[15px] font-medium">Correct the checklist</h2><p className="mt-2 text-[12px] text-ink-soft">Undo removes one of your counted units. Starting fresh clears the current counts and accepted shortages, and keeps the previous checklist in the audit history.</p><label className="mt-4 grid gap-2 text-[12px]">Reason<input value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="For example: repacking into a new box" className="rounded-pill bg-chip px-4 py-3 focus:outline-2 focus:outline-ink" /></label><div className="mt-4 flex flex-wrap gap-3"><button disabled={blocked || !lastOwn || reason.trim().length < 3} onClick={() => lastOwn && void send({ action: 'undo', requestId: crypto.randomUUID(), undoEventId: lastOwn.id, expectedVersion: view.session.version, reason })} className={`${button} bg-chip`}>Undo my last counted unit</button><button disabled={busy || !!pending || !verified || !!view.order.blockedReason || reason.trim().length < 3} onClick={() => void send({ action: 'reset', requestId: crypto.randomUUID(), expectedVersion: view.session.version, reason })} className={`${button} bg-ink text-white`}>Start fresh · recount all {required} units</button></div></div>}
-    <details className="my-5 rounded-card bg-white p-5"><summary className="cursor-pointer rounded-pill text-[14px] font-medium focus-visible:outline-2">Recent QC history · {view.events.length} events</summary><ol className="mt-4 grid gap-3">{view.events.map(event => <li key={event.id} className="border-b border-chip pb-3 text-[12px]"><div className="flex flex-wrap justify-between gap-2"><span>{event.actor_name} · {event.action} · checklist {event.generation}</span><time dateTime={event.created_at} className="text-ink-soft">{new Date(event.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} {time(event.created_at)}</time></div><p className="mt-1 text-ink-soft">{event.message}{event.code && ` · ${event.code}`}</p></li>)}</ol><p className="mt-3 text-[12px] text-ink-soft">Showing the most recent 40 events. Earlier checklists remain saved.</p></details>
+    <div ref={itemsPane} className="min-h-0 min-w-0 pt-4 [overflow-anchor:none] md:overflow-y-auto md:overscroll-contain md:pt-0" data-qc-items>
+      <div style={{ '--qc-items-min-height': `${minimumItemsHeight}px` } as CSSProperties} className="space-y-4 pb-4 md:min-h-[var(--qc-items-min-height)]">
+        {hasAttention && <section aria-labelledby="qc-attention-heading" className="rounded-card border-2 border-amber bg-surface p-4">
+          <h2 id="qc-attention-heading" className="text-[18px] font-medium">Needs attention</h2>
+          {wrap.extras.length > 0 && <div className="mt-3 space-y-2">{wrap.extras.map(item => <article key={item.eventId} className={`flex flex-wrap items-center justify-between gap-2 rounded-panel p-3 ${item.removed ? 'bg-chip' : 'bg-amber text-black'}`}>
+            <div className="min-w-0"><h3 className={`break-all text-[16px] font-medium ${item.removed ? 'line-through' : ''}`}>{item.title}</h3><p className="text-[15px]">{item.kind === 'wrong' ? 'Not on this order' : 'Extra unit of a listed variant'}</p></div>
+            {item.removed ? <p className="text-[15px] font-medium">✓ Removed</p> : <button disabled={actionsBlocked} onClick={() => void send({ action: 'clear_extra', requestId: crypto.randomUUID(), extraEventId: item.eventId, expectedVersion: view.session.version })} className={`${button} bg-ink text-white`}>Tick — removed</button>}
+          </article>)}</div>}
+          {wrap.missing.length > 0 && <details className="mt-3 rounded-panel bg-chip p-3"><summary className="min-h-11 cursor-pointer content-center rounded-pill text-[16px] font-medium">Missing items · {wrap.missing.reduce((sum, item) => sum + item.remaining, 0)} units · mark short</summary>
+            <p className="mt-2 text-[15px] text-ink-soft">Scan these below, or accept a shortage with a reason if the item is unavailable.</p>
+            <div className="mt-3 space-y-3">{wrap.missing.map(item => <article key={item.lineId} className="rounded-panel bg-white p-3">
+              <h3 className="text-[16px] font-medium">{item.title} · {item.variantTitle || 'One option'}</h3><div className="mt-2"><ReasonAction label={`Don’t have it · mark ${item.remaining} short`} confirm="Mark short" disabled={actionsBlocked || !!view.order.blockedReason} onConfirm={reasonText => void send({ action: 'short', requestId: crypto.randomUUID(), lineId: item.lineId, expectedVersion: view.session.version, reason: reasonText })} /></div>
+            </article>)}</div>
+          </details>}
+          {view.shortages.length > 0 && <div className="mt-3 space-y-2"><h3 className="text-[16px] font-medium">Accepted as short</h3>{view.shortages.map(item => <article key={item.id} className="rounded-panel border border-amber p-3">
+            <h4 className="text-[16px] font-medium">#{item.ref} · {item.title}</h4><p className="text-[15px]">{item.variant_title || 'One option'} · {item.quantity} short · {item.reason}</p><div className="mt-2"><ReasonAction label="Undo shortage" confirm="Undo" disabled={actionsBlocked || !!view.order.blockedReason} onConfirm={reasonText => void send({ action: 'undo', requestId: crypto.randomUUID(), undoEventId: item.event_id, expectedVersion: view.session.version, reason: reasonText })} /></div>
+          </article>)}</div>}
+        </section>}
+        <section aria-labelledby="qc-to-scan-heading"><h2 id="qc-to-scan-heading" className="mb-3 text-[20px] font-medium">To scan · {toScan.length}</h2><div className="space-y-2">{toScan.map(renderLine)}</div>{toScan.length === 0 && <p className="rounded-panel bg-white p-4 text-[15px]">All items are checked or accepted as short.</p>}</section>
+        <section aria-labelledby="qc-checked-heading"><h2 id="qc-checked-heading" className="mb-3 text-[20px] font-medium text-ink-soft">Checked · {settledLines.length}</h2><div className="space-y-2">{settledLines.map(renderLine)}</div></section>
+        <details className="rounded-card bg-surface p-4"><summary className="min-h-11 cursor-pointer content-center rounded-pill text-[16px] font-medium">Recent QC history · {view.events.length} events</summary><ol className="mt-4 space-y-3">{view.events.map(event => <li key={event.id} className="border-b border-chip pb-3 text-[15px]"><div className="flex flex-wrap justify-between gap-2"><span>{event.actor_name} · {event.action} · checklist {event.generation}</span><time dateTime={event.created_at} className="text-ink-soft">{new Date(event.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })} {time(event.created_at)}</time></div><p className="mt-1 break-words text-ink-soft">{event.message}{event.code && ` · ${event.code}`}</p></li>)}</ol><p className="mt-3 text-[15px] text-ink-soft">Showing the most recent 40 events. Earlier checklists remain saved.</p></details>
+      </div>
+    </div>
+    {resetOpen && <dialog ref={node => { if (node && !node.open) node.showModal() }} onCancel={() => setResetOpen(false)} onClose={() => setResetOpen(false)} aria-labelledby="qc-correction-title" className="fixed inset-0 m-auto max-h-[90dvh] w-[min(92vw,480px)] overflow-auto rounded-card bg-surface p-5 text-ink backdrop:bg-black/40">
+      <h2 id="qc-correction-title" className="text-[20px] font-medium">Correct the checklist</h2><p className="mt-2 text-[15px] text-ink-soft">Undo one of your counted units, or start fresh. A fresh checklist clears counts and accepted shortages; earlier work stays in history.</p>
+      <label className="mt-4 grid gap-2 text-[15px]">Reason<input ref={node => node?.focus({ preventScroll: true })} value={reason} onChange={event => setReason(event.target.value)} maxLength={240} placeholder="For example: repacking into a new box" className="min-h-11 rounded-pill bg-chip px-4 py-3 text-[16px] focus:outline-2 focus:outline-ink" /></label>
+      <div className="mt-4 grid gap-2"><button disabled={blocked || !lastOwn || reason.trim().length < 3} onClick={() => lastOwn && void send({ action: 'undo', requestId: crypto.randomUUID(), undoEventId: lastOwn.id, expectedVersion: view.session.version, reason })} className={`${button} bg-chip`}>Undo my last counted unit</button><button disabled={busy || !!pending || !verified || !!view.order.blockedReason || reason.trim().length < 3} onClick={() => void send({ action: 'reset', requestId: crypto.randomUUID(), expectedVersion: view.session.version, reason })} className={`${button} bg-ink text-white`}>Start fresh · recount all {required} units</button><button onClick={() => setResetOpen(false)} className={`${button} bg-white`}>Cancel</button></div>
+    </dialog>}
   </section>
 }

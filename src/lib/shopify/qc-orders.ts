@@ -40,7 +40,7 @@ export async function listQcOrders(client: ShopifyClient, search = '', after: st
   const query = `status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial OR fulfillment_status:on_hold)${term ? ` name:${JSON.stringify(term.replace(/^#/, ''))}` : ` ${PAID}`}`
   const data = await client.graphql<{ orders: { nodes: QcOrderSummary[]; pageInfo: PageInfo } }>(`
     query LoupeQcOrders($query: String!, $after: String) {
-      orders(first: 30, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
+      orders(first: 250, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
         nodes { id name createdAt updatedAt displayFulfillmentStatus displayFinancialStatus }
         pageInfo { hasNextPage endCursor }
       }

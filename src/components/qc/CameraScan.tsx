@@ -18,7 +18,7 @@ function rememberDevice(id: string): void {
   try { localStorage.setItem(DEVICE, id) } catch { /* private mode */ }
 }
 
-export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: string) => void; paused: boolean; onOpenChange: (open: boolean) => void }) {
+export function CameraScan({ onCode, paused, onOpenChange, onErrorChange }: { onCode: (code: string) => void; paused: boolean; onOpenChange: (open: boolean) => void; onErrorChange?: (error: string) => void }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [state, setState] = useState<CameraScanState | 'starting'>('starting')
@@ -26,6 +26,7 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
   const [currentId, setCurrentId] = useState('')
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [info, setInfo] = useState('')
+  useEffect(() => { onErrorChange?.(error) }, [error, onErrorChange])
   const video = useRef<HTMLVideoElement>(null)
   const callback = useRef(onCode)
   const pausedRef = useRef(paused)
@@ -126,17 +127,16 @@ export function CameraScan({ onCode, paused, onOpenChange }: { onCode: (code: st
     rememberDevice(next); setDeviceId(next); setState('starting'); setInfo('')
   }
   return <div className="mt-2">
-    {!open && <button type="button" disabled={paused} onClick={toggle} className="rounded-pill bg-chip px-3 py-1.5 text-[12px] focus-visible:outline-2 disabled:opacity-40 md:px-4 md:py-2">Use phone camera instead</button>}
-    {open && <div className="relative">
-      {/* Status and Stop sit on the preview itself at every width, so the camera costs one short band, not three rows. */}
-      <p role="status" aria-live="polite" className="absolute left-2 top-2 z-10 max-w-[70%] truncate rounded-pill bg-white/90 px-2.5 py-1 text-[11px] font-medium md:text-[12px]">{status}</p>
-      <div className="absolute right-2 top-2 z-10 flex gap-1.5">
-        {devices.length > 1 && <button type="button" onClick={nextLens} className="rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:text-[12px]">Lens {Math.max(0, devices.findIndex(item => item.deviceId === currentId)) + 1}/{devices.length}</button>}
-        <button type="button" onClick={toggle} aria-label="Stop camera" className="rounded-pill bg-white/90 px-2.5 py-1 text-[11px] focus-visible:outline-2 md:text-[12px]">Stop</button>
+    {!open && <button type="button" disabled={paused} onClick={toggle} className="min-h-11 min-w-11 rounded-pill bg-chip px-3 py-1.5 text-[15px] focus-visible:outline-2 disabled:opacity-40 md:px-4 md:py-2">Use phone camera instead</button>}
+    {open && <div className="space-y-2">
+      <p role="status" aria-live="polite" className="text-[15px] font-medium">{status}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {devices.length > 1 && <button type="button" onClick={nextLens} className="min-h-11 min-w-11 rounded-pill bg-white/90 px-2.5 py-1 text-[15px] focus-visible:outline-2">Lens {Math.max(0, devices.findIndex(item => item.deviceId === currentId)) + 1}/{devices.length}</button>}
+        <button type="button" onClick={toggle} aria-label="Stop camera" className="min-h-11 min-w-11 rounded-pill bg-white/90 px-2.5 py-1 text-[15px] focus-visible:outline-2">Stop</button>
       </div>
-      {info && <p className="absolute bottom-1 left-2 z-10 max-w-[95%] truncate rounded-pill bg-white/80 px-2 py-0.5 font-mono text-[10px]">{info}</p>}
+      {info && <p className="break-all font-mono text-[15px]">{info}</p>}
       <video ref={video} muted playsInline className="h-36 w-full rounded-panel bg-ink object-cover md:h-44" aria-label="Barcode camera preview" />
     </div>}
-    {error && <p role="alert" className="mt-2 text-[12px] text-amber">{error}</p>}
+    {error && !onErrorChange && <p role="alert" className="mt-2 rounded-panel bg-amber p-3 text-[16px] text-black">{error}</p>}
   </div>
 }

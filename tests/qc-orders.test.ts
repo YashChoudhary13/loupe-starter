@@ -75,6 +75,7 @@ describe('whole-order Shopify QC snapshots', () => {
     await listQcOrders(client(graphql))
     expect(graphql.mock.calls[1][1].query).toBe('status:open (fulfillment_status:unfulfilled OR fulfillment_status:partial OR fulfillment_status:on_hold) (financial_status:paid OR financial_status:partially_paid OR financial_status:partially_refunded)')
     expect(graphql.mock.calls[1][0]).toContain('displayFinancialStatus')
+    expect(graphql.mock.calls[1][0]).toContain('orders(first: 250,')
     await expect(listQcOrders(client(graphql), 'foo OR status:any')).rejects.toThrow(/Search by/)
   })
   it('turns a missing order scope into an operator action', () => {

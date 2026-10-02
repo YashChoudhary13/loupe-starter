@@ -33,6 +33,22 @@ describe('QC screens render from a saved view', () => {
     expect(html).toContain('Complete QC · 1 short')
     expect(html).toContain('Use phone camera instead')
     expect(html).not.toContain('<video')
+    expect(html.indexOf('Needs attention')).toBeLessThan(html.indexOf('To scan ·'))
+    expect(html.indexOf('To scan ·')).toBeLessThan(html.indexOf('Checked ·'))
+    expect(html).toContain('data-qc-items')
+    expect(html).toContain('data-qc-message')
+  })
+  it('groups a fully checked line and an accepted-short line below the remaining items', () => {
+    const html = render(createElement(QcScreen, { initialView: { ...view, session: { ...session, counts: { 'gid://shopify/LineItem/1': 2 } } } }))
+    expect(html).toContain('To scan · 1')
+    expect(html).toContain('Checked · 1')
+    expect(html.slice(html.indexOf('id="qc-checked-heading"'))).toContain('1 short · accepted')
+  })
+  it('keeps a rejected initial scan in the prominent alert area', () => {
+    const rejected: QcEvent = { ...events[0], outcome: 'wrong', message: 'Wrong item. Remove it.', code: 'EXTRA', line_id: null, variant_id: null }
+    const html = render(createElement(QcScreen, { initialView: { ...view, event: rejected } }))
+    expect(html).toMatch(/role="alert"[^>]*data-qc-message/)
+    expect(html).toContain('Wrong item. Remove it.')
   })
   it('renders the read-only history record with the pass, the shortage and the events', () => {
     const passed: QcSession = { ...session, status: 'stale', counts: { 'gid://shopify/LineItem/1': 2, 'gid://shopify/LineItem/2': 1 } }
