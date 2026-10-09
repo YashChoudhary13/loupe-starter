@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll Loupe for Enhance jobs every two minutes (D143)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Persistent=true
+Unit=qimati-agent-runner.service
+
+[Install]
+WantedBy=timers.target

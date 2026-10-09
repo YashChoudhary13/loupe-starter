@@ -1,0 +1,16 @@
+[Unit]
+Description=Qimati agent runner: one Enhance job from Loupe per run (D143)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/etc/qimati-agent/runner.env
+WorkingDirectory=/home/ubuntu
+ExecStart=/opt/qimati-agent/agent-runner.sh
+TimeoutStartSec=6300
+Nice=5
