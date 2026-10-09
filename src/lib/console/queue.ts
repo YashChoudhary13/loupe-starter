@@ -3,9 +3,12 @@ import 'server-only'
 import { supabaseServer } from '@/lib/supabase/server'
 import { loadDuplicateCandidates } from '@/lib/duplicates/read-model'
 
+import { agentSuggestFromRow, agentTagFromRow } from '@/lib/agent-intake/suggest'
+
 import { signKeys } from './images'
 import { isUnpushedDraft, startOfKolkataDayIso } from './queue-view'
 import type {
+  AgentMarks,
   ColourSuggestion,
   ConsoleCatalog,
   DraftDetail,
@@ -62,6 +65,20 @@ interface IntakeRow {
   description_missing_at: string | null
   presentation_class: string | null
   product_draft_id: string | null
+  agent_tag?: string | null
+  agent_note?: string | null
+  restock_sku?: string | null
+  agent_suggest?: unknown
+}
+
+/** D142: the agent's annotations, null for anything a person or Drive brought in. */
+function agentMarks(row: Partial<IntakeRow>): AgentMarks {
+  return {
+    agentTag: agentTagFromRow(row.agent_tag),
+    agentNote: row.agent_note ?? null,
+    restockSku: row.restock_sku ?? null,
+    agentSuggest: agentSuggestFromRow(row.agent_suggest),
+  }
 }
 
 interface VersionRow {
@@ -114,6 +131,7 @@ interface DraftRow {
   reserved_sku: string | null
   reserved_handle: string | null
   shopify_product_id: string | null
+  supersedes_sku?: string | null
   labels_printed?: boolean
   error: string | null
   publish_lease_expires_at: string | null
@@ -269,7 +287,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('intake_files')
       .select(
-        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
+        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest',
       )
       .eq('status', 'enhanced')
       .is('product_draft_id', null)
@@ -278,7 +296,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('product_drafts')
       .select(
-        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, labels_printed, error, publish_lease_expires_at',
+        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, supersedes_sku, labels_printed, error, publish_lease_expires_at',
       )
       .in('status', ['assembling', 'publishing', 'failed'])
       .order('updated_at', { ascending: false })
@@ -286,7 +304,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('product_drafts')
       .select(
-        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, labels_printed, error, publish_lease_expires_at',
+        'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, supersedes_sku, labels_printed, error, publish_lease_expires_at',
         { count: 'exact' },
       )
       .eq('status', 'published')
@@ -326,7 +344,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
   const { data: draftPhotoRows, error: draftPhotoError } = draftIds.length
     ? await db
         .from('intake_files')
-        .select('id, filename, source, status, discovered_at, product_draft_id')
+        .select('id, filename, source, status, discovered_at, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest')
         .in('product_draft_id', draftIds)
     : { data: [], error: null }
   if (draftPhotoError) throw new Error(`intake_files (grouped): ${draftPhotoError.message}`)
@@ -381,6 +399,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
           ? `Waiting ${Math.floor(hoursSince(photo.discovered_at) / 24)}d for an operator`
           : null,
     reservedSku: null,
+    ...agentMarks(photo),
   }))
 
   const photosByDraft = new Map<string, IntakeRow[]>()
@@ -418,6 +437,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
                 : null,
       reservedSku: draft.reserved_sku,
       labelsPrinted: Boolean(draft.labels_printed),
+      ...agentMarks(members.find((photo) => photo.agent_tag) ?? first ?? {}),
     }
   }
 
@@ -462,7 +482,7 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
     db
       .from('intake_files')
       .select(
-        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
+        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest',
       )
       .in('id', intakeFileIds),
     db
@@ -519,6 +539,7 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
         .sort((a, b) => a.version_no - b.version_no)
         .map((v) => toVersionSummary(v, signed)),
       redo: redoSummary(redos.get(file.id)),
+      ...agentMarks(file),
     }))
 }
 
@@ -546,7 +567,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
   const { data: draftRow, error: draftError } = await db
     .from('product_drafts')
     .select(
-      'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, labels_printed, error, publish_lease_expires_at',
+      'id, status, updated_at, category_id, material_id, custom_material, description_override, title_suffix, price_paise, weight_g, stock, variant_kind, sku_scheme, reserved_sku, reserved_handle, shopify_product_id, supersedes_sku, labels_printed, error, publish_lease_expires_at',
     )
     .eq('id', draftId)
     .maybeSingle<DraftRow>()
@@ -557,7 +578,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     db
       .from('intake_files')
       .select(
-        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id',
+        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest',
       )
       .eq('product_draft_id', draftId)
       .order('discovered_at', { ascending: true }),
@@ -635,6 +656,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
       .sort((a, b) => a.version_no - b.version_no)
       .map((v) => toVersionSummary(v, signed)),
     redo: redoSummary(redos.get(photo.id)),
+    ...agentMarks(photo),
   }))
 
   const images: DraftImageRef[] = (
@@ -683,6 +705,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     reservedSku: draftRow.reserved_sku,
     reservedHandle: draftRow.reserved_handle,
     shopifyProductId: draftRow.shopify_product_id,
+    supersedesSku: draftRow.supersedes_sku ?? null,
     labelsPrinted: Boolean(draftRow.labels_printed),
     error: draftRow.error,
     publishInFlight:

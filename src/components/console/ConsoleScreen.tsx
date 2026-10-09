@@ -23,6 +23,7 @@ import {
   loadDraftLabelPrintAction,
   confirmDraftLabelsPrintedAction,
   finalizeManualUploadAction,
+  setDraftSupersessionAction,
   type ActionError,
   type ActionResult,
   type DraftBundle,
@@ -843,6 +844,18 @@ export function ConsoleScreen({
     setBusy(null)
   }, [ensureDraft, focusNextUngrouped, handleResult, rememberSticky, saveRequest, seededForm])
 
+  /** D142: "Use suggestion" with archive_old, or "Keep old listing". The form is left alone; only the draft's mark changes. */
+  const handleSupersede = useCallback(
+    async (sku: string, enable: boolean) => {
+      if (!bundle) return
+      setBusy('supersede')
+      const data = handleResult(await setDraftSupersessionAction(bundle.draft.id, sku, enable))
+      if (data) setBundle(data)
+      setBusy(null)
+    },
+    [bundle, handleResult],
+  )
+
   const handleDetach = useCallback(
     async (intakeFileId: string) => {
       if (!bundle) return
@@ -1348,6 +1361,8 @@ export function ConsoleScreen({
               onPublish={() => void handlePublish()}
               onSaveDraft={() => void handleSaveDraft()}
               onDetach={bundle && !listedReadOnly ? (id) => void handleDetach(id) : null}
+              supersedesSku={bundle?.draft.supersedesSku ?? null}
+              onSupersede={bundle && !listedReadOnly ? (sku, enable) => void handleSupersede(sku, enable) : null}
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
               onRedo={(intakeFileId, filename) => void openRedoReview(intakeFileId, filename)}

@@ -37,7 +37,35 @@ export interface RedoSummary {
   readonly createdAt: string
 }
 
-export interface PhotoSummary {
+/** D142: Claude's verdict on an image it delivered. */
+export type AgentTag = 'needs_review' | 'ready' | 'restock'
+
+/** D142: what Claude suggests for a restock listing, from the old product and its live stock. Applied only by an operator click. */
+export interface AgentSuggest {
+  readonly pricePaise: number | null
+  /** One of the three fixed materials, or null when the old listing had something else. */
+  readonly material: '304' | '316L' | 'Brass' | null
+  readonly titleSuffix: string | null
+  readonly variantKind: VariantKind | null
+  readonly colours: readonly string[]
+  readonly oldHandle: string | null
+  readonly oldStatus: string | null
+  readonly available: number | null
+  readonly committed: number | null
+  readonly onHand: number | null
+  /** True when the old listing is sold out and should be archived once this one is live. */
+  readonly archiveOld: boolean
+}
+
+/** D142: the agent's annotations on an intake row; all null for a Drive or operator upload. */
+export interface AgentMarks {
+  readonly agentTag: AgentTag | null
+  readonly agentNote: string | null
+  readonly restockSku: string | null
+  readonly agentSuggest: AgentSuggest | null
+}
+
+export interface PhotoSummary extends AgentMarks {
   readonly intakeFileId: string
   readonly filename: string
   /** Manual images are already catalogue-ready and deliberately bypass AI. */
@@ -61,7 +89,7 @@ export interface PhotoSummary {
 
 export type QueueTileKind = 'photo' | 'draft'
 
-export interface QueueTile {
+export interface QueueTile extends AgentMarks {
   readonly kind: QueueTileKind
   /** Intake file id for a photo, draft id for a draft. */
   readonly id: string
@@ -139,6 +167,8 @@ export interface DraftDetail {
   readonly reservedSku: string | null
   readonly reservedHandle: string | null
   readonly shopifyProductId: string | null
+  /** D112/D142: the old product this draft replaces; archived once this one is published. */
+  readonly supersedesSku: string | null
   /** False until the operator prints from the post-draft popup. Cancel keeps false. */
   readonly labelsPrinted: boolean
   readonly error: string | null

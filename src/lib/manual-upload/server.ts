@@ -36,7 +36,7 @@ export interface ManualUploadTicket {
   readonly expiresAt: number
 }
 
-interface ManualUploadRow {
+export interface ManualUploadRow {
   id: string
   filename: string
   mime_type: ManualUploadMimeType
@@ -193,7 +193,7 @@ async function loadOwnedUpload(uploadId: string, operator: Operator): Promise<Ma
  * read its display dimensions, and make the small WebP queue thumbnail. The
  * selected publish version remains the photographer's exact uploaded file.
  */
-interface VerifiedUpload {
+export interface VerifiedUpload {
   readonly upload: ManualUploadRow
   readonly width: number
   readonly height: number
@@ -202,7 +202,7 @@ interface VerifiedUpload {
 }
 
 /** Shared verification: bytes intact, decodes, format matches, thumb + phash made. */
-async function verifyUploadedObject(
+export async function verifyUploadedObject(
   operator: Operator,
   uploadId: string,
 ): Promise<VerifiedUpload | { readonly completed: string }> {

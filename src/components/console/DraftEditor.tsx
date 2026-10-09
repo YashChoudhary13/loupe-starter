@@ -107,6 +107,10 @@ export interface DraftEditorProps {
   readonly onPublish: () => void
   readonly onSaveDraft: () => void
   readonly onDetach: ((intakeFileId: string) => void) | null
+  /** D142: the old product this draft replaces (archived once this one is published). */
+  readonly supersedesSku?: string | null
+  /** D142: mark or withdraw that replacement; null when the draft is read-only or not yet created. */
+  readonly onSupersede?: ((sku: string, enable: boolean) => void) | null
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
   readonly onRedo: (intakeFileId: string, filename: string) => void
@@ -144,6 +148,8 @@ export function DraftEditor(props: DraftEditorProps) {
     originalPreviews,
     dirty,
     priceRef,
+    supersedesSku = null,
+    onSupersede = null,
     onPublish,
     onSaveDraft,
     onDetach,
@@ -275,6 +281,26 @@ export function DraftEditor(props: DraftEditorProps) {
         variant.value === value ? { ...variant, stock } : variant,
       ),
     })
+
+  /** D142: the first photograph Claude tagged as a restock, with its suggestion. */
+  const restockPhoto = photos.find((photo) => photo.restockSku && photo.agentSuggest) ?? null
+  const applySuggestion = () => {
+    if (!restockPhoto?.agentSuggest || !restockPhoto.restockSku) return
+    const s = restockPhoto.agentSuggest
+    const material = s.material ? materials.find((m) => m.name === s.material) : undefined
+    const kind: VariantKind = s.variantKind ?? (s.colours.length > 0 ? 'colour' : form.variantKind)
+    const colourKind = (kind === 'colour' || kind === 'colour_size') && s.colours.length > 0
+    if (!colourKind && kind !== form.variantKind) setVariantKind(kind)
+    onChange({
+      ...(s.pricePaise !== null && s.pricePaise > 0 ? { price: rupeesText(s.pricePaise) } : {}),
+      ...(material ? { materialId: material.id, customMaterial: '' } : {}),
+      ...(s.titleSuffix !== null ? { titleSuffix: s.titleSuffix } : {}),
+      ...(colourKind
+        ? { variantKind: kind, variants: s.colours.map((value) => ({ value, stock: newOptionStock, ...(kind === 'colour_size' ? { sizeValue: '' } : {}) })) }
+        : {}),
+    })
+    if (s.archiveOld && onSupersede && supersedesSku !== restockPhoto.restockSku) onSupersede(restockPhoto.restockSku, true)
+  }
 
   if (mode === 'empty') {
     return (
@@ -497,7 +523,17 @@ export function DraftEditor(props: DraftEditorProps) {
                         no description
                       </span>
                     ) : null}
-                    {row.photo.source === 'manual' ? (
+                    {row.photo.agentTag ? (
+                      <span
+                        className={cn(
+                          'rounded-pill px-2 py-[7px] text-[10.5px] font-medium',
+                          row.photo.agentTag === 'needs_review' ? 'bg-[#faf2e4] text-amber' : row.photo.agentTag === 'ready' ? 'bg-[#e6f4ea] text-[#1e6b3a]' : 'bg-[#e8eefb] text-[#2a4e9a]',
+                        )}
+                        title={row.photo.agentNote ?? 'Delivered by Claude'}
+                      >
+                        {row.photo.agentTag === 'needs_review' ? 'needs review' : row.photo.agentTag === 'ready' ? 'ready' : `restock ${row.photo.restockSku ?? ''}`.trim()}
+                      </span>
+                    ) : row.photo.source === 'manual' ? (
                       <span
                         className="rounded-pill bg-surface px-2 py-[7px] text-[10.5px] text-ink-soft"
                         title="Uploaded as catalogue-ready. The original is selected and no AI enhancement was run."
@@ -634,6 +670,37 @@ export function DraftEditor(props: DraftEditorProps) {
             <p className="mt-2 text-[11.5px] text-amber">{blockFor('images')!.message}</p>
           ) : null}
         </div>
+
+        {restockPhoto?.agentSuggest && restockPhoto.restockSku ? (
+          <div className="rounded-panel bg-[#e8eefb] px-4 py-3 text-[12px] leading-relaxed text-[#2a4e9a]" role="status">
+            <div className="font-medium">
+              Restock of {restockPhoto.restockSku}
+              {restockPhoto.agentSuggest.oldStatus ? ` · old listing ${restockPhoto.agentSuggest.oldStatus}` : ''}
+              {restockPhoto.agentSuggest.available !== null ? `, ${restockPhoto.agentSuggest.available} available` : ''}
+            </div>
+            <div className="mt-0.5">
+              Suggested
+              {restockPhoto.agentSuggest.pricePaise !== null ? ` ${formatPaise(restockPhoto.agentSuggest.pricePaise)}` : ''}
+              {restockPhoto.agentSuggest.material ? ` · ${restockPhoto.agentSuggest.material}` : ''}
+              {restockPhoto.agentSuggest.colours.length > 0 ? ` · ${restockPhoto.agentSuggest.colours.join('/')}` : ''}
+              {restockPhoto.agentSuggest.titleSuffix ? ` · ${restockPhoto.agentSuggest.titleSuffix}` : ''}
+              {restockPhoto.agentNote ? ` — ${restockPhoto.agentNote}` : ''}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Chip disabled={readOnly || busy !== null} onClick={applySuggestion}>Use suggestion</Chip>
+              {supersedesSku ? (
+                <>
+                  <span className="text-[11px]">Will archive {supersedesSku} on publish.</span>
+                  {onSupersede ? (
+                    <Chip ghost disabled={busy !== null} onClick={() => onSupersede(supersedesSku, false)}>Keep old listing</Chip>
+                  ) : null}
+                </>
+              ) : restockPhoto.agentSuggest.archiveOld && onSupersede ? (
+                <Chip ghost disabled={busy !== null} onClick={() => onSupersede(restockPhoto.restockSku!, true)}>Archive {restockPhoto.restockSku} on publish</Chip>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {/* Category — the first of the two human judgements. Collapses to its
             choice once made; searchable while open so a growing catalogue is
@@ -1402,6 +1469,13 @@ function IconButton({
 }
 
 /** Small helper the screen uses to show what a saved draft is worth. */
+/** Paise to the rupee text the price field holds: 12000 → "120", 12050 → "120.50". Digits only, no float. */
+export function rupeesText(paise: number): string {
+  const rupees = Math.floor(paise / 100)
+  const rest = paise % 100
+  return rest === 0 ? String(rupees) : `${rupees}.${String(rest).padStart(2, '0')}`
+}
+
 export function priceSummary(pricePaise: number | null): string {
   return formatPaise(pricePaise)
 }

@@ -2,8 +2,15 @@
 
 import { useCallback, useRef } from 'react'
 
-import type { QueueTile } from '@/lib/console/types'
+import type { AgentTag, QueueTile } from '@/lib/console/types'
 import { cn } from '@/lib/utils'
+
+/** D142: Claude's verdict, as a chip the operator reads before opening the tile. */
+const AGENT_CHIP: Record<AgentTag, { label: string; className: string }> = {
+  needs_review: { label: 'Needs review', className: 'bg-[#faf2e4] text-amber' },
+  ready: { label: 'Ready', className: 'bg-[#e6f4ea] text-[#1e6b3a]' },
+  restock: { label: 'Restock', className: 'bg-[#e8eefb] text-[#2a4e9a]' },
+}
 
 /**
  * The queue.
@@ -145,6 +152,15 @@ export function QueueGrid({
             <span className="absolute bottom-2 left-2 max-w-[calc(100%-16px)] truncate rounded-pill bg-white/[0.92] px-2 py-0.5 text-[10px] font-medium">
               {tile.kind === 'draft' ? (tile.reservedSku ?? tile.categoryName ?? 'Product') : tile.label}
             </span>
+
+            {tile.agentTag ? (
+              <span
+                className={cn('absolute left-2 top-2 max-w-[calc(100%-16px)] truncate rounded-pill px-2 py-0.5 text-[9.5px] font-semibold', AGENT_CHIP[tile.agentTag].className)}
+                title={tile.agentNote ?? AGENT_CHIP[tile.agentTag].label}
+              >
+                {tile.agentTag === 'restock' && tile.restockSku ? `Restock ${tile.restockSku}` : AGENT_CHIP[tile.agentTag].label}
+              </span>
+            ) : null}
 
             {tile.imageCount > 1 ? (
               <span className="absolute right-2 top-2 grid size-[17px] place-items-center rounded-full bg-ink text-[9px] font-semibold text-white">

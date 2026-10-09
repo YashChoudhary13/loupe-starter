@@ -22,6 +22,10 @@ function tile(
     categoryName: kind === 'draft' ? 'Necklaces' : null,
     status: kind === 'draft' ? 'assembling' : 'enhanced',
     attention,
+    agentTag: null,
+    agentNote: null,
+    restockSku: null,
+    agentSuggest: null,
     reservedSku: null,
   }
 }

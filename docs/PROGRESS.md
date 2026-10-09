@@ -29,6 +29,32 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-10 — Agent intake: Claude delivers finished images to Loupe (D142)
+
+**Goal this session:** let Claude push rendered product images straight into the console with a tag and, for restocks, a listing suggestion, so nobody uploads a folder by hand.
+
+**Built:**
+- `supabase/migrations/20261010090000_agent_intake.sql` → six agent columns on `intake_files`, `finalize_agent_image_upload` (wraps the manual finalise, idempotent on SHA-256), `set_agent_supersession` (D112 decision from an operator click), `restock_decisions.match_event_id` nullable.
+- `src/app/api/agent/images/route.ts` → bearer `AGENT_SECRET`; POST multipart `file, filename, tag, note, restock_sku, suggest, batch` → `{ok, intake_id, status, duplicate}`; GET `?batch=` lists the batch.
+- `src/lib/agent-intake/suggest.ts` (pure validators, shared shape) and `server.ts` (ingest: dedupe → `beginManualUpload` as `agent@claude.local` → server-side R2 put → `verifyUploadedObject` → RPC; batch list; supersession).
+- `src/lib/env.ts`, `.env.local.example` → `AGENT_SECRET`. `src/lib/manual-upload/server.ts` → `verifyUploadedObject` exported.
+- `src/lib/console/types.ts`, `queue.ts` → `AgentMarks` on tiles and photos, `supersedesSku` on the draft.
+- `src/components/console/QueueGrid.tsx` → tag chip top-left; `DraftEditor.tsx` → chip on the photo row, "Restock of NKxxx" panel with **Use suggestion** / **Archive on publish** / **Keep old listing**; `ConsoleScreen.tsx` + `console/actions.ts` → `setDraftSupersessionAction`.
+- `tests/api/agent-images.test.ts` → validator, 401, 400s, happy path, duplicate, batch list.
+
+**Verified:** `npm run typecheck` clean, `npm run lint` clean, `npx vitest run tests/api/agent-images.test.ts tests/console-queue-view.test.ts tests/qc-shortages.test.ts tests/faces.test.ts` → 4 files, 40 tests passed.
+
+**Not finished / known broken:**
+- Nothing is deployed: the migration is not pushed, `AGENT_SECRET` is not on the server, `.env.railway` (untracked) has no line yet, and the enhance skill has no uploader for this endpoint yet.
+- Untested live: a real multipart upload through nginx, the chip and panel on a real draft, and a publish that archives the old product through the agent decision.
+- The matcher gains no reference from agent uploads (D142 consequences).
+
+**Surprises:** `product_drafts.supersedes_sku` is written by `record_supersession` after publish, not read by it — the archive is driven by a `restock_decisions` row, which required one Identify event per decision until now.
+
+**Next session should start with:** `npm run db:push` on the migration, the secret on the server, then an end-to-end upload from the enhance skill against production and a screenshot of the chip and panel.
+
+---
+
 ## 2026-10-03 — Workflows: Finance report card (D141)
 
 **Goal this session:** let the owner send the accountant's finance Excel for any date range from Loupe instead of asking for a webhook call.

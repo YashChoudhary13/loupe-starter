@@ -43,6 +43,7 @@ import {
 import { ShopifyClient } from '@/lib/shopify/client'
 import { deleteProduct, readProductByHandle } from '@/lib/shopify/product-set'
 import { supabaseServer } from '@/lib/supabase/server'
+import { setAgentSupersession } from '@/lib/agent-intake/server'
 
 /**
  * Every mutation the console can make, and the only way the browser reaches the
@@ -462,6 +463,22 @@ export async function detachPhotoAction(
   return withOperator(async (operator) => {
     await detachPhoto(operator, draftId, intakeFileId)
     return { bundle: await bundle(draftId, false), queue: await loadQueue() }
+  })
+}
+
+/**
+ * D142: the operator accepted the agent's restock suggestion — this draft replaces `sku`,
+ * which is archived once the new product is published (or withdraws that). Only the mark
+ * is stored here; the archive itself runs after publish through the existing supersession.
+ */
+export async function setDraftSupersessionAction(
+  draftId: string,
+  sku: string,
+  enable: boolean,
+): Promise<ActionResult<DraftBundle>> {
+  return withOperator(async (operator) => {
+    await setAgentSupersession(operator, draftId, sku, enable)
+    return bundle(draftId, false)
   })
 }
 
