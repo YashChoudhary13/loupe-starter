@@ -29,14 +29,6 @@ export interface VersionSummary {
   readonly full: SignedImage | null
 }
 
-export interface RedoSummary {
-  readonly jobId: string
-  readonly status: 'queued' | 'processing' | 'completed' | 'failed'
-  readonly versionNo: number
-  readonly error: string | null
-  readonly createdAt: string
-}
-
 /** D142: Claude's verdict on an image it delivered. */
 export type AgentTag = 'needs_review' | 'ready' | 'restock'
 
@@ -83,8 +75,6 @@ export interface PhotoSummary extends AgentMarks {
     readonly distance: number
   } | null
   readonly versions: readonly VersionSummary[]
-  /** Latest image-only redo request, if one exists. */
-  readonly redo: RedoSummary | null
 }
 
 export type QueueTileKind = 'photo' | 'draft'

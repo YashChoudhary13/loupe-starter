@@ -21,19 +21,16 @@ import { LiveActivity } from '@/components/live/LiveActivity'
  * its cursor alive across navigation. The attention badge starts from the
  * server-rendered count and then follows the live heartbeat.
  */
-type SectionKey = 'home' | 'console' | 'enhance' | 'tracking' | 'prompts' | 'models' | 'upload' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch'
-type SectionHref = '/home' | '/console' | '/enhance' | '/tracking' | '/prompts' | '/models' | '/upload' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch'
+type SectionKey = 'home' | 'console' | 'enhance' | 'tracking' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch'
+type SectionHref = '/home' | '/console' | '/enhance' | '/tracking' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch'
 
 const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon: React.ReactNode }[] = [
   { key: 'home', href: '/home', label: 'Home', icon: <HomeIcon /> },
   { key: 'console', href: '/console', label: 'Console', icon: <SearchIcon /> },
   { key: 'enhance', href: '/enhance', label: 'Enhance', icon: <UploadIcon /> },
-  { key: 'upload', href: '/upload', label: 'Upload', icon: <UploadIcon /> },
   { key: 'identify', href: '/identify', label: 'Identify', icon: <SearchIcon /> },
   { key: 'restock', href: '/restock', label: 'Restock', icon: <ListIcon /> },
   { key: 'tracking', href: '/tracking', label: 'Tracking', icon: <AlertIcon /> },
-  { key: 'prompts', href: '/prompts', label: 'Prompts', icon: <ListIcon /> },
-  { key: 'models', href: '/models', label: 'Models', icon: <ListIcon /> },
   { key: 'workflows', href: '/workflows', label: 'Workflows', icon: <PlayIcon /> },
   { key: 'labels', href: '/labels', label: 'Labels', icon: <ListIcon /> },
   { key: 'qc', href: '/qc', label: 'Order QC', icon: <ListIcon /> },

@@ -15,9 +15,7 @@ import {
   openDraftAction,
   previewPhotosAction,
   publishDraftAction,
-  redoImageAction,
   originalPreviewAction,
-  redoPromptPreviewAction,
   refreshQueueAction,
   saveDraftAction,
   loadDraftLabelPrintAction,
@@ -59,7 +57,6 @@ import { DraftLabelPrintDialog } from './DraftLabelPrintDialog'
 import { NewCategoryDialog } from './NewCategoryDialog'
 import { Card, Notice, StatPill } from './primitives'
 import { QueueGrid } from './QueueGrid'
-import { RedoPromptDialog } from './RedoPromptDialog'
 
 /**
  * The console.
@@ -231,13 +228,6 @@ export function ConsoleScreen({
 }: ConsoleScreenProps) {
   const [queue, setQueue] = useState(initialQueue)
   const [activity, setActivity] = useState(initialQueue.pipelineActivity)
-  /** The redo awaiting prompt review. Null when no dialog is open. */
-  const [redoReview, setRedoReview] = useState<{
-    intakeFileId: string
-    filename: string
-    promptText: string | null
-    model: string | null
-  } | null>(null)
   const [bundle, setBundle] = useState<DraftBundle | null>(initialBundle)
   const [categories, setCategories] = useState<readonly CategoryOption[]>(catalog.categories)
   const [addingCategory, setAddingCategory] = useState(false)
@@ -1000,64 +990,6 @@ export function ConsoleScreen({
     }))
   }, [])
 
-  /**
-   * Redo is a paid call. Show the exact prompt first and let the operator edit
-   * it for this product before anything is spent.
-   */
-  const openRedoReview = useCallback(
-    async (intakeFileId: string, filename?: string) => {
-      setRedoReview({
-        intakeFileId,
-        filename: filename ?? 'this photograph',
-        promptText: null,
-        model: null,
-      })
-      const result = await redoPromptPreviewAction(intakeFileId)
-      if (!result.ok) {
-        setRedoReview(null)
-        handleResult(result)
-        return
-      }
-      setRedoReview((current) =>
-        current && current.intakeFileId === intakeFileId
-          ? { ...current, promptText: result.data.promptText, model: result.data.model }
-          : current,
-      )
-    },
-    [handleResult],
-  )
-
-  const redoImage = useCallback(
-    async (intakeFileId: string, promptOverride: string | null) => {
-      setBusy(`redo:${intakeFileId}`)
-      setLastPublish(null)
-      const data = handleResult(await redoImageAction(intakeFileId, promptOverride))
-      if (data) {
-        setPreview((current) => ({
-          ...current,
-          photos: current.photos.map((photo) =>
-            photo.intakeFileId === intakeFileId ? data.photo : photo,
-          ),
-        }))
-        setBundle((current) =>
-          current
-            ? {
-                ...current,
-                draft: {
-                  ...current.draft,
-                  photos: current.draft.photos.map((photo) =>
-                    photo.intakeFileId === intakeFileId ? data.photo : photo,
-                  ),
-                },
-              }
-            : current,
-        )
-      }
-      setBusy(null)
-    },
-    [handleResult],
-  )
-
   /** Escape abandons a selection without touching anything stored. */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -1139,20 +1071,6 @@ export function ConsoleScreen({
           error={labelPrintError}
           onCancel={cancelLabelPrint}
           onPrint={copies => void printDraftLabels(copies)}
-        />
-      ) : null}
-
-      {redoReview ? (
-        <RedoPromptDialog
-          filename={redoReview.filename}
-          promptText={redoReview.promptText}
-          model={redoReview.model}
-          busy={busy === `redo:${redoReview.intakeFileId}`}
-          onCancel={() => setRedoReview(null)}
-          onContinue={(promptOverride) => {
-            const target = redoReview.intakeFileId
-            void redoImage(target, promptOverride).then(() => setRedoReview(null))
-          }}
         />
       ) : null}
 
@@ -1365,7 +1283,6 @@ export function ConsoleScreen({
               onSupersede={bundle && !listedReadOnly ? (sku, enable) => void handleSupersede(sku, enable) : null}
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
-              onRedo={(intakeFileId, filename) => void openRedoReview(intakeFileId, filename)}
               onAddCategory={() => setAddingCategory(true)}
               onChangeCategoryLocked={
                 bundle && !listedReadOnly && bundle.draft.status !== 'publishing'
@@ -1420,7 +1337,6 @@ function errorTitle(error: ActionError): string {
 }
 
 function PublishedNotice({ summary }: { summary: PublishSummary }) {
-  const failedMoves = summary.housekeeping.filter((h) => !h.ok)
   return (
     <div className="flex flex-col gap-2">
       <Notice tone="plain" title={`Published · ${summary.sku}`}>
@@ -1439,17 +1355,6 @@ function PublishedNotice({ summary }: { summary: PublishSummary }) {
           Shopify admin, then republish this draft to put it in front of buyers.
         </Notice>
       )}
-      {failedMoves.length > 0 ? (
-        <Notice
-          tone="attention"
-          title="Published, but the Drive tidy-up did not finish"
-          detail={failedMoves.map((h) => `${h.filename}: ${h.error}`).join('\n')}
-        >
-          The product is live and the photographs are recorded as published. Only the move
-          into /Processed failed, which is housekeeping — nothing needs undoing and it can be
-          retried later.
-        </Notice>
-      ) : null}
     </div>
   )
 }

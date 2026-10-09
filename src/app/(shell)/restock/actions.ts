@@ -2,7 +2,6 @@
 
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
 import { ConsoleError } from '@/lib/console/mutations'
-import { nudgeEnhanceCron } from '@/lib/cron/jobs'
 import { newSkuFromRestock, reopenIdentification, restockExisting, saveReferenceOnly, type RestockQuantity } from '@/lib/match/restock-actions'
 import { loadRestockQueue, type RestockSnapshot } from '@/lib/match/restock-read-model'
 
@@ -40,13 +39,9 @@ export async function restockExistingAction(input: {
 export async function newSkuFromRestockAction(input: {
   readonly intakeFileId: string
   readonly productId: string | null
-  readonly wantsNewImage: boolean
-  readonly categorySlug: string | null
-  readonly settingSlug: string | null
 }): Promise<RestockActionResult<RestockSnapshot>> {
   return withOperator(async (operator) => {
     await newSkuFromRestock(operator, input)
-    if (input.wantsNewImage) await nudgeEnhanceCron()
     return loadRestockQueue()
   })
 }

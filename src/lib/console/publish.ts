@@ -1,15 +1,12 @@
 import 'server-only'
 
 import type { Operator } from '@/lib/auth/authorize'
-import { serverEnv } from '@/lib/env'
-import { googleDriveClient } from '@/lib/google/drive-server'
 import { loadPublishInput, reserveIdentityForSave } from '@/lib/publish/publish-product'
 import { PublishBlockedError, validateDraftForPublish } from '@/lib/publish/validate'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { shopifyConfig } from '@/lib/shopify/config'
 import { supabaseServer } from '@/lib/supabase/server'
 
-import { tidyDriveForDraft as runDriveHousekeeping, type DriveHousekeepingOutcome } from './housekeeping'
 import { signKey } from './images'
 import {
   publishDraftForOperator as runPublish,
@@ -20,11 +17,10 @@ import {
 /**
  * Production wiring for the console's publish.
  *
- * The logic lives in ./publish-draft.ts and ./housekeeping.ts with every
- * dependency injected, so `npm run verify:phase4` runs the same code against the
- * real store instead of a second publish path written to be scriptable. This
- * file is only the place where "the real Shopify client, the real Drive client
- * and the real R2 signer" is decided.
+ * The logic lives in ./publish-draft.ts with every dependency injected, so
+ * `npm run verify:phase4` runs the same code against the real store instead of
+ * a second publish path written to be scriptable. This file is only the place
+ * where "the real Shopify client and the real R2 signer" is decided.
  */
 
 /** Shopify fetches image URLs itself; they only need to survive that fetch. */
@@ -60,8 +56,6 @@ export async function publishDraftForOperator(
   return runPublish(draftId, operator.email, options, {
     db: supabaseServer(),
     shopify: new ShopifyClient({ config: shopifyConfig() }),
-    drive: googleDriveClient(),
-    processedFolderId: serverEnv.driveProcessedFolderId,
     signImageUrl: signForShopify,
   })
 }
@@ -80,18 +74,5 @@ export async function reserveDraftIdentity(draftId: string, operator: Operator):
   )
 }
 
-/** Retryable housekeeping on its own, for a product that published but was not tidied. */
-export async function tidyDriveForDraft(
-  draftId: string,
-  operator: Operator,
-): Promise<readonly DriveHousekeepingOutcome[]> {
-  return runDriveHousekeeping(draftId, {
-    db: supabaseServer(),
-    drive: googleDriveClient(),
-    processedFolderId: serverEnv.driveProcessedFolderId,
-    actor: operator.email,
-  })
-}
-
 export { PublishBlockedError, PublishInProgressError }
-export type { ConsolePublishResult, DriveHousekeepingOutcome }
+export type { ConsolePublishResult }

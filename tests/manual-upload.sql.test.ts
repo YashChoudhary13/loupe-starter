@@ -4,7 +4,9 @@ import type { Client } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { pgClient } from '../scripts/lib/pg'
-import { TEST_DESCRIPTION } from './helpers/enhancement'
+
+const TEST_DESCRIPTION =
+  'A matching pair of two drop earrings in polished yellow-gold metal. Each earring has one compact oval upper form with a continuous field of clear round stones, joined by one small hinged fitting to one smooth oval cabochon-style lower element in a slim bezel. Both pieces have the same vertical silhouette and proportions, with no extra pendant or side charm. The visible metal surfaces are smooth without engraving or texture, and the source shows two separate fittings rather than one piece duplicated or mirrored during presentation.'
 
 describe('manual ready-image intake', () => {
   let db: Client

@@ -40,42 +40,6 @@ export const serverEnv = {
     return required('SUPABASE_SERVICE_ROLE_KEY')
   },
 
-  /** The one flat Google Drive folder watched as Loupe's photo inbox. */
-  get driveRawFolderId(): string {
-    return required('DRIVE_RAW_FOLDER_ID')
-  },
-
-  /**
-   * Where published source photographs are tidied away to. HOUSEKEEPING ONLY —
-   * nothing reads Drive folder membership to decide what has been processed
-   * (hard rule 3), so a wrong value here leaves an untidy Raw folder, not a
-   * broken pipeline.
-   */
-  get driveProcessedFolderId(): string {
-    return required('DRIVE_PROCESSED_FOLDER_ID')
-  },
-
-  /**
-   * Where discarded photographs are moved to. OPTIONAL.
-   *
-   * Discarding must get the file out of RAW — otherwise the watcher rediscovers
-   * it minutes later and it reappears in the queue — but the service account
-   * cannot trash a file owned by the operator's own Drive (proved in Phase 4).
-   * Moving it is therefore the mechanism, and this is the destination.
-   *
-   * When unset, discarding falls back to the Processed folder so the feature
-   * works with no extra setup. Set this to a dedicated "Discarded" folder to
-   * keep genuinely-published photographs separate from abandoned ones; the
-   * audit event records which folder was actually used.
-   */
-  get driveDiscardedFolderId(): string {
-    return process.env.DRIVE_DISCARDED_FOLDER_ID?.trim() || required('DRIVE_PROCESSED_FOLDER_ID')
-  },
-
-  get driveDiscardedFolderIsDedicated(): boolean {
-    return Boolean(process.env.DRIVE_DISCARDED_FOLDER_ID?.trim())
-  },
-
   /** Shared secret accepted by server-side cron routes. */
   get cronSecret(): string {
     return validatedCronSecret(process.env.CRON_SECRET)
@@ -108,7 +72,7 @@ export const serverEnv = {
     return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 1
   },
 
-  /** One billing route for both the describer and image generator. */
+  /** The Home assistant's chat model is reached through OpenRouter (D137). The enhancer no longer uses it (D144). */
   get openRouterApiKey(): string {
     return required('OPENROUTER_API_KEY')
   },

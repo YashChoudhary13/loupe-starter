@@ -243,11 +243,11 @@ export function TrackingScreen({
                   )
                 }
                 onDiscard={() => {
-                  // Irreversible and off-site: it deletes the images and moves
-                  // the file out of RAW. Worth one deliberate confirmation.
+                  // Irreversible: it deletes the generated images and the
+                  // record. Worth one deliberate confirmation.
                   if (
                     !window.confirm(
-                      `Discard ${row.label}?\n\nIts images will be deleted and the file moved out of the RAW folder. This cannot be undone.`,
+                      `Discard ${row.label}?\n\nIts generated images will be deleted and it will leave Loupe. This cannot be undone.`,
                     )
                   ) {
                     return
@@ -255,7 +255,7 @@ export function TrackingScreen({
                   void update(
                     `discard:${row.entityId}`,
                     () => discardIntakeAction(row.entityId),
-                    `${row.label} was discarded and moved out of RAW.`,
+                    `${row.label} was discarded.`,
                   )
                 }}
                 onDuplicate={(decision) =>

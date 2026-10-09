@@ -88,30 +88,14 @@ export async function resumeProviderPausedIntakeAction(
       p_actor: email,
     })
     if (error) throw new Error(error.hint || error.message)
-
-    // Best-effort latency optimisation. The minute cron remains the durable
-    // fallback if this request cannot be sent.
-    const { nudgeEnhanceCron } = await import('@/lib/cron/jobs')
-    await nudgeEnhanceCron()
     return loadTracking()
   })
 }
 
 /**
- * Discards a held photograph for good.
- *
- * Order matters and is deliberate: a Drive source leaves RAW first (a manual
- * source has no Drive object), then the R2 objects are removed, and only then is
- * the database row deleted. Every step before the last is idempotent, so a
- * failure part-way leaves the row intact and the operator can simply press
- * Discard again. Reversing the Drive order would strand a file in RAW that Loupe
- * no longer knows about — the watcher would rediscover it minutes later and it
- * would reappear in the queue.
- *
- * A Drive file is MOVED to /Discarded rather than trashed: Phase 4 proved the
- * service account cannot trash files owned by the operator's own Drive. Moving
- * it out of RAW is what actually matters — it stops being rescanned — and the
- * owner can empty /Discarded themselves. Manual uploads skip Drive completely.
+ * Discards a held photograph for good: the generated R2 objects first, then the
+ * row. Every step before the last is idempotent, so a failure part-way leaves
+ * the row intact and the operator can simply press Discard again.
  */
 export async function discardIntakeAction(
   intakeFileId: string,

@@ -12,7 +12,6 @@ import {
 import { Notice } from '@/components/console/primitives'
 import { LIVE_ACTIVITY_EVENT, shouldRefreshIdentify, type LiveActivityUpdate } from '@/lib/live/types'
 import type { RestockItem, RestockSnapshot } from '@/lib/match/restock-read-model'
-import { PROMPT_CATEGORY_CORES, settingsForCategory } from '@/lib/prompts/matrix'
 import type { ProductStock } from '@/lib/shopify/inventory'
 import { cn } from '@/lib/utils'
 
@@ -86,10 +85,8 @@ export function RestockScreen({ initialSnapshot }: { initialSnapshot: RestockSna
           onRestock={(productId, quantities) =>
             void run(item.decisionId, () => restockExistingAction({ intakeFileId: item.intakeFileId, productId, quantities }))
           }
-          onNewSku={(productId, wantsNewImage, categorySlug, settingSlug) =>
-            void run(item.decisionId, () =>
-              newSkuFromRestockAction({ intakeFileId: item.intakeFileId, productId, wantsNewImage, categorySlug, settingSlug }),
-            )
+          onNewSku={(productId) =>
+            void run(item.decisionId, () => newSkuFromRestockAction({ intakeFileId: item.intakeFileId, productId }))
           }
           onReopen={() => void run(item.decisionId, () => reopenIdentificationAction({ intakeFileId: item.intakeFileId }))}
           onSaveReference={(sku) =>
@@ -112,7 +109,7 @@ function RestockCard({
   item: RestockItem
   busy: boolean
   onRestock: (productId: string, quantities: { inventoryItemId: string; label: string; before: number; after: number }[]) => void
-  onNewSku: (productId: string | null, wantsNewImage: boolean, categorySlug: string | null, settingSlug: string | null) => void
+  onNewSku: (productId: string | null) => void
   onReopen: () => void
   onSaveReference: (sku: string) => void
 }) {
@@ -120,9 +117,6 @@ function RestockCard({
   const [totals, setTotals] = useState<Record<string, string>>({})
   const [path, setPath] = useState<'existing' | 'new' | 'reference' | null>(null)
   const [refSku, setRefSku] = useState(item.sku)
-  const [wantsImage, setWantsImage] = useState(true)
-  const [categorySlug, setCategorySlug] = useState('')
-  const [settingSlug, setSettingSlug] = useState('')
   const chosen = item.candidates.find((c) => c.sku === item.sku)
 
   const quantities = (product?.variants ?? []).map((v) => ({
@@ -268,40 +262,14 @@ function RestockCard({
 
           {path === 'new' ? (
             <div className="mt-3 rounded-panel bg-chip p-3">
-              <div className="loupe-label mb-2">New generated image?</div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => setWantsImage(true)} className={cn('rounded-pill px-3 py-1.5 text-[11.5px]', wantsImage ? 'bg-ink text-white' : 'bg-surface')}>
-                  Yes — generate with prompts
-                </button>
-                <button type="button" onClick={() => setWantsImage(false)} className={cn('rounded-pill px-3 py-1.5 text-[11.5px]', !wantsImage ? 'bg-ink text-white' : 'bg-surface')}>
-                  No — use the photograph as it is
-                </button>
-                {wantsImage ? (
-                  <>
-                    <select value={categorySlug} onChange={(e) => { setCategorySlug(e.target.value); setSettingSlug('') }} aria-label="Category prompt" className="rounded-pill bg-surface px-3 py-1.5 text-[11.5px]">
-                      <option value="">Current default prompts</option>
-                      {PROMPT_CATEGORY_CORES.map((core) => (
-                        <option key={core.slug} value={core.slug}>{core.label}</option>
-                      ))}
-                    </select>
-                    {categorySlug ? (
-                      <select value={settingSlug} onChange={(e) => setSettingSlug(e.target.value)} aria-label="Setting prompt" className="rounded-pill bg-surface px-3 py-1.5 text-[11.5px]">
-                        <option value="">Choose a setting</option>
-                        {settingsForCategory(categorySlug).map((s) => (
-                          <option key={s.slug} value={s.slug}>{s.label}</option>
-                        ))}
-                      </select>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
+              <div className="loupe-label mb-2">The photograph as it is</div>
               <div className="mt-2 text-[11.5px] text-muted-foreground">
-                The photograph goes to the console as a new product. When it publishes, {item.sku} is archived and its stock set to 0.
+                The photograph goes to the console as a new product with its original selected; for a studio render, send it through Enhance instead. When it publishes, {item.sku} is archived and its stock set to 0.
               </div>
               <button
                 type="button"
-                disabled={busy || (wantsImage && Boolean(categorySlug) && !settingSlug)}
-                onClick={() => onNewSku(product?.productId ?? null, wantsImage, categorySlug || null, settingSlug || null)}
+                disabled={busy}
+                onClick={() => onNewSku(product?.productId ?? null)}
                 className="mt-3 rounded-pill bg-ink px-4 py-2 text-[12px] font-medium text-white hover:bg-[#242428] disabled:opacity-50"
               >
                 {busy ? 'Working…' : 'Create the new SKU'}

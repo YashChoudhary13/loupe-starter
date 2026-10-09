@@ -1,28 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import type { DriveHousekeeper } from '@/lib/google/drive-types'
 import { publishProduct } from '@/lib/publish/publish-product'
 import type { PublishResult } from '@/lib/publish/types'
 import type { ShopifyClient } from '@/lib/shopify/client'
 import { readProductByHandle, readProductMedia, type ShopifyMedia } from '@/lib/shopify/product-set'
 
-import { tidyDriveForDraft, type DriveHousekeepingOutcome } from './housekeeping'
-
 /**
- * The console's publish: the existing publish path plus the three things only
- * the console needs — a lease, image URLs, and tidying Drive up afterwards.
+ * The console's publish: the existing publish path plus the two things only
+ * the console needs — a lease and image URLs.
  *
- * THE ORDER IS THE DESIGN (Phase 4 §15, hard rule 3):
+ * THE ORDER IS THE DESIGN (Phase 4 §15):
  *
  *   1. take the publish lease            — so a double-click cannot run twice
  *   2. publishProduct()                  — reserve, productSet, media, record
  *   3. release the lease                 — fenced by token
  *   4. read the product back             — evidence, not the mutation's own word
- *   5. THEN move the Drive files         — best effort, never a state transition
  *
- * Step 5 is last and separate on purpose. Drive housekeeping failing must leave
- * a published product and published intake rows exactly as they are; the only
- * thing it may change is `drive_processed_error` and an event somebody can read.
+ * (D144: the Drive tidy-up that used to follow as step 5 is gone with the Drive inbox.)
  *
  * Every dependency is injected and this module is deliberately NOT `server-only`,
  * so `npm run verify:phase4` exercises this exact function rather than a
@@ -36,7 +30,6 @@ export const PUBLISH_LEASE_SECONDS = 300
 export interface ConsolePublishResult {
   readonly result: PublishResult
   readonly media: readonly ShopifyMedia[]
-  readonly housekeeping: readonly DriveHousekeepingOutcome[]
   readonly shopifyStatus: string | null
 }
 
@@ -53,11 +46,7 @@ export class PublishInProgressError extends Error {
 export interface ConsolePublishDeps {
   readonly db: SupabaseClient
   readonly shopify: ShopifyClient
-  readonly drive: DriveHousekeeper
-  readonly processedFolderId: string
   readonly signImageUrl: (storageKey: string) => Promise<string>
-  /** Set false to prove that publication survives a failed tidy-up. */
-  readonly housekeeping?: boolean
 }
 
 export async function publishDraftForOperator(
@@ -110,17 +99,5 @@ export async function publishDraftForOperator(
     readProductByHandle(shopify, result.handle),
   ])
 
-  const housekeeping =
-    // Moving the source file to /Processed means "this photograph is done".
-    // A Shopify draft is not done, so a draft never tidies Drive.
-    deps.housekeeping === false || options.shopifyStatus === 'DRAFT'
-      ? []
-      : await tidyDriveForDraft(draftId, {
-          db,
-          drive: deps.drive,
-          processedFolderId: deps.processedFolderId,
-          actor,
-        })
-
-  return { result, media: media ?? [], housekeeping, shopifyStatus: readback?.status ?? null }
+  return { result, media: media ?? [], shopifyStatus: readback?.status ?? null }
 }

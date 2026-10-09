@@ -600,7 +600,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
           ? '/console'
           : null,
       costUsd: totalCostFor(row),
-      driveHref: `https://drive.google.com/open?id=${encodeURIComponent(row.drive_file_id)}`,
       canDismiss: false,
       duplicate: duplicate
         ? {
@@ -646,7 +645,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       canResumeEnhancement: false,
       canDiscard: false,
       consoleHref: `/console/drafts/${row.id}`,
-      driveHref: null,
       duplicate: null,
       canDismiss: false,
       // A draft is not billed itself; this is what its grouped photographs cost.
@@ -691,7 +689,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       consoleHref: job.intake_files?.product_draft_id
         ? `/console/drafts/${job.intake_files.product_draft_id}`
         : '/console',
-      driveHref: null,
       duplicate: null,
       canDismiss: false,
       costUsd: null,
@@ -724,7 +721,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     canResumeEnhancement: false,
     canDiscard: false,
     consoleHref: alert.product_draft_id ? `/console/drafts/${alert.product_draft_id}` : null,
-    driveHref: null,
     duplicate: null,
     canDismiss: true,
     costUsd: null,
@@ -753,7 +749,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     canResumeEnhancement: false,
     canDiscard: false,
     consoleHref: `/console/drafts/${issue.product_draft_id}`,
-    driveHref: null,
     duplicate: null,
     // The one row kind an operator can judge and silence. `entityId` is the run
     // id for the event trail, so the issue id travels in `rowId`.
@@ -783,7 +778,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       canResumeEnhancement: false,
       canDiscard: false,
       consoleHref: null,
-      driveHref: null,
       duplicate: null,
       // A failed CHECK is not a finding to accept — it means Loupe never looked.
       canDismiss: false,

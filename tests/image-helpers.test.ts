@@ -1,11 +1,11 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 
-import { EnhancementError } from '@/lib/enhance/errors'
+import { EnhancementError } from '@/lib/images/errors'
 import {
   normaliseGeneratedImage,
   readImageDimensions,
-} from '@/lib/enhance/image'
+} from '@/lib/images/image'
 
 describe('generated image normalisation', () => {
   it('normalises a square provider result to Loupe’s configured PNG size', async () => {

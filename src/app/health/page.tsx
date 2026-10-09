@@ -1,6 +1,5 @@
 import { googleOAuthConfig } from '@/lib/auth/authorize'
 import { checkGoogleOAuthClient, type OAuthClientCheck } from '@/lib/auth/google'
-import { checkGoogleServiceAccount } from '@/lib/google/service-account'
 import { supabaseServer } from '@/lib/supabase/server'
 import { TABLES, type TableName } from '@/lib/tables'
 
@@ -85,12 +84,10 @@ export default async function HealthPage() {
   const { counts, fatal, elapsedMs, checkedAt } = await collectHealth()
   const failures = counts.filter((c) => c.error !== null)
   const ok = fatal === null && failures.length === 0
-  // Non-throwing on purpose: a broken Drive credential must be VISIBLE here, not
-  // take the diagnostics page down with it.
-  const google = checkGoogleServiceAccount()
-  // Same reason, one layer up: a client SECRET that Google does not accept is
+  // Non-throwing on purpose: a client SECRET that Google does not accept is
   // invisible until the very last step of sign-in, where it surfaces as an
-  // opaque 401 that reads like an outage rather than like a typo.
+  // opaque 401 that reads like an outage rather than like a typo. It must be
+  // VISIBLE here, not take the diagnostics page down with it.
   const oauth = await checkOAuthClient()
 
   return (
@@ -155,20 +152,6 @@ export default async function HealthPage() {
           <tbody>
             <tr>
               <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--ink-soft)]">
-                GOOGLE_SERVICE_ACCOUNT_JSON
-              </td>
-              <td className="px-5 py-2.5 text-right">
-                {google.ok ? (
-                  <span className="font-mono text-[12px] text-[var(--ink)]">
-                    {google.clientEmail}
-                  </span>
-                ) : (
-                  <span className="text-[var(--amber)]">{google.reason}</span>
-                )}
-              </td>
-            </tr>
-            <tr className="border-t border-black/[0.06]">
-              <td className="px-5 py-2.5 font-mono text-[12px] text-[var(--ink-soft)]">
                 GOOGLE_OAUTH_CLIENT_ID / _SECRET
               </td>
               <td className="px-5 py-2.5 text-right">
@@ -182,11 +165,6 @@ export default async function HealthPage() {
           </tbody>
         </table>
       </div>
-      {!google.ok && (
-        <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--amber)]">
-          {google.message}
-        </p>
-      )}
       {!oauth.ok && (
         <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--amber)]">
           {oauth.detail}

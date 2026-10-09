@@ -222,16 +222,6 @@ export function TrackingItem({
                 Open in console
               </Link>
             ) : null}
-            {row.driveHref ? (
-              <a
-                href={row.driveHref}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft"
-              >
-                Open in Drive
-              </a>
-            ) : null}
             {row.canSkip ? (
               <button
                 type="button"
@@ -269,7 +259,7 @@ export function TrackingItem({
                 type="button"
                 disabled={busy !== null}
                 onClick={onDiscard}
-                title="Deletes the images and moves the file out of the RAW folder"
+                title="Deletes the generated images and removes the photograph from Loupe"
                 className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink-soft disabled:opacity-40"
               >
                 {busy === `discard:${row.entityId}` ? 'Discarding…' : 'Discard'}

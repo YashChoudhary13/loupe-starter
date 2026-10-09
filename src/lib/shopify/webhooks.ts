@@ -1,8 +1,6 @@
 import 'server-only'
 
-import { tidyDriveForDraft } from '@/lib/console/housekeeping'
 import { serverEnv } from '@/lib/env'
-import { googleDriveClient } from '@/lib/google/drive-server'
 import { reconcileSingleProduct } from '@/lib/reconciliation/server'
 import { supabaseServer } from '@/lib/supabase/server'
 
@@ -138,15 +136,10 @@ export async function handleProductsUpdate(payload: ProductWebhookPayload): Prom
    * D107: the business finishes DRAFT-stage listings in Shopify admin (D90)
    * and activates them THERE — Loupe's own publish is not the only door.
    * Before this, only a Loupe publish moved a draft to `published`, so a
-   * hand-activated product left its draft `assembling` forever and its
-   * photographs crowded Drive /RAW with nothing ever tidying them.
+   * hand-activated product left its draft `assembling` forever.
    *
    * Activation is the signal. `mark_draft_published` is idempotent and takes
-   * any prior status, and the Drive tidy is the same one publish runs — safe
-   * to repeat, and one file's failure never stops the others. A tidy failure
-   * must not bounce the webhook into Shopify's retry storm: the product IS
-   * published either way, and the next activation event or a manual publish
-   * retry re-runs the housekeeping.
+   * any prior status.
    */
   if (draft.status !== 'published') {
     // Still the business finishing a draft listing (D90).
@@ -159,17 +152,6 @@ export async function handleProductsUpdate(payload: ProductWebhookPayload): Prom
     })
     if (error) {
       console.error('webhook activation could not mark the draft published:', error.message)
-      return
-    }
-    try {
-      await tidyDriveForDraft(draft.id, {
-        db,
-        drive: googleDriveClient(),
-        processedFolderId: serverEnv.driveProcessedFolderId,
-        actor: 'shopify-webhook',
-      })
-    } catch (cause) {
-      console.error('webhook drive housekeeping failed:', cause)
     }
     return
   }

@@ -5,9 +5,6 @@ import sharp from 'sharp'
 import type { Operator } from '@/lib/auth/authorize'
 import { consoleObjectStore } from '@/lib/console/images'
 import { ConsoleError } from '@/lib/console/mutations'
-import { makeThumbnail } from '@/lib/enhance/image'
-import { googleDriveClient } from '@/lib/google/drive-server'
-import { ensurePromptPair } from '@/lib/prompts/ensure-pair'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { setAvailableQuantities } from '@/lib/shopify/inventory'
 import { supabaseServer } from '@/lib/supabase/server'
@@ -24,15 +21,12 @@ interface IntakeSource {
   mime_type: string | null
   source: 'drive' | 'upload' | 'manual'
   source_storage_key: string | null
-  drive_file_id: string
 }
-
-const EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/tiff': 'tif' }
 
 async function loadIntake(intakeFileId: string): Promise<IntakeSource> {
   const { data, error } = await supabaseServer()
     .from('intake_files')
-    .select('id, filename, mime_type, source, source_storage_key, drive_file_id')
+    .select('id, filename, mime_type, source, source_storage_key')
     .eq('id', intakeFileId)
     .maybeSingle<IntakeSource>()
   if (error || !data) throw new ConsoleError('That photograph no longer exists.', error?.message ?? null, false)
@@ -40,29 +34,21 @@ async function loadIntake(intakeFileId: string): Promise<IntakeSource> {
 }
 
 /**
- * The bytes of the photograph as an R2 key Loupe owns. An upload already has
- * them; a Drive photograph that never reached enhancement is copied to the
- * immutable originals/ key the enhancement worker would have used.
+ * The bytes of the photograph as an R2 key Loupe owns. Every photograph Loupe
+ * still identifies arrived through an upload, so it has one (D144: the Drive
+ * download for rows without one is gone with the Drive inbox).
  */
 async function materialiseOriginal(intake: IntakeSource): Promise<{ storageKey: string; thumbKey: string; width: number; height: number }> {
-  const store = consoleObjectStore()
-  let bytes: Buffer
-  let storageKey: string
-  let thumbKey: string
-  if (intake.source_storage_key) {
-    storageKey = intake.source_storage_key
-    thumbKey = `${storageKey.slice(0, storageKey.lastIndexOf('/'))}/thumb.webp`
-    bytes = await store.get(storageKey)
-  } else {
-    bytes = await googleDriveClient().downloadFile(intake.drive_file_id)
-    const ext = EXT[intake.mime_type ?? ''] ?? 'jpg'
-    storageKey = `originals/${intake.id}.${ext}`
-    thumbKey = `originals/${intake.id}_thumb.webp`
-    await store.putImmutable(storageKey, bytes, intake.mime_type ?? 'image/jpeg', { 'intake-id': intake.id, 'drive-file-id': intake.drive_file_id, source: 'restock' })
-    if (!(await store.head(thumbKey))) {
-      await store.putImmutable(thumbKey, await makeThumbnail(bytes), 'image/webp', { 'intake-id': intake.id, source: 'restock' })
-    }
+  if (!intake.source_storage_key) {
+    throw new ConsoleError(
+      `${intake.filename} has no stored photograph: it came in through the old Drive inbox. Upload it again through /enhance or Upload images.`,
+      null,
+      false,
+    )
   }
+  const storageKey = intake.source_storage_key
+  const thumbKey = `${storageKey.slice(0, storageKey.lastIndexOf('/'))}/thumb.webp`
+  const bytes = await consoleObjectStore().get(storageKey)
   const meta = await sharp(bytes, { failOn: 'error' }).metadata()
   const oriented = meta.autoOrient ?? { width: meta.width, height: meta.height }
   return { storageKey, thumbKey, width: oriented.width ?? meta.width ?? 1, height: oriented.height ?? meta.height ?? 1 }
@@ -107,28 +93,27 @@ export async function restockExisting(
   }
 }
 
+/**
+ * D144: the photograph goes to the console as it is, original selected. A
+ * render comes from the enhancer outside Loupe (send it through /enhance), not
+ * from a worker here.
+ */
 export async function newSkuFromRestock(
   operator: Operator,
-  input: { intakeFileId: string; productId: string | null; wantsNewImage: boolean; categorySlug: string | null; settingSlug: string | null },
+  input: { intakeFileId: string; productId: string | null },
 ): Promise<void> {
   const db = supabaseServer()
   const intake = await loadIntake(input.intakeFileId)
-  let presetSlug: string | null = null
-  let original: { storageKey: string; thumbKey: string; width: number; height: number } | null = null
-  if (input.wantsNewImage) {
-    if (input.categorySlug && input.settingSlug) presetSlug = await ensurePromptPair(input.categorySlug, input.settingSlug, operator.email)
-  } else {
-    original = await materialiseOriginal(intake)
-  }
+  const original = await materialiseOriginal(intake)
   const { error } = await db.rpc('begin_new_sku_from_restock', {
     p_intake_file_id: input.intakeFileId,
     p_old_product_id: input.productId,
-    p_wants_new_image: input.wantsNewImage,
-    p_preset_slug: presetSlug,
-    p_storage_key: original?.storageKey ?? null,
-    p_thumb_key: original?.thumbKey ?? null,
-    p_width: original?.width ?? null,
-    p_height: original?.height ?? null,
+    p_wants_new_image: false,
+    p_preset_slug: null,
+    p_storage_key: original.storageKey,
+    p_thumb_key: original.thumbKey,
+    p_width: original.width,
+    p_height: original.height,
     p_actor: operator.email,
   })
   if (error) throw new ConsoleError(error.hint || error.message, error.message, false)

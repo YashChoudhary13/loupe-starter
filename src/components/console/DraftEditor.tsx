@@ -113,7 +113,6 @@ export interface DraftEditorProps {
   readonly onSupersede?: ((sku: string, enable: boolean) => void) | null
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
-  readonly onRedo: (intakeFileId: string, filename: string) => void
   /** Opens the complete category + SKU-sequence creation flow. */
   readonly onAddCategory: () => void
   /**
@@ -155,7 +154,6 @@ export function DraftEditor(props: DraftEditorProps) {
     onDetach,
     onMoveImage,
     onChooseVersion,
-    onRedo,
     onAddCategory,
     onChangeCategoryLocked,
     onDeletePhoto,
@@ -549,39 +547,6 @@ export function DraftEditor(props: DraftEditorProps) {
                         possible duplicate · {row.photo.possibleDuplicate.matchFilename}
                       </span>
                     ) : null}
-                    {row.photo.redo?.status === 'queued' ||
-                    row.photo.redo?.status === 'processing' ? (
-                      <span
-                        className="rounded-pill bg-surface px-2 py-[7px] text-[10.5px] text-ink-soft"
-                        role="status"
-                      >
-                        {row.photo.redo.status === 'queued' ? 'redo queued' : 'redoing…'}
-                      </span>
-                    ) : row.photo.redo?.status === 'failed' ? (
-                      <span
-                        className="rounded-pill px-2 py-[7px] text-[10.5px] text-amber"
-                        title={row.photo.redo.error ?? 'The last redo failed.'}
-                      >
-                        redo failed
-                      </span>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={readOnly || busy !== null}
-                      onClick={() => onRedo(row.image.intakeFileId, row.photo.filename)}
-                      title={
-                        row.photo.source === 'manual'
-                          ? 'Run this ready upload through the image-enhancement model'
-                          : 'Create another AI-enhanced version from the untouched original'
-                      }
-                      className="rounded-pill bg-surface px-2.5 py-[7px] text-[10.5px] font-medium text-ink-soft transition-colors hover:bg-white disabled:opacity-40"
-                    >
-                      {busy === `redo:${row.image.intakeFileId}`
-                        ? 'Running AI…'
-                        : row.photo.source === 'manual'
-                          ? 'Run AI enhancement'
-                          : 'Redo image'}
-                    </button>
                   </div>
                   {(form.variantKind === 'colour' || form.variantKind === 'colour_size') && form.variants.length > 0 ? (
                     <div className="mt-2 flex flex-wrap items-center gap-1" role="group" aria-label={`Colour shown in ${row.photo.filename}`}>

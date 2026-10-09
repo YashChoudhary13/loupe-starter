@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MODEL_INPUT_MAX_EDGE,
   prepareModelInput,
-} from '@/lib/enhance/image'
+} from '@/lib/images/image'
 
 describe('model input detail preservation', () => {
   it('keeps a normal 1200x1600 catalogue source at full resolution', async () => {

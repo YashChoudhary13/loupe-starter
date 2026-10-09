@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { serverEnv } from '@/lib/env'
-import { R2ObjectStore } from '@/lib/enhance/storage'
+import { R2ObjectStore } from '@/lib/images/storage'
 
 import type { SignedImage } from './types'
 

@@ -1,7 +1,3 @@
-import { DriveError } from '@/lib/google/drive-errors'
-import { EnhancementError } from '@/lib/enhance/errors'
-import { IntakeRepositoryError } from '@/lib/intake/repository'
-
 export interface CronPostOptions<T> {
   readonly expectedSecret: () => string
   readonly run: () => Promise<T>
@@ -11,50 +7,14 @@ function unauthorized(): Response {
   return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
 }
 
+/**
+ * Unknown/raw detail stays server-side. Route output remains readable and
+ * cannot accidentally serialize a credential-bearing upstream exception.
+ * (D144: the Drive and enhancement error classes that used to be mapped here
+ * are gone with their jobs.)
+ */
 function failure(error: unknown): Response {
-  if (error instanceof DriveError) {
-    return Response.json(
-      {
-        ok: false,
-        error: error.message,
-        retryable: error.retryable,
-      },
-      { status: error.retryable ? 503 : 502 },
-    )
-  }
-
-  if (error instanceof IntakeRepositoryError) {
-    return Response.json(
-      {
-        ok: false,
-        error: error.message,
-        retryable: error.retryable,
-      },
-      { status: error.retryable ? 503 : 500 },
-    )
-  }
-
-  if (error instanceof EnhancementError) {
-    return Response.json(
-      {
-        ok: false,
-        error: error.message,
-        code: error.code,
-        retryable: error.retryable,
-      },
-      {
-        status:
-          error.stage === 'fencing'
-            ? 409
-            : error.retryable
-              ? 503
-              : 500,
-      },
-    )
-  }
-
-  // Unknown/raw detail stays server-side. Route output remains readable and
-  // cannot accidentally serialize a credential-bearing upstream exception.
+  console.error('cron job failed:', error instanceof Error ? error.message : String(error))
   return Response.json(
     { ok: false, error: 'Cron job failed.', retryable: false },
     { status: 500 },

@@ -54,10 +54,9 @@ export interface TrackingRow {
   readonly canResume: boolean
   /** Provider-credit pause only: release the hold and retry immediately. */
   readonly canResumeEnhancement: boolean
-  /** On-hold work only: remove it from Loupe and move it out of RAW. */
+  /** On-hold work only: remove it from Loupe. */
   readonly canDiscard: boolean
   readonly consoleHref: string | null
-  readonly driveHref: string | null
   readonly duplicate: TrackingDuplicate | null
   /**
    * Reconciliation findings only: the operator can record that this specific

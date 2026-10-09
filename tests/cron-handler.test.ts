@@ -2,13 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createCronPostHandler } from '@/lib/cron/handler'
 import { validatedCronSecret } from '@/lib/cron/secret'
-import { DriveError } from '@/lib/google/drive-errors'
-import { sweepExpiredLeases } from '@/lib/intake/sweep'
-
-import { MemoryIntakeRepository } from './helpers/intake'
 
 function request(headers: HeadersInit = {}): Request {
-  return new Request('https://loupe.example.com/api/cron/watch', {
+  return new Request('https://loupe.example.com/api/cron/retention', {
     method: 'POST',
     headers,
   })
@@ -78,37 +74,18 @@ describe('cron POST authentication', () => {
     await expect(response.json()).resolves.toEqual({ ok: true, inserted: 2 })
   })
 
-  it('returns only a safe Drive message, never raw upstream detail', async () => {
+  it('returns a generic failure, never raw upstream detail', async () => {
     const post = createCronPostHandler({
       expectedSecret: () => 'correct-secret',
       run: async () => {
-        throw new DriveError('Google Drive is temporarily unavailable.', {
-          kind: 'server',
-          retryable: true,
-          detail: { authorization: 'Bearer must-not-leak' },
-        })
+        throw new Error('upstream said: Bearer must-not-leak')
       },
     })
 
     const response = await post(request({ authorization: 'Bearer correct-secret' }))
-    expect(response.status).toBe(503)
+    expect(response.status).toBe(500)
     const body = JSON.stringify(await response.json())
-    expect(body).toContain('temporarily unavailable')
+    expect(body).toContain('Cron job failed')
     expect(body).not.toContain('must-not-leak')
-  })
-})
-
-describe('lease sweep cron operation', () => {
-  it('returns the RPC count and records one completion event', async () => {
-    const repository = new MemoryIntakeRepository()
-    repository.sweepCount = 3
-
-    await expect(sweepExpiredLeases(repository)).resolves.toEqual({ requeued: 3 })
-    expect(repository.events).toEqual([
-      expect.objectContaining({
-        event: 'intake.lease_sweep.completed',
-        detail: expect.objectContaining({ requeued: 3 }),
-      }),
-    ])
   })
 })

@@ -2,7 +2,6 @@
 
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
 import { ConsoleError } from '@/lib/console/mutations'
-import { nudgeEnhanceCron } from '@/lib/cron/jobs'
 import {
   beginManualUpload,
   finalizeIdentifyUpload,
@@ -62,8 +61,6 @@ export async function decideIntakeAction(input: {
       p_actor: email,
     })
     if (error) throw new ConsoleError(error.hint || error.message, error.message, false)
-    // A new product starts enhancing now rather than on the next minute boundary.
-    if (input.decision !== 'restock') await nudgeEnhanceCron()
     return loadIdentifyQueue()
   })
 }

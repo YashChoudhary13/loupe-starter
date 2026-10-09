@@ -7,8 +7,8 @@ import sharp, { type Metadata } from 'sharp'
 import type { Operator } from '@/lib/auth/authorize'
 import { ConsoleError } from '@/lib/console/mutations'
 import { perceptualHash } from '@/lib/duplicates/phash'
-import { makeThumbnail } from '@/lib/enhance/image'
-import { R2ObjectStore } from '@/lib/enhance/storage'
+import { makeThumbnail } from '@/lib/images/image'
+import { R2ObjectStore } from '@/lib/images/storage'
 import { serverEnv } from '@/lib/env'
 import { supabaseServer } from '@/lib/supabase/server'
 
@@ -287,58 +287,6 @@ export async function finalizeManualUpload(
   if (error || typeof data !== 'string') {
     throw new ConsoleError(
       'The image is safely uploaded, but it could not be added to Pending. Try again.',
-      error?.message ?? 'The database returned no intake id.',
-      true,
-    )
-  }
-  return data
-}
-
-/**
- * D120: the art director needs the uploaded bytes before the prompt binding is
- * decided. Returns null instead of throwing — a missing or unfinished object
- * makes the caller fall back to the default setting, never fail the upload.
- */
-export async function readRawUploadImage(
-  operator: Operator,
-  uploadId: string,
-): Promise<{ readonly image: Buffer; readonly mimeType: string } | null> {
-  try {
-    const upload = await loadOwnedUpload(uploadId, operator)
-    if (upload.status === 'completed') return null
-    const store = objectStore()
-    if (!(await store.head(upload.storage_key))) return null
-    return { image: await store.get(upload.storage_key), mimeType: upload.mime_type }
-  } catch {
-    return null
-  }
-}
-
-/**
- * D103: the raw-pipeline finalise. Same verification, but the row lands in
- * `discovered` carrying its prompt binding, and the enhancement worker reads
- * the source straight from R2.
- */
-export async function finalizeRawUpload(
-  operator: Operator,
-  uploadId: string,
-  presetSlug: string | null,
-): Promise<string> {
-  const verified = await verifyUploadedObject(operator, uploadId)
-  if ('completed' in verified) return verified.completed
-
-  const { data, error } = await supabaseServer().rpc('finalize_raw_image_upload', {
-    p_upload_id: verified.upload.id,
-    p_thumb_key: verified.thumbnailKey,
-    p_width: verified.width,
-    p_height: verified.height,
-    p_phash: verified.phash,
-    p_preset_slug: presetSlug,
-    p_actor: operator.email,
-  })
-  if (error || typeof data !== 'string') {
-    throw new ConsoleError(
-      'The image is safely uploaded, but it could not join the enhancement queue. Try again.',
       error?.message ?? 'The database returned no intake id.',
       true,
     )

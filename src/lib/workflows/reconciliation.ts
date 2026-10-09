@@ -9,7 +9,7 @@ import type { StepContext, WorkflowProgram } from './runner'
  * D122 — "Full reconciliation" as a step-by-step workflow. Steps 1–5 are the
  * same functions the nightly pg_cron job and the old Tracking button called;
  * step 6 is new and reports only. A step that fails on its own (webhooks,
- * draft sync, Drive) returns a warning so the drift check still runs — the
+ * draft sync) returns a warning so the drift check still runs — the
  * same tolerance the nightly job has.
  */
 
@@ -84,33 +84,6 @@ export function reconciliationProgram(): WorkflowProgram {
             return { detail: 'A catalogue check was already running; joined it instead of starting another', warning: true }
           }
           return `${result.matchedProducts} of ${result.totalProducts} published products match · ${result.issueCount} issue${result.issueCount === 1 ? '' : 's'} listed in Tracking`
-        },
-      },
-      {
-        key: 'drive',
-        label: 'Tidy Drive RAW',
-        async run(context: StepContext) {
-          try {
-            const [{ tidyPublishedDriveBacklog }, { googleDriveClient }, { serverEnv }, { supabaseServer }] =
-              await Promise.all([
-                import('@/lib/console/drive-backlog'),
-                import('@/lib/google/drive-server'),
-                import('@/lib/env'),
-                import('@/lib/supabase/server'),
-              ])
-            const result = await tidyPublishedDriveBacklog({
-              db: supabaseServer(),
-              drive: googleDriveClient(),
-              processedFolderId: serverEnv.driveProcessedFolderId,
-              actor: context.actor,
-            })
-            if (result.moved === 0 && result.failed === 0) return 'RAW already clear of published photographs'
-            const detail = `${result.moved} moved to Processed${result.failed > 0 ? `, ${result.failed} could not be moved` : ''}${result.more ? ' · more remain, run again' : ''}`
-            return result.failed > 0 ? { detail, warning: true } : detail
-          } catch (cause) {
-            context.log(`Drive: ${failureText(cause)}`)
-            return { detail: `Drive tidy-up failed: ${failureText(cause)}`, warning: true }
-          }
         },
       },
       {

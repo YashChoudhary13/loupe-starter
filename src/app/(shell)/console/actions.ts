@@ -13,7 +13,6 @@ import {
   publishDraftForOperator,
   PublishInProgressError,
   reserveDraftIdentity,
-  type DriveHousekeepingOutcome,
 } from '@/lib/console/publish'
 import { pushDraftToShopifyInBackground } from '@/lib/console/shopify-push'
 import { loadDraftLabelOffer, markDraftLabelsPrinted } from '@/lib/console/draft-labels'
@@ -304,35 +303,6 @@ export async function previewPhotosAction(
   return withOperator(() => loadPhotos(intakeFileIds))
 }
 
-export interface RedoImageResult {
-  readonly photo: PhotoSummary
-  readonly jobId: string
-  /**
-   * The job is durable and running in the background. The returned photo
-   * already carries `redo.status = 'queued'`, so the console renders progress
-   * immediately and the live heartbeat swaps in the new version when
-   * `image.redo_completed` lands.
-   */
-  readonly queued: true
-}
-
-/**
- * Queue first, then opportunistically run this exact job. If the request is
- * interrupted, the cron route reclaims the durable job; the deterministic R2
- * key prevents a second paid generation after a stored result.
- */
-export async function redoPromptPreviewAction(
-  intakeFileId: string,
-): Promise<ActionResult<{ promptText: string; model: string }>> {
-  return withOperator(async (operator) => {
-    const { prepareImageRedo, previewRedoPrompt } = await import(
-      '@/lib/enhance/redo-server'
-    )
-    await prepareImageRedo(intakeFileId, operator.email)
-    return previewRedoPrompt(intakeFileId)
-  })
-}
-
 /**
  * Permanently removes only an ungrouped queue photograph. The database claim
  * runs first and wins the grouping race; grouped, published, or historically
@@ -368,37 +338,6 @@ export async function deleteUngroupedPhotoAction(
     // No queue snapshot: the client removes the tile optimistically and deletes
     // run in parallel; a snapshot per delete re-signed the whole grid each time.
     return { intakeFileId }
-  })
-}
-
-export async function redoImageAction(
-  intakeFileId: string,
-  promptOverride?: string | null,
-): Promise<ActionResult<RedoImageResult>> {
-  return withOperator(async (operator) => {
-    const { queueImageRedo, runProductionRedoBatch } = await import(
-      '@/lib/enhance/redo-server'
-    )
-    const jobId = await queueImageRedo(intakeFileId, operator.email, promptOverride)
-
-    /**
-     * The paid generation takes ~70 s. Awaiting it here held the operator on a
-     * frozen "Generating…" dialog for the whole call. `after` runs the exact
-     * same batch once the response has been sent, so execution and interruption
-     * semantics are unchanged — the job is durable, and the cron reclaims it if
-     * this invocation is cut short (D52). Only the response moves earlier.
-     *
-     * Errors are swallowed deliberately: the redo worker persists its own
-     * failure onto the job row, which the console renders as a failed badge. An
-     * unhandled rejection here would add noise without adding information.
-     */
-    after(async () => {
-      await runProductionRedoBatch(jobId).catch(() => undefined)
-    })
-
-    const [photo] = await loadPhotos([intakeFileId])
-    if (!photo) throw new ConsoleError('That photograph no longer exists.', null, false)
-    return { photo, jobId, queued: true }
   })
 }
 
@@ -689,7 +628,6 @@ export interface PublishSummary {
   readonly reusedIdentity: boolean
   readonly imageCount: number
   readonly altTexts: readonly { readonly mediaId: string; readonly alt: string | null }[]
-  readonly housekeeping: readonly DriveHousekeepingOutcome[]
   /**
    * The sales channels the product went live on. Shown because the operator's
    * previous job was to open Shopify and tick these by hand; seeing them named
@@ -721,7 +659,6 @@ export async function publishDraftAction(
         reusedIdentity: published.result.reusedIdentity,
         imageCount: published.media.length,
         altTexts: published.media.map((m) => ({ mediaId: m.id, alt: m.alt })),
-        housekeeping: published.housekeeping,
         salesChannels: published.result.salesChannels.map((channel) => channel.name),
       },
       bundle: await bundle(request.draftId, request.allowZeroStock),

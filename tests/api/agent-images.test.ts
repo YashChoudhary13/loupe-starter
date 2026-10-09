@@ -13,7 +13,7 @@ vi.mock('@/lib/env', () => ({
 }))
 vi.mock('@/lib/supabase/server', () => ({ supabaseServer: () => ({ from: mocks.from, rpc: mocks.rpc }) }))
 vi.mock('@/lib/manual-upload/server', () => ({ beginManualUpload: mocks.begin, verifyUploadedObject: mocks.verify }))
-vi.mock('@/lib/enhance/storage', () => ({ R2ObjectStore: class { putImmutable = mocks.put } }))
+vi.mock('@/lib/images/storage', () => ({ R2ObjectStore: class { putImmutable = mocks.put } }))
 
 import { GET, POST } from '@/app/api/agent/images/route'
 import { AgentInputError, parseAgentSuggest, parseRestockSku } from '@/lib/agent-intake/suggest'
