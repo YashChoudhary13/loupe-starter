@@ -29,6 +29,29 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-10 — Enhance jobs: phone photographs in, job queue for the external enhancer (D143)
+
+**Goal this session:** replace phone → WhatsApp → zip → chat with a phone page in Loupe and a job queue the Canada-server enhancer polls.
+
+**Built:**
+- `supabase/migrations/20261010100000_agent_jobs.sql` → `agent_jobs`, `agent_job_photos`, RPCs `agent_job_photo_uploaded`, `agent_job_queue`, `agent_job_claim` (skip-locked, retakes expired leases), `agent_job_heartbeat`, `agent_job_finish`.
+- `src/lib/agent-jobs/label.ts` (pure: default label, validators, staleness), `server.ts` (create job, begin/finish photo upload to `intake/<job>/<photo>`, queue, list; claim with signed GETs, heartbeat, finish), `http.ts` (bearer + body plumbing shared by the two routes).
+- `src/app/(shell)/enhance/{page,actions}.tsx`, `src/components/enhance/EnhanceScreen.tsx` → the phone page; `Sidebar.tsx` and `faces.ts` list `/enhance`.
+- `src/app/api/agent/jobs/route.ts` (claim, list) and `jobs/[jobId]/route.ts` (heartbeat, done, failed).
+- `src/lib/retention/protected-keys.ts` → `intake/` never purged.
+- `tests/api/agent-jobs.test.ts` → label helpers, 401s, empty claim, claim with signed photos, validation, finish/heartbeat RPC calls, refused RPC → 400.
+
+**Verified:** `npm run typecheck` clean, `npm run lint` clean, `npx vitest run tests/api/agent-jobs.test.ts tests/api/agent-images.test.ts tests/console-queue-view.test.ts tests/faces.test.ts` → 4 files, 39 tests passed.
+
+**Not finished / known broken:**
+- Not run against production: no `db:push`, no phone upload, no claim. HEIC is accepted by the page and stored as-is; the enhancer must handle it.
+- The runner (timer + script on the Canada VPS, Claude Code + Codex logins) is outside this commit.
+- A WhatsApp-to-n8n intake was considered and not built.
+
+**Surprises:** none; `StoredObject.bytes` (not `size`) is the R2 HEAD size.
+
+**Next session should start with:** `npm run db:push` for both 2026-10-10 migrations, then open `/enhance` on a phone and send a two-photo batch; claim it with `curl -H "Authorization: Bearer $AGENT_SECRET" -d '{"action":"claim","runner":"test"}' https://loupe.qimati-eng.site/api/agent/jobs`.
+
 ## 2026-10-10 — Agent intake: Claude delivers finished images to Loupe (D142)
 
 **Goal this session:** let Claude push rendered product images straight into the console with a tag and, for restocks, a listing suggestion, so nobody uploads a folder by hand.

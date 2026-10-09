@@ -9,12 +9,14 @@
  *   manual/      the browser-uploaded source (ready images and D103 raw uploads)
  *   references/  copies registered for the matcher
  *   identify/    photographs taken on the /identify screen
+ *   intake/      supplier photographs sent from a phone to the Enhance jobs page (D143)
  */
 export const PROTECTED_KEY_PREFIXES = [
   'originals/',
   'manual/',
   'references/',
   'identify/',
+  'intake/',
 ] as const
 
 export function isProtectedKey(key: string): boolean {

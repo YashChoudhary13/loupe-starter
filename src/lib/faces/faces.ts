@@ -2,7 +2,7 @@
 export const FACE_DOMAIN = 'qimati-eng.site'
 export const FACES = {
   home: { host: 'qimati-eng.site', label: 'Qimati', screens: ['/home'] },
-  loupe: { host: 'loupe.qimati-eng.site', label: 'Loupe', screens: ['/console', '/upload', '/identify', '/restock', '/tracking', '/prompts', '/models', '/workflows'] },
+  loupe: { host: 'loupe.qimati-eng.site', label: 'Loupe', screens: ['/console', '/enhance', '/upload', '/identify', '/restock', '/tracking', '/prompts', '/models', '/workflows'] },
   qc: { host: 'qc.qimati-eng.site', label: 'Order QC', screens: ['/qc', '/labels'] },
   ship: { host: 'ship.qimati-eng.site', label: 'Fulfilment', screens: ['/dispatch'] },
 } as const
