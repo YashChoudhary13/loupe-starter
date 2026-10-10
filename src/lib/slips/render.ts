@@ -2,7 +2,9 @@ import { MISSING, lines, num } from './plan'
 import { NEED_ADDRESS, type SlipAddress, type SlipOrder, type SlipPrintRow, type SlipStrip } from './types'
 
 /** The slip document: one packing slip per order in the layout of Shopify's own slip, a slim mark strip on top, designed
- * for a black-and-white printer. The browser prints it (Ctrl+P or the auto dialog); no file is written anywhere. */
+ * for a black-and-white printer. The browser prints it (Ctrl+P or the auto dialog); no file is written anywhere.
+ * `@page { margin: 0 }` with the margins as padding on each slip: Chrome draws its date/title/URL/page-number lines inside
+ * the page margin, so a zero margin is the only way to keep them off the paper whatever the dialog says (seen 2026-10-10). */
 const SHOP_FOOT = ['Qimati', 'Acharya Kriplani Marg, Adarsh Nagar, Jaipur., 302, A-6, SV Tower, 302004 Jaipur RJ, India', 'info@qimati.in', 'www.qimati.in']
 const CLS: Record<string, string> = { PACK: 'PACK', HOLD: 'HOLD', CLUB: 'CLUB', 'CLUB + HOLD': 'CLUBHOLD' }
 export const esc = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
@@ -50,7 +52,7 @@ export function renderSlipDocument(doc: SlipDocument): string {
     ...(missing.length ? [`Could not be read from Shopify: ${missing.join(', ')}`] : []),
   ].map(text => `<p class=warn>${esc(text)}</p>`).join('')
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(doc.title)}</title><style>
-@page{size:A4;margin:10mm 30mm 14mm}
+@page{size:A4;margin:0}
 body{font:10px/1.45 "Helvetica Neue",Helvetica,Arial,sans-serif;color:#000;margin:0;background:#fff}
 .toolbar{font-size:14px;line-height:1.5;padding:16px 20px;max-width:760px;margin:auto}.toolbar h1{font-size:18px;margin:0 0 6px}.toolbar button{background:#111;color:#fff;border:0;border-radius:999px;padding:10px 22px;cursor:pointer;font:inherit}.toolbar a{color:#111;margin-left:14px}.warn{color:#a8302a;font-weight:600}
 .slip{break-after:page}.slip:last-child{break-after:auto}
@@ -65,7 +67,7 @@ th{font-size:8.5px;text-transform:uppercase;letter-spacing:.03em;text-align:left
 td{padding:6px 0;vertical-align:middle}td.pic{width:58px}td.pic img,td.pic i{display:block;width:48px;height:48px;object-fit:cover;background:#eee}
 tr{break-inside:avoid}.notes{margin-top:7mm}footer{text-align:center;margin-top:9mm}footer p{margin:0 0 10px}
 @media screen{body{background:#e9e7e3}.slip{background:#fff;max-width:150mm;margin:16px auto;padding:10mm 30mm 14mm;box-shadow:0 1px 4px rgba(0,0,0,.15)}}
-@media print{.toolbar{display:none}}
+@media print{.toolbar{display:none}.slip{padding:10mm 30mm 14mm;box-sizing:border-box}}
 </style></head><body><div class="toolbar"><h1>Qimati packing slips</h1><p>${summary}</p>${warnings}<p>A4, 100% scale, browser headers and footers off. <button type="button" onclick="window.print()">Print</button><a href="${esc(doc.backHref)}">Back to Print slips</a></p></div>
 <main>${slips}</main>${doc.auto && rows.length ? '<script>(function(){var done=false;function go(){if(done)return;done=true;setTimeout(function(){window.print()},300)}window.addEventListener("load",go);setTimeout(go,15000)})()</script>' : ''}</body></html>`
 }

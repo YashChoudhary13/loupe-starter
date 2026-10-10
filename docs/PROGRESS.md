@@ -47,8 +47,10 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - The Loupe app lacked `read_customers` (Shopify: "Access denied for customer field"); measured with the Mac rules over the same 58 orders with the customer field blanked: 0 of 55 verdicts changed (only the "how matched" word list). The owner added the scope the same afternoon (installation now 29 scopes, `read_customers` and `write_customers` present); the `customer { … }` block is back in the query and the live parity re-run matched 45 of 45 rows including the "how matched" lists.
 - `npm run typecheck`, `npm run lint` clean; `vitest` 9 files, 60 tests passed (the five new files plus the Dispatch, shell and faces render tests); `npm run build` succeeded with `/dispatch/print`, `/api/slips` and `/api/slips/[batch]` listed.
 
+**Live and proven (added later the same day):** the owner ran `npm run db:push`, pushed `claude/slips` and fast-forwarded `main`; release `20261010-090202-aa808ee` went live 09:02 UTC. First real click at 09:06 UTC with **Print from Qimati 6764**: 54 older orders recorded as BASELINE, 1 slip printed (Qimati6764, PACK), `slip_prints.progress = marked`, Shopify read back `IN_PROGRESS`. The printout carried Chrome's date/title/URL/page-number lines: fixed by `@page { margin: 0 }` with the margins as padding on each slip (a long order's second page now starts at the paper edge; acceptable).
+
 **Not finished / known broken:**
-- Not yet deployed: migration not pushed, branch `claude/slips` not merged. The POST (batch + Shopify write + redirect + print dialog) has not run against the live store; each layer under it was tested with fakes or read-only.
+- The POST ran once for one order; a multi-order batch with CLUB and HOLD slips on the office printer is still to be seen.
 - No one-tap "Mark In progress" for an order released from hold; Dispatch still asks for it by hand.
 - The page re-reads every open order on each load (about 2–3 s for 58 orders).
 

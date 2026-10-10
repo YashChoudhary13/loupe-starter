@@ -29,6 +29,10 @@ describe('the slip document', () => {
     expect(html).toContain('<div>A &amp; B</div>'); expect(html).toContain('Pack with &lt;care&gt;'); expect(html).toContain('October 10, 2026')
     expect(html).toContain('2 slips · Qimati1 to Qimati2'); expect(html).not.toContain('<script>')
   })
+  it('keeps Chrome\'s print headers and footers off the paper: zero page margin, the margins on the slip', () => {
+    const html = doc([row(1)], [order(1)])
+    expect(html).toContain('@page{size:A4;margin:0}'); expect(html).toContain('@media print{.toolbar{display:none}.slip{padding:10mm 30mm 14mm;box-sizing:border-box}}')
+  })
   it('opens the print dialog only when asked, and only when there is something to print', () => {
     expect(doc([row(1)], [order(1)], true)).toContain('window.print()},300)')
     expect(doc([row(3, 'BASELINE')], [], true)).not.toContain('<script>')
