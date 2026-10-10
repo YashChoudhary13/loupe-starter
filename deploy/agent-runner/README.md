@@ -31,6 +31,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now qimati-agent-runner.
 
 ## Operate
 
+- A batch is split into parts of up to `PART_SIZE` photos (default 5), at most `MAX_PARTS` (default 3), each worked by its own Claude Code session at the same time in `<label>/part-N/`; the catalogue matcher (`restock.py match part-1 part-2 …`) starts when the job is claimed and writes each part's sheets as it goes (`matcher.log`, `matcher.done`). 6 photos in two parts: 4 min 10 s (2026-10-10); one session doing 15 in sequence had taken 25.
+- Try it without Loupe: `LOCAL_FOLDER=<folder of photos> PUSH_FLAG=--dry /opt/qimati-agent/agent-runner.sh` (nothing claimed, reported or delivered).
 - Logs: `~/agent-batches/runner.log`, per job `~/agent-batches/<label>/claude.log`; `journalctl -u qimati-agent-runner`.
 - One job by hand: `sudo systemctl start qimati-agent-runner.service` (or `ENV_FILE=/etc/qimati-agent/runner.env /opt/qimati-agent/agent-runner.sh`).
 - Claude runs with an explicit tool allowlist (`ALLOWED_TOOLS` in the script): file tools plus `python3`, the restock venv, `qdb`, `codex` and a few coreutils. No shell escape, no git, no permission bypass.

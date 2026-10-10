@@ -28,6 +28,28 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ```
 
 ---
+## 2026-10-10 — Enhance jobs run in parallel parts: 6 photos in 4 min 10 s (was 12 min for one, 25 for fifteen)
+
+**Goal this session:** the owner called the wait unacceptable (15 photos: 25.5 minutes); find where the time goes and cut it.
+
+**Built:**
+- Measured first, from the server session's transcript (191 tool calls): looking at photos 3 min, waiting for the matcher 1.7, judging restocks 4, writing descriptions and checking crops 5.7, rendering four at a time 5.8, review, upload and summary 4.5. One session doing everything in sequence; almost no machine time.
+- `deploy/agent-runner/agent-runner.sh` → a batch is split into parts (`PART_SIZE` 5, `MAX_PARTS` 3) worked by parallel Claude Code sessions, each with its own `TMPDIR`; the catalogue matcher starts when the job is claimed, one model load for every part; photos download four at a time; the runner counts what reached Loupe from each part's `loupe-push.json`, writes one vault entry and reports once. `LOCAL_FOLDER=… PUSH_FLAG=--dry` runs the same pipeline without Loupe.
+- `deploy/agent-runner/run-job.prompt.md` → an ordered runbook with the exact commands: describe, start the renders in the background, judge restocks while they render, review, push. No source reading, no `qdb add` from the sessions.
+- Outside this repo (the enhance skill and `AI-Python/restock.py`, synced to the host): `restock.py match` takes several folders with one model load and loads the weights without the extra copy (2.05 GB peak instead of 4.5); `loupe_push.py` takes `--batch`, uploads four at a time, delivers flagged when the matcher produced nothing, and tags an unsure verdict needs_review; `wait_for.py` blocks on a file or a process.
+- `src/components/enhance/EnhanceScreen.tsx` → the wait shown is `max(4, 2 + photos / 3)` minutes.
+
+**Verified:** on the Canada host, six of the owner's photos in two parts with delivery dry: both sessions wrote `items.json` at +121 s and +124 s, six renders (54 to 66 s each, 180,454 Codex tokens, both accounts) were on disk by +184 s, verdicts written by +222 s, both `SUMMARY.md` by +249 s. Verdicts equal the earlier sequential run on the same photos (BK117, BK123 restocks; the slot bangle unsure between BK122 and BK403). Stubbed run with a spaced folder name: 7 photos split 3, 3, 1; the download step keeps names with spaces. 2.3 GB of RAM spare with the matcher and two sessions up.
+
+**Not finished / known broken:**
+- Not yet run through Loupe end to end in the new shape (claim, three parts, real delivery); fifteen renders at once on two Codex accounts is untested (six were fine). The runbook re-runs a failed render once.
+- For big batches the matcher sets the floor: about 18 s a photo on this Haswell VPS, so fifteen photos cannot finish much under 7 minutes.
+
+**Surprises:** `pgrep -f` in a remote `bash -c` matches its own command line; a wait loop on it never ends.
+
+**Next session should start with:** the first real batch in the new shape, reading `runner.log` and each part's `claude.log` for time and failed renders.
+
+---
 ## 2026-10-10 — Print slips: packing slips from Loupe, marked In progress on the click (D146)
 
 **Goal this session:** replace the Mac `packlist --slips` run (Claude, PDF in Downloads, then mark In progress by hand in Shopify, often forgotten) with one button on the Fulfilment face that prints the slips of every order not printed yet and marks the PACK and CLUB orders In progress itself.

@@ -19,8 +19,9 @@ interface PhotoItem { key: string; sig: string; file: File; previewUrl: string; 
 interface Said { text: string; tone: 'info' | 'error'; stale: boolean }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
-// Measured on the Canada runner, 2026-10-10: 1 photo took 12 minutes, 15 photos took 26. About ten minutes of fixed work plus one per photo.
-const eta = (photos: number) => `about ${10 + photos} minutes`
+// The Canada runner splits a batch across up to three parallel sessions (2026-10-10): 6 photos measured at 4 min 10 s.
+// Past that the catalogue matcher sets the pace, about 20 s a photo on that host, so roughly two minutes plus a third per photo.
+const eta = (photos: number) => `about ${Math.max(4, Math.round(2 + photos / 3))} minutes`
 
 // DESIGN.md: everything interactive is a pill; black is the one primary action, grey is available.
 const big = 'flex h-12 w-full items-center justify-center rounded-pill px-5 text-[14px] font-medium transition-colors disabled:opacity-45'
