@@ -41,6 +41,7 @@ import { ShopifyClient } from '@/lib/shopify/client'
 import { deleteProduct, readProductByHandle } from '@/lib/shopify/product-set'
 import { supabaseServer } from '@/lib/supabase/server'
 import { setAgentSupersession } from '@/lib/agent-intake/server'
+import { requestReenhance } from '@/lib/agent-jobs/server'
 
 /**
  * Every mutation the console can make, and the only way the browser reaches the
@@ -412,6 +413,24 @@ export async function setDraftSupersessionAction(
 ): Promise<ActionResult<DraftBundle>> {
   return withOperator(async (operator) => {
     await setAgentSupersession(operator, draftId, sku, enable)
+    return bundle(draftId, false)
+  })
+}
+
+/**
+ * D145: "Re-enhance" — one photograph of this draft goes back to Claude with the operator's note.
+ * The redo job is queued at once; the bundle returns with the photograph marked "re-enhancing".
+ */
+export async function requestReenhanceAction(
+  draftId: string,
+  intakeFileId: string,
+  note: string,
+): Promise<ActionResult<DraftBundle>> {
+  return withOperator(async (operator) => {
+    const current = await bundle(draftId, false)
+    const photo = current.draft.photos.find((p) => p.intakeFileId === intakeFileId)
+    if (!photo) throw new ConsoleError('That photograph is not part of this product.', null, false)
+    await requestReenhance(operator, intakeFileId, note, photo.filename)
     return bundle(draftId, false)
   })
 }

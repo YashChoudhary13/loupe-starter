@@ -37,6 +37,8 @@ const CONSOLE_REFRESH_EVENTS = new Set([
   'intake.enhanced',
   'intake.manual_uploaded',
   'intake.original_selected',
+  'intake.reenhance_requested',
+  'intake.agent_replaced',
   'intake.grouped',
   'intake.ungrouped',
   'intake.ungrouped_after_shopify_delete',

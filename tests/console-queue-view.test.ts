@@ -26,6 +26,8 @@ function tile(
     agentNote: null,
     restockSku: null,
     agentSuggest: null,
+    reenhanceJobId: null,
+    reenhanceNote: null,
     reservedSku: null,
   }
 }

@@ -150,7 +150,10 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
           {jobs.map((j) => (
             <li key={j.id} className="flex flex-col gap-1 p-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="font-medium">{j.label}</span>
+                <span className="font-medium">
+                  {j.label}
+                  {j.kind === 'redo' && <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-800">redo</span>}
+                </span>
                 <StatusChip job={j} now={now} />
               </div>
               <div className="text-sm text-muted-foreground">
@@ -158,6 +161,7 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
                 {j.status === 'done' && ` · ${j.resultCount} final${j.resultCount === 1 ? '' : 's'} in the Console`}
                 {j.runner && ` · ${j.runner}`}
               </div>
+              {j.kind === 'redo' && j.instructions && <div className="text-sm text-muted-foreground">“{j.instructions}”</div>}
               {j.note && <div className="text-sm">{j.note}</div>}
               {j.error && <div className="text-sm text-red-600">{j.error}</div>}
               {j.status === 'queued' && queueIsStale(j.queuedAt, now) && <div className="text-sm text-amber-700">Nothing has picked this up yet.</div>}

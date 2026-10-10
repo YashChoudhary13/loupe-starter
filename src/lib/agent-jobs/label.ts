@@ -16,6 +16,15 @@ export function defaultJobLabel(now: Date): string {
 
 export class JobInputError extends Error {}
 
+export const JOB_KINDS = ['batch', 'redo'] as const
+export type JobKind = (typeof JOB_KINDS)[number]
+
+/** D145: `redo 2026-10-10 14.30 necklace-tulip` — the stem of the image's filename, cut to fit the 80-character label. */
+export function redoJobLabel(filename: string, now: Date): string {
+  const stem = filename.replace(/\.[^.]+$/u, '').replace(/[\u0000-\u001f\u007f/\\]/gu, ' ').trim() || 'image'
+  return `redo ${defaultJobLabel(now)} ${stem}`.slice(0, LABEL_MAX).trim()
+}
+
 export function parseJobLabel(raw: unknown): string {
   const label = typeof raw === 'string' ? raw.trim() : ''
   if (label.length < LABEL_MIN || label.length > LABEL_MAX) throw new JobInputError(`The batch label must be ${LABEL_MIN} to ${LABEL_MAX} characters.`)

@@ -8,7 +8,7 @@ vi.mock('@/lib/console/images', () => ({ consoleObjectStore: () => ({ presignGet
 
 import { GET, POST } from '@/app/api/agent/jobs/route'
 import { POST as POST_ONE } from '@/app/api/agent/jobs/[jobId]/route'
-import { JobInputError, defaultJobLabel, parseJobLabel, parseRunner, queueIsStale } from '@/lib/agent-jobs/label'
+import { JobInputError, defaultJobLabel, parseJobLabel, parseRunner, queueIsStale, redoJobLabel } from '@/lib/agent-jobs/label'
 
 const TOKEN = 'a'.repeat(64)
 const JOB_ID = '11111111-2222-4333-8444-555555555555'
@@ -34,6 +34,13 @@ describe('label helpers', () => {
     expect(queueIsStale('2026-10-10T09:00:00Z', now)).toBe(true)
     expect(queueIsStale('2026-10-10T09:45:00Z', now)).toBe(false)
     expect(queueIsStale(null, now)).toBe(false)
+  })
+  it('D145: names a redo after the image, within the label limit', () => {
+    const at = new Date(2026, 9, 10, 14, 5)
+    expect(redoJobLabel('necklace-tulip-pear-red.png', at)).toBe('redo 2026-10-10 14.05 necklace-tulip-pear-red')
+    expect(redoJobLabel('a/b\\c.jpg', at)).toBe('redo 2026-10-10 14.05 a b c')
+    expect(redoJobLabel('.png', at)).toBe('redo 2026-10-10 14.05 image')
+    expect(redoJobLabel('x'.repeat(200) + '.png', at).length).toBeLessThanOrEqual(80)
   })
 })
 
@@ -64,11 +71,24 @@ describe('/api/agent/jobs', () => {
     const body = await response.json()
     expect(response.status).toBe(200)
     expect(body.job.label).toBe('2026-10-10 14.05')
+    expect(body.job).toMatchObject({ kind: 'batch', instructions: null, redo_of: null })
     expect(body.job.photos).toEqual([
-      { id: 'p1', filename: 'a.jpg', url: `https://r2.example/intake/${JOB_ID}/p1.jpg?sig` },
-      { id: 'p2', filename: 'b.jpg', url: `https://r2.example/intake/${JOB_ID}/p2.jpg?sig` },
+      { id: 'p1', filename: 'a.jpg', url: `https://r2.example/intake/${JOB_ID}/p1.jpg?sig`, replaces: null },
+      { id: 'p2', filename: 'b.jpg', url: `https://r2.example/intake/${JOB_ID}/p2.jpg?sig`, replaces: null },
     ])
     expect(mocks.presignGet).toHaveBeenCalledWith(`intake/${JOB_ID}/p1.jpg`, 1200)
+  })
+
+  it('D145: a redo claim carries the note and names the image every photo replaces', async () => {
+    const intake = '0f9a2b3c-4d5e-4f60-8a71-82b394c5d6e7'
+    mocks.rpc.mockResolvedValue({ data: { id: JOB_ID, label: 'redo 2026-10-10 14.05 tulip', photo_count: 1, kind: 'redo', instructions: 'stones look dull', redo_of: intake }, error: null })
+    mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ eq: () => ({ order: async () => ({
+      data: [{ id: 'p1', filename: 'IMG_0012.jpg', storage_key: `intake/${JOB_ID}/p1.jpg` }], error: null,
+    }) }) }) }) })
+    mocks.presignGet.mockResolvedValue('https://r2.example/signed')
+    const body = await (await POST(post('/api/agent/jobs', { action: 'claim', runner: 'canada-1' }))).json()
+    expect(body.job).toMatchObject({ kind: 'redo', instructions: 'stones look dull', redo_of: intake })
+    expect(body.job.photos).toEqual([{ id: 'p1', filename: 'IMG_0012.jpg', url: 'https://r2.example/signed', replaces: intake }])
   })
 
   it('rejects a bad runner, a bad action and a bad lease', async () => {
@@ -79,11 +99,11 @@ describe('/api/agent/jobs', () => {
   })
 
   it('lists by status with a capped limit', async () => {
-    mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ order: () => ({ limit: async (n: number) => ({ data: [{ id: JOB_ID, label: 'x', status: 'done', created_at: 't', queued_at: null, started_at: null, finished_at: null, runner: null, note: null, error: null, photo_count: 1, result_count: 1 }], error: null, n }) }) }) }) })
+    mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ order: () => ({ limit: async (n: number) => ({ data: [{ id: JOB_ID, label: 'x', status: 'done', created_at: 't', queued_at: null, started_at: null, finished_at: null, runner: null, note: null, error: null, photo_count: 1, result_count: 1, kind: 'batch', instructions: null, redo_of_intake_id: null }], error: null, n }) }) }) }) })
     const response = await GET(new Request('http://localhost:3000/api/agent/jobs?status=done&limit=500', { headers: { authorization: `Bearer ${TOKEN}` } }))
     const body = await response.json()
     expect(body.ok).toBe(true)
-    expect(body.jobs[0]).toMatchObject({ id: JOB_ID, status: 'done', photoCount: 1, resultCount: 1 })
+    expect(body.jobs[0]).toMatchObject({ id: JOB_ID, status: 'done', photoCount: 1, resultCount: 1, kind: 'batch' })
     expect((await GET(new Request('http://localhost:3000/api/agent/jobs?status=sleeping', { headers: { authorization: `Bearer ${TOKEN}` } }))).status).toBe(400)
   })
 

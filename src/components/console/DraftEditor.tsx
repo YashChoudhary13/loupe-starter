@@ -111,6 +111,8 @@ export interface DraftEditorProps {
   readonly supersedesSku?: string | null
   /** D142: mark or withdraw that replacement; null when the draft is read-only or not yet created. */
   readonly onSupersede?: ((sku: string, enable: boolean) => void) | null
+  /** D145: send this photograph back to Claude with a note; null when read-only or not yet created. */
+  readonly onReenhance?: ((intakeFileId: string, note: string) => void) | null
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
   /** Opens the complete category + SKU-sequence creation flow. */
@@ -149,6 +151,7 @@ export function DraftEditor(props: DraftEditorProps) {
     priceRef,
     supersedesSku = null,
     onSupersede = null,
+    onReenhance = null,
     onPublish,
     onSaveDraft,
     onDetach,
@@ -163,6 +166,8 @@ export function DraftEditor(props: DraftEditorProps) {
   const [colourDraft, setColourDraft] = useState('')
   const [sizeDraft, setSizeDraft] = useState('')
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  /** D145: the photograph whose "Re-enhance" note is being typed. */
+  const [reenhance, setReenhance] = useState<{ id: string; text: string } | null>(null)
   /**
    * Progressive disclosure for the three choice fields. `null` means "follow
    * the flow": an unfilled category opens itself, then material, and a filled
@@ -539,6 +544,23 @@ export function DraftEditor(props: DraftEditorProps) {
                         ready upload · AI bypassed
                       </span>
                     ) : null}
+                    {row.photo.reenhanceJobId ? (
+                      <span
+                        className="rounded-pill bg-[#efe8fb] px-2 py-[7px] text-[10.5px] font-medium text-[#5b3fa6]"
+                        title={row.photo.reenhanceNote ?? 'Claude is re-enhancing this image.'}
+                      >
+                        re-enhancing…
+                      </span>
+                    ) : onReenhance && !readOnly ? (
+                      <Chip
+                        ghost
+                        disabled={busy !== null}
+                        title="Send this image back to Claude with a note on what should change. The new render replaces this one."
+                        onClick={() => setReenhance(reenhance?.id === row.image.intakeFileId ? null : { id: row.image.intakeFileId, text: '' })}
+                      >
+                        Re-enhance
+                      </Chip>
+                    ) : null}
                     {row.photo.possibleDuplicate ? (
                       <span
                         className="rounded-pill bg-[#faf2e4] px-2 py-[7px] text-[10.5px] text-amber"
@@ -548,6 +570,28 @@ export function DraftEditor(props: DraftEditorProps) {
                       </span>
                     ) : null}
                   </div>
+                  {reenhance?.id === row.image.intakeFileId && onReenhance ? (
+                    <div className="mt-2 flex flex-col gap-1">
+                      <textarea
+                        autoFocus
+                        rows={2}
+                        maxLength={500}
+                        value={reenhance.text}
+                        placeholder="What should change? e.g. stones look dull, pendant too big, wrong chain"
+                        onChange={(event) => setReenhance({ id: row.image.intakeFileId, text: event.target.value })}
+                        className="w-full rounded-lg border border-border bg-background px-2 py-1 text-[12px]"
+                      />
+                      <div className="flex gap-1">
+                        <Chip
+                          disabled={busy !== null || reenhance.text.trim().length === 0}
+                          onClick={() => { onReenhance(row.image.intakeFileId, reenhance.text.trim()); setReenhance(null) }}
+                        >
+                          Send to Claude
+                        </Chip>
+                        <Chip ghost disabled={busy !== null} onClick={() => setReenhance(null)}>Cancel</Chip>
+                      </div>
+                    </div>
+                  ) : null}
                   {(form.variantKind === 'colour' || form.variantKind === 'colour_size') && form.variants.length > 0 ? (
                     <div className="mt-2 flex flex-wrap items-center gap-1" role="group" aria-label={`Colour shown in ${row.photo.filename}`}>
                       <span className="mr-1 text-[10.5px] text-muted-foreground">Image for</span>

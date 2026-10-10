@@ -55,6 +55,9 @@ export interface AgentMarks {
   readonly agentNote: string | null
   readonly restockSku: string | null
   readonly agentSuggest: AgentSuggest | null
+  /** D145: set while a redo job for this image is queued or running; the note is what the operator asked for. */
+  readonly reenhanceJobId: string | null
+  readonly reenhanceNote: string | null
 }
 
 export interface PhotoSummary extends AgentMarks {

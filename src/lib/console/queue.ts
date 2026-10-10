@@ -69,6 +69,8 @@ interface IntakeRow {
   agent_note?: string | null
   restock_sku?: string | null
   agent_suggest?: unknown
+  reenhance_job_id?: string | null
+  reenhance_note?: string | null
 }
 
 /** D142: the agent's annotations, null for anything a person or Drive brought in. */
@@ -78,6 +80,8 @@ function agentMarks(row: Partial<IntakeRow>): AgentMarks {
     agentNote: row.agent_note ?? null,
     restockSku: row.restock_sku ?? null,
     agentSuggest: agentSuggestFromRow(row.agent_suggest),
+    reenhanceJobId: row.reenhance_job_id ?? null,
+    reenhanceNote: row.reenhance_note ?? null,
   }
 }
 
@@ -217,7 +221,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     db
       .from('intake_files')
       .select(
-        'id, filename, source, status, discovered_at, last_error, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest',
+        'id, filename, source, status, discovered_at, last_error, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest, reenhance_job_id, reenhance_note',
       )
       .eq('status', 'enhanced')
       .is('product_draft_id', null)
@@ -266,7 +270,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
   const { data: draftPhotoRows, error: draftPhotoError } = draftIds.length
     ? await db
         .from('intake_files')
-        .select('id, filename, source, status, discovered_at, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest')
+        .select('id, filename, source, status, discovered_at, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest, reenhance_job_id, reenhance_note')
         .in('product_draft_id', draftIds)
     : { data: [], error: null }
   if (draftPhotoError) throw new Error(`intake_files (grouped): ${draftPhotoError.message}`)
@@ -402,7 +406,7 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
     db
       .from('intake_files')
       .select(
-        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest',
+        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest, reenhance_job_id, reenhance_note',
       )
       .in('id', intakeFileIds),
     db
@@ -496,7 +500,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     db
       .from('intake_files')
       .select(
-        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest',
+        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest, reenhance_job_id, reenhance_note',
       )
       .eq('product_draft_id', draftId)
       .order('discovered_at', { ascending: true }),

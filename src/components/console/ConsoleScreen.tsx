@@ -22,6 +22,7 @@ import {
   confirmDraftLabelsPrintedAction,
   finalizeManualUploadAction,
   setDraftSupersessionAction,
+  requestReenhanceAction,
   type ActionError,
   type ActionResult,
   type DraftBundle,
@@ -838,6 +839,18 @@ export function ConsoleScreen({
     [bundle, handleResult],
   )
 
+  /** D145: "Re-enhance" — a redo job for one photograph; the bundle comes back with the mark set. */
+  const handleReenhance = useCallback(
+    async (intakeFileId: string, note: string) => {
+      if (!bundle) return
+      setBusy('reenhance')
+      const data = handleResult(await requestReenhanceAction(bundle.draft.id, intakeFileId, note))
+      if (data) setBundle(data)
+      setBusy(null)
+    },
+    [bundle, handleResult],
+  )
+
   const handleDetach = useCallback(
     async (intakeFileId: string) => {
       if (!bundle) return
@@ -1251,6 +1264,7 @@ export function ConsoleScreen({
               onDetach={bundle && !listedReadOnly ? (id) => void handleDetach(id) : null}
               supersedesSku={bundle?.draft.supersedesSku ?? null}
               onSupersede={bundle && !listedReadOnly ? (sku, enable) => void handleSupersede(sku, enable) : null}
+              onReenhance={bundle && !listedReadOnly ? (intakeFileId, note) => void handleReenhance(intakeFileId, note) : null}
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
               onAddCategory={() => setAddingCategory(true)}

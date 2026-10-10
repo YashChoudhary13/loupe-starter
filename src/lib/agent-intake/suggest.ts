@@ -40,6 +40,24 @@ export function parseNote(raw: unknown): string | null {
   return note || null
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** D145: the supplier photograph's filename inside the batch, so the delivery remembers its source. */
+export function parseSourceFilename(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null
+  if (typeof raw !== 'string') throw new AgentInputError('source_filename must be text.')
+  const name = raw.trim()
+  if (name.length > 200) throw new AgentInputError('source_filename is longer than 200 characters.')
+  return name || null
+}
+
+/** D145: the intake row this upload replaces (a redo). */
+export function parseReplaces(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  if (typeof raw !== 'string' || !UUID.test(raw.trim())) throw new AgentInputError('replaces must be an intake id (UUID).')
+  return raw.trim().toLowerCase()
+}
+
 export function parseBatch(raw: unknown): string | null {
   if (raw === undefined || raw === null) return null
   if (typeof raw !== 'string') throw new AgentInputError('batch must be text.')
