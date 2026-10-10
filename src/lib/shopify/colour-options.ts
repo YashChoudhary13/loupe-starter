@@ -8,6 +8,27 @@ export const SHOPIFY_COLOUR_METAFIELD = {
   key: 'color-pattern',
 } as const
 
+/**
+ * Shopify gives Watches no `shopify.color-pattern`; a watch's colour is
+ * `shopify.dial-color`, holding the same `shopify--color-pattern` entries. The
+ * option is still named Color, so a watch reads like every other product.
+ * Read from the live definitions' category constraints on 2026-10-10 (D147).
+ */
+const WATCH_TAXONOMY_CATEGORY_IDS: ReadonlySet<string> = new Set([
+  'gid://shopify/TaxonomyCategory/aa-6-11', // Watches
+  'gid://shopify/TaxonomyCategory/aa-6-12', // Smart Watches
+])
+
+/** The category metafield a Color option links to for this taxonomy category. */
+export function colourMetafieldFor(categoryId: string | null | undefined): {
+  readonly namespace: string
+  readonly key: string
+} {
+  return categoryId && WATCH_TAXONOMY_CATEGORY_IDS.has(categoryId)
+    ? { namespace: 'shopify', key: 'dial-color' }
+    : SHOPIFY_COLOUR_METAFIELD
+}
+
 export const SHOPIFY_COLOUR_METAOBJECT_TYPE = 'shopify--color-pattern'
 
 /** Shopify Standard Product Taxonomy · Color values (2026-08 taxonomy). */

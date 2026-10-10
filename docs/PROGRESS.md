@@ -29,6 +29,35 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-10 — D147: a coloured watch can be drafted
+
+**Goal this session:** find why the console could not draft watches, and make a normal Color choice work on them.
+
+**Built:**
+- `src/lib/shopify/colour-options.ts` → `colourMetafieldFor(categoryId)`: `shopify.dial-color` for Watches and Smart Watches, `shopify.color-pattern` for everything else.
+- `src/lib/shopify/product-set.ts` → `buildInput` links the Color option through it. The option name is still `Color`.
+- `tests/shopify-product-images.test.ts` → one case for a watch.
+- `scripts/verify-watch-colour-live.ts` → opt-in live proof: one zero-stock DRAFT watch, read back, deleted.
+
+**Verified:** the production failures are the control (`events`, three `publish.failed` rows for `watch-071` and `watch-072`, error quoted in D147). The new test failed before the change (`key: "color-pattern"` received) and passes after; `tests/shopify-product-images.test.ts`, `colour-size-barcodes.test.ts` and `variant-barcodes.test.ts`: 43 passed. `tsc --noEmit` clean, eslint clean on the changed files. Full `vitest run` without credentials: 674 passed, 65 skipped, 23 files failed, every one on a missing database or secret variable. Live, with the owner's go-ahead in session:
+
+```
+$ npx tsx scripts/verify-watch-colour-live.ts --create-test-draft <env-file>
+Shopify accepted a DRAFT watch with option "Color" (White #FFFFFF, Red #F61F1F), linked to shopify.dial-color.
+Removed only the temporary verification product; absence verified.
+```
+
+A search for `tag:loupe-verification` afterwards returned nothing.
+
+**Not finished / known broken:**
+- Pushed to `main` on the owner's "roll it out" (2026-10-10). The deployed release and the first real watch draft are not recorded in this entry.
+- `watch-071` and `watch-072` are still `failed` in the console and are the same watch; one is to be retried after rollout, the other discarded.
+- Hair Bands (`HA`) has the same gap and its key is unknown (D147).
+
+**Surprises:** CLAUDE.md said every Color value links to `shopify.color-pattern`; that is false for Watches and is corrected there. Shopify's error names a value when the category is the problem, and `taxonomy.attributes` lists a plain "Color" for Watches although the category takes only the dial and case colour fields; the definition's category constraints are the reliable source.
+
+**Next session should start with:** confirm the retried watch draft (`watch-071` or `watch-072`) reached Shopify as a draft with its four colours.
+
 ## 2026-10-10 — D145 fix: a replacement image is accepted (`replace_intake_image_from_agent`)
 
 **Goal this session:** make the first real replacements land: six re-renders the owner asked for were refused.

@@ -156,6 +156,50 @@ describe('Shopify customer choices', () => {
     expect(input.variants[1]?.file).toEqual(input.files[1])
   })
 
+  it('keeps the option named Color on a watch but links the colour field Shopify gives Watches', () => {
+    // Shopify's Watches category has no `shopify.color-pattern`; it rejected
+    // watch-071 and watch-072 on 2026-10-10 with "At least one value for the
+    // option linked to the 'shopify.color-pattern' metafield is invalid".
+    const input = buildInput({
+      handle: 'watch-071',
+      title: 'Watch 071',
+      status: 'DRAFT',
+      productType: 'Jewellery',
+      categoryId: 'gid://shopify/TaxonomyCategory/aa-6-11',
+      tags: ['watch', 'NEWEST'],
+      descriptionHtml: '<ul><li>304</li></ul>',
+      material: '304',
+      optionName: 'Color',
+      variants: ['white', 'pink'].map((colour) => ({
+        sku: `WH071-C-${colour.toUpperCase()}`,
+        price: '260.00',
+        weightG: 0,
+        stock: 1,
+        locationId: 'gid://shopify/Location/1',
+        optionValue: colour,
+        linkedMetafieldValue: `gid://shopify/Metaobject/${colour}`,
+      })),
+    }) as {
+      productOptions: unknown[]
+      variants: { optionValues: unknown[] }[]
+    }
+
+    expect(input.productOptions).toEqual([
+      {
+        name: 'Color',
+        linkedMetafield: {
+          namespace: 'shopify',
+          key: 'dial-color',
+          values: ['gid://shopify/Metaobject/white', 'gid://shopify/Metaobject/pink'],
+        },
+      },
+    ])
+    expect(input.variants.map((variant) => variant.optionValues[0])).toEqual([
+      { optionName: 'Color', linkedMetafieldValue: 'gid://shopify/Metaobject/white' },
+      { optionName: 'Color', linkedMetafieldValue: 'gid://shopify/Metaobject/pink' },
+    ])
+  })
+
   it('updates native Color choices first, then saves material separately', async () => {
     const graphql = vi
       .fn()

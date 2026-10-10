@@ -16,7 +16,7 @@
  * gain by not waiting.
  */
 import type { ShopifyClient } from './client'
-import { SHOPIFY_COLOUR_METAFIELD } from './colour-options'
+import { colourMetafieldFor } from './colour-options'
 import { ShopifyError } from './errors'
 
 /** Namespace/key the theme reads the material from. See docs/DECISIONS.md D6. */
@@ -478,7 +478,7 @@ export function buildInput(args: ProductSetArgs): Record<string, unknown> {
                 // Native Color metaobject IDs belong on the linked metafield;
                 // each variant then selects one via linkedMetafieldValue.
                 linkedMetafield: {
-                  ...SHOPIFY_COLOUR_METAFIELD,
+                  ...colourMetafieldFor(args.categoryId),
                   values: nativeColourValues,
                 },
               }

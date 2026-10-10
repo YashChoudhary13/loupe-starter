@@ -212,7 +212,10 @@ materialises when a merchant selects one of the Color menu's **Default entries**
 existing merchant entry before creating one. Loupe may create only known solid palette colours
 because flattening a split, patterned, or unknown colour would silently misrepresent the product.
 The app therefore requires `read_metaobjects` and `write_metaobjects` in addition to its product
-and inventory scopes. Shopify exposes no public standard-definition template for this category
+and inventory scopes. **Watches are the exception (D147):** Shopify's Watches category has no
+`shopify.color-pattern`, so the same `Color` option links to `shopify.dial-color` there, with the
+same saved colour entries (`colourMetafieldFor` in `src/lib/shopify/colour-options.ts`). Hair Bands
+(`HA`) has no plain Color field either and its own key is not yet known. Shopify exposes no public standard-definition template for this category
 type, so a new store must activate it once in Admin: on any categorized draft product, add Color,
 select one Default entry, and save. Each category must carry its official Shopify taxonomy id.
 
