@@ -61,7 +61,7 @@ Job id: $job_id
 Job label: $label"
 
 set +e
-( cd "$HOME" && timeout "$CLAUDE_TIMEOUT" "$CLAUDE_BIN" -p --output-format text --allowedTools "$ALLOWED_TOOLS" "$prompt" ) > "$folder/claude.log" 2>&1
+( cd "$HOME" && printf '%s' "$prompt" | timeout "$CLAUDE_TIMEOUT" "$CLAUDE_BIN" -p --output-format text --allowedTools "$ALLOWED_TOOLS" ) > "$folder/claude.log" 2>&1  # prompt on stdin: `-p` with flags after it reads no positional prompt
 status=$?
 set -e
 kill $hb 2>/dev/null || true
