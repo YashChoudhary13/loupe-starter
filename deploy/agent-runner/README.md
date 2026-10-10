@@ -1,6 +1,6 @@
 # Qimati agent runner (D143)
 
-Runs on the Canada VPS (`vps-f7d37609.vps.ovh.ca`, Ubuntu 26.04). Every two minutes it asks Loupe for one
+Runs on the Canada VPS (`vps-f7d37609.vps.ovh.ca`, Ubuntu 26.04). Every 30 seconds it asks Loupe for one
 queued Enhance job, downloads the phone photos, runs Claude Code with the `enhance` skill on them, and reports
 back. The finals arrive in Loupe's Pending grid through `POST /api/agent/images` (D142) with tags and restock
 suggestions. The batch folder stays under `/home/ubuntu/agent-batches/<label>/` with `claude.log` and `SUMMARY.md`.

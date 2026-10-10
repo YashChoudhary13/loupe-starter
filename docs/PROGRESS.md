@@ -59,6 +59,28 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 **Next session should start with:** the owner runs `npm run db:push`, merges `claude/slips`, opens `ship.qimati-eng.site/dispatch/print`, types the first order number not yet printed by hand into **Print from Qimati**, and prints; then checks one PACK order in Shopify shows In progress and that Dispatch lists it.
 
 ---
+## 2026-10-10 — /enhance redone to DESIGN.md, photos shrunk before upload; first real batch through the Canada runner
+
+**Goal this session:** the owner's phone screenshot showed the page as ovals with clipped text and an upload stuck at 99 %; make the page look like Loupe and stop the long upload, and find out why the batch "did not land".
+
+**Built:**
+- `src/components/enhance/EnhanceScreen.tsx` → rebuilt on the shared primitives (`Card`, `SectionLabel`, `Notice`) and the real radius tokens. The first version used `rounded-xl` / `rounded-2xl`, which `globals.css` collapses to the 999 px pill, so the card and every photo tile rendered as ovals; it also used emerald, red, blue and violet. Now: card 24 px, panels 18 px, tiles 16 px, field 14 px, pills for everything interactive, ink and grey only, amber only where a human is needed. One black button at a time (Add photos, then Send to Claude). A failed tile retries when tapped anywhere. Batch rows say what is happening ("Claude is matching, rendering and checking. Usually 10 to 15 minutes…") and a finished batch links to the Console. Polls every 15 s while a batch is queued or running.
+- `src/components/enhance/shrink-photo.ts` → a JPEG over 3 MB is re-encoded in the browser at a 4,096 px long edge, quality 0.9, one at a time, before it is uploaded; anything the browser cannot decode goes up untouched. The owner's photo was 16 MB straight from the camera, which is what sat at "99 %" (bytes handed to the network, storage not yet confirmed). That state now reads "Finishing".
+- `deploy/agent-runner/qimati-agent-runner.timer` → polls every 30 s (was 2 min), `AccuracySec=5s`; installed on the Canada host.
+
+**Verified:** the real component, bundled with mocked server actions and the app's compiled `globals.css`, in Chromium at a 390 px viewport: no element past the right edge (`scrollWidth` 390), tile radius 16 px, card radius 24 px, main buttons 48 px tall; states seen in a screenshot: uploaded tick, 64 %, Finishing, Failed · tap to retry, disabled Send. Shrink: an 8.9 MB 6000×8000 JPEG went up as 2.53 MB, a 0.9 MB one untouched, both begun within 1.9 s. `npm run typecheck`, `npm run lint` clean; `vitest` 4 files, 36 tests passed.
+First production batch (`2026-10-10 14.32`, one photo): created 09:02:52 UTC, claimed by `canada-1` 09:04:56, done 09:16:38 with 1 final delivered to Pending as `needs_review` (intake `5aa48875-…`). 11 min 42 s from claim to done.
+
+**Not finished / known broken:**
+- That first run could not match against the catalogue: the server venv lacked `timm` and `torchvision`, so Claude compared ten look-alikes by hand and tagged the piece unsure. It is in fact a restock of NK132 (blue moon; ACTIVE, 0 available). Fixed on the host the same day (packages installed; `restock.py match` now runs there: 57 s for one photo, 20 s per further photo on CPU, 4.5 GB peak). The delivered row still carries the "unsure" note; nothing re-tags an existing delivery.
+- Codex's sandbox cannot write files on that host (`bwrap` refused by AppArmor), so its save step fails; `enhance.py` now picks the image up from Codex's own `generated_images/<session id>/` folder. Not yet exercised by a second real job.
+- The new page has not been seen on the owner's phone yet (needs this deploy).
+
+**Surprises:** every shadcn radius size is the pill here (`--radius: 999px`); only `rounded-card`, `rounded-panel`, `rounded-tile`, `rounded-field` and `rounded-pill` mean what DESIGN.md says. Headless Chrome's own window cannot go below 500 px wide, so a 390 px screenshot from its CLI is a crop; measure overflow in a real 390 px viewport instead.
+
+**Next session should start with:** a second batch from the phone on the new page, checking the restock verdict and suggestion arrive on the tile.
+
+---
 ## 2026-10-10 — /enhance fix: picked photos were dropped silently; the page now answers at every step
 
 **Goal this session:** the owner added a photo on `/enhance` from the phone and nothing happened; find why and fix the page.
