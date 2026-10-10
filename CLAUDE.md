@@ -86,17 +86,22 @@ project and a `.vercel/` link also exist and are *not* production.
 
 ## What it does
 
-The photographer drops photos into one flat Google Drive folder — or an operator drags them
-straight into the **/upload** section (D103), optionally choosing a per-photo prompt pair. A
-watcher records each file, a worker enhances it via the bound or default prompt pair, and an
-operator groups images into products, picks category / material / colours, types a price, and
-publishes to Shopify. A tracking page surfaces what needs a human and what the pipeline is
-doing right now; Shopify webhooks (D102) push admin-side changes back into Loupe in seconds.
+New stock is photographed on a phone and sent from the **/enhance** page (D143) as a batch. An
+external enhancer — Claude Code on the Canada VPS, running the `enhance` skill — claims the batch
+through `/api/agent/jobs`, matches each piece against the catalogue, renders it through the Codex
+image tool, and delivers the finished images to `POST /api/agent/images` (D142) with a tag
+(`needs_review`, `ready`, `restock`) and, for a restock, the old SKU and a listing suggestion. They
+land in the console's Pending grid as ready images; an operator groups them into products, picks
+category / material / colours, types a price (or clicks **Use suggestion**), and publishes to
+Shopify. The console's own **Upload images** is the third door, for a finished image made
+elsewhere. A tracking page surfaces what needs a human; Shopify webhooks (D102) push admin-side
+changes back into Loupe in seconds. **Loupe itself never calls an image or text model and has no
+Drive inbox** (D144).
 
-Before any of that, every photograph is **identified against the catalogue** (D110): it waits in
-**Identify** with ten candidates until an operator says *new product* or *restock of <SKU>*; restocks
-are resolved in **Restock** (D112). The matching itself runs on the owner's Windows GPU laptop
-(`worker/`, D111) through `/api/worker/*`; Loupe owns every write and searches pgvector.
+A photograph that still arrives without a render — an operator's Identify or Restock decision on
+an older upload — goes to the console as it is, original selected, carrying a "Not enhanced" note.
+**Identify** (D110) and **Restock** (D112) remain for those uploads; the matching runs on the owner's
+Windows GPU laptop (`worker/`, D111) through `/api/worker/*`, and Loupe owns every write.
 
 Of the twelve fields on a product, only **two** need human judgement: **category** and **price**. Everything else is derived.
 
@@ -258,8 +263,8 @@ Shopify enforces no uniqueness on SKU; it accepts collisions silently. Drafts, d
 **2. Publishing is idempotent by handle.**
 Reserve SKU + handle → record `publishing` → call `productSet` identified by handle → mark published. A retry reuses the **same** handle so `productSet` updates rather than creating a second product.
 
-**3. The Drive folder is an inbox, not a state machine.**
-Insert the DB row **before** any work is attempted. A file's presence in RAW never means "unprocessed" — the DB says what's true. `drive_file_id` is UNIQUE, so re-scanning the whole folder is always safe. Moving files to `/Processed/` is housekeeping; if it fails, nothing breaks.
+**3. The database says what is true, never the storage.**
+Insert the DB row **before** any work is attempted. An object's presence in R2 never means "unprocessed" — the DB says what's true. `drive_file_id` (a synthetic `manual:<id>` / `upload:<id>` / `agent` identity since D144) is UNIQUE, so a repeated upload is always safe.
 
 **4. Retries are bounded, then a human looks.**
 One initial attempt plus exactly three retries after 1m, 2m and 5m; a failed fourth total attempt becomes `failed` and shows its error for a human. Never infinite — one corrupt file would retry forever and burn credit. Classify errors as *retryable* (429, 5xx, timeout, network) or *permanent* (corrupt file, unsupported format, too large, model refusal). Permanent errors skip retries entirely. A response that exceeds a configured cost ceiling is not retried; the completed paid result follows its stage-specific review/fallback rule.
@@ -305,144 +310,32 @@ so 0 g is the correct settled value and not a cutover item. See D19.
 
 ## Image enhancement
 
-**Route: OpenRouter.** `OPENROUTER_API_KEY` serves both model calls. D51 moves the
-provider-qualified model onto each immutable prompt version and exposes ten curated choices
-per stage in `/prompts`; the current defaults are `moonshotai/kimi-k3` (D87) and
-`openai/gpt-image-2`. The env values remain compatibility defaults, not the live selector.
-One key and billing account keep model swaps out of provider-specific SDKs.
+**Loupe does not enhance images (D144, 2026-10-10).** The describer/image-model pipeline, its
+OpenRouter route, prompt versions, the art director, redo jobs and the `/prompts` and `/models`
+screens were retired. Every product image is rendered outside Loupe by Claude (the `enhance`
+skill: per-piece prompt, restock match, live stock read, review against the owner's taste) and
+delivered through D142/D143. `OPENROUTER_API_KEY` remains only for the Home assistant's chat
+model (D137).
 
-**Enhancement is a durable two-call pipeline.**
+What stays true:
 
-1. A describer sees only the 1024 px-long-edge source copy and the live default
-   `prompts.kind = 'describe'` body and selected model. It uses
-   `DESCRIBE_REASONING_EFFORT` (default `minimal`, tunable to `low`/`medium`/`high` since D87) where the provider supports that control and must
-   return one strict JSON object with exactly `description` and `presentation`. Description
-   is one factual 60–100 word paragraph. Presentation must be one of the database enum's
-   six values: `pair-upright`, `flat-curve`, `standing-three-quarter`, `angled-band`,
-   `flat-arc`, or `tray-grid`. The paragraph, enum, model and actual cost are cached on
-   `intake_files`. A retry or redo with both cached values makes zero describe calls.
-2. The worker resolves the live default `prompts.kind = 'image'` body. With
-   `INJECT_DESCRIPTION=true`, the cached text replaces the literal
-   `{{PRODUCT_DESCRIPTION}}`; otherwise the entire PRODUCT block is removed. Application
-   code—not model prose—maps the enum to one audited composition paragraph and replaces
-   the one literal `{{COMPOSITION_DETAIL}}` token. A prompt with a missing, repeated or
-   unresolved token is rejected before image generation. The exact post-resolution bytes
-   sent to the image model are stored in
-   `image_versions.prompt_text`, together with `description_injected` and
-   `description_missing`.
+- `image_versions` still records `model` and `prompt_text` on every generated row, so any
+  published image from the pipeline era traces back to what produced it (D5). The `prompts`,
+  `app_config` and `image_redo_jobs` tables are kept as history and are not read by the app.
+- An agent delivery is an ordinary ready upload: `source='manual'`, `status='enhanced'`, the
+  original selected, `ai_bypassed: true` in its event, plus the six `agent_*` columns (D142).
+- A photograph that reaches the console without a render carries a "Not enhanced" note
+  (`select_original_as_enhanced`); Tracking lists it under **Not enhanced** until it is grouped.
+- `register_published_originals` still excludes `source='manual'`: products published from agent
+  deliveries add no reference to the restock matcher (D142 consequences; follow-up pending).
 
-Describe attempts use the same bounded retry schedule as intake: one initial attempt and
-three retries after 1m, 2m and 5m. If the fourth total attempt fails, the row becomes
-`failed`, releases its lease and shows the provider/validation error in Tracking. Malformed
-JSON and invented classes follow the same bounded path; free-form model composition never
-reaches the image prompt. A describer outage therefore stops that file after its retry
-budget instead of silently producing an image without a description.
-`MAX_COST_USD_PER_DESCRIPTION=0.05` guards accidental reasoning spend independently of the
-image ceiling. D84 raised it from `0.02` after six live probes cost $0.0300–$0.0366 each:
-the lower ceiling discarded a good response and silently sent the image stage no PRODUCT
-record. Measurements on 2026-08-05 ($0.031205–$0.038945) stayed inside that band. A successful describe response above that limit does **not** retry the same
-expensive configuration: it records the missing description and continues to the image call
-immediately.
-
-**Phase 3C status:** the bounded composition implementation is deployed and visually
-verified, but Phase 3C is **still not complete**.
-
-On 2026-08-05 the owner explicitly selected `moonshotai/kimi-k3` as the describer, replacing
-`openai/gpt-5.6-sol` (D87). Sol had reached $0.053134 on a live photograph and breached the
-cost ceiling, discarding a paid description. K3 was the only evaluated candidate to return
-strict valid JSON on all five acceptance sources, classified all five correctly, and costs
-$0.0108–$0.0217 — roughly half of Sol, and inside the owner's stated $0.02–$0.03 target.
-
-That still does **not** close Phase 3C. The `< $0.006` cost gate is unmet, and the required
-fresh five-product *image* run proving image fidelity and the 87-item tray count has not been
-run — K3 said "approximately 86 rings… 3 slots visibly empty" on the tray, structurally right
-with the exact count marginally off. An isolated description evaluation is evidence about
-descriptions only; it is not acceptance of the pipeline's output.
-
-**That cost work was deliberately deferred past Phase 4** (D43). Phase 4 completed without
-changing any model. In Phase 5 the owner explicitly brought curated model selection into
-scope (D51). Phase 3C stays *not complete* until a newly selected configuration passes its
-own comparable acceptance evidence; exposing a selector is not that evidence.
-
-**Phase 5 is complete.** `/prompts` lets an authorised operator create an immutable
-non-current prompt version, then deliberately promote it. Promotion leaves exactly one
-current prompt, validates the image template tokens and records the actor. A redo is a
-durable image-only job: it reserves the next version and deterministic R2 paths, reuses the
-cached description and presentation class, and never invokes the descriptor. The new image
-is appended unselected so original and prior generated versions remain available.
-
-Redo marks `generation_started_at` immediately before the paid request. Recovery completes
-from an already-written deterministic R2 object without another provider call; if the paid
-request started but no object exists, automatic retry stops because billing is ambiguous.
-Starting another redo is an explicit operator action with a new job and version. See D52.
-
-**Phase 6 is complete** (reshaped 2026-08-13). `/tracking` has two views: **Needs
-attention** (failures, provider pauses, stalls, publish problems, real Shopify drift incl.
-live webhook alerts — cosmetic option-value spelling differences are canonicalised away) and
-**In progress** (Queued → Describer working → Image model working → Enhanced ✓, which
-retires itself; redo jobs included). Healthy enhanced photographs and assembling drafts live
-in the console, not here. A failed intake needs attention immediately; an enhanced,
-ungrouped photograph becomes stalled only after 24 hours. Retry, skip, duplicate-review and
-alert-resolve actions are validated in SQL and audited.
-
-Every decodable source receives a deterministic 64-bit perceptual hash: 32×32 grayscale,
-2D DCT and median-thresholded 8×8 low-frequency coefficients. Hamming distance `<= 8`
-raises a warning only. The operator decides whether to dismiss the canonical pair or mark
-one intake duplicate; duplicate detection never blocks Publish and never decides on its
-own. See D53.
-
-Shopify reconciliation is a daily authenticated, read-only job at `03:00 Asia/Kolkata`.
-One leased run compares each Loupe-published product's existence, ACTIVE state, handle,
-title, product type, required category and `Newest` tags, description HTML, material,
-variants, weight and recorded media/order. Extra tags and changing stock are not drift.
-Runs and issues are durable and visible in Tracking; Loupe records differences but never
-repairs Shopify automatically. See D54.
-
-**Do not pin a dated snapshot.** The mitigation for silent style drift is not a pin — it is the record: `image_versions` stores `model` and `prompt_text` on **every** row, so the exact model and exact prompt behind any published image are recoverable, and a drift is diagnosable after the fact instead of merely prevented in theory. A pin would also freeze the catalogue on whichever snapshot OpenRouter happens to expose, which is not something this project controls. See D5.
-
-- **Never rely on image shape defaults.** OpenAI image requests send the env-backed `size`
-  and `quality` explicitly. Other curated OpenRouter image models use the common `1:1`
-  aspect-ratio contract and their square result is converted to the configured
-  `IMAGE_SIZE=1280x1280` PNG; a non-square response is refused rather than stretched.
-  `IMAGE_QUALITY=medium` remains the OpenAI production default. The source copy sent to
-  every model is downscaled to a 1024 px long edge first.
-- `MAX_COST_USD_PER_IMAGE=0.20` is a hard guard. Persist the returned version and actual
-  `usage.cost`, then fail the intake permanently with the actual cost in the readable
-  reason when it exceeds the ceiling. Never estimate cost from a price table.
-- OpenRouter's current `/images` contract requires each `input_references` entry to be an
-  object shaped as `type: "image_url"` plus `image_url.url`; a bare data-URL string is
-  rejected. `tests/openrouter-enhancement.test.ts` locks this wire shape.
-- The first real Step 0 edit explicitly used `size: "2048x2048"` and `quality: "high"`
-  (not `auto`), cost **$0.44116**, and took **222.242 s**. It is historical capability
-  evidence, not the production configuration.
-- The production-config Step 0 used a 1024×1024 input copy with
-  `size: "1280x1280"` and `quality: "medium"`. OpenRouter returned an actual
-  1280×1280 PNG in **65.358 s** for **$0.073376** (3,408 total tokens), below the
-  $0.20 ceiling. Size and the lower-cost quality tier both reached the provider.
-- Loupe rejects source files over exactly 50,000,000 bytes. OpenRouter's live
-  `gpt-image-2` metadata advertises up to 16 `input_references`; Step 0 exercised one.
-  It does not advertise a mask parameter on this route, so do not assume masks are
-  available through OpenRouter without a fresh capability check.
-- The original R2 object is byte-for-byte the Drive download and immutable at its
-  deterministic key. Every version derives from it. Phase 3B never moves the Drive file to
-  Processed; Drive housekeeping belongs to the later phase that produces `published`.
-
-**Production worker:** `POST /api/cron/enhance`, every minute, driven by Supabase `pg_cron` +
-`pg_net` against the `loupe_cron_base_url` / `loupe_cron_secret` vault secrets — *not* a
-platform scheduler. A tick claims at most two items with the Phase 3A UUID token and
-stops before the request time limit. Before every R2 or database write it rechecks the unexpired
-token. Generated/original keys are deterministic, so an R2 upload followed by a process
-crash is recovered without a duplicate version.
-
-Put the model behind one interface so it stays swappable:
-
-```ts
-enhance(input: Buffer, prompt: string, opts): Promise<{ image: Buffer; costUsd: number; model: string }>
-```
-
-**The enhancement prompt is configuration, not code.** It lives in the `prompts` table, is editable in the UI, and is versioned. It must never be hardcoded — replacing five ChatGPT tabs with one hardcoded string just moves the problem.
-
-`GEMINI_API_KEY` / `GEMINI_IMAGE_MODEL` remain in `.env` as the direct-to-Google fallback if OpenRouter is unavailable. There is deliberately no `OPENAI_API_KEY` — OpenAI is reached through OpenRouter.
+**Production cron:** Supabase `pg_cron` + `pg_net` against the `loupe_cron_base_url` /
+`loupe_cron_secret` vault secrets — *not* a platform scheduler. The remaining jobs are
+`loupe-shopify-reconcile` (03:00 IST), `loupe-retention` (03:30 IST) and `loupe-match-register`
+(Sunday 02:00 IST). `npm run cron:configure` on the server upserts those and unschedules the
+retired `loupe-drive-watch`, `loupe-drive-reconcile`, `loupe-intake-sweep` and
+`loupe-image-enhance`; run it once after the D144 deploy or the old jobs keep hitting 404s
+every minute.
 
 ---
 
@@ -451,10 +344,10 @@ enhance(input: Buffer, prompt: string, opts): Promise<{ image: Buffer; costUsd: 
 - **Cloudflare R2** bucket **`loupe-image`** — singular, private. Access via presigned URLs only: one for the console to display, one for Shopify to fetch at publish.
   *Confirmed 2026-07-28 against the Cloudflare dashboard: the live bucket is named `loupe-image`, location **APAC**, created 28 Jul.* `.env` was right; earlier drafts of this file and D4 said `loupe-images` and were wrong. The Phase 0 note about an `ENAM` bucket needing recreation is also resolved — the surviving bucket is APAC.
 - **Supabase is the database only.** Do not use Supabase Storage; a `loupe-images` bucket there was created and abandoned early on.
-- Paths: `originals/{intake_file_id}.{jpg|png|webp}`,
-  `versions/{intake_file_id}/v{n}.png`, and
-  `versions/{intake_file_id}/v{n}_thumb.webp`.
-- Generate a ~50 KB thumbnail beside every version. The queue grid uses thumbnails, never full images.
+- Paths: `manual/{upload_id}/original.{ext}` + `thumb.webp` (ready uploads and agent deliveries),
+  `intake/{job_id}/{photo_id}.{ext}` (phone photographs for an Enhance job, D143), and the retired
+  worker's `originals/{intake_file_id}.{ext}` / `versions/{intake_file_id}/v{n}.png` for history.
+- Generate a ~50 KB thumbnail beside every image. The queue grid uses thumbnails, never full images.
 - **Retention:** delete *generated* versions ~7 days after publish. Shopify serves the published image from its own CDN thereafter. **Originals are never deleted** — not by retention, not by discard (D109, 2026-08-21); they are the SKU matcher's references.
 
 ---
@@ -481,9 +374,8 @@ despite its name holds real values. It is outside the repo and is not the source
 **Multi-line values must be base64 or quoted.** dotenv terminates an unquoted value at
 the first newline, so raw multi-line JSON silently becomes `{` — every presence check
 passes and the failure surfaces much later, somewhere unhelpful.
-`GOOGLE_SERVICE_ACCOUNT_JSON` is validated properly by
-`src/lib/google/service-account.ts`; call `googleServiceAccount()` once at start-up, and
-`/health` shows the result. See D26.
+(`GOOGLE_SERVICE_ACCOUNT_JSON`, the Drive folder ids and every enhancement variable left with D144;
+`GOOGLE_OAUTH_*` is sign-in and stays.)
 
 **The active Shopify environment is LIVE.** The 5 September progress record and
 this task's environment inspection identify `961b9d-2.myshopify.com` as the live

@@ -29,6 +29,27 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-10 — Loupe stops enhancing: Drive inbox and in-app AI pipeline retired (D144)
+
+**Goal this session:** remove everything that waited for the in-app enhancement worker or the Drive inbox, now that Claude renders outside Loupe and delivers through D142/D143.
+
+**Built:**
+- Commit 1 (`32420fc`): removed `src/lib/intake`, `src/lib/google`, cron routes `watch`/`reconcile`/`sweep`/`enhance`, `src/lib/enhance` (except `storage.ts` + `image.ts`, moved to `src/lib/images/` with a slim `errors.ts`), `src/lib/prompts`, `src/lib/config/models.ts`, `/prompts`, `/models`, `/upload` (page, screen, actions; `put-object.ts` stays), `RedoPromptDialog`, the Drive tidy in `console/publish*.ts`, `shopify/webhooks.ts`, `workflows/reconciliation.ts`, `tracking/discard.ts`, the Drive light on `/health`, Drive + enhancement env getters and `.env.local.example` lines, `@googleapis/drive`, scripts `backfill-match-references`, `regenerate-identify-previews`, `verify-drive-intake-live`, `verify-phase3c/4/5/6-live`, `cleanup-phase3c-live`, `eval-art-direction`, `evaluate-description-models`, `anklet-worn-batch`, `promote-preset`, `tmp-promote-worn` and their npm scripts. Rewired: `cron/jobs.ts` (Shopify reconciliation only), `cron/handler.ts` (generic failure), `api/worker/source/[jobId]` (R2 original), `match/restock-actions.ts` (R2 only; new SKU always takes the photograph as it is), `RestockScreen` (no prompt picker), console redo removed from actions, screen, editor, queue and types, `Sidebar`/`faces` (no Upload/Prompts/Models), `manual-upload/server.ts` (raw path removed).
+- Commit 2: `supabase/migrations/20261010110000_no_in_app_enhancer.sql` → `select_original_as_enhanced`, rewritten `decide_identification`, `begin_new_sku_from_restock`, `resume_intake_file`, one-off conversion of `discovered`/`enhancing` rows. Tracking (`types`, `classify`, `read-model`, `actions`, `TrackingItem`, `TrackingScreen`, `attention-count`) without stages/pause/retry/cost, with a **Not enhanced** section. Live heartbeat (`live/activity.ts`, `live/types.ts`, `LiveActivity.tsx`) without queue counters; console (`types`, `queue`, `actions`, `ConsoleScreen`) without pipeline counters, tile attention shows the note. `scripts/configure-cron.ts` unschedules the retired jobs. Tests: `tests/no-in-app-enhancer-migration.test.ts` (static SQL check), `tracking-classify`, `live-activity`, `tracking-filters`, `console-queue-view`, `cron-handler` updated; removed suites for removed modules (`drive-*`, `intake-*`, `enhance*`, `enhancement-*`, `openrouter-*`, `presentation`, `prompt-*`, `redo-worker`, `render-check`, `category-aware-prompt`, `console-housekeeping`, `google-service-account`, `tracking-cost`, `prompt-model-selection.sql`, helpers `intake`/`enhancement`); `enhance-image*` renamed `image-helpers` / `image-input`.
+- Commit 3: this entry, D144, CLAUDE.md ("What it does", hard rule 3, "Image enhancement", "Storage", "Environment").
+
+**Verified:** `npm run typecheck` clean, `npm run lint` clean, `npx vitest run` excluding the database suites (`tests/**/*.sql.test.ts`, `rls`, `schema`, `next-sku.concurrency`, `publish-identity`) → see the session report for the exact counts of the final run; the touched suites (`no-in-app-enhancer-migration`, `tracking-classify`, `live-activity`, `tracking-filters`, `console-queue-view`, `cron-handler`, `tests/api/*`) → 8 files, 64 tests passed.
+
+**Not finished / known broken:**
+- Nothing applied or deployed: the migration is not pushed, `cron:configure` not run, the dead env keys still sit in `~/loupe/shared/.env` (harmless until removed).
+- `tests/publish-identity.test.ts` was run once by mistake in the first verification pass (it talks to the deployed `reserve_draft_identity`); its three failures are `23505` unique-violations from leftover rows, unrelated to D144, and it is excluded since.
+- Database suites for retired functionality (`enhancement-queue.sql`, `image-redo.sql`, `intake-queue.sql`, `prompt-management.sql`, `identification-gate.sql`, `restock.sql`, `tracking.sql`) still exist and still target functions that remain in the database; they were not run and may assert the old `discovered` behaviour — update or retire them when a database test run is next scheduled.
+- Agent deliveries still add no matcher reference (D142 consequence).
+
+**Surprises:** `OPENROUTER_API_KEY` is also the Home assistant's chat key (`api/home/chat`), so it stays. `decide_identification` deletes an emptied, never-sent draft as part of a restock decision — a legitimate `delete from product_drafts` the migration test had to allow. `image.ts` and `storage.ts` depended on `enhance/errors.ts`, which depended on the Drive error class; the kept pair moved to `src/lib/images/` with a slim error module.
+
+**Next session should start with:** `npm run db:push`, push `main`, `npm run cron:configure` on the server, then Identify → new product on a real upload and a look at Tracking's "Not enhanced" section.
+
 ## 2026-10-10 — Enhance jobs: phone photographs in, job queue for the external enhancer (D143)
 
 **Goal this session:** replace phone → WhatsApp → zip → chat with a phone page in Loupe and a job queue the Canada-server enhancer polls.
