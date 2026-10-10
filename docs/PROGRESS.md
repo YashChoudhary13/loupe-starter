@@ -28,6 +28,35 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ```
 
 ---
+## 2026-10-10 — Print slips: packing slips from Loupe, marked In progress on the click (D146)
+
+**Goal this session:** replace the Mac `packlist --slips` run (Claude, PDF in Downloads, then mark In progress by hand in Shopify, often forgotten) with one button on the Fulfilment face that prints the slips of every order not printed yet and marks the PACK and CLUB orders In progress itself.
+
+**Built:**
+- `src/lib/slips/plan.ts` → the packing-list rules, ported line for line from `~/.claude/skills/qimati-packing-list/packing_list.py` (phone in two formats, phone in a note, email, customer account, name plus address, name plus pincode; HOLD / CLUB + HOLD / CLUB / PACK; Need Address flag; unpaid left out). `src/lib/slips/types.ts`.
+- `src/lib/shopify/slip-orders.ts` → `listOpenOrders` (the same open-order query as the Mac, every state with units to ship, extra line pages, de-duplication), `readOrders` by id in chunks of 25, `reportProgress` (`fulfillmentOrderReportProgress`), `slipShopifyError`.
+- `src/lib/slips/print.ts` → `select` (what one click would print, baseline below a start number, unpaid named), `printSlips` (batch → rows → Shopify, one order at a time, failures kept), `retryProgress`, all behind a `PrintDeps` interface. `src/lib/slips/store.ts` → Supabase rows and the `events` audit. `src/lib/slips/render.ts` → the slip document (Shopify's slip layout, the mark strip, auto print).
+- `supabase/migrations/20261010130000_slip_prints.sql` → `slip_batches`, `slip_prints` (`unique (shop_domain, order_id)`), RLS on, service_role only.
+- `src/app/api/slips/route.ts` (POST: print) and `src/app/api/slips/[batch]/route.ts` (GET: the document, `?auto=1` opens the dialog). `src/app/(shell)/dispatch/print/page.tsx` + `actions.ts` (retry) + `src/components/slips/PrintScreen.tsx`. Sidebar item **Print slips** on the Fulfilment face; the active item is now the longest-prefix match.
+- Tests: `tests/slips-plan.test.ts` (16, the Mac selftest cases), `tests/slips-print.test.ts` (10), `tests/slips-orders.test.ts` (6), `tests/slips-render.test.ts` (4), `tests/slips-screen-render.test.ts` (2).
+- Docs: `docs/superpowers/specs/2026-10-10-print-slips-design.md`, D146.
+
+**Verified:**
+- Live, read-only: `fulfillmentOrderReportProgress(id: ID!, progressReport: FulfillmentOrderReportProgressInput{reasonNotes})` exists on the store's 2026-07 schema and the installation holds `write_merchant_managed_fulfillment_orders`.
+- Live, read-only parity: Loupe's `listOpenOrders` + `plan` over the real open orders (58 open, 45 rows from Qimati6098) versus the Mac `packlist 6098` on the same minute: 45 of 45 rows identical in mark, detail, flags, customer, city and units.
+- The Loupe app lacks `read_customers` (Shopify: "Access denied for customer field"), so the `customer { … }` block was removed from the query. Measured with the Mac rules over the same 58 orders with the customer field blanked: 0 of 55 verdicts changed (only the "how matched" word list).
+- `npm run typecheck`, `npm run lint` clean; `vitest` 9 files, 60 tests passed (the five new files plus the Dispatch, shell and faces render tests); `npm run build` succeeded with `/dispatch/print`, `/api/slips` and `/api/slips/[batch]` listed.
+
+**Not finished / known broken:**
+- Not yet deployed: migration not pushed, branch `claude/slips` not merged. The POST (batch + Shopify write + redirect + print dialog) has not run against the live store; each layer under it was tested with fakes or read-only.
+- No one-tap "Mark In progress" for an order released from hold; Dispatch still asks for it by hand.
+- The page re-reads every open order on each load (about 2–3 s for 58 orders).
+
+**Surprises:** the Loupe app has no `read_customers` scope although the Hub app does; the "customer account" identity key is therefore Mac-only, with no measured effect today. `Response.redirect(new URL(..., request.url))` would redirect to the nginx bind address, so the routes answer with relative `Location` headers.
+
+**Next session should start with:** the owner runs `npm run db:push`, merges `claude/slips`, opens `ship.qimati-eng.site/dispatch/print`, types the first order number not yet printed by hand into **Print from Qimati**, and prints; then checks one PACK order in Shopify shows In progress and that Dispatch lists it.
+
+---
 ## 2026-10-10 — /enhance fix: picked photos were dropped silently; the page now answers at every step
 
 **Goal this session:** the owner added a photo on `/enhance` from the phone and nothing happened; find why and fix the page.

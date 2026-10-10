@@ -109,6 +109,11 @@ Of the twelve fields on a product, only **two** need human judgement: **category
 orders marked In progress in Shopify, group orders that share a parcel, and push — Loupe fulfils each order
 with carrier and number and Shopify notifies the customer. It is the only place Loupe writes to orders.
 
+**Print slips** (`/dispatch/print`, D146) comes before it: every open paid order without a slip yet, marked
+HOLD / CLUB / PACK by the packing-list rules (`src/lib/slips/plan.ts`, the same rules as the owner's Mac
+`packlist`), printed from the browser in one click; the click records the batch and marks the PACK and CLUB
+orders In progress in Shopify (`fulfillmentOrderReportProgress`). The second place Loupe writes to orders.
+
 **Home** (`/home` on `qimati-eng.site`, D137) shows a health light per service (Loupe, Packaging,
 LinkedIn, the bot's n8n workflows, DTDC reachability, Supabase, Shopify), five numbers (orders today,
 paid unfulfilled, awaiting QC, awaiting tracking, open shortages) and an assistant that answers from

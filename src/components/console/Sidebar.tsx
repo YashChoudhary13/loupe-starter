@@ -21,8 +21,8 @@ import { LiveActivity } from '@/components/live/LiveActivity'
  * its cursor alive across navigation. The attention badge starts from the
  * server-rendered count and then follows the live heartbeat.
  */
-type SectionKey = 'home' | 'console' | 'enhance' | 'tracking' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch'
-type SectionHref = '/home' | '/console' | '/enhance' | '/tracking' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch'
+type SectionKey = 'home' | 'console' | 'enhance' | 'tracking' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch' | 'print'
+type SectionHref = '/home' | '/console' | '/enhance' | '/tracking' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch' | '/dispatch/print'
 
 const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon: React.ReactNode }[] = [
   { key: 'home', href: '/home', label: 'Home', icon: <HomeIcon /> },
@@ -35,6 +35,7 @@ const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon:
   { key: 'labels', href: '/labels', label: 'Labels', icon: <ListIcon /> },
   { key: 'qc', href: '/qc', label: 'Order QC', icon: <ListIcon /> },
   { key: 'dispatch', href: '/dispatch', label: 'Dispatch', icon: <ListIcon /> },
+  { key: 'print', href: '/dispatch/print', label: 'Print slips', icon: <ListIcon /> },
 ]
 
 export function Sidebar({
@@ -64,7 +65,7 @@ export function Sidebar({
 
   // The face's own screens only (every screen on a dev machine without FACE_DEV). The current one is the longest-prefix match.
   const items = ITEMS.filter((item) => screenAllowed(face, item.href))
-  const active = items.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.key ?? items[0]?.key
+  const active = [...items].sort((a, b) => b.href.length - a.href.length).find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.key ?? items[0]?.key
   const brand = face ? FACES[face].label : 'Loupe'
   const others = face ? FACE_KEYS.filter((key) => key !== face) : []
 
