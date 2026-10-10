@@ -4,20 +4,30 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { beginJobPhotoUploadAction, createJobAction, finishJobPhotoUploadAction, listJobsAction, queueJobAction } from '@/app/(shell)/enhance/actions'
 import { defaultJobLabel, queueIsStale } from '@/lib/agent-jobs/label'
+import { photoSignature, pickPhotos } from '@/lib/agent-jobs/photos'
 import type { JobSummary } from '@/lib/agent-jobs/server'
 import { cn } from '@/lib/utils'
 
 import { putUploadedObject } from '../upload/put-object'
 
-type FileState = 'pending' | 'uploading' | 'verifying' | 'uploaded' | 'failed'
-interface PhotoItem { key: string; file: File; previewUrl: string; progress: number; state: FileState; detail: string | null }
+type FileState = 'waiting' | 'uploading' | 'verifying' | 'uploaded' | 'failed'
+interface PhotoItem { key: string; sig: string; file: File; previewUrl: string; progress: number; state: FileState; detail: string | null }
+interface Notice { text: string; tone: 'info' | 'error'; stale: boolean }
 
-const ACCEPTED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic'])
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/** A page opened before a deploy calls Server Actions that no longer exist; Next throws instead of answering. */
+function explain(cause: unknown): Notice {
+  const text = cause instanceof Error ? cause.message : String(cause)
+  if (/server action|older or newer deployment/i.test(text)) return { text: 'Loupe was updated while this page was open. Reload it, then add the photos again.', tone: 'error', stale: true }
+  if (/failed to fetch|networkerror|load failed/i.test(text)) return { text: 'Loupe could not be reached. Check the connection and try again.', tone: 'error', stale: false }
+  return { text, tone: 'error', stale: false }
+}
 
 /**
  * D143 — the phone's way in. Pick photos (camera or gallery), they go straight to
- * private storage, then one tap sends the batch to the enhancer. The list below shows
- * every batch and where it stands; finals appear in the Console as they land.
+ * private storage, then one tap sends the batch to the enhancer. Every step answers on
+ * screen: a tile per photo the moment it is picked, its progress, and why it failed.
  */
 export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummary[] }) {
   const [jobs, setJobs] = useState(initialJobs)
@@ -27,123 +37,192 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
   const [photos, setPhotos] = useState<readonly PhotoItem[]>([])
   const [uploaded, setUploaded] = useState(0)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [now, setNow] = useState(() => new Date())
+
+  const refresh = useCallback(async () => {
+    try {
+      const result = await listJobsAction()
+      if (result.ok) setJobs(result.data)
+      setNow(new Date())
+    } catch (cause) {
+      const why = explain(cause)
+      if (why.stale) setNotice(why)
+    }
+  }, [])
 
   // A queued or running batch changes without us; poll gently while one exists.
   const active = jobs.some((j) => j.status === 'queued' || j.status === 'running')
   useEffect(() => {
     if (!active) return
-    const timer = window.setInterval(async () => {
-      const result = await listJobsAction()
-      if (result.ok) setJobs(result.data)
-      setNow(new Date())
-    }, 30_000)
+    const timer = window.setInterval(() => { void refresh() }, 30_000)
     return () => window.clearInterval(timer)
-  }, [active])
+  }, [active, refresh])
 
   const patch = useCallback((key: string, change: Partial<PhotoItem>) => {
     setPhotos((prev) => prev.map((p) => (p.key === key ? { ...p, ...change } : p)))
   }, [])
 
-  const ensureJob = useCallback(async (): Promise<JobSummary | null> => {
+  const ensureJob = useCallback(async (): Promise<JobSummary> => {
     if (job) return job
     const result = await createJobAction(label)
-    if (!result.ok) { setMessage(result.error.message); return null }
+    if (!result.ok) throw new Error(result.error.message)
     setJob(result.data)
     setJobs((prev) => [result.data, ...prev])
     return result.data
   }, [job, label])
 
-  const addFiles = useCallback(async (list: FileList | null) => {
-    if (!list || list.length === 0) return
-    const current = await ensureJob()
-    if (!current) return
-    const items: PhotoItem[] = Array.from(list)
-      .filter((file) => ACCEPTED.has(file.type) || /\.(heic|jpe?g|png|webp)$/i.test(file.name))
-      .map((file) => ({ key: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`, file, previewUrl: URL.createObjectURL(file), progress: 0, state: 'pending', detail: null }))
-    setPhotos((prev) => [...prev, ...items])
+  const uploadOne = useCallback(async (item: PhotoItem, jobId: string) => {
+    try {
+      patch(item.key, { state: 'uploading', progress: 0, detail: null })
+      const ticket = await beginJobPhotoUploadAction({ jobId, filename: item.file.name, mimeType: item.file.type || 'image/jpeg', bytes: item.file.size })
+      if (!ticket.ok) { patch(item.key, { state: 'failed', detail: ticket.error.message }); return }
+      await putUploadedObject(ticket.data.uploadUrl, item.file, ticket.data.contentType, (percent) => patch(item.key, { progress: percent }))
+      patch(item.key, { state: 'verifying' })
+      const done = await finishJobPhotoUploadAction(ticket.data.photoId)
+      if (!done.ok) { patch(item.key, { state: 'failed', detail: done.error.message }); return }
+      patch(item.key, { state: 'uploaded', progress: 100 })
+      setUploaded(done.data.photoCount)
+    } catch (cause) {
+      const why = explain(cause)
+      patch(item.key, { state: 'failed', detail: why.text })
+      if (why.stale) setNotice(why)
+    }
+  }, [patch])
+
+  /** Creates the batch on first use, then uploads three at a time. A failure before any upload marks every tile. */
+  const upload = useCallback(async (items: readonly PhotoItem[]) => {
     setBusy(true)
-    const queue = [...items]
-    await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
-      for (;;) {
-        const item = queue.shift()
-        if (!item) return
-        try {
-          patch(item.key, { state: 'uploading', progress: 0 })
-          const mime = item.file.type || 'image/jpeg'
-          const ticket = await beginJobPhotoUploadAction({ jobId: current.id, filename: item.file.name, mimeType: mime, bytes: item.file.size })
-          if (!ticket.ok) { patch(item.key, { state: 'failed', detail: ticket.error.message }); continue }
-          await putUploadedObject(ticket.data.uploadUrl, item.file, ticket.data.contentType, (percent) => patch(item.key, { progress: percent }))
-          patch(item.key, { state: 'verifying' })
-          const done = await finishJobPhotoUploadAction(ticket.data.photoId)
-          if (!done.ok) { patch(item.key, { state: 'failed', detail: done.error.message }); continue }
-          patch(item.key, { state: 'uploaded', progress: 100 })
-          setUploaded(done.data.photoCount)
-        } catch (cause) {
-          patch(item.key, { state: 'failed', detail: cause instanceof Error ? cause.message : String(cause) })
-        }
-      }
+    setNotice((n) => (n && n.tone === 'error' && !n.stale ? null : n)) // a fresh attempt clears an old error; a stale page stays stale
+    try {
+      const current = await ensureJob()
+      const queue = [...items]
+      await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
+        for (let item = queue.shift(); item; item = queue.shift()) await uploadOne(item, current.id)
+      }))
+    } catch (cause) {
+      const why = explain(cause)
+      const keys = new Set(items.map((i) => i.key))
+      setPhotos((prev) => prev.map((p) => (keys.has(p.key) && p.state !== 'uploaded' ? { ...p, state: 'failed', detail: why.text } : p)))
+      setNotice(why)
+    } finally {
+      setBusy(false)
+    }
+  }, [ensureJob, uploadOne])
+
+  const addFiles = useCallback((files: readonly File[]) => {
+    if (files.length === 0) return
+    const { fresh, skipped, repeats } = pickPhotos(files, new Set(photos.filter((p) => p.state !== 'failed').map((p) => p.sig)))
+    const said = [
+      skipped > 0 ? `${plural(skipped, 'file')} skipped: only JPEG, PNG, WebP or HEIC photos.` : null,
+      repeats > 0 ? `${plural(repeats, 'photo')} already in this batch, not added again.` : null,
+    ].filter((line): line is string => line !== null)
+    setNotice(said.length > 0 ? { text: said.join(' '), tone: 'info', stale: false } : null)
+    if (fresh.length === 0) return
+    const items: PhotoItem[] = fresh.map((file) => ({
+      key: `${photoSignature(file)}|${Math.random().toString(36).slice(2, 8)}`, sig: photoSignature(file), file,
+      previewUrl: URL.createObjectURL(file), progress: 0, state: 'waiting', detail: null,
     }))
-    setBusy(false)
-  }, [ensureJob, patch])
+    const again = new Set(items.map((i) => i.sig))
+    // The tiles appear before anything is sent; picking a failed photo again replaces its tile.
+    setPhotos((prev) => [...prev.filter((p) => !(p.state === 'failed' && again.has(p.sig))), ...items])
+    void upload(items)
+  }, [photos, upload])
 
   const send = useCallback(async () => {
     if (!job) return
     setBusy(true)
-    const result = await queueJobAction(job.id)
-    setBusy(false)
-    if (!result.ok) { setMessage(result.error.message); return }
-    setJobs(result.data)
-    setJob(null); setPhotos([]); setUploaded(0); setLabel(defaultJobLabel(new Date())); setMessage(null)
-  }, [job])
+    try {
+      const result = await queueJobAction(job.id)
+      if (!result.ok) { setNotice({ text: result.error.message, tone: 'error', stale: false }); return }
+      setJobs(result.data)
+      setNotice({ text: `Sent: ${job.label}, ${plural(uploaded, 'photo')}. The enhancer picks it up within two minutes; finals appear in the Console.`, tone: 'info', stale: false })
+      for (const p of photos) URL.revokeObjectURL(p.previewUrl)
+      setJob(null); setPhotos([]); setUploaded(0); setLabel(defaultJobLabel(new Date()))
+    } catch (cause) {
+      setNotice(explain(cause))
+    } finally {
+      setBusy(false)
+    }
+  }, [job, photos, uploaded])
 
-  const failed = photos.filter((p) => p.state === 'failed').length
-  const inFlight = photos.some((p) => p.state === 'uploading' || p.state === 'verifying')
+  /** A batch left at Collecting (page closed, upload interrupted) is picked up again from the list. */
+  const resume = useCallback((j: JobSummary) => {
+    for (const p of photos) URL.revokeObjectURL(p.previewUrl)
+    setJob(j); setLabel(j.label); setUploaded(j.photoCount); setPhotos([]); setNotice(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [photos])
+
+  const failed = photos.filter((p) => p.state === 'failed')
+  const landed = photos.filter((p) => p.state === 'uploaded').length
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4 pb-24">
       <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-        <h1 className="text-lg font-semibold">New batch</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Photos go straight to the enhancer. Finals appear in the Console with a tag.</p>
-        <label className="mt-4 block text-sm font-medium">
-          Batch label
-          <input value={label} onChange={(e) => setLabel(e.target.value)} disabled={job !== null} maxLength={80}
-            ref={(el) => { if (el && !el.value && !label) { const v = defaultJobLabel(new Date()); el.value = v; setLabel(v) } }}
-            className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-3 text-base disabled:opacity-60" />
-        </label>
-        <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { void addFiles(e.target.files); e.target.value = '' }} />
-        <button type="button" onClick={() => inputRef.current?.click()} disabled={busy && inFlight}
+        <h1 className="text-lg font-semibold">{job ? `Batch ${job.label}` : 'New batch'}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {job ? `${plural(uploaded, 'photo')} uploaded so far. Add more, or send it.` : 'Photos go straight to the enhancer. Finals appear in the Console with a tag.'}
+        </p>
+        {notice && (
+          <div role="status" className={cn('mt-3 flex items-start justify-between gap-3 rounded-xl px-3 py-2.5 text-sm',
+            notice.tone === 'error' ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-900')}>
+            <span>{notice.text}</span>
+            {notice.stale
+              ? <button type="button" onClick={() => window.location.reload()} className="shrink-0 rounded-lg bg-red-700 px-3 py-1.5 text-sm font-semibold text-white">Reload</button>
+              : <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="shrink-0 px-1 text-base leading-none opacity-60">×</button>}
+          </div>
+        )}
+        {!job && (
+          <label className="mt-4 block text-sm font-medium">
+            Batch label
+            <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80}
+              ref={(el) => { if (el && !el.value && !label) { const v = defaultJobLabel(new Date()); el.value = v; setLabel(v) } }}
+              className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-3 text-base" />
+          </label>
+        )}
+        {/* The FileList is live: resetting the input empties it, so the files are copied out first. */}
+        <input ref={inputRef} type="file" accept="image/*" multiple className="hidden"
+          onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ''; addFiles(files) }} />
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}
           className="mt-4 w-full rounded-xl bg-primary px-4 py-4 text-base font-semibold text-primary-foreground disabled:opacity-60">
-          {photos.length === 0 ? 'Add photos' : 'Add more photos'}
+          {busy && photos.length > 0 ? `Uploading ${landed} of ${photos.length}…` : photos.length === 0 && uploaded === 0 ? 'Add photos' : 'Add more photos'}
         </button>
         {photos.length > 0 && (
           <ul className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
             {photos.map((p) => (
               <li key={p.key} className="relative aspect-square overflow-hidden rounded-xl bg-muted">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.previewUrl} alt={p.file.name} className="size-full object-cover" />
-                <span className={cn('absolute inset-x-0 bottom-0 px-1.5 py-1 text-[11px] font-medium text-white',
-                  p.state === 'uploaded' ? 'bg-emerald-600/90' : p.state === 'failed' ? 'bg-red-600/90' : 'bg-black/60')} title={p.detail ?? undefined}>
-                  {p.state === 'uploaded' ? 'Uploaded' : p.state === 'failed' ? 'Failed' : p.state === 'verifying' ? 'Checking' : `${p.progress}%`}
-                </span>
+                <img src={p.previewUrl} alt={p.file.name} className={cn('size-full object-cover transition-opacity', p.state !== 'uploaded' && 'opacity-60')} />
+                {(p.state === 'uploading' || p.state === 'waiting') && (
+                  <span className="absolute inset-x-0 bottom-6 h-1 bg-black/20"><span className="block h-full bg-white transition-[width]" style={{ width: `${p.progress}%` }} /></span>
+                )}
+                {p.state === 'failed'
+                  ? <button type="button" disabled={busy} onClick={() => void upload([p])} title={p.detail ?? undefined}
+                      className="absolute inset-x-0 bottom-0 bg-red-600/90 px-1.5 py-1 text-[11px] font-medium text-white">Failed · tap to retry</button>
+                  : <span className={cn('absolute inset-x-0 bottom-0 px-1.5 py-1 text-[11px] font-medium text-white', p.state === 'uploaded' ? 'bg-emerald-600/90' : 'bg-black/60')}>
+                      {p.state === 'uploaded' ? 'Uploaded ✓' : p.state === 'verifying' ? 'Checking…' : p.state === 'waiting' ? 'Waiting…' : `${p.progress}%`}
+                    </span>}
               </li>
             ))}
           </ul>
         )}
-        {failed > 0 && <p className="mt-2 text-sm text-red-600">{failed} photo{failed === 1 ? '' : 's'} failed. Tap Add more photos to retry them.</p>}
-        {message && <p className="mt-2 text-sm text-red-600">{message}</p>}
-        <button type="button" onClick={() => void send()} disabled={!job || uploaded === 0 || inFlight || busy}
+        {photos.length > 0 && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            {landed} of {photos.length} uploaded{failed.length > 0 && <span className="text-red-600"> · {failed.length} failed{failed[0]?.detail ? `: ${failed[0].detail}` : ''}</span>}
+          </p>
+        )}
+        <button type="button" onClick={() => void send()} disabled={!job || uploaded === 0 || busy}
           className="mt-4 w-full rounded-xl border-2 border-primary px-4 py-4 text-base font-semibold text-primary disabled:opacity-50">
-          Send for enhancement{uploaded > 0 ? ` (${uploaded} photo${uploaded === 1 ? '' : 's'})` : ''}
+          Send for enhancement{uploaded > 0 ? ` (${plural(uploaded, 'photo')})` : ''}
         </button>
+        {uploaded === 0 && !busy && <p className="mt-2 text-center text-xs text-muted-foreground">Add at least one photo to send a batch.</p>}
       </section>
 
       <section>
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">Batches</h2>
-          <button type="button" className="text-sm text-muted-foreground underline" onClick={async () => { const r = await listJobsAction(); if (r.ok) setJobs(r.data); setNow(new Date()) }}>Refresh</button>
+          <button type="button" className="text-sm text-muted-foreground underline" onClick={() => void refresh()}>Refresh</button>
         </div>
         <ul className="mt-2 divide-y divide-border rounded-2xl border border-border bg-card">
           {jobs.length === 0 && <li className="p-4 text-sm text-muted-foreground">No batches yet.</li>}
@@ -156,10 +235,15 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
                 </span>
                 <StatusChip job={j} now={now} />
               </div>
-              <div className="text-sm text-muted-foreground">
-                {j.photoCount} photo{j.photoCount === 1 ? '' : 's'}
-                {j.status === 'done' && ` · ${j.resultCount} final${j.resultCount === 1 ? '' : 's'} in the Console`}
-                {j.runner && ` · ${j.runner}`}
+              <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span>
+                  {plural(job?.id === j.id ? uploaded : j.photoCount, 'photo')}
+                  {j.status === 'done' && ` · ${plural(j.resultCount, 'final')} in the Console`}
+                  {j.runner && ` · ${j.runner}`}
+                </span>
+                {j.status === 'collecting' && j.kind === 'batch' && (job?.id === j.id
+                  ? <span className="text-xs">open above</span>
+                  : <button type="button" disabled={busy} onClick={() => resume(j)} className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground disabled:opacity-50">Continue</button>)}
               </div>
               {j.kind === 'redo' && j.instructions && <div className="text-sm text-muted-foreground">“{j.instructions}”</div>}
               {j.note && <div className="text-sm">{j.note}</div>}

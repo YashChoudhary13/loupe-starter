@@ -28,6 +28,26 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ```
 
 ---
+## 2026-10-10 — /enhance fix: picked photos were dropped silently; the page now answers at every step
+
+**Goal this session:** the owner added a photo on `/enhance` from the phone and nothing happened; find why and fix the page.
+
+**Built:**
+- `src/components/enhance/EnhanceScreen.tsx` → root cause fixed: the input's `onChange` passed the live `FileList` to an async function and reset `input.value` on the same tick, which empties that list in Chrome and Safari, so every pick became zero files (the batch row was created, `photoCount` stayed 0, no tile, no error). The files are now copied out before the reset, the same order the console's Upload images already used. Also: a tile appears the moment a photo is picked (Waiting → % → Checking → Uploaded ✓), a failed tile is a "tap to retry" button and shows why, a banner reports skipped non-photos and repeats, a page opened before a deploy gets "Loupe was updated… Reload" instead of an unhandled rejection, Send confirms what was queued, and a batch left at Collecting has a **Continue** button in the list.
+- `src/lib/agent-jobs/photos.ts` → pure `pickPhotos` / `isPhoto` / `photoSignature` (which files become photos; no photo twice in one batch).
+- `tests/agent-job-photos.test.ts` → 4 tests.
+
+**Verified:** live-list behaviour reproduced in Chromium (`input.files` length 1 → 0 after `value = ''`; an `Array.from` copy keeps 1). The real component, bundled with mocked server actions and driven in Chromium through the hidden file input: tile present 5 ms after the pick; `create,begin:ring.jpg,finish` then "Uploaded ✓ · Send for enhancement (1 photo)"; picking the same photo plus a PDF added only the new photo and said "1 file skipped… 1 photo already in this batch"; a thrown "Server Action … was not found" produced the Reload banner and a retry tile; retry uploaded; Send queued and reset the form. `npm run typecheck`, `npm run lint` clean; `vitest` 4 files, 36 tests passed.
+
+**Not finished / known broken:**
+- Not yet exercised on the owner's phone against production (needs the deploy). The empty batch `2026-10-10 12.52` from the failed attempts is still at Collecting; Continue reuses it.
+- No DOM test environment in the repo, so the page itself has no automated test; only its pure helper does.
+
+**Surprises:** every deploy invalidates Server Action ids, so a page left open across a deploy fails on its next tap; the log shows this as `Failed to find Server Action` and the old page showed nothing.
+
+**Next session should start with:** a real batch from the phone through `/enhance`, watched on the Canada runner.
+
+---
 ## 2026-10-10 — Re-enhance: a delivered image goes back to Claude with a note (D145)
 
 **Goal this session:** bring back the per-image rerun, with Claude behind it, as a redo job whose render replaces the old image in place.
