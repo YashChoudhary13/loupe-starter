@@ -28,6 +28,26 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ```
 
 ---
+
+## 2026-10-10 — D145 fix: a replacement image is accepted (`replace_intake_image_from_agent`)
+
+**Goal this session:** make the first real replacements land: six re-renders the owner asked for were refused.
+
+**Built:**
+- `supabase/migrations/20261010140000_reenhance_replace_attribution.sql` → the same function, now writing `cost_usd = 0`, `description_injected = false`, `description_missing = false` on the generated version.
+- `scripts/verify-reenhance-replace-local-db.ts` → isolated proof on a throwaway PostgreSQL 17, with the shipped function as the failing control.
+
+**Verified:** production answered every `replaces=` upload with `HTTP 503 … 23514 · new row for relation "image_versions" violates check constraint "image_versions_generated_is_attributed"` (six of six, 2026-10-10 about 18:40 IST). `npx tsx scripts/verify-reenhance-replace-local-db.ts`: `8 checks passed`, the first being "the function as shipped is refused with 23514 (the production error)", then version 1 appended and selected, the draft repointed, tag and note taken, `reenhance_note` cleared, one `intake.agent_replaced` event, a second replacement as version 2.
+
+**Not finished / known broken:**
+- The migration is not on production until the owner runs `npm run db:push`. Until then Re-enhance from the console and every agent replacement fail the same way; each failed try leaves one unused object under `manual/` in R2.
+- The check tables in the proof are hand-copied from Phase 3b, not built from the full migration chain.
+
+**Surprises:** D145 shipped without one run of its replace path against the real `image_versions` checks; the route test covered parsing only. Plain agent deliveries were never affected: they write an `original` version.
+
+**Next session should start with:** after `db:push`, re-send the six replacements (`loupe_push.py ~/Downloads/enhance-2026-10-10-redo --apply`) and read the rows back.
+
+---
 ## 2026-10-10 — Enhance jobs run in parallel parts: 6 photos in 4 min 10 s (was 12 min for one, 25 for fifteen)
 
 **Goal this session:** the owner called the wait unacceptable (15 photos: 25.5 minutes); find where the time goes and cut it.
