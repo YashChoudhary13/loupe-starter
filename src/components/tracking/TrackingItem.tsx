@@ -6,10 +6,9 @@ import type { TrackingRow } from '@/lib/tracking/types'
 import { cn } from '@/lib/utils'
 
 /**
- * D121 — one tracked unit of work. Extracted from TrackingScreen and given the
- * information the operator actually asks for at a glance: which models ran,
- * whether the render passed verification, and — for running work — where in
- * the pipeline the photograph currently is.
+ * One tracked unit of work: what it is, why it is here, and the few actions
+ * that apply to it. (D144: the pipeline stage dots, model chips, verification
+ * verdict and cost figure left with the in-app enhancer.)
  */
 
 export function relativeAge(iso: string, now: number): string {
@@ -19,57 +18,6 @@ export function relativeAge(iso: string, now: number): string {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
-}
-
-/** "google/gemini-3.5-flash" → "gemini-3.5-flash": the provider is noise here. */
-function modelShort(model: string): string {
-  const slash = model.indexOf('/')
-  return slash === -1 ? model : model.slice(slash + 1)
-}
-
-const PIPELINE_STEPS = ['Queued', 'Describe', 'Render', 'Check'] as const
-
-/** Which pipeline step a running photograph is on, from its status label. */
-export function stageIndexFor(statusLabel: string): number | null {
-  if (statusLabel === 'Queued') return 0
-  if (statusLabel === 'Describer working') return 1
-  if (statusLabel === 'Image model working') return 2
-  if (statusLabel.startsWith('Enhanced')) return 4
-  return null
-}
-
-function StageDots({ statusLabel }: { statusLabel: string }) {
-  const index = stageIndexFor(statusLabel)
-  if (index === null) return null
-  return (
-    <div className="mt-1.5 flex items-center gap-1" aria-label={`Pipeline stage: ${statusLabel}`}>
-      {PIPELINE_STEPS.map((step, position) => (
-        <span key={step} className="flex items-center gap-1">
-          <span
-            className={cn(
-              'size-1.5 rounded-full',
-              position < index
-                ? 'bg-ink'
-                : position === index
-                  ? 'animate-pulse bg-amber'
-                  : 'bg-black/15',
-            )}
-          />
-          <span
-            className={cn(
-              'text-[9.5px]',
-              position === index ? 'font-medium text-ink' : 'text-muted-foreground',
-            )}
-          >
-            {step}
-          </span>
-          {position < PIPELINE_STEPS.length - 1 ? (
-            <span className="h-px w-3 bg-black/10" aria-hidden="true" />
-          ) : null}
-        </span>
-      ))}
-    </div>
-  )
 }
 
 function Status({
@@ -95,33 +43,12 @@ function Status({
   )
 }
 
-function VerdictChip({ verdict }: { verdict: NonNullable<TrackingRow['checkVerdict']> }) {
-  if (verdict === 'skipped') return null
-  return (
-    <span
-      title={
-        verdict === 'pass'
-          ? 'The render was verified against the source photograph and matched.'
-          : 'Verification found differences from the source photograph even after a corrected retry — review before publishing.'
-      }
-      className={cn(
-        'shrink-0 rounded-pill px-2 py-0.5 text-[9.5px] font-semibold',
-        verdict === 'pass' ? 'bg-chip text-ink-soft' : 'bg-[#faf2e4] text-amber',
-      )}
-    >
-      {verdict === 'pass' ? '✓ verified' : '⚠ check failed'}
-    </span>
-  )
-}
-
 export function TrackingItem({
   row,
   now,
   busy,
-  onRetry,
   onSkip,
   onResume,
-  onResumeEnhancement,
   onDiscard,
   onDuplicate,
   onDismiss,
@@ -129,19 +56,12 @@ export function TrackingItem({
   row: TrackingRow
   now: number
   busy: string | null
-  onRetry: () => void
   onSkip: () => void
   onResume: () => void
-  onResumeEnhancement: () => void
   onDiscard: () => void
   onDuplicate: (decision: 'dismissed' | 'duplicate') => void
   onDismiss: () => void
 }) {
-  const models = [
-    row.describerModel ? (['describe', row.describerModel] as const) : null,
-    row.imageModel ? (['render', row.imageModel] as const) : null,
-  ].filter((entry): entry is readonly ['describe' | 'render', string] => entry !== null)
-
   return (
     <article className="rounded-panel border border-[#efefef] p-3.5 transition-colors focus-within:border-ink hover:border-[#dcdcdc]">
       <div className="flex items-start gap-3.5">
@@ -155,65 +75,14 @@ export function TrackingItem({
           <div className="flex items-center gap-2">
             <span className="truncate font-mono text-[12px] font-medium">{row.label}</span>
             <Status tone={row.tone}>{row.statusLabel}</Status>
-            {row.checkVerdict ? <VerdictChip verdict={row.checkVerdict} /> : null}
-            {/*
-              What this row actually cost: the cached description plus every
-              generated image, redos included — provider-reported only
-              (D5/D35). Absent, not zero, when nothing has been billed yet.
-            */}
-            {row.costUsd !== null ? (
-              <span
-                className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground"
-                title={
-                  row.kind === 'draft'
-                    ? 'Description + image generation across every photograph in this product, as billed by the provider'
-                    : 'Description + image generation for this photograph, as billed by the provider'
-                }
-              >
-                ${row.costUsd.toFixed(4)}
-              </span>
-            ) : null}
-            <span
-              className={cn(
-                'shrink-0 text-[11px] text-muted-foreground',
-                row.costUsd === null && 'ml-auto',
-              )}
-            >
+            <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
               {relativeAge(row.occurredAt, now)}
             </span>
           </div>
 
-          {row.tone === 'running' || row.statusLabel === 'Queued' ? (
-            <StageDots statusLabel={row.statusLabel} />
-          ) : null}
-
           <p className="mt-1 text-[12px] leading-relaxed text-ink-soft">{row.reason}</p>
 
-          {models.length > 0 ? (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {models.map(([stage, model]) => (
-                <span
-                  key={stage}
-                  title={model}
-                  className="rounded-pill bg-chip px-2 py-0.5 font-mono text-[9.5px] text-muted-foreground"
-                >
-                  {stage} · {modelShort(model)}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {row.canRetry ? (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={onRetry}
-                className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
-              >
-                {busy === `retry:${row.entityId}` ? 'Retrying…' : 'Retry'}
-              </button>
-            ) : null}
             {row.consoleHref ? (
               <Link
                 href={row.consoleHref}
@@ -240,18 +109,6 @@ export function TrackingItem({
                 className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
               >
                 {busy === `resume:${row.entityId}` ? 'Resuming…' : 'Resume'}
-              </button>
-            ) : null}
-            {row.canResumeEnhancement ? (
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={onResumeEnhancement}
-                className="rounded-pill bg-ink px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-40"
-              >
-                {busy === `resume-enhancement:${row.entityId}`
-                  ? 'Resuming…'
-                  : 'Resume enhancement'}
               </button>
             ) : null}
             {row.canDiscard ? (

@@ -22,66 +22,38 @@ function event(
 }
 
 describe('global live activity', () => {
-  it('collapses a complete fast pipeline cycle into one ready notice', () => {
+  it('collapses several arrivals of one photograph into one ready notice', () => {
     const photoId = '00000000-0000-0000-0000-000000000001'
     expect(
       noticesForLiveEvents([
-        event(1, 'intake.discovered', photoId),
-        event(2, 'intake.claimed', photoId),
-        event(3, 'description.stored', photoId),
-        event(4, 'image.generated', photoId),
-        event(5, 'intake.enhanced', photoId),
+        event(1, 'intake.manual_uploaded', photoId),
+        event(2, 'intake.enhanced', photoId),
       ]),
     ).toEqual([
-      {
-        key: 'new-ready:5',
-        text: '1 new photo enhanced and ready',
-        tone: 'ready',
-        href: '/console',
-      },
+      { key: 'ready:2', text: '1 photo ready in the console', tone: 'ready', href: '/console' },
     ])
   })
 
-  it('reports queue arrival, active processing, completion and failures', () => {
-    expect(noticesForLiveEvents([event(10, 'intake.discovered')])[0]?.text).toBe(
-      '1 new photo added to the queue',
+  it('reports deliveries, D144 as-is arrivals, failures and Shopify push failures', () => {
+    expect(noticesForLiveEvents([event(12, 'intake.enhanced')])[0]?.text).toBe('1 photo ready in the console')
+    expect(noticesForLiveEvents([event(13, 'intake.original_selected')])[0]?.text).toBe('1 photo ready in the console')
+    expect(noticesForLiveEvents([event(14, 'intake.failed')])[0]?.text).toBe('1 process needs attention')
+    expect(noticesForLiveEvents([event(15, 'draft.shopify_push_failed')])[0]?.text).toBe(
+      '1 draft could not reach Shopify — open to retry',
     )
-    expect(noticesForLiveEvents([event(11, 'intake.claimed')])[0]?.text).toBe(
-      'Enhancing 1 photo',
-    )
-    expect(noticesForLiveEvents([event(12, 'intake.enhanced')])[0]?.text).toBe(
-      '1 photo enhanced and ready',
-    )
-    expect(noticesForLiveEvents([event(13, 'intake.failed')])[0]?.text).toBe(
-      '1 process needs attention',
-    )
+    // A later successful sync of the same draft withdraws the warning.
+    const draftId = 'draft-1'
     expect(
-      noticesForLiveEvents([event(14, 'intake.paused_provider_quota')])[0]?.text,
-    ).toBe('1 photo paused — provider credits required')
+      noticesForLiveEvents([event(16, 'draft.shopify_push_failed', draftId), event(17, 'draft.shopify_synced', draftId)]),
+    ).toEqual([])
   })
 
   it('refreshes heavy screens only for transitions that change their visible state', () => {
-    expect(shouldRefreshConsole([event(20, 'description.stored')])).toBe(false)
+    expect(shouldRefreshConsole([event(20, 'match.decided')])).toBe(false)
     expect(shouldRefreshConsole([event(21, 'intake.enhanced')])).toBe(true)
-    expect(shouldRefreshTracking([event(22, 'image.generated')])).toBe(false)
-    expect(shouldRefreshTracking([event(23, 'intake.claimed')])).toBe(true)
-    expect(shouldRefreshTracking([event(24, 'intake.failed')])).toBe(true)
-    expect(shouldRefreshTracking([event(25, 'intake.paused_provider_quota')])).toBe(true)
-  })
-
-  /**
-   * A redo generates in the background, so its terminal event is the only thing
-   * that clears the console's "redoing…" badge. A success-only filter left a
-   * failed redo showing progress forever.
-   */
-  it('refreshes the console on every redo outcome, not just success', () => {
-    for (const name of [
-      'image.redo_completed',
-      'image.redo_failed',
-      'image.redo_cost_ceiling_failed',
-      'image.redo_retry_scheduled',
-    ]) {
-      expect(shouldRefreshConsole([event(30, name)])).toBe(true)
-    }
+    expect(shouldRefreshConsole([event(22, 'intake.original_selected')])).toBe(true)
+    expect(shouldRefreshTracking([event(23, 'image.generated')])).toBe(false)
+    expect(shouldRefreshTracking([event(24, 'intake.original_selected')])).toBe(true)
+    expect(shouldRefreshTracking([event(25, 'intake.failed')])).toBe(true)
   })
 })

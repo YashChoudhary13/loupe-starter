@@ -42,7 +42,6 @@ const queue: QueueSnapshot = {
   draftCount: 1,
   publishedToday: 1,
   attentionCount: 1,
-  pipelineActivity: { uploading: 0, processing: 0 },
   truncated: false,
   signedUntil: 0,
   generatedAt: '2026-07-30T00:00:00.000Z',
@@ -106,7 +105,6 @@ describe('preserving presigned thumbnails across a refresh', () => {
     const next: QueueSnapshot = {
       ...snapshot([{ ...withThumb('a', rotated), attention: 'Possible duplicate' }]),
       ungroupedCount: 1,
-      pipelineActivity: { uploading: 2, processing: 1 },
     }
 
     const result = preserveThumbs(previous, next, NOW)
@@ -114,7 +112,6 @@ describe('preserving presigned thumbnails across a refresh', () => {
     expect(result.tiles[0]?.thumb).toEqual(fresh)
     expect(result.tiles[0]?.attention).toBe('Possible duplicate')
     expect(result.ungroupedCount).toBe(1)
-    expect(result.pipelineActivity).toEqual({ uploading: 2, processing: 1 })
   })
 
   it('drops the URL of a tile that no longer exists', () => {

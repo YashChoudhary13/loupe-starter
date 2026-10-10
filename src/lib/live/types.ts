@@ -11,10 +11,6 @@ export interface LiveActivityEvent {
 export interface LiveActivitySnapshot {
   /** Highest audit-event id observed by this browser. */
   readonly revision: number | null
-  /** Waiting for an enhancement worker, including bounded retry backoff. */
-  readonly queued: number
-  /** Currently leased by an enhancement worker. */
-  readonly enhancing: number
   /** Work needing a human — feeds the sidebar badge between full page loads. */
   readonly attention: number
   /** Audit transitions since the caller's previous revision. */
@@ -40,6 +36,7 @@ export interface LiveNotice {
 const CONSOLE_REFRESH_EVENTS = new Set([
   'intake.enhanced',
   'intake.manual_uploaded',
+  'intake.original_selected',
   'intake.grouped',
   'intake.ungrouped',
   'intake.ungrouped_after_shopify_delete',
@@ -47,16 +44,6 @@ const CONSOLE_REFRESH_EVENTS = new Set([
   'intake.discarded',
   'intake.console_delete_requested',
   'duplicate.reviewed',
-  'image.redo_completed',
-  /**
-   * A redo runs in the background now, so its outcome is the only thing that
-   * clears the "redoing…" badge. Without the failure events the console would
-   * sit on that badge until some unrelated event happened to refresh it, and
-   * the operator would never learn the redo died.
-   */
-  'image.redo_failed',
-  'image.redo_cost_ceiling_failed',
-  'image.redo_retry_scheduled',
   'draft.created',
   'draft.saved',
   'draft.deleted_after_shopify_delete',
@@ -75,9 +62,7 @@ const CONSOLE_REFRESH_EVENTS = new Set([
 const TRACKING_INTAKE_EVENTS = new Set([
   'intake.discovered',
   'intake.manual_uploaded',
-  'intake.claimed',
-  'intake.retry_scheduled',
-  'description.retry_scheduled',
+  'intake.original_selected',
   'intake.enhanced',
   'intake.failed',
   'intake.rejected',
@@ -89,10 +74,6 @@ const TRACKING_INTAKE_EVENTS = new Set([
   'intake.ungrouped',
   'intake.ungrouped_after_shopify_delete',
   'intake.published',
-  'intake.lease_expired',
-  'intake.lease_invalidated',
-  'intake.paused_provider_quota',
-  'intake.provider_quota_resumed',
   'duplicate.reviewed',
 ])
 
@@ -111,10 +92,7 @@ export function shouldRefreshTracking(events: readonly LiveActivityEvent[]): boo
       TRACKING_INTAKE_EVENTS.has(event.event) ||
       event.event.startsWith('draft.') ||
       event.event.startsWith('publish.') ||
-      event.event.startsWith('shopify.reconciliation_') ||
-      event.event === 'image.redo_completed' ||
-      event.event === 'image.redo_failed' ||
-      event.event === 'image.redo_cost_ceiling_failed',
+      event.event.startsWith('shopify.reconciliation_'),
   )
 }
 
@@ -124,30 +102,24 @@ function plural(count: number, singular: string, pluralForm = `${singular}s`): s
 
 /**
  * Turn a burst of low-level audit transitions into a few calm operator messages.
- * Entity ids let a fast discover -> claim -> finish cycle become one useful
- * message instead of three notifications for the same photograph.
+ * Entity ids let repeated events for one photograph become one message.
+ * (D144: no queue or worker to report on; arrivals are deliveries.)
  */
 export function noticesForLiveEvents(events: readonly LiveActivityEvent[]): readonly LiveNotice[] {
-  const discovered = new Set<string>()
-  const claimed = new Set<string>()
   const ready = new Set<string>()
   const failed = new Set<string>()
-  const providerPaused = new Set<string>()
-  let redoReady = 0
-  let redoFailed = 0
   const shopifyPushFailed = new Set<string>()
 
   for (const item of events) {
     const id = item.entityId ?? `event:${item.id}`
-    if (item.event === 'intake.discovered') discovered.add(id)
-    if (item.event === 'intake.claimed') claimed.add(id)
-    if (item.event === 'intake.enhanced' || item.event === 'intake.manual_uploaded') ready.add(id)
-    if (item.event === 'intake.failed' || item.event === 'intake.rejected') failed.add(id)
-    if (item.event === 'intake.paused_provider_quota') providerPaused.add(id)
-    if (item.event === 'image.redo_completed') redoReady += 1
-    if (item.event === 'image.redo_failed' || item.event === 'image.redo_cost_ceiling_failed') {
-      redoFailed += 1
+    if (
+      item.event === 'intake.enhanced' ||
+      item.event === 'intake.manual_uploaded' ||
+      item.event === 'intake.original_selected'
+    ) {
+      ready.add(id)
     }
+    if (item.event === 'intake.failed' || item.event === 'intake.rejected') failed.add(id)
     if (item.event === 'draft.shopify_push_failed') shopifyPushFailed.add(id)
     // A later successful sync of the same draft withdraws the warning.
     if (item.event === 'draft.shopify_synced') shopifyPushFailed.delete(id)
@@ -162,79 +134,21 @@ export function noticesForLiveEvents(events: readonly LiveActivityEvent[]): read
       href: '/console',
     })
   }
-  if (providerPaused.size > 0) {
-    notices.push({
-      key: `provider-paused:${events.at(-1)?.id ?? 0}`,
-      text: `${providerPaused.size} ${plural(providerPaused.size, 'photo')} paused — provider credits required`,
-      tone: 'attention',
-      href: '/tracking',
-    })
-  }
-  const failedCount = failed.size + redoFailed
-  if (failedCount > 0) {
+  if (failed.size > 0) {
     notices.push({
       key: `failed:${events.at(-1)?.id ?? 0}`,
-      text: `${failedCount} ${plural(failedCount, 'process', 'processes')} ${
-        failedCount === 1 ? 'needs' : 'need'
-      } attention`,
+      text: `${failed.size} ${plural(failed.size, 'process', 'processes')} ${failed.size === 1 ? 'needs' : 'need'} attention`,
       tone: 'attention',
       href: '/tracking',
     })
   }
-
-  const newlyReady = [...ready].filter((id) => discovered.has(id)).length
-  const readyCount = ready.size - newlyReady + redoReady
-  if (newlyReady > 0) {
-    notices.push({
-      key: `new-ready:${events.at(-1)?.id ?? 0}`,
-      text: `${newlyReady} new ${plural(newlyReady, 'photo')} enhanced and ready`,
-      tone: 'ready',
-      href: '/console',
-    })
-  }
-  if (readyCount > 0) {
+  if (ready.size > 0) {
     notices.push({
       key: `ready:${events.at(-1)?.id ?? 0}`,
-      text: `${readyCount} ${plural(readyCount, 'photo')} enhanced and ready`,
+      text: `${ready.size} ${plural(ready.size, 'photo')} ready in the console`,
       tone: 'ready',
       href: '/console',
     })
   }
-
-  const newInProgress = [...discovered].filter(
-    (id) => !ready.has(id) && !failed.has(id) && claimed.has(id),
-  ).length
-  const receivedOnly = [...discovered].filter(
-    (id) => !ready.has(id) && !failed.has(id) && !claimed.has(id),
-  ).length
-  const claimedOnly = [...claimed].filter(
-    (id) => !discovered.has(id) && !ready.has(id) && !failed.has(id),
-  ).length
-
-  if (newInProgress > 0) {
-    notices.push({
-      key: `new-processing:${events.at(-1)?.id ?? 0}`,
-      text: `${newInProgress} new ${plural(newInProgress, 'photo')} received — enhancing now`,
-      tone: 'progress',
-      href: '/tracking',
-    })
-  }
-  if (receivedOnly > 0) {
-    notices.push({
-      key: `received:${events.at(-1)?.id ?? 0}`,
-      text: `${receivedOnly} new ${plural(receivedOnly, 'photo')} added to the queue`,
-      tone: 'progress',
-      href: '/tracking',
-    })
-  }
-  if (claimedOnly > 0) {
-    notices.push({
-      key: `processing:${events.at(-1)?.id ?? 0}`,
-      text: `Enhancing ${claimedOnly} ${plural(claimedOnly, 'photo')}`,
-      tone: 'progress',
-      href: '/tracking',
-    })
-  }
-
   return notices
 }

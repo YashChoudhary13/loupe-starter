@@ -15,7 +15,6 @@ import type {
   DraftImageRef,
   MaterialOption,
   PhotoSummary,
-  PipelineActivity,
   QueueSnapshot,
   QueueTile,
   VersionSummary,
@@ -65,6 +64,7 @@ interface IntakeRow {
   description_missing_at: string | null
   presentation_class: string | null
   product_draft_id: string | null
+  last_error?: string | null
   agent_tag?: string | null
   agent_note?: string | null
   restock_sku?: string | null
@@ -209,48 +209,15 @@ export async function loadColourSuggestions(categoryId: string): Promise<readonl
     .filter((c): c is ColourSuggestion => c !== null)
 }
 
-/**
- * Just the pipeline counters — two COUNT queries, no rows, no presigned URLs.
- *
- * This exists so the console can watch Drive intake progress every few seconds
- * without paying for `loadQueue()`. A full snapshot re-signs every thumbnail,
- * and a presigned URL is different on every call, so polling the full snapshot
- * changed every `img src` on the page and made the browser re-download the whole
- * grid — which is what made the console feel stuck and swallow clicks.
- *
- * `uploading` is the historical field name; the interface now labels every
- * `discovered` row as queued, including a bounded retry wait. The global live
- * bubble distinguishes queued from enhancing, so retry backoff no longer
- * disappears from the operator's current-process count.
- */
-export async function loadPipelineActivity(): Promise<PipelineActivity> {
-  const db = supabaseServer()
-  const [uploadingResult, processingResult] = await Promise.all([
-    db
-      .from('intake_files')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'discovered')
-      .is('provider_paused_at', null),
-    db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
-  ])
-  if (uploadingResult.error) throw new Error(`intake_files (discovered): ${uploadingResult.error.message}`)
-  if (processingResult.error) throw new Error(`intake_files (enhancing): ${processingResult.error.message}`)
-
-  return {
-    uploading: uploadingResult.count ?? 0,
-    processing: processingResult.count ?? 0,
-  }
-}
-
 export async function loadQueue(): Promise<QueueSnapshot> {
   const db = supabaseServer()
   const startOfToday = startOfKolkataDayIso(new Date())
 
-  const [photosResult, draftsResult, publishedResult, categoriesResult, uploadingResult, processingResult] = await Promise.all([
+  const [photosResult, draftsResult, publishedResult, categoriesResult] = await Promise.all([
     db
       .from('intake_files')
       .select(
-        'id, filename, source, status, discovered_at, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest',
+        'id, filename, source, status, discovered_at, last_error, product_description, description_missing_at, presentation_class, product_draft_id, agent_tag, agent_note, restock_sku, agent_suggest',
       )
       .eq('status', 'enhanced')
       .is('product_draft_id', null)
@@ -275,12 +242,6 @@ export async function loadQueue(): Promise<QueueSnapshot> {
       .order('published_at', { ascending: false })
       .limit(DRAFT_LIMIT),
     db.from('categories').select('id, name'),
-    db
-      .from('intake_files')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'discovered')
-      .is('provider_paused_at', null),
-    db.from('intake_files').select('id', { count: 'exact', head: true }).eq('status', 'enhancing'),
   ])
 
   if (photosResult.error) throw new Error(`intake_files: ${photosResult.error.message}`)
@@ -289,8 +250,6 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     throw new Error(`product_drafts (published): ${publishedResult.error.message}`)
   }
   if (categoriesResult.error) throw new Error(`categories: ${categoriesResult.error.message}`)
-  if (uploadingResult.error) throw new Error(`intake_files (discovered): ${uploadingResult.error.message}`)
-  if (processingResult.error) throw new Error(`intake_files (enhancing): ${processingResult.error.message}`)
 
   const photos = (photosResult.data ?? []) as IntakeRow[]
   const drafts = (draftsResult.data ?? []) as DraftRow[]
@@ -358,7 +317,9 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     attention:
       duplicateByIntake.has(photo.id)
         ? `Possible duplicate of ${duplicateByIntake.get(photo.id)!.matchFilename}`
-        : hoursSince(photo.discovered_at) >= STALE_UNGROUPED_HOURS
+        : photo.last_error?.startsWith('Not enhanced')
+          ? photo.last_error
+          : hoursSince(photo.discovered_at) >= STALE_UNGROUPED_HOURS
           ? `Waiting ${Math.floor(hoursSince(photo.discovered_at) / 24)}d for an operator`
           : null,
     reservedSku: null,
@@ -420,10 +381,6 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     // Silent truncation is the bug; a visible cap is a limitation.
     truncated: photos.length >= PHOTO_LIMIT || drafts.length >= DRAFT_LIMIT,
     attentionCount: tiles.filter((t) => t.attention !== null).length,
-    pipelineActivity: {
-      uploading: uploadingResult.count ?? 0,
-      processing: processingResult.count ?? 0,
-    },
     signedUntil: expiries.length ? Math.min(...expiries) : Date.now() + 15 * 60 * 1000,
     generatedAt: new Date().toISOString(),
   }

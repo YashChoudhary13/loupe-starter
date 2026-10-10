@@ -9,8 +9,6 @@ import {
   discardIntakeAction,
   refreshTrackingAction,
   resumeIntakeAction,
-  resumeProviderPausedIntakeAction,
-  retryIntakeAction,
   reviewDuplicateAction,
   skipIntakeAction,
 } from '@/app/(shell)/tracking/actions'
@@ -23,7 +21,7 @@ import { filterTrackingRows, type TrackingFilters } from '@/lib/tracking/filters
 import type { TrackingRow, TrackingSnapshot } from '@/lib/tracking/types'
 import { cn } from '@/lib/utils'
 
-import { stageIndexFor, TrackingItem } from './TrackingItem'
+import { TrackingItem } from './TrackingItem'
 
 
 const DEFAULT_FILTERS: TrackingFilters = {
@@ -69,15 +67,9 @@ function preserveTrackingThumbs(
  */
 const ATTENTION_SECTIONS = [
   {
-    key: 'provider',
-    title: 'Provider paused',
-    hint: 'The model account needs credits. Nothing is wrong with these photographs — top up, then resume.',
-    matches: (row: TrackingRow) => row.canResumeEnhancement,
-  },
-  {
     key: 'failed',
     title: 'Failures',
-    hint: 'Enhancement or publishing failed after its retries. Each row says why.',
+    hint: 'Publishing failed, or a photograph could not be taken in. Each row says why.',
     matches: (row: TrackingRow) => row.tone === 'failed',
   },
   {
@@ -85,6 +77,12 @@ const ATTENTION_SECTIONS = [
     title: 'Possible duplicates',
     hint: 'Two photographs look alike. Deciding never blocks publishing.',
     matches: (row: TrackingRow) => row.duplicate !== null,
+  },
+  {
+    key: 'not-enhanced',
+    title: 'Not enhanced',
+    hint: 'These went to the console as they are. Send them through Enhance for a render, or list the photograph itself.',
+    matches: (row: TrackingRow) => row.statusLabel === 'Not enhanced',
   },
   {
     key: 'stalled',
@@ -158,8 +156,8 @@ export function TrackingScreen({
 
   /**
    * Tracking used to be a static server snapshot. Follow the shared audit
-   * heartbeat so Queued -> Enhancing -> Enhanced/Failed changes appear while
-   * the operator is looking at the page, without refreshing the browser.
+   * heartbeat so arrivals, failures and publish changes appear while the
+   * operator is looking at the page, without refreshing the browser.
    */
   useEffect(() => {
     const onLiveActivity = (rawEvent: Event) => {
@@ -214,13 +212,6 @@ export function TrackingScreen({
                 row={row}
                 now={now}
                 busy={busy}
-                onRetry={() =>
-                  void update(
-                    `retry:${row.entityId}`,
-                    () => retryIntakeAction(row.entityId),
-                    `${row.label} returned to the enhancement queue.`,
-                  )
-                }
                 onSkip={() =>
                   void update(
                     `skip:${row.entityId}`,
@@ -232,14 +223,7 @@ export function TrackingScreen({
                   void update(
                     `resume:${row.entityId}`,
                     () => resumeIntakeAction(row.entityId),
-                    `${row.label} is back in the enhancement queue.`,
-                  )
-                }
-                onResumeEnhancement={() =>
-                  void update(
-                    `resume-enhancement:${row.entityId}`,
-                    () => resumeProviderPausedIntakeAction(row.entityId),
-                    `${row.label} was released and enhancement resumed.`,
+                    `${row.label} is back in the console.`,
                   )
                 }
                 onDiscard={() => {
@@ -427,40 +411,6 @@ export function TrackingScreen({
           </div>
 
           <div className="loupe-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
-            {filters.view === 'progress' && rows.length > 0 ? (
-              <div className="mb-1 flex flex-wrap gap-2" aria-label="Pipeline stage counts">
-                {([
-                  ['Queued', 0],
-                  ['Describer', 1],
-                  ['Image model', 2],
-                  ['Finished', 4],
-                ] as const).map(([label, index]) => {
-                  const count = rows.filter(
-                    (row) => stageIndexFor(row.statusLabel) === index,
-                  ).length
-                  return (
-                    <span
-                      key={label}
-                      className={cn(
-                        'rounded-pill px-3 py-1.5 text-[11px]',
-                        count > 0 ? 'bg-chip text-ink' : 'bg-chip/60 text-muted-foreground',
-                      )}
-                    >
-                      <b className="font-semibold">{count}</b> {label.toLowerCase()}
-                    </span>
-                  )
-                })}
-                {rows.some((row) => row.kind === 'redo') ? (
-                  <span className="rounded-pill bg-chip px-3 py-1.5 text-[11px] text-ink">
-                    <b className="font-semibold">
-                      {rows.filter((row) => row.kind === 'redo').length}
-                    </b>{' '}
-                    redo
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-
             {filters.view === 'attention' ? (
               sectionRows(rows).map((section) => (
                 <section key={section.key} aria-label={section.title}>

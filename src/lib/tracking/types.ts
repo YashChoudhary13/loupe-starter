@@ -3,7 +3,7 @@ import type { SignedImage } from '@/lib/console/types'
 /**
  * Two views only. Drafts live in the Console (their working home) and the old
  * "All" tab answered no question anyone asked. Tracking is for what is wrong
- * (attention) and what the pipeline is doing right now (progress).
+ * (attention) and what is still moving (progress).
  */
 export type TrackingView = 'attention' | 'progress'
 /**
@@ -31,7 +31,7 @@ export interface TrackingDuplicate {
 
 export interface TrackingRow {
   readonly rowId: string
-  readonly kind: 'intake' | 'draft' | 'reconciliation' | 'redo'
+  readonly kind: 'intake' | 'draft' | 'reconciliation'
   readonly entityId: string
   readonly label: string
   readonly statusLabel: string
@@ -44,16 +44,9 @@ export interface TrackingRow {
   readonly rawDetail: string | null
   readonly thumb: SignedImage | null
   readonly events: readonly TrackingEvent[]
-  /** D121 — photographs only: which models actually ran, and the check verdict. */
-  readonly describerModel?: string | null
-  readonly imageModel?: string | null
-  readonly checkVerdict?: 'pass' | 'fail' | 'skipped' | null
-  readonly canRetry: boolean
   readonly canSkip: boolean
-  /** On-hold work only: send it back to the enhancement queue. */
+  /** On-hold work only: send it back to the console as it is. */
   readonly canResume: boolean
-  /** Provider-credit pause only: release the hold and retry immediately. */
-  readonly canResumeEnhancement: boolean
   /** On-hold work only: remove it from Loupe. */
   readonly canDiscard: boolean
   readonly consoleHref: string | null
@@ -64,18 +57,6 @@ export interface TrackingRow {
    * observed value changes again. See D93.
    */
   readonly canDismiss: boolean
-  /**
-   * What this row has actually cost so far, in USD — provider-reported figures
-   * only, never derived from a price table (D5/D35).
-   *
-   * For a photograph: its cached description plus EVERY generated image, redos
-   * included. For a product draft: the same total summed across every
-   * photograph grouped into it, which is what the product cost to make.
-   *
-   * Null means nothing has been billed yet. That is different from 0, which
-   * would claim a paid call returned free.
-   */
-  readonly costUsd: number | null
 }
 
 export interface ReconciliationSummary {

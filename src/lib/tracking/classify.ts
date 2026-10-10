@@ -1,15 +1,20 @@
 import type { TrackingGroup, TrackingTone } from './types'
 
 export const STALE_UNGROUPED_MS = 24 * 60 * 60 * 1000
-export const STALE_PIPELINE_MS = 60 * 60 * 1000
 export const STALE_DRAFT_MS = 24 * 60 * 60 * 1000
 /**
- * How long a freshly enhanced photograph stays visible under In progress with
+ * How long a freshly delivered photograph stays visible under In progress with
  * its green tick before the row retires. It is already in the console's
  * Pending grid the whole time — this window only exists so the operator
- * watching the pipeline sees the finish, then the list cleans itself up.
+ * watching the queue sees the arrival, then the list cleans itself up.
  */
 export const ENHANCED_VISIBLE_MS = 10 * 60 * 1000
+
+/**
+ * D144: the note `select_original_as_enhanced` leaves on a photograph that went
+ * to the console as it is because nothing renders inside Loupe any more.
+ */
+export const NOT_ENHANCED_PREFIX = 'Not enhanced'
 
 export interface IntakeForTracking {
   readonly status: string
@@ -17,12 +22,6 @@ export interface IntakeForTracking {
   readonly productDraftId: string | null
   readonly lastError: string | null
   readonly errorClass: string | null
-  readonly leaseExpiresAt: string | null
-  readonly providerPausedAt: string | null
-  readonly providerPauseCode: string | null
-  readonly providerPauseMessage: string | null
-  /** Set once the describer stage finished — splits 'enhancing' into its two stages. */
-  readonly describedAt: string | null
   readonly enhancedAt: string | null
 }
 
@@ -55,23 +54,12 @@ export function classifyIntake(
   now: number,
   duplicateFilename?: string,
 ): Classification {
-  if (row.providerPausedAt !== null) {
-    return {
-      group: 'attention',
-      tone: 'failed',
-      statusLabel: 'Credits required',
-      reason:
-        row.providerPauseMessage ??
-        'Enhancement is paused because the image provider account needs more credits. Add credits, then choose Resume enhancement. The source photo and retry budget are unchanged.',
-    }
-  }
-
   if (row.status === 'failed') {
     return {
       group: 'attention',
       tone: 'failed',
       statusLabel: 'Failed',
-      reason: row.lastError ?? 'Enhancement failed. Open Details before deciding what to do.',
+      reason: row.lastError ?? 'This photograph failed. Open Details before deciding what to do.',
     }
   }
 
@@ -81,6 +69,21 @@ export function classifyIntake(
       tone: 'mismatch',
       statusLabel: 'Possible duplicate',
       reason: `Looks similar to ${duplicateFilename}. Review the pair; this warning does not block publishing.`,
+    }
+  }
+
+  // D144: it is in the console with its original selected, but nobody rendered
+  // it. Worth a human's eye before it is listed.
+  if (
+    row.status === 'enhanced' &&
+    row.productDraftId === null &&
+    row.lastError?.startsWith(NOT_ENHANCED_PREFIX)
+  ) {
+    return {
+      group: 'attention',
+      tone: 'stalled',
+      statusLabel: 'Not enhanced',
+      reason: row.lastError,
     }
   }
 
@@ -94,34 +97,12 @@ export function classifyIntake(
       group: 'attention',
       tone: 'stalled',
       statusLabel: 'Stalled',
-      reason: `Enhanced but not grouped for ${hours} hours. Nothing failed; it may have been forgotten.`,
+      reason: `Ready but not grouped for ${hours} hours. Nothing failed; it may have been forgotten.`,
     }
   }
 
-  if (
-    (row.status === 'discovered' || row.status === 'enhancing') &&
-    (
-      ageMs(row.discoveredAt, now) >= STALE_PIPELINE_MS ||
-      (
-        row.status === 'enhancing' &&
-        row.leaseExpiresAt !== null &&
-        new Date(row.leaseExpiresAt).getTime() <= now
-      )
-    )
-  ) {
-    return {
-      group: 'attention',
-      tone: 'stalled',
-      statusLabel: 'Stalled',
-      reason:
-        row.status === 'enhancing'
-          ? 'Enhancement stopped making progress. The lease sweeper should recover it; check the event history.'
-          : 'The photograph has waited over an hour without starting enhancement.',
-    }
-  }
-
-  // D110: a photograph waits in Identify before any paid stage. Hard rule 5 —
-  // it is a problem only once nobody has decided for a day.
+  // D110: a photograph waits in Identify first. Hard rule 5 — it is a problem
+  // only once nobody has decided for a day.
   if (row.status === 'identifying') {
     if (ageMs(row.discoveredAt, now) >= STALE_UNGROUPED_MS) {
       const hours = Math.floor(ageMs(row.discoveredAt, now) / 3_600_000)
@@ -164,7 +145,7 @@ export function classifyIntake(
       tone: 'running',
       statusLabel: 'On hold',
       reason:
-        'You put this photograph aside. Resume it to send it back for enhancement, or discard it to remove it from Loupe and take it out of the RAW folder.',
+        'You put this photograph aside. Resume it to send it back to the console, or discard it to remove it from Loupe.',
     }
   }
 
@@ -185,40 +166,28 @@ export function classifyIntake(
       row.enhancedAt !== null && ageMs(row.enhancedAt, now) < ENHANCED_VISIBLE_MS
     if (!recentlyFinished) {
       // Healthy, ungrouped, already visible in the console's Pending grid.
-      // Under the old rules this padded In progress forever.
       return {
         group: 'hidden',
         tone: 'running',
         statusLabel: 'Enhanced',
-        reason: 'Enhanced and ready in the console.',
+        reason: 'Ready in the console.',
       }
     }
     return {
       group: 'progress',
       tone: 'complete',
       statusLabel: 'Enhanced ✓',
-      reason: 'Both AI stages finished. The photograph is ready in the console.',
+      reason: 'The photograph arrived and is ready in the console.',
     }
   }
 
-  if (row.status === 'enhancing') {
-    // The row holds both AI stages; described_at is the boundary between them.
-    const describing = row.describedAt === null
-    return {
-      group: 'progress',
-      tone: 'running',
-      statusLabel: describing ? 'Describer working' : 'Image model working',
-      reason: describing
-        ? 'Stage 1 of 2 — the describer is reading the photograph.'
-        : 'Stage 2 of 2 — the description is cached; the image model is generating.',
-    }
-  }
-
+  // Anything else (a `discovered` or `enhancing` row the D144 conversion has
+  // not reached, a grouped row shown on its own) is healthy work elsewhere.
   return {
-    group: 'progress',
+    group: 'hidden',
     tone: 'running',
-    statusLabel: 'Queued',
-    reason: 'Waiting for the enhancement worker.',
+    statusLabel: row.status,
+    reason: 'Represented elsewhere.',
   }
 }
 

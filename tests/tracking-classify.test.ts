@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyDraft,
   classifyIntake,
+  NOT_ENHANCED_PREFIX,
   STALE_UNGROUPED_MS,
 } from '@/lib/tracking/classify'
 
@@ -15,11 +16,6 @@ function intake(discoveredAt: string) {
     productDraftId: null,
     lastError: null,
     errorClass: null,
-    leaseExpiresAt: null,
-    providerPausedAt: null,
-    providerPauseCode: null,
-    providerPauseMessage: null,
-    describedAt: null,
     enhancedAt: null,
   }
 }
@@ -44,7 +40,7 @@ describe('tracking age and failure classification', () => {
       .toMatchObject({ group: 'hidden', statusLabel: 'Enhanced' })
   })
 
-  it('shows a freshly enhanced photograph in progress with its tick, then lets it retire', () => {
+  it('shows a freshly delivered photograph in progress with its tick, then lets it retire', () => {
     const fresh = {
       ...intake(new Date(NOW - 60_000).toISOString()),
       enhancedAt: new Date(NOW - 30_000).toISOString(),
@@ -61,19 +57,29 @@ describe('tracking age and failure classification', () => {
     expect(classifyIntake(older, NOW)).toMatchObject({ group: 'hidden' })
   })
 
-  it('splits the enhancing stage on described_at — describer first, then the image model', () => {
-    const enhancing = {
+  /**
+   * D144: a photograph that reached the console as it is — nothing rendered it
+   * inside Loupe — carries the note and is worth a look before it is listed.
+   * Once grouped into a draft the note stops counting; the draft represents it.
+   */
+  it('flags a photograph that went to the console without a render', () => {
+    const row = {
       ...intake(new Date(NOW - 60_000).toISOString()),
-      status: 'enhancing',
-      leaseExpiresAt: new Date(NOW + 60_000).toISOString(),
+      enhancedAt: new Date(NOW - 60_000).toISOString(),
+      lastError: `${NOT_ENHANCED_PREFIX}: send it through /enhance or upload a finished image.`,
     }
-    expect(classifyIntake(enhancing, NOW)).toMatchObject({
-      group: 'progress',
-      statusLabel: 'Describer working',
+    expect(classifyIntake(row, NOW)).toMatchObject({
+      group: 'attention',
+      tone: 'stalled',
+      statusLabel: 'Not enhanced',
+      reason: row.lastError,
     })
-    expect(
-      classifyIntake({ ...enhancing, describedAt: new Date(NOW - 20_000).toISOString() }, NOW),
-    ).toMatchObject({ group: 'progress', statusLabel: 'Image model working' })
+    expect(classifyIntake({ ...row, productDraftId: 'draft-1' }, NOW).group).not.toBe('attention')
+  })
+
+  it('hides a row the D144 conversion has not reached instead of inventing a queue', () => {
+    expect(classifyIntake({ ...intake(new Date(NOW - 60_000).toISOString()), status: 'discovered' }, NOW))
+      .toMatchObject({ group: 'hidden' })
   })
 
   it('flags a draft whose background Shopify push failed', () => {
@@ -118,27 +124,6 @@ describe('tracking age and failure classification', () => {
     })
   })
 
-  it('shows provider credit exhaustion immediately with an actionable explanation', () => {
-    expect(
-      classifyIntake(
-        {
-          ...intake(new Date(NOW - 1_000).toISOString()),
-          status: 'discovered',
-          providerPausedAt: new Date(NOW - 500).toISOString(),
-          providerPauseCode: 'image_provider_quota_exhausted',
-          providerPauseMessage:
-            'Image generation is paused because the provider account needs more credits. Add credits, then choose Resume enhancement.',
-        },
-        NOW,
-      ),
-    ).toMatchObject({
-      group: 'attention',
-      tone: 'failed',
-      statusLabel: 'Credits required',
-      reason: expect.stringContaining('Resume enhancement'),
-    })
-  })
-
   it('surfaces a duplicate warning without calling it a block', () => {
     const result = classifyIntake(intake(new Date(NOW - 1_000).toISOString()), NOW, 'IMG_1.jpg')
     expect(result).toMatchObject({ group: 'attention', statusLabel: 'Possible duplicate' })
@@ -163,10 +148,7 @@ describe('tracking age and failure classification', () => {
   /**
    * Qimati's workflow is to draft everything into Shopify and publish the batch
    * on launch day, so a draft sitting untouched in Shopify for a week is the
-   * intended end state. The old rule keyed on status alone, and
-   * `record_draft_shopify_product` returns the draft to `assembling` — so every
-   * correctly drafted product would have been marked "needs attention" forever.
-   * See D90.
+   * intended end state. See D90.
    */
   const oldDraft = {
     status: 'assembling',

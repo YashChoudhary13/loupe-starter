@@ -21,7 +21,6 @@ import {
   loadCatalog,
   loadDraft,
   loadPhotos,
-  loadPipelineActivity,
   loadQueue,
 } from '@/lib/console/queue'
 import type {
@@ -29,7 +28,6 @@ import type {
   CategoryOption,
   DraftDetail,
   PhotoSummary,
-  PipelineActivity,
   QueueSnapshot,
 } from '@/lib/console/types'
 import { PublishBlockedError, type PublishBlock } from '@/lib/publish/validate'
@@ -288,9 +286,6 @@ export async function finalizeManualUploadAction(
  * for this every few seconds while Drive intake is moving and only pays for a
  * full `refreshQueueAction()` when the counters say something actually finished.
  */
-export async function pipelineActivityAction(): Promise<ActionResult<PipelineActivity>> {
-  return withOperator(() => loadPipelineActivity())
-}
 
 /**
  * Versions and full-size images for photographs the operator has selected but

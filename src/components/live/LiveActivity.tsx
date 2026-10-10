@@ -8,7 +8,6 @@ import { liveActivityAction } from '@/app/live/actions'
 import {
   LIVE_ACTIVITY_EVENT,
   noticesForLiveEvents,
-  type LiveActivitySnapshot,
   type LiveActivityUpdate,
   type LiveNotice,
 } from '@/lib/live/types'
@@ -45,8 +44,7 @@ function writeCursor(value: number | null): void {
 }
 
 /** Site-wide pipeline heartbeat, mounted by the shared authenticated sidebar. */
-export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
-  const [snapshot, setSnapshot] = useState<LiveActivitySnapshot | null>(null)
+export function LiveActivity() {
   const [notices, setNotices] = useState<readonly VisibleNotice[]>([])
   const [stale, setStale] = useState(false)
   // Packing is not the moment for enhancement toasts; the badge and heartbeat still run on QC screens.
@@ -73,7 +71,6 @@ export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
         const initial = requestedCursor === null
         cursorRef.current = next.revision
         writeCursor(next.revision)
-        setSnapshot(next)
 
         const update: LiveActivityUpdate = { initial, snapshot: next }
         window.dispatchEvent(new CustomEvent<LiveActivityUpdate>(LIVE_ACTIVITY_EVENT, { detail: update }))
@@ -117,10 +114,6 @@ export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
     return () => window.clearTimeout(timer)
   }, [notices])
 
-  const queued = snapshot?.queued ?? 0
-  const enhancing = snapshot?.enhancing ?? 0
-  const active = queued + enhancing > 0
-
   return (
     <>
       {stale ? (
@@ -157,29 +150,6 @@ export function LiveActivity({ compact = false }: { compact?: boolean } = {}) {
         </div>
       ) : null}
 
-      {active ? (
-        compact ? (
-          <Link
-            href="/tracking"
-            title={`${queued} queued · ${enhancing} enhancing`}
-            aria-label={`${queued} queued, ${enhancing} enhancing. Open Tracking.`}
-            className="mx-auto grid size-8 place-items-center rounded-full bg-ink/95 shadow-sm"
-          >
-            <span className="size-2 animate-pulse rounded-full bg-white/85" aria-hidden />
-          </Link>
-        ) : (
-          <Link
-            href="/tracking"
-            className="flex w-full items-center justify-center gap-2 rounded-pill bg-ink/95 px-3 py-2.5 text-[11.5px] text-white shadow-sm transition-transform hover:-translate-y-0.5"
-            aria-label={`${queued} queued, ${enhancing} enhancing. Open Tracking.`}
-          >
-            <span className="size-1.5 animate-pulse rounded-full bg-white/85" aria-hidden />
-            {queued > 0 ? `${queued} queued` : null}
-            {queued > 0 && enhancing > 0 ? <span className="text-white/55">·</span> : null}
-            {enhancing > 0 ? `${enhancing} enhancing` : null}
-          </Link>
-        )
-      ) : null}
     </>
   )
 }

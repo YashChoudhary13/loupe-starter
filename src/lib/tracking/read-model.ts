@@ -6,7 +6,6 @@ import { loadDuplicateCandidates } from '@/lib/duplicates/read-model'
 import { supabaseServer } from '@/lib/supabase/server'
 
 import { classifyDraft, classifyIntake } from './classify'
-import { sumUsd, usd } from './cost'
 import { queryBatches } from './query-batches'
 import { draftCoverKeys, preferredThumbKey } from './thumbs'
 import type {
@@ -18,7 +17,6 @@ import type {
 
 interface IntakeRow {
   id: string
-  drive_file_id: string
   filename: string
   status: string
   attempts: number
@@ -26,37 +24,10 @@ interface IntakeRow {
   last_error_code: string | null
   last_error_detail: string | null
   error_class: string | null
-  lease_expires_at: string | null
-  provider_paused_at: string | null
-  provider_pause_code: string | null
-  provider_pause_message: string | null
-  provider_pause_detail: string | null
   discovered_at: string
   updated_at: string
   enhanced_at: string | null
-  described_at: string | null
   product_draft_id: string | null
-  description_cost_usd: string | number | null
-  description_model: string | null
-}
-
-interface RedoJobRow {
-  id: string
-  intake_file_id: string
-  status: string
-  version_no: number
-  model: string
-  created_at: string
-  updated_at: string
-  generation_started_at: string | null
-  intake_files: { filename: string; product_draft_id: string | null } | null
-}
-
-/** Draft membership fetched independently of the intake recency window. */
-interface DraftIntakeRow {
-  id: string
-  product_draft_id: string
-  description_cost_usd: string | number | null
 }
 
 interface DraftRow {
@@ -82,12 +53,9 @@ interface VersionRow {
   intake_file_id: string
   version_no: number
   is_selected: boolean
-  model: string | null
   thumb_key: string | null
   /** Set once retention has deleted the R2 object. The key still reads. */
   purged_at: string | null
-  /** numeric(12,6) arrives from PostgREST as a string. */
-  cost_usd: string | number | null
 }
 
 /** A draft's cover photograph, via the operator's own image order. */
@@ -203,14 +171,13 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     listedResult,
     ungroupedResult,
     openDraftsResult,
-    redoJobsResult,
     webhookAlertsResult,
     duplicateCandidates,
   ] = await Promise.all([
     db
       .from('intake_files')
       .select(
-        'id, drive_file_id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, lease_expires_at, provider_paused_at, provider_pause_code, provider_pause_message, provider_pause_detail, discovered_at, updated_at, enhanced_at, described_at, product_draft_id, description_cost_usd, description_model',
+        'id, filename, status, attempts, last_error, last_error_code, last_error_detail, error_class, discovered_at, updated_at, enhanced_at, product_draft_id',
       )
       .order('updated_at', { ascending: false })
       .limit(500),
@@ -246,14 +213,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       .select('id', { count: 'exact', head: true })
       .in('status', ['assembling', 'publishing', 'failed']),
     db
-      .from('image_redo_jobs')
-      .select(
-        'id, intake_file_id, status, version_no, model, created_at, updated_at, generation_started_at, intake_files(filename, product_draft_id)',
-      )
-      .in('status', ['queued', 'processing'])
-      .order('created_at', { ascending: false })
-      .limit(100),
-    db
       .from('shopify_webhook_alerts')
       .select(
         'id, shopify_product_id, product_draft_id, topic, code, message, detail, created_at, updated_at',
@@ -272,7 +231,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     ['listed count', listedResult.error],
     ['ungrouped count', ungroupedResult.error],
     ['open draft count', openDraftsResult.error],
-    ['redo jobs', redoJobsResult.error],
     ['webhook alerts', webhookAlertsResult.error],
   ] as const) {
     if (error) throw new Error(`${label}: ${error.message}`)
@@ -341,7 +299,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       !dismissedKeys.has(reconciliationKey(row.product_draft_id, row.code, row.field, row.actual)),
   )
 
-  const redoJobs = (redoJobsResult.data ?? []) as unknown as RedoJobRow[]
   const webhookAlerts = (webhookAlertsResult.data ?? []) as {
     id: number
     shopify_product_id: string
@@ -358,14 +315,13 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     ...intakes.map((row) => row.id),
     ...drafts.map((row) => row.id),
     ...runs.map((row) => row.id),
-    ...redoJobs.map((row) => row.id),
   ]
   // Drafts on screen, plus the drafts a Shopify mismatch points at — those are
   // published, so they are not in the draft query above.
   const draftIdsNeedingCover = [
     ...new Set([...drafts.map((row) => row.id), ...issues.map((issue) => issue.product_draft_id)]),
   ]
-  const [eventResults, versionResults, draftImageResults, draftIntakeResults] = await Promise.all([
+  const [eventResults, versionResults, draftImageResults] = await Promise.all([
     Promise.all(
       queryBatches(entityIds).map((ids) =>
         db
@@ -380,7 +336,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       queryBatches(intakes.map((row) => row.id)).map((intakeIds) =>
         db
           .from('image_versions')
-          .select('intake_file_id, version_no, is_selected, model, thumb_key, purged_at, cost_usd')
+          .select('intake_file_id, version_no, is_selected, thumb_key, purged_at')
           .in('intake_file_id', intakeIds),
       ),
     ),
@@ -393,32 +349,14 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
           .order('position', { ascending: true }),
       ),
     ),
-    /**
-     * Draft membership, independent of the 500-row recency window above. A draft
-     * that has been sitting for a while can own photographs that fell out of
-     * that window, and summing only what happened to be in it would under-report
-     * the draft's spend without saying so.
-     */
-    Promise.all(
-      queryBatches(draftIdsNeedingCover).map((draftIds) =>
-        db
-          .from('intake_files')
-          .select('id, product_draft_id, description_cost_usd')
-          .in('product_draft_id', draftIds),
-      ),
-    ),
   ])
   const eventError = eventResults.find((result) => result.error)?.error
   const versionError = versionResults.find((result) => result.error)?.error
   const draftImageError = draftImageResults.find((result) => result.error)?.error
-  const draftIntakeError = draftIntakeResults.find((result) => result.error)?.error
   if (eventError) throw new Error(`tracking events: ${eventError.message}`)
   if (versionError) throw new Error(`tracking thumbnails: ${versionError.message}`)
   if (draftImageError) {
     throw new Error(`tracking draft covers: ${draftImageError.message}`)
-  }
-  if (draftIntakeError) {
-    throw new Error(`tracking draft costs: ${draftIntakeError.message}`)
   }
 
   // Each event batch is newest-first and capped independently. Re-sort and cap
@@ -429,30 +367,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     .slice(0, 2_000)
   const events = eventMap(eventRows)
 
-  // D121 — the latest check verdict per photograph, read from the raw event
-  // detail before truncation. eventRows are newest-first, so first wins.
-  const checkVerdictByIntake = new Map<string, 'pass' | 'fail' | 'skipped'>()
-  for (const row of eventRows) {
-    if (row.event !== 'enhancement.render_check' || !row.entity_id) continue
-    if (checkVerdictByIntake.has(row.entity_id)) continue
-    const verdict = (row.detail as { verdict?: unknown } | null)?.verdict
-    if (verdict === 'pass' || verdict === 'fail' || verdict === 'skipped') {
-      checkVerdictByIntake.set(row.entity_id, verdict)
-    }
-  }
-
-  /** The model that generated the photograph's visible render, newest wins. */
-  function imageModelFor(intakeId: string): string | null {
-    const versions = versionsByIntake.get(intakeId) ?? []
-    const chosen =
-      versions.find((version) => version.is_selected) ??
-      [...versions].sort((left, right) => right.version_no - left.version_no)[0]
-    return chosen?.model ?? null
-  }
-  const draftIntakes = draftIntakeResults.flatMap(
-    (result) => (result.data ?? []) as DraftIntakeRow[],
-  )
-
   const versionsByIntake = new Map<string, VersionRow[]>()
   for (const row of versionResults.flatMap((result) => (result.data ?? []) as VersionRow[])) {
     const list = versionsByIntake.get(row.intake_file_id) ?? []
@@ -460,29 +374,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     versionsByIntake.set(row.intake_file_id, list)
   }
 
-  // Top-up: versions for draft photographs the recency window missed. Usually
-  // empty, because active drafts are recent — but a draft's total must be the
-  // whole total or nothing, never a quiet partial sum.
-  const missingVersionIntakeIds = draftIntakes
-    .map((row) => row.id)
-    .filter((id) => !versionsByIntake.has(id))
-  if (missingVersionIntakeIds.length > 0) {
-    const extras = await Promise.all(
-      queryBatches(missingVersionIntakeIds).map((intakeIds) =>
-        db
-          .from('image_versions')
-          .select('intake_file_id, version_no, is_selected, model, thumb_key, purged_at, cost_usd')
-          .in('intake_file_id', intakeIds),
-      ),
-    )
-    const extraError = extras.find((result) => result.error)?.error
-    if (extraError) throw new Error(`tracking draft costs: ${extraError.message}`)
-    for (const row of extras.flatMap((result) => (result.data ?? []) as VersionRow[])) {
-      const list = versionsByIntake.get(row.intake_file_id) ?? []
-      list.push(row)
-      versionsByIntake.set(row.intake_file_id, list)
-    }
-  }
   const thumbKeyByIntake = new Map(
     intakes.map((intake) => [
       intake.id,
@@ -503,34 +394,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
 
   const signed = await signKeys([...thumbKeyByIntake.values(), ...thumbKeyByDraft.values()])
 
-  /** Description + every generated image for this photograph, redos included. */
-  function totalCostFor(intake: Pick<IntakeRow, 'id' | 'description_cost_usd'>): number | null {
-    return sumUsd([
-      usd(intake.description_cost_usd),
-      ...(versionsByIntake.get(intake.id) ?? []).map((version) => usd(version.cost_usd)),
-    ])
-  }
-
-  /**
-   * What a product has cost so far: every grouped photograph's description plus
-   * every generated image, redos included. A draft is not itself billed — this
-   * is the sum of the source photographs the operator grouped into it, which is
-   * the figure that answers "what did this product cost to make".
-   *
-   * Null when no photograph in the draft has been billed yet, matching the
-   * per-photograph rule that 0 would falsely claim a paid call returned free.
-   */
-  const draftIntakesByDraft = new Map<string, DraftIntakeRow[]>()
-  for (const row of draftIntakes) {
-    const list = draftIntakesByDraft.get(row.product_draft_id) ?? []
-    list.push(row)
-    draftIntakesByDraft.set(row.product_draft_id, list)
-  }
-
-  function draftCostFor(draftId: string): number | null {
-    return sumUsd((draftIntakesByDraft.get(draftId) ?? []).map((member) => totalCostFor(member)))
-  }
-
   /**
    * A photograph that belongs to a product draft is NOT listed separately.
    * The draft already represents it, and listing both showed the same piece of
@@ -548,11 +411,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
         productDraftId: row.product_draft_id,
         lastError: row.last_error,
         errorClass: row.error_class,
-        leaseExpiresAt: row.lease_expires_at,
-        providerPausedAt: row.provider_paused_at,
-        providerPauseCode: row.provider_pause_code,
-        providerPauseMessage: row.provider_pause_message,
-        describedAt: row.described_at,
         enhancedAt: row.enhanced_at,
       },
       now,
@@ -567,28 +425,19 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       statusLabel: classification.statusLabel,
       tone: classification.tone,
       group: classification.group,
-      occurredAt: row.provider_paused_at ?? row.updated_at,
+      occurredAt: row.updated_at,
       reason: classification.reason,
-      errorCode: row.provider_pause_code ?? row.last_error_code,
-      errorClass: row.provider_paused_at ? 'provider' : row.error_class,
-      rawDetail:
-        row.provider_pause_detail?.slice(0, 2_000) ??
-        row.last_error_detail?.slice(0, 2_000) ??
-        null,
+      errorCode: row.last_error_code,
+      errorClass: row.error_class,
+      rawDetail: row.last_error_detail?.slice(0, 2_000) ?? null,
       thumb: (thumbKey ? signed.get(thumbKey) : null) ?? null,
       events: events.get(row.id) ?? [],
-      describerModel: row.description_model,
-      imageModel: imageModelFor(row.id),
-      checkVerdict: checkVerdictByIntake.get(row.id) ?? null,
-      canRetry: row.status === 'failed' && row.error_class === 'retryable',
       // Held work is the operator's to pick back up or throw away. Both are
       // refused in SQL for anything grouped, published or in flight.
       canResume: row.status === 'skipped',
-      canResumeEnhancement: row.provider_paused_at !== null,
       canDiscard: row.status === 'skipped' && row.product_draft_id === null,
       canSkip:
         row.product_draft_id === null &&
-        row.provider_paused_at === null &&
         ![
           'enhancing', 'grouped', 'published', 'duplicate', 'skipped',
           // D110: decide these in Identify / Restock, not by holding them.
@@ -599,7 +448,6 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
         : row.status === 'enhanced'
           ? '/console'
           : null,
-      costUsd: totalCostFor(row),
       canDismiss: false,
       duplicate: duplicate
         ? {
@@ -639,59 +487,12 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       rawDetail: row.error?.slice(0, 2_000) ?? null,
       thumb: signed.get(thumbKeyByDraft.get(row.id) ?? '') ?? null,
       events: events.get(row.id) ?? [],
-      canRetry: false,
       canSkip: false,
       canResume: false,
-      canResumeEnhancement: false,
       canDiscard: false,
       consoleHref: `/console/drafts/${row.id}`,
       duplicate: null,
       canDismiss: false,
-      // A draft is not billed itself; this is what its grouped photographs cost.
-      costUsd: draftCostFor(row.id),
-    }
-  })
-
-  /**
-   * A redo is paid pipeline work the operator kicked off; before this it was
-   * invisible here — the only sign was a badge inside the draft editor.
-   */
-  const redoRows: TrackingRow[] = redoJobs.map((job) => {
-    const generating = job.status === 'processing' && job.generation_started_at !== null
-    return {
-      rowId: `redo:${job.id}`,
-      kind: 'redo' as const,
-      entityId: job.id,
-      label: job.intake_files?.filename ?? `Redo v${job.version_no}`,
-      statusLabel:
-        job.status === 'queued'
-          ? 'Redo queued'
-          : generating
-            ? 'Image model working'
-            : 'Redo starting',
-      tone: 'running' as const,
-      group: 'progress' as const,
-      occurredAt: job.updated_at,
-      reason:
-        job.status === 'queued'
-          ? `Waiting to regenerate version ${job.version_no} on ${job.model}.`
-          : `Regenerating version ${job.version_no} on ${job.model}.`,
-      errorCode: null,
-      errorClass: null,
-      rawDetail: null,
-      thumb: signed.get(thumbKeyByIntake.get(job.intake_file_id) ?? '') ?? null,
-      events: events.get(job.id) ?? [],
-      canRetry: false,
-      canSkip: false,
-      canResume: false,
-      canResumeEnhancement: false,
-      canDiscard: false,
-      consoleHref: job.intake_files?.product_draft_id
-        ? `/console/drafts/${job.intake_files.product_draft_id}`
-        : '/console',
-      duplicate: null,
-      canDismiss: false,
-      costUsd: null,
     }
   })
 
@@ -715,15 +516,12 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     rawDetail: safeDetail(alert.detail),
     thumb: signed.get(thumbKeyByDraft.get(alert.product_draft_id ?? '') ?? '') ?? null,
     events: events.get(alert.product_draft_id ?? '') ?? [],
-    canRetry: false,
     canSkip: false,
     canResume: false,
-    canResumeEnhancement: false,
     canDiscard: false,
     consoleHref: alert.product_draft_id ? `/console/drafts/${alert.product_draft_id}` : null,
     duplicate: null,
     canDismiss: true,
-    costUsd: null,
   }))
 
   const issueRows: TrackingRow[] = issues.map((issue) => ({
@@ -743,17 +541,14 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
     // row keeps its audit trail and the square stays blank.
     thumb: signed.get(thumbKeyByDraft.get(issue.product_draft_id) ?? '') ?? null,
     events: events.get(issue.run_id) ?? [],
-    canRetry: false,
     canSkip: false,
     canResume: false,
-    canResumeEnhancement: false,
     canDiscard: false,
     consoleHref: `/console/drafts/${issue.product_draft_id}`,
     duplicate: null,
     // The one row kind an operator can judge and silence. `entityId` is the run
     // id for the event trail, so the issue id travels in `rowId`.
     canDismiss: true,
-    costUsd: null,
   }))
 
   if (latestRun?.status === 'failed' && issues.length === 0) {
@@ -772,16 +567,13 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
       rawDetail: latestRun.error,
       thumb: null,
       events: events.get(latestRun.id) ?? [],
-      canRetry: false,
       canSkip: false,
       canResume: false,
-      canResumeEnhancement: false,
       canDiscard: false,
       consoleHref: null,
       duplicate: null,
       // A failed CHECK is not a finding to accept — it means Loupe never looked.
       canDismiss: false,
-      costUsd: null,
     })
   }
 
@@ -791,7 +583,7 @@ export async function loadTracking(): Promise<TrackingSnapshot> {
    * console's working set and Tracking stopped duplicating them — only their
    * attention/progress classifications surface here.
    */
-  const rows = [...webhookRows, ...issueRows, ...redoRows, ...draftRows, ...intakeRows]
+  const rows = [...webhookRows, ...issueRows, ...draftRows, ...intakeRows]
     .filter((row) => row.group === 'attention' || row.group === 'progress')
     .sort((a, b) => {
       const groupRank = { attention: 0, draft: 1, progress: 2, complete: 3, hidden: 4 } as const

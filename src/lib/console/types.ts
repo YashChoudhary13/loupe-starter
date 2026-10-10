@@ -178,11 +178,6 @@ export interface ColourSuggestion {
  * name for queued/discovered work, including retry backoff; the UI calls it
  * queued. `processing` is actively leased enhancement work.
  */
-export interface PipelineActivity {
-  readonly uploading: number
-  readonly processing: number
-}
-
 export interface QueueSnapshot {
   /** Work still waiting for an operator: ungrouped photographs and open drafts. */
   readonly tiles: readonly QueueTile[]
@@ -192,7 +187,6 @@ export interface QueueSnapshot {
   readonly draftCount: number
   readonly publishedToday: number
   readonly attentionCount: number
-  readonly pipelineActivity: PipelineActivity
   /** True when the queue hit its cap and is showing only part of the work. */
   readonly truncated: boolean
   /** Epoch ms at which the earliest presigned URL in this snapshot dies. */

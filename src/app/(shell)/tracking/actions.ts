@@ -38,19 +38,6 @@ export async function refreshTrackingAction(): Promise<TrackingActionResult<Trac
   return withOperator(() => loadTracking())
 }
 
-export async function retryIntakeAction(
-  intakeFileId: string,
-): Promise<TrackingActionResult<TrackingSnapshot>> {
-  return withOperator(async (email) => {
-    const { error } = await supabaseServer().rpc('retry_intake_file', {
-      p_intake_file_id: intakeFileId,
-      p_actor: email,
-    })
-    if (error) throw new Error(error.hint || error.message)
-    return loadTracking()
-  })
-}
-
 export async function skipIntakeAction(
   intakeFileId: string,
 ): Promise<TrackingActionResult<TrackingSnapshot>> {
@@ -64,26 +51,12 @@ export async function skipIntakeAction(
   })
 }
 
-/** Puts a held photograph back in the enhancement queue with a clean retry budget. */
+/** Sends a held photograph back to the console as it is (D144). */
 export async function resumeIntakeAction(
   intakeFileId: string,
 ): Promise<TrackingActionResult<TrackingSnapshot>> {
   return withOperator(async (email) => {
     const { error } = await supabaseServer().rpc('resume_intake_file', {
-      p_intake_file_id: intakeFileId,
-      p_actor: email,
-    })
-    if (error) throw new Error(error.hint || error.message)
-    return loadTracking()
-  })
-}
-
-/** Releases an account-credit pause and nudges enhancement immediately. */
-export async function resumeProviderPausedIntakeAction(
-  intakeFileId: string,
-): Promise<TrackingActionResult<TrackingSnapshot>> {
-  return withOperator(async (email) => {
-    const { error } = await supabaseServer().rpc('resume_provider_paused_intake_file', {
       p_intake_file_id: intakeFileId,
       p_actor: email,
     })

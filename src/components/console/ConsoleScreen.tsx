@@ -227,7 +227,6 @@ export function ConsoleScreen({
   initialBundle,
 }: ConsoleScreenProps) {
   const [queue, setQueue] = useState(initialQueue)
-  const [activity, setActivity] = useState(initialQueue.pipelineActivity)
   const [bundle, setBundle] = useState<DraftBundle | null>(initialBundle)
   const [categories, setCategories] = useState<readonly CategoryOption[]>(catalog.categories)
   const [addingCategory, setAddingCategory] = useState(false)
@@ -291,9 +290,6 @@ export function ConsoleScreen({
   const visibleTiles = useMemo(() => tilesForQueueView(queue, queueView), [queue, queueView])
   const listedReadOnly = bundle?.draft.status === 'published'
 
-  const { uploading, processing } = activity
-  const pipelineBusy = uploading + processing > 0
-
   const refreshQueue = useCallback(async () => {
     const result = await settled(refreshQueueAction())
     if (!result.ok) return
@@ -333,10 +329,6 @@ export function ConsoleScreen({
     const onLiveActivity = (rawEvent: Event) => {
       const update = (rawEvent as CustomEvent<LiveActivityUpdate>).detail
       if (!update?.snapshot) return
-      setActivity({
-        uploading: update.snapshot.queued,
-        processing: update.snapshot.enhancing,
-      })
       if (shouldRefreshConsole(update.snapshot.events)) void refreshQueue()
     }
     window.addEventListener(LIVE_ACTIVITY_EVENT, onLiveActivity)
@@ -1151,28 +1143,6 @@ export function ConsoleScreen({
           <div className="rounded-pill bg-[#faf4e9] px-4 py-2 text-[12px] text-amber" role="status">
             The queue is showing only part of the outstanding work. Publish or clear some of it
             to see the rest.
-          </div>
-        ) : null}
-
-        {pipelineBusy ? (
-          <div
-            className="flex items-center gap-2 rounded-pill bg-chip px-4 py-2 text-[12px] text-ink-soft"
-            role="status"
-          >
-            <span className="size-1.5 animate-pulse rounded-full bg-ink-soft" aria-hidden />
-            {uploading > 0 ? (
-              <span>
-                <b className="font-semibold text-ink">{uploading}</b>{' '}
-                {uploading === 1 ? 'photo' : 'photos'} queued
-              </span>
-            ) : null}
-            {uploading > 0 && processing > 0 ? <span className="text-muted-foreground">·</span> : null}
-            {processing > 0 ? (
-              <span>
-                <b className="font-semibold text-ink">{processing}</b>{' '}
-                {processing === 1 ? 'photo' : 'photos'} enhancing
-              </span>
-            ) : null}
           </div>
         ) : null}
 

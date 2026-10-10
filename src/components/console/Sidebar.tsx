@@ -175,7 +175,7 @@ export function Sidebar({
         </nav>
       ) : null}
 
-      <LiveActivity compact={collapsed} />
+      <LiveActivity />
 
       <form action="/api/auth/signout" method="post" className="mt-auto">
         {collapsed ? (

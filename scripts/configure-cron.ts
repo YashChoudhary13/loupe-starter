@@ -1,6 +1,6 @@
 /**
  * Stores the public Loupe URL and the shared cron secret in Supabase Vault,
- * then creates/updates the Drive intake and enhancement pg_cron jobs.
+ * then creates/updates the pg_cron jobs — and unschedules the ones D144 retired.
  *
  * Secrets are parameters to Vault functions. They are never interpolated into
  * migration SQL, cron.job.command, logs, or this file.
@@ -20,36 +20,21 @@ interface CronJob {
   readonly timeoutMilliseconds: number
 }
 
+/**
+ * D144: these routes no longer exist. `cron.schedule` only ever upserts, so the
+ * jobs would keep hitting 404 every minute until somebody unschedules them —
+ * which is what this script now does on every run.
+ */
+const RETIRED_JOBS: readonly string[] = [
+  'loupe-drive-watch',
+  'loupe-drive-reconcile',
+  // The lease sweep only re-queued the enhancement worker's expired claims;
+  // the matcher's claim_match_job retakes its own expired leases inline.
+  'loupe-intake-sweep',
+  'loupe-image-enhance',
+]
+
 const JOBS: readonly CronJob[] = [
-  {
-    name: 'loupe-drive-watch',
-    schedule: '* * * * *',
-    path: '/api/cron/watch',
-    timeoutMilliseconds: 30_000,
-  },
-  {
-    // Every 5 minutes, because this sweep is also the net that catches files
-    // the Drive change log reports late — measured 13.7 minutes late for
-    // three files on 2026-08-17, which read as "Loupe lost my photos". The
-    // scan is one page of a ~60-file folder, so the extra runs cost nothing;
-    // its cadence bounds the worst-case pickup delay.
-    name: 'loupe-drive-reconcile',
-    schedule: '*/5 * * * *',
-    path: '/api/cron/reconcile',
-    timeoutMilliseconds: 30_000,
-  },
-  {
-    name: 'loupe-intake-sweep',
-    schedule: '*/5 * * * *',
-    path: '/api/cron/sweep',
-    timeoutMilliseconds: 30_000,
-  },
-  {
-    name: 'loupe-image-enhance',
-    schedule: '* * * * *',
-    path: '/api/cron/enhance',
-    timeoutMilliseconds: 285_000,
-  },
   {
     // 03:00 Asia/Kolkata. pg_cron schedules are UTC.
     name: 'loupe-shopify-reconcile',
@@ -187,6 +172,13 @@ async function main(): Promise<void> {
           job.schedule,
           commandFor(job),
         ])
+      }
+      for (const name of RETIRED_JOBS) {
+        // cron.unschedule raises on an unknown name; only unschedule what exists.
+        await client.query(
+          'select cron.unschedule(jobid) from cron.job where jobname = $1',
+          [name],
+        )
       }
       await client.query('commit')
     } catch (error) {
