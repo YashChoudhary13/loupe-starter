@@ -19,6 +19,8 @@ interface PhotoItem { key: string; sig: string; file: File; previewUrl: string; 
 interface Said { text: string; tone: 'info' | 'error'; stale: boolean }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+// Measured on the Canada runner, 2026-10-10: 1 photo took 12 minutes, 15 photos took 26. About ten minutes of fixed work plus one per photo.
+const eta = (photos: number) => `about ${10 + photos} minutes`
 
 // DESIGN.md: everything interactive is a pill; black is the one primary action, grey is available.
 const big = 'flex h-12 w-full items-center justify-center rounded-pill px-5 text-[14px] font-medium transition-colors disabled:opacity-45'
@@ -155,7 +157,7 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
       if (!result.ok) { setSaid({ text: result.error.message, tone: 'error', stale: false }); return }
       setJobs(result.data)
       setNow(new Date())
-      setSaid({ text: `Sent ${plural(uploaded, 'photo')} to Claude. Finished images appear in the Console, usually in 10 to 15 minutes.`, tone: 'info', stale: false })
+      setSaid({ text: `Sent ${plural(uploaded, 'photo')} to Claude. Finished images appear in the Console in ${eta(uploaded)}.`, tone: 'info', stale: false })
       for (const p of photos) URL.revokeObjectURL(p.previewUrl)
       setJob(null); setPhotos([]); setUploaded(0); setLabel(defaultJobLabel(new Date()))
     } catch (cause) {
@@ -278,7 +280,7 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
                   : <button type="button" disabled={busy} onClick={() => resume(j)} className={small}>Continue</button>)}
               </div>
               {j.kind === 'redo' && j.instructions && <p className="mt-1.5 text-[12px] text-ink-soft">“{j.instructions}”</p>}
-              {j.status === 'running' && <p className="mt-1.5 text-[12px] text-ink-soft">Claude is matching, rendering and checking. Usually 10 to 15 minutes, then the images appear in the Console.</p>}
+              {j.status === 'running' && <p className="mt-1.5 text-[12px] text-ink-soft">Claude is matching, rendering and checking. {plural(j.photoCount, 'photo')} take{j.photoCount === 1 ? 's' : ''} {eta(j.photoCount)}, then the images appear in the Console.</p>}
               {j.status === 'queued' && (queueIsStale(j.queuedAt, now)
                 ? <p className="mt-1.5 text-[12px] text-amber">Nothing has picked this up yet.</p>
                 : <p className="mt-1.5 text-[12px] text-ink-soft">Waiting for Claude, usually under a minute.</p>)}
