@@ -112,7 +112,8 @@ with carrier and number and Shopify notifies the customer. It is the only place 
 **Print slips** (`/dispatch/print`, D146) comes before it: every open paid order without a slip yet, marked
 HOLD / CLUB / PACK by the packing-list rules (`src/lib/slips/plan.ts`, the same rules as the owner's Mac
 `packlist`), printed from the browser in one click; the click records the batch and marks the PACK and CLUB
-orders In progress in Shopify (`fulfillmentOrderReportProgress`). The second place Loupe writes to orders.
+orders In progress in Shopify (`fulfillmentOrderReportProgress`). The second place Loupe writes to orders. Needs
+`read_customers` (added 2026-10-10) for the customer-account identity key.
 
 **Home** (`/home` on `qimati-eng.site`, D137) shows a health light per service (Loupe, Packaging,
 LinkedIn, the bot's n8n workflows, DTDC reachability, Supabase, Shopify), five numbers (orders today,

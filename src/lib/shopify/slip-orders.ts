@@ -8,9 +8,9 @@ export const OPEN_QUERY = 'status:open (fulfillment_status:unfulfilled OR fulfil
 const MAX_PAGES = 20
 const LINE = 'title variantTitle sku quantity unfulfilledQuantity requiresShipping image { url(transform: {maxWidth: 96, maxHeight: 96}) }'
 const ADDRESS = 'name phone address1 address2 city provinceCode zip country'
-// No `customer { … }` block: the Loupe app has no read_customers scope (checked 2026-10-10), so the "customer account" key of
-// the rules is not available here. Measured on that day's open orders: no verdict changed without it (D146).
+// `customer { … }` needs read_customers, which the owner added to the Loupe app on 2026-10-10 (D146).
 const ORDER = `id name createdAt cancelledAt note tags email phone displayFinancialStatus displayFulfillmentStatus currentTotalPriceSet { shopMoney { amount } }
+  customer { id displayName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } }
   shippingAddress { ${ADDRESS} } billingAddress { ${ADDRESS} }
   fulfillmentOrders(first: 10) { nodes { id status fulfillmentHolds { reason reasonNotes } } }
   lineItems(first: 100) { pageInfo { hasNextPage endCursor } nodes { ${LINE} } }`
@@ -20,6 +20,7 @@ interface RawLines { pageInfo: { hasNextPage: boolean; endCursor: string | null 
 interface RawOrder {
   id: string; name: string; createdAt: string; cancelledAt: string | null; note: string | null; tags: string[]; email: string | null; phone: string | null
   displayFinancialStatus: string; displayFulfillmentStatus: string; currentTotalPriceSet: { shopMoney: { amount: string } }
+  customer: { id: string; displayName: string | null; defaultEmailAddress: { emailAddress: string | null } | null; defaultPhoneNumber: { phoneNumber: string | null } | null } | null
   shippingAddress: SlipAddress | null; billingAddress: SlipAddress | null
   fulfillmentOrders: { nodes: { id: string; status: string; fulfillmentHolds: { reason: string; reasonNotes: string | null }[] | null }[] }
   lineItems: RawLines
@@ -31,7 +32,7 @@ function toOrder(raw: RawOrder, lines: RawLine[]): SlipOrder {
   return {
     id: raw.id, name: raw.name, createdAt: raw.createdAt, note: raw.note, tags: raw.tags ?? [], email: raw.email, phone: raw.phone,
     financialStatus: raw.displayFinancialStatus, fulfillmentStatus: raw.displayFulfillmentStatus, total: Number(raw.currentTotalPriceSet?.shopMoney?.amount ?? 0),
-    customer: null,
+    customer: raw.customer ? { id: raw.customer.id, displayName: raw.customer.displayName, email: raw.customer.defaultEmailAddress?.emailAddress ?? null, phone: raw.customer.defaultPhoneNumber?.phoneNumber ?? null } : null,
     shippingAddress: raw.shippingAddress, billingAddress: raw.billingAddress,
     fulfillmentOrders: raw.fulfillmentOrders.nodes.map(fulfillmentOrder), lines: lines.map(line),
   }
@@ -92,6 +93,6 @@ export async function reportProgress(client: ShopifyClient, fulfillmentOrderId: 
 }
 export function slipShopifyError(error: unknown): string {
   const message = error instanceof Error ? error.message : 'Shopify did not answer.'
-  if (/access denied|fulfillment_orders|permission|access scope/i.test(message)) return 'Loupe cannot read orders or mark them In progress. In the Shopify Dev Dashboard check that the Loupe app has read_ and write_merchant_managed_fulfillment_orders, then reload.'
+  if (/access denied|fulfillment_orders|permission|access scope/i.test(message)) return 'Loupe cannot read orders or mark them In progress. In the Shopify Dev Dashboard check that the Loupe app has read_customers, read_ and write_merchant_managed_fulfillment_orders, then restart Loupe and reload.'
   return message
 }

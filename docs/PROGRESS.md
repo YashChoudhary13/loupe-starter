@@ -44,7 +44,7 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 **Verified:**
 - Live, read-only: `fulfillmentOrderReportProgress(id: ID!, progressReport: FulfillmentOrderReportProgressInput{reasonNotes})` exists on the store's 2026-07 schema and the installation holds `write_merchant_managed_fulfillment_orders`.
 - Live, read-only parity: Loupe's `listOpenOrders` + `plan` over the real open orders (58 open, 45 rows from Qimati6098) versus the Mac `packlist 6098` on the same minute: 45 of 45 rows identical in mark, detail, flags, customer, city and units.
-- The Loupe app lacks `read_customers` (Shopify: "Access denied for customer field"), so the `customer { … }` block was removed from the query. Measured with the Mac rules over the same 58 orders with the customer field blanked: 0 of 55 verdicts changed (only the "how matched" word list).
+- The Loupe app lacked `read_customers` (Shopify: "Access denied for customer field"); measured with the Mac rules over the same 58 orders with the customer field blanked: 0 of 55 verdicts changed (only the "how matched" word list). The owner added the scope the same afternoon (installation now 29 scopes, `read_customers` and `write_customers` present); the `customer { … }` block is back in the query and the live parity re-run matched 45 of 45 rows including the "how matched" lists.
 - `npm run typecheck`, `npm run lint` clean; `vitest` 9 files, 60 tests passed (the five new files plus the Dispatch, shell and faces render tests); `npm run build` succeeded with `/dispatch/print`, `/api/slips` and `/api/slips/[batch]` listed.
 
 **Not finished / known broken:**
@@ -52,7 +52,7 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - No one-tap "Mark In progress" for an order released from hold; Dispatch still asks for it by hand.
 - The page re-reads every open order on each load (about 2–3 s for 58 orders).
 
-**Surprises:** the Loupe app has no `read_customers` scope although the Hub app does; the "customer account" identity key is therefore Mac-only, with no measured effect today. `Response.redirect(new URL(..., request.url))` would redirect to the nginx bind address, so the routes answer with relative `Location` headers.
+**Surprises:** the Loupe app had no `read_customers` scope although the Hub app does (fixed by the owner the same day; `write_customers` came with it and is unused). `Response.redirect(new URL(..., request.url))` would redirect to the nginx bind address, so the routes answer with relative `Location` headers.
 
 **Next session should start with:** the owner runs `npm run db:push`, merges `claude/slips`, opens `ship.qimati-eng.site/dispatch/print`, types the first order number not yet printed by hand into **Print from Qimati**, and prints; then checks one PACK order in Shopify shows In progress and that Dispatch lists it.
 

@@ -19,7 +19,7 @@
 
 ## Rules
 
-Identical to `~/.claude/skills/qimati-packing-list/packing_list.py` on the Mac; `tests/slips-plan.test.ts` carries its selftest cases. One difference: the Loupe app has no `read_customers` scope, so the rules' "customer account" key (Shopify customer id, default email, default phone) is not read. Measured on the live open orders on 2026-10-10 (58 open, 55 paid): no verdict changed without it, only the "how matched" explanation lost a word. Adding the scope and the `customer { … }` block back restores it.
+Identical to `~/.claude/skills/qimati-packing-list/packing_list.py` on the Mac; `tests/slips-plan.test.ts` carries its selftest cases. The rules' "customer account" key (Shopify customer id, default email, default phone) needs `read_customers`, which the Loupe app lacked until the owner added it on 2026-10-10; with it, Loupe's rows over the live open orders matched the Mac's 45 of 45, including the "how matched" lists.
 
 ## Not built
 

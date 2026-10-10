@@ -6,6 +6,7 @@ const client = (graphql: ReturnType<typeof vi.fn>) => ({ graphql }) as unknown a
 const raw = (n: number, changes: Record<string, unknown> = {}, lines: unknown[] = [{ title: 'Ring', variantTitle: null, sku: 'RS1', quantity: 1, unfulfilledQuantity: 1, requiresShipping: true, image: { url: 'https://cdn/x.jpg' } }], more: string | null = null) => ({
   id: `gid://shopify/Order/${n}`, name: `Qimati${n}`, createdAt: '2026-10-10T05:00:00Z', cancelledAt: null, note: null, tags: ['x'], email: null, phone: null,
   displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', currentTotalPriceSet: { shopMoney: { amount: '150.0' } },
+  customer: { id: 'gid://shopify/Customer/1', displayName: 'R', defaultEmailAddress: { emailAddress: 'r@x.in' }, defaultPhoneNumber: null },
   shippingAddress: null, billingAddress: null,
   fulfillmentOrders: { nodes: [{ id: `fo${n}`, status: 'ON_HOLD', fulfillmentHolds: [{ reason: 'AWAITING_PAYMENT', reasonNotes: null }, { reason: 'OTHER', reasonNotes: 'wants pink' }] }] },
   lineItems: { pageInfo: { hasNextPage: !!more, endCursor: more }, nodes: lines }, ...changes,
@@ -24,8 +25,8 @@ describe('listOpenOrders', () => {
     expect(orders[1].lines.map(line => line.sku)).toEqual(['A', 'B'])
     expect(graphql.mock.calls[2][1]).toEqual({ id: 'gid://shopify/Order/4', after: 'l1' })
     expect(graphql.mock.calls[0][1].query).toContain('fulfillment_status:on_hold')
-    expect(orders[0]).toMatchObject({ total: 150, customer: null, fulfillmentOrders: [{ id: 'fo1', status: 'ON_HOLD', holdReasons: ['awaiting payment', 'wants pink'] }], lines: [{ imageUrl: 'https://cdn/x.jpg' }] })
-    expect(graphql.mock.calls.every(([query]) => !query.includes('mutation') && !query.includes('customer {'))).toBe(true)
+    expect(orders[0]).toMatchObject({ total: 150, customer: { id: 'gid://shopify/Customer/1', displayName: 'R', email: 'r@x.in', phone: null }, fulfillmentOrders: [{ id: 'fo1', status: 'ON_HOLD', holdReasons: ['awaiting payment', 'wants pink'] }], lines: [{ imageUrl: 'https://cdn/x.jpg' }] })
+    expect(graphql.mock.calls.every(([query]) => !query.includes('mutation'))).toBe(true)
   })
   it('says so when the page cap is hit', async () => {
     const graphql = vi.fn().mockResolvedValue(page([raw(1)], 'more'))
