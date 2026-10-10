@@ -28,6 +28,29 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ```
 
 ---
+## 2026-10-10 — Re-enhance: a delivered image goes back to Claude with a note (D145)
+
+**Goal this session:** bring back the per-image rerun, with Claude behind it, as a redo job whose render replaces the old image in place.
+
+**Built:**
+- `supabase/migrations/20261010120000_reenhance.sql` → `agent_jobs.kind|instructions|redo_of_intake_id`, `intake_files.agent_source_photo_id|reenhance_job_id|reenhance_note`, `agent_job_photos.storage_key` unique → index; RPCs `request_reenhance`, `replace_intake_image_from_agent`; `agent_job_finish` and `agent_job_claim` replaced in place (same signatures; finish releases the mark, claim returns kind/instructions/redo_of).
+- `src/lib/agent-jobs/label.ts` → `redoJobLabel`, `JobKind`. `src/lib/agent-jobs/server.ts` → `JobSummary.kind|instructions|redoOf`, `ClaimedJob.kind|instructions|redo_of`, `photos[].replaces`, `requestReenhance`.
+- `src/lib/agent-intake/suggest.ts` → `parseSourceFilename`, `parseReplaces`. `src/lib/agent-intake/server.ts` → `sourceFilename` resolution on ingest (`agent_source_photo_id`), `replaceAgentImage`. `src/app/api/agent/images/route.ts` → `source_filename`, `replaces` fields; `{replaced, version_no}` in the answer.
+- Console: `types.ts` AgentMarks `reenhanceJobId|reenhanceNote`; `queue.ts` selects them; `DraftEditor.tsx` "Re-enhance" chip + inline note + "re-enhancing…" chip; `ConsoleScreen.tsx` `handleReenhance`; `console/actions.ts` `requestReenhanceAction(draftId, intakeFileId, note)`; `live/types.ts` refreshes on `intake.reenhance_requested` and `intake.agent_replaced`; `EnhanceScreen.tsx` redo badge + note.
+- Tests: `tests/api/agent-images.test.ts` (+3), `tests/api/agent-jobs.test.ts` (+2), fixture in `tests/console-queue-view.test.ts`.
+- Docs: D145; CLAUDE.md "Image enhancement" paragraph.
+
+**Verified:** `npm run typecheck` clean; `npm run lint` clean; `npx vitest run tests/api tests/console-queue-view.test.ts` — see the commit message for the counts.
+
+**Not finished / known broken:**
+- Nothing deployed: `db:push` the migration, push `main`, then the Canada runner script, prompt and `loupe_push.py` must learn `job.json`'s `kind`/`instructions`/`redo_of` and send `replaces` / `source_filename` (outside this repo's build).
+- No Pending-tile menu: Re-enhance lives on the draft editor's photo row only.
+- A delivery without `source_filename` redoes from the delivered image itself, not the supplier photo.
+
+**Surprises:** `image_versions.kind='generated'` requires `prompt_text` and `model`; the agent's note and `claude-agent` fill them.
+
+**Next session should start with:** `npm run db:push`, push, update the runner on Canada, then one real Re-enhance on a draft and a screenshot of the chip clearing when the replacement lands.
+
 
 ## 2026-10-10 — Loupe stops enhancing: Drive inbox and in-app AI pipeline retired (D144)
 

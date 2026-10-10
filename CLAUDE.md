@@ -317,6 +317,8 @@ skill: per-piece prompt, restock match, live stock read, review against the owne
 delivered through D142/D143. `OPENROUTER_API_KEY` remains only for the Home assistant's chat
 model (D137).
 
+**Re-enhance (D145):** on a draft's photograph row, **Re-enhance** takes a note ("stones look dull") and queues a `redo` Enhance job carrying the supplier photograph the delivery came from (or the image as it is) and the note; the runner renders once and delivers with `replaces=<intake id>`, and `replace_intake_image_from_agent` appends the new version, selects it and repoints every draft that showed the old one. The row shows "re-enhancing…" until then.
+
 What stays true:
 
 - `image_versions` still records `model` and `prompt_text` on every generated row, so any
