@@ -266,7 +266,7 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
               <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0 truncate text-[13px] font-medium">
                   {j.label}
-                  {j.kind === 'redo' && <span className="ml-2 rounded-pill bg-chip px-2 py-0.5 text-[10px] font-normal text-muted-foreground">redo</span>}
+                  {j.kind !== 'batch' && <span className="ml-2 rounded-pill bg-chip px-2 py-0.5 text-[10px] font-normal text-muted-foreground">{j.kind === 'redo' ? 'redo' : 'from Restock'}</span>}
                 </span>
                 <Status job={j} now={now} />
               </div>
@@ -280,7 +280,7 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
                   ? <span className="text-[11.5px]">open above</span>
                   : <button type="button" disabled={busy} onClick={() => resume(j)} className={small}>Continue</button>)}
               </div>
-              {j.kind === 'redo' && j.instructions && <p className="mt-1.5 text-[12px] text-ink-soft">“{j.instructions}”</p>}
+              {j.kind !== 'batch' && j.instructions && <p className="mt-1.5 text-[12px] text-ink-soft">“{j.instructions}”</p>}
               {j.status === 'running' && <p className="mt-1.5 text-[12px] text-ink-soft">Claude is matching, rendering and checking. {plural(j.photoCount, 'photo')} take{j.photoCount === 1 ? 's' : ''} {eta(j.photoCount)}, then the images appear in the Console.</p>}
               {j.status === 'queued' && (queueIsStale(j.queuedAt, now)
                 ? <p className="mt-1.5 text-[12px] text-amber">Nothing has picked this up yet.</p>

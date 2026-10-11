@@ -34,6 +34,13 @@ export interface AgentImageInput {
   readonly batch: string | null
   /** D145: the supplier photograph (by filename inside the batch) this render came from. */
   readonly sourceFilename: string | null
+  /** D148: the supplier photograph by id, when the caller already holds it. */
+  readonly sourcePhotoId?: string | null
+  /**
+   * D148: mixed into the duplicate key. An old listing image reused for a restock is the same file
+   * every time that piece restocks, so the key is the file plus the phone photograph it answers.
+   */
+  readonly dedupeSalt?: string
 }
 
 export interface AgentImageResult {
@@ -59,7 +66,7 @@ async function findDuplicate(sha256: string): Promise<AgentImageResult | null> {
 }
 
 /** D145: the job photo named by `source_filename` in the batch (job label), or null when there is none. */
-async function findSourcePhoto(batch: string | null, sourceFilename: string | null): Promise<string | null> {
+export async function findSourcePhoto(batch: string | null, sourceFilename: string | null): Promise<string | null> {
   if (!batch || !sourceFilename) return null
   const db = supabaseServer()
   const { data: job } = await db.from('agent_jobs').select('id').eq('label', batch).maybeSingle<{ id: string }>()
@@ -78,7 +85,7 @@ function parsed(data: unknown): AgentImageResult {
 export async function ingestAgentImage(input: AgentImageInput): Promise<AgentImageResult> {
   if (input.bytes.byteLength === 0) throw new ConsoleError('The file is empty.', null, false)
   if (input.bytes.byteLength > AGENT_IMAGE_MAX_BYTES) throw new ConsoleError('The file is larger than 25 MB.', null, false)
-  const sha256 = createHash('sha256').update(input.bytes).digest('hex')
+  const sha256 = createHash('sha256').update(input.bytes).update(input.dedupeSalt ?? '').digest('hex')
   const db = supabaseServer()
   const existing = await findDuplicate(sha256)
   if (existing) return existing
@@ -116,7 +123,7 @@ export async function ingestAgentImage(input: AgentImageInput): Promise<AgentIma
   })
   if (error) throw new ConsoleError('The image is safely uploaded, but it could not be added to Pending.', error.message, true)
   const result = parsed(data)
-  const sourcePhotoId = await findSourcePhoto(input.batch, input.sourceFilename)
+  const sourcePhotoId = input.sourcePhotoId ?? await findSourcePhoto(input.batch, input.sourceFilename)
   if (sourcePhotoId && !result.duplicate) {
     // ponytail: one extra update instead of a wider finalise signature; a miss here only loses the redo shortcut.
     await db.from('intake_files').update({ agent_source_photo_id: sourcePhotoId }).eq('id', result.intakeId)
@@ -186,23 +193,40 @@ export interface AgentBatchRow {
   readonly status: string
   readonly draft_id: string | null
   readonly created_at: string
+  /** D148: the product this image went into, once its draft has an identity; `published` when it is live. */
+  readonly sku: string | null
+  readonly handle: string | null
+  readonly published: boolean
 }
 
 export async function listAgentBatch(batch: string): Promise<readonly AgentBatchRow[]> {
-  const { data, error } = await supabaseServer()
+  const db = supabaseServer()
+  const { data, error } = await db
     .from('intake_files')
     .select('id, filename, agent_tag, agent_note, restock_sku, status, product_draft_id, discovered_at')
     .eq('agent_batch', batch)
     .order('discovered_at', { ascending: true })
     .limit(500)
   if (error) throw new ConsoleError('The batch could not be listed.', error.message, true)
-  return ((data ?? []) as {
+  const rows = (data ?? []) as {
     id: string; filename: string; agent_tag: AgentTag | null; agent_note: string | null
     restock_sku: string | null; status: string; product_draft_id: string | null; discovered_at: string
-  }[]).map((r) => ({
-    intake_id: r.id, filename: r.filename, tag: r.agent_tag, note: r.agent_note, restock_sku: r.restock_sku,
-    status: r.status, draft_id: r.product_draft_id, created_at: r.discovered_at,
-  }))
+  }[]
+  // A second plain read instead of an embed: intake_files reaches product_drafts by two routes.
+  const draftIds = [...new Set(rows.flatMap((r) => (r.product_draft_id ? [r.product_draft_id] : [])))]
+  const { data: draftRows, error: draftError } = draftIds.length
+    ? await db.from('product_drafts').select('id, reserved_sku, reserved_handle, published_at').in('id', draftIds)
+    : { data: [], error: null }
+  if (draftError) throw new ConsoleError('The batch could not be listed.', draftError.message, true)
+  const drafts = new Map(((draftRows ?? []) as { id: string; reserved_sku: string | null; reserved_handle: string | null; published_at: string | null }[]).map((d) => [d.id, d]))
+  return rows.map((r) => {
+    const draft = r.product_draft_id ? drafts.get(r.product_draft_id) : undefined
+    return {
+      intake_id: r.id, filename: r.filename, tag: r.agent_tag, note: r.agent_note, restock_sku: r.restock_sku,
+      status: r.status, draft_id: r.product_draft_id, created_at: r.discovered_at,
+      sku: draft?.reserved_sku ?? null, handle: draft?.reserved_handle ?? null, published: Boolean(draft?.published_at),
+    }
+  })
 }
 
 /** The operator's click: this draft replaces `sku`, archive it on publish (or withdraw that). */

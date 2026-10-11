@@ -28,6 +28,7 @@ function tile(
     agentSuggest: null,
     reenhanceJobId: null,
     reenhanceNote: null,
+    hasPhonePhoto: false,
     reservedSku: null,
   }
 }

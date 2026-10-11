@@ -3,27 +3,41 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
+  decideRestockCandidateAction,
   newSkuFromRestockAction,
   refreshRestockAction,
+  refreshRestockCandidatesAction,
   reopenIdentificationAction,
   restockExistingAction,
   saveReferenceOnlyAction,
 } from '@/app/(shell)/restock/actions'
 import { Notice } from '@/components/console/primitives'
+import type { RestockCandidateItem, RestockDecision } from '@/lib/agent-intake/restock'
 import { LIVE_ACTIVITY_EVENT, shouldRefreshIdentify, type LiveActivityUpdate } from '@/lib/live/types'
 import type { RestockItem, RestockSnapshot } from '@/lib/match/restock-read-model'
 import type { ProductStock } from '@/lib/shopify/inventory'
 import { cn } from '@/lib/utils'
 
+import { RestockCandidateCard } from './RestockCandidates'
+
 /**
- * Restock (D112). A photograph arrives here only after an operator said in
- * Identify that it shows an existing SKU. The operator confirms once more, then
+ * Restock. First what Claude believes is a restock (D148): the phone photograph beside
+ * the old listing, and three choices. Below that, D112: a photograph an operator said in
+ * Identify shows an existing SKU. The operator confirms once more, then
  * chooses: set the stock on the existing product, or make a new SKU and archive
  * the old one at publish. Nothing here happens without a click.
  */
 
-export function RestockScreen({ initialSnapshot }: { initialSnapshot: RestockSnapshot }) {
+const DECIDED: Record<RestockDecision, (sku: string | null) => string> = {
+  use_old: (sku) => `The old image of ${sku} is in Pending, tagged Restock.`,
+  generate: (sku) => `Sent to Claude: a new image of ${sku} lands in Pending in a few minutes.`,
+  wrong: () => 'Sent to Claude as a new piece: its image lands in Pending in a few minutes.',
+}
+
+export function RestockScreen({ initialSnapshot, initialCandidates }: { initialSnapshot: RestockSnapshot; initialCandidates: readonly RestockCandidateItem[] }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
+  const [candidates, setCandidates] = useState(initialCandidates)
+  const [done, setDone] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ title: string; detail: string | null } | null>(null)
   const inFlight = useRef(false)
@@ -43,6 +57,10 @@ export function RestockScreen({ initialSnapshot }: { initialSnapshot: RestockSna
     const onLive = (event: Event) => {
       const update = (event as CustomEvent<LiveActivityUpdate>).detail
       if (update?.snapshot && shouldRefreshIdentify(update.snapshot.events)) void refresh()
+      // Posted by Claude, or decided in another tab.
+      if (update?.snapshot?.events.some((e) => e.event.startsWith('restock.candidate_'))) {
+        void refreshRestockCandidatesAction().then((result) => { if (result.ok) setCandidates(result.data) })
+      }
     }
     window.addEventListener(LIVE_ACTIVITY_EVENT, onLive)
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLive)
@@ -60,20 +78,40 @@ export function RestockScreen({ initialSnapshot }: { initialSnapshot: RestockSna
     }
   }, [])
 
+  const decide = useCallback(async (item: RestockCandidateItem, choice: RestockDecision, sku: string | null) => {
+    setBusy(item.photoId)
+    setNotice(null)
+    setDone(null)
+    try {
+      const result = await decideRestockCandidateAction({ photoId: item.photoId, choice, sku })
+      if (result.ok) {
+        setCandidates(result.data)
+        setDone(DECIDED[choice](sku))
+      } else setNotice({ title: result.error, detail: result.detail })
+    } finally {
+      setBusy(null)
+    }
+  }, [])
+
   return (
     <main className="loupe-scroll flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto pr-1">
       <div>
         <h1 className="text-[26px] font-medium tracking-[-0.025em]">Restock</h1>
         <div className="text-[12px] text-muted-foreground">
-          Photographs confirmed as existing products. Set the stock, make a new SKU, or just save the photo as a reference to its SKU.
+          Pieces Claude or Identify matched to a product you already sell. Nothing here reaches Pending until you choose.
         </div>
       </div>
 
       {notice ? <Notice tone="attention" title={notice.title} detail={notice.detail} /> : null}
+      {done ? <Notice tone="plain" title={done} /> : null}
 
-      {snapshot.items.length === 0 ? (
+      {candidates.map((item) => (
+        <RestockCandidateCard key={item.photoId} item={item} busy={busy === item.photoId} onDecide={(choice, sku) => void decide(item, choice, sku)} />
+      ))}
+
+      {snapshot.items.length === 0 && candidates.length === 0 ? (
         <div className="rounded-panel bg-surface px-5 py-8 text-center text-[12.5px] text-muted-foreground">
-          Nothing to restock. A photograph lands here when Identify marks it as a restock.
+          Nothing to restock. A photograph lands here when Claude or Identify marks it as a restock.
         </div>
       ) : null}
 

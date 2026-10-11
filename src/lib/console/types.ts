@@ -47,6 +47,8 @@ export interface AgentSuggest {
   readonly onHand: number | null
   /** True when the old listing is sold out and should be archived once this one is live. */
   readonly archiveOld: boolean
+  /** D148: other sold-out SKUs of the same design; publish archives them after the one this draft supersedes. */
+  readonly alsoArchive: readonly string[]
 }
 
 /** D142: the agent's annotations on an intake row; all null for a Drive or operator upload. */
@@ -58,6 +60,8 @@ export interface AgentMarks {
   /** D145: set while a redo job for this image is queued or running; the note is what the operator asked for. */
   readonly reenhanceJobId: string | null
   readonly reenhanceNote: string | null
+  /** D148: Loupe holds the phone photograph this image was rendered from; `orig` shows it. */
+  readonly hasPhonePhoto: boolean
 }
 
 export interface PhotoSummary extends AgentMarks {

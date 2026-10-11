@@ -16,14 +16,22 @@ export function defaultJobLabel(now: Date): string {
 
 export class JobInputError extends Error {}
 
-export const JOB_KINDS = ['batch', 'redo'] as const
+/** D148: `render` is one photograph an operator sent on from the Restock section. */
+export const JOB_KINDS = ['batch', 'redo', 'render'] as const
 export type JobKind = (typeof JOB_KINDS)[number]
 
-/** D145: `redo 2026-10-10 14.30 necklace-tulip` — the stem of the image's filename, cut to fit the 80-character label. */
-export function redoJobLabel(filename: string, now: Date): string {
-  const stem = filename.replace(/\.[^.]+$/u, '').replace(/[\u0000-\u001f\u007f/\\]/gu, ' ').trim() || 'image'
-  return `redo ${defaultJobLabel(now)} ${stem}`.slice(0, LABEL_MAX).trim()
+export function parseJobKind(raw: unknown): JobKind {
+  return (JOB_KINDS as readonly unknown[]).includes(raw) ? (raw as JobKind) : 'batch'
 }
+
+/** `redo 2026-10-10 14.30 necklace-tulip` — the stem of the image's filename, cut to fit the 80-character label. */
+export function jobLabel(prefix: string, filename: string, now: Date): string {
+  const stem = filename.replace(/\.[^.]+$/u, '').replace(/[\u0000-\u001f\u007f/\\]/gu, ' ').trim() || 'image'
+  return `${prefix} ${defaultJobLabel(now)} ${stem}`.slice(0, LABEL_MAX).trim()
+}
+
+/** D145. */
+export const redoJobLabel = (filename: string, now: Date): string => jobLabel('redo', filename, now)
 
 export function parseJobLabel(raw: unknown): string {
   const label = typeof raw === 'string' ? raw.trim() : ''

@@ -1,5 +1,6 @@
 'use server'
 
+import { decideRestockCandidate, loadRestockCandidates, type RestockCandidateItem, type RestockDecision } from '@/lib/agent-intake/restock'
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
 import { ConsoleError } from '@/lib/console/mutations'
 import { newSkuFromRestock, reopenIdentification, restockExisting, saveReferenceOnly, type RestockQuantity } from '@/lib/match/restock-actions'
@@ -61,5 +62,23 @@ export async function reopenIdentificationAction(input: { readonly intakeFileId:
   return withOperator(async (operator) => {
     await reopenIdentification(operator, input.intakeFileId)
     return loadRestockQueue()
+  })
+}
+
+/** D148: the candidates Claude posted, still waiting for a choice. */
+export async function refreshRestockCandidatesAction(): Promise<RestockActionResult<readonly RestockCandidateItem[]>> {
+  return withOperator(() => loadRestockCandidates())
+}
+
+/** D148: use the old image, generate a new one, or wrong restock. The list comes back without the photograph. */
+export async function decideRestockCandidateAction(input: {
+  readonly photoId: string
+  readonly choice: RestockDecision
+  readonly sku: string | null
+}): Promise<RestockActionResult<readonly RestockCandidateItem[]>> {
+  return withOperator(async (operator) => {
+    if (input.choice !== 'use_old' && input.choice !== 'generate' && input.choice !== 'wrong') throw new ConsoleError('Unknown choice.', null, false)
+    await decideRestockCandidate(operator, { photoId: String(input.photoId), choice: input.choice, sku: typeof input.sku === 'string' ? input.sku : null })
+    return loadRestockCandidates()
   })
 }

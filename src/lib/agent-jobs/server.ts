@@ -7,7 +7,7 @@ import { consoleObjectStore } from '@/lib/console/images'
 import { ConsoleError } from '@/lib/console/mutations'
 import { supabaseServer } from '@/lib/supabase/server'
 
-import { parseJobLabel, redoJobLabel, type JobKind, type JobStatus } from './label'
+import { parseJobKind, parseJobLabel, redoJobLabel, type JobKind, type JobStatus } from './label'
 
 /**
  * D143: Enhance jobs. Operator side: a job collects phone photographs under
@@ -52,7 +52,7 @@ function summary(r: JobRow): JobSummary {
   return {
     id: r.id, label: r.label, status: r.status, createdAt: r.created_at, queuedAt: r.queued_at, startedAt: r.started_at,
     finishedAt: r.finished_at, runner: r.runner, note: r.note, error: r.error, photoCount: r.photo_count, resultCount: r.result_count,
-    kind: r.kind === 'redo' ? 'redo' : 'batch', instructions: r.instructions ?? null, redoOf: r.redo_of_intake_id ?? null,
+    kind: parseJobKind(r.kind), instructions: r.instructions ?? null, redoOf: r.redo_of_intake_id ?? null,
   }
 }
 
@@ -130,6 +130,8 @@ export interface ClaimedJob {
   readonly kind: JobKind
   readonly instructions: string | null
   readonly redo_of: string | null
+  /** D148: a `render` job of an approved restock names the old product; null when it is a new piece. */
+  readonly restock: unknown
   readonly photos: readonly { id: string; filename: string; url: string; replaces: string | null }[]
 }
 
@@ -139,8 +141,10 @@ export async function claimJob(runner: string, leaseSeconds: number): Promise<Cl
   if (error) throw rpcError('No job could be claimed.', error)
   const job = data as { id: string; label: string; photo_count: number; kind?: string | null; instructions?: string | null; redo_of?: string | null } | null
   if (!job) return null
-  const kind: JobKind = job.kind === 'redo' ? 'redo' : 'batch'
+  const kind = parseJobKind(job.kind)
   const redoOf = kind === 'redo' ? job.redo_of ?? null : null
+  // ponytail: one extra read for a render job instead of a third version of agent_job_claim.
+  const { data: extra } = kind === 'render' ? await db.from('agent_jobs').select('restock').eq('id', job.id).maybeSingle<{ restock: unknown }>() : { data: null }
   const { data: photos, error: photosError } = await db.from('agent_job_photos')
     .select('id, filename, storage_key').eq('job_id', job.id).eq('status', 'uploaded').order('created_at', { ascending: true })
   if (photosError) throw new ConsoleError('The job photos could not be listed.', photosError.message, true)
@@ -148,7 +152,7 @@ export async function claimJob(runner: string, leaseSeconds: number): Promise<Cl
   const signed = await Promise.all(((photos ?? []) as { id: string; filename: string; storage_key: string }[]).map(async (p) => ({
     id: p.id, filename: p.filename, url: await store.presignGet(p.storage_key, GET_TTL_SECONDS), replaces: redoOf,
   })))
-  return { id: job.id, label: job.label, photo_count: job.photo_count, kind, instructions: job.instructions ?? null, redo_of: redoOf, photos: signed }
+  return { id: job.id, label: job.label, photo_count: job.photo_count, kind, instructions: job.instructions ?? null, redo_of: redoOf, restock: extra?.restock ?? null, photos: signed }
 }
 
 /** D145: "Re-enhance" — one redo job, queued at once, with the supplier photograph (or the image as it is) and the note. */

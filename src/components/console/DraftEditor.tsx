@@ -113,6 +113,8 @@ export interface DraftEditorProps {
   readonly onSupersede?: ((sku: string, enable: boolean) => void) | null
   /** D145: send this photograph back to Claude with a note; null when read-only or not yet created. */
   readonly onReenhance?: ((intakeFileId: string, note: string) => void) | null
+  /** D148: the signed phone photograph an agent image was rendered from, fetched on the click. */
+  readonly onPhonePhoto?: ((intakeFileId: string) => Promise<string | null>) | null
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
   /** Opens the complete category + SKU-sequence creation flow. */
@@ -152,6 +154,7 @@ export function DraftEditor(props: DraftEditorProps) {
     supersedesSku = null,
     onSupersede = null,
     onReenhance = null,
+    onPhonePhoto = null,
     onPublish,
     onSaveDraft,
     onDetach,
@@ -168,6 +171,8 @@ export function DraftEditor(props: DraftEditorProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   /** D145: the photograph whose "Re-enhance" note is being typed. */
   const [reenhance, setReenhance] = useState<{ id: string; text: string } | null>(null)
+  /** D148: the phone photograph being looked at through `orig`. */
+  const [phonePhoto, setPhonePhoto] = useState<LightboxImage | null>(null)
   /**
    * Progressive disclosure for the three choice fields. `null` means "follow
    * the flow": an unfilled category opens itself, then material, and a filled
@@ -375,6 +380,7 @@ export function DraftEditor(props: DraftEditorProps) {
         onClose={() => setLightboxIndex(null)}
         onIndexChange={setLightboxIndex}
       />
+      <ImageLightbox images={phonePhoto ? [phonePhoto] : []} index={phonePhoto ? 0 : null} onClose={() => setPhonePhoto(null)} onIndexChange={() => {}} />
 
       <div className="loupe-scroll min-h-0 flex-1 overflow-y-auto pr-1">
         {/* Full review in publish order. The editor scrolls vertically, so a
@@ -509,15 +515,30 @@ export function DraftEditor(props: DraftEditorProps) {
                         selected={version.id === row.image.imageVersionId}
                         disabled={readOnly}
                         title={
-                          version.kind === 'original'
-                            ? 'The photographer’s untouched file'
-                            : `Generated${version.model ? ` · ${version.model}` : ''}`
+                          version.kind !== 'original'
+                            ? `Generated${version.model ? ` · ${version.model}` : ''}`
+                            : row.photo.hasPhonePhoto
+                              ? 'The image Claude delivered'
+                              : 'The photographer’s untouched file'
                         }
                         onClick={() => onChooseVersion(row.image.intakeFileId, version.id)}
                       >
-                        {version.kind === 'original' ? 'orig' : `v${version.versionNo}`}
+                        {version.kind !== 'original' ? `v${version.versionNo}` : row.photo.hasPhonePhoto ? 'render' : 'orig'}
                       </Chip>
                     ))}
+                    {row.photo.hasPhonePhoto && onPhonePhoto ? (
+                      <Chip
+                        ghost
+                        title="The phone photograph this image was made from"
+                        onClick={() => {
+                          void onPhonePhoto(row.image.intakeFileId).then((url) => {
+                            if (url) setPhonePhoto({ url, thumbUrl: null, alt: `Phone photograph behind ${row.photo.filename}`, caption: `${row.photo.filename} · phone photograph` })
+                          })
+                        }}
+                      >
+                        orig
+                      </Chip>
+                    ) : null}
                     {row.photo.descriptionMissing ? (
                       <span
                         className="rounded-pill px-2 py-[7px] text-[10.5px] text-amber"
@@ -699,7 +720,9 @@ export function DraftEditor(props: DraftEditorProps) {
               <Chip disabled={readOnly || busy !== null} onClick={applySuggestion}>Use suggestion</Chip>
               {supersedesSku ? (
                 <>
-                  <span className="text-[11px]">Will archive {supersedesSku} on publish.</span>
+                  <span className="text-[11px]">
+                    Will archive {[supersedesSku, ...(supersedesSku === restockPhoto.restockSku ? restockPhoto.agentSuggest.alsoArchive : [])].join(' and ')} on publish.
+                  </span>
                   {onSupersede ? (
                     <Chip ghost disabled={busy !== null} onClick={() => onSupersede(supersedesSku, false)}>Keep old listing</Chip>
                   ) : null}

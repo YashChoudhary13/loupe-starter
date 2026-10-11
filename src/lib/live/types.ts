@@ -88,6 +88,11 @@ export function shouldRefreshIdentify(events: readonly LiveActivityEvent[]): boo
   return events.some((event) => event.event.startsWith('match.') || event.event === 'intake.discovered')
 }
 
+/** D148: how the Restock badge moves: a candidate Claude posted adds one, an operator's choice removes one. */
+export function restockCandidateDelta(events: readonly LiveActivityEvent[]): number {
+  return events.reduce((n, e) => n + (e.event === 'restock.candidate_posted' ? 1 : e.event === 'restock.candidate_decided' ? -1 : 0), 0)
+}
+
 export function shouldRefreshTracking(events: readonly LiveActivityEvent[]): boolean {
   return events.some(
     (event) =>

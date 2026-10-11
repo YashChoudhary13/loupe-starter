@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 
 import type { Operator } from '@/lib/auth/authorize'
 import { FACE_KEYS, FACES, screenAllowed, type Face } from '@/lib/faces/faces'
-import { LIVE_ACTIVITY_EVENT, type LiveActivityUpdate } from '@/lib/live/types'
+import { LIVE_ACTIVITY_EVENT, restockCandidateDelta, type LiveActivityUpdate } from '@/lib/live/types'
 import { cn } from '@/lib/utils'
 
 import { LiveActivity } from '@/components/live/LiveActivity'
@@ -42,22 +42,34 @@ export function Sidebar({
   operator,
   face,
   initialAttentionCount,
+  initialRestockCount = 0,
   collapsed,
   onToggle,
 }: {
   operator: Operator
   face: Face | null
   initialAttentionCount: number
+  /** D148: restock candidates waiting for a choice. Follows the live events after the first render. */
+  initialRestockCount?: number
   collapsed: boolean
   onToggle: () => void
 }) {
   const pathname = usePathname()
   const [attentionCount, setAttentionCount] = useState(initialAttentionCount)
+  const [restockCount, setRestockCount] = useState(initialRestockCount)
+  const badgeFor = (key: SectionKey) => {
+    const count = key === 'tracking' ? attentionCount : key === 'restock' ? restockCount : 0
+    return count > 0 ? count : null
+  }
 
   useEffect(() => {
     const onLive = (event: Event) => {
       const update = (event as CustomEvent<LiveActivityUpdate>).detail
-      if (update?.snapshot) setAttentionCount(update.snapshot.attention)
+      if (update?.snapshot) {
+        setAttentionCount(update.snapshot.attention)
+        const delta = restockCandidateDelta(update.snapshot.events)
+        if (delta !== 0) setRestockCount((count) => Math.max(0, count + delta))
+      }
     }
     window.addEventListener(LIVE_ACTIVITY_EVENT, onLive)
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLive)
@@ -85,7 +97,7 @@ export function Sidebar({
               collapsed={false}
               compact
               icon={item.icon}
-              badge={item.key === 'tracking' && attentionCount > 0 ? attentionCount : null}
+              badge={badgeFor(item.key)}
             />
           ))}
           {others.map((key) => (
@@ -151,7 +163,7 @@ export function Sidebar({
             active={active === item.key}
             collapsed={collapsed}
             icon={item.icon}
-            badge={item.key === 'tracking' && attentionCount > 0 ? attentionCount : null}
+            badge={badgeFor(item.key)}
           />
         ))}
       </nav>

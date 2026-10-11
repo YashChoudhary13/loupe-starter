@@ -41,11 +41,40 @@ export async function supersedeAfterPublish(
       p_actor: actor,
     })
     if (recordError) throw new Error(`record_supersession: ${recordError.message}`)
-    return { superseded: pending.old_sku }
+    return { superseded: [pending.old_sku, ...(await archiveAlsoSkus(db, shopify, draftId, pending.old_sku, productId))].join(', ') }
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause)
     console.error('supersession after publish failed:', message)
     await db.rpc('fail_restock', { p_decision_id: pending.decision_id, p_error: message, p_actor: actor })
     return { error: message }
   }
+}
+
+/**
+ * D148: the same design is sometimes listed under several SKUs. The restock photograph's suggestion
+ * names the other sold-out ones; they are archived with the one the draft supersedes. Best effort:
+ * the supersession above already happened and is never undone by a failure here.
+ */
+async function archiveAlsoSkus(
+  db: Pick<SupabaseClient, 'rpc'>,
+  shopify: ShopifyClient,
+  draftId: string,
+  sku: string,
+  supersededProductId: string,
+): Promise<string[]> {
+  const { data } = await db.rpc('supersession_also_skus', { p_draft_id: draftId, p_sku: sku })
+  const archived: string[] = []
+  for (const other of Array.isArray(data) ? (data as unknown[]).filter((v): v is string => typeof v === 'string') : []) {
+    try {
+      for (const product of await readProductStockBySku(shopify, other)) {
+        // Only a live, sold-out listing. A draft is never touched, and stock that appeared since the decision is the owner's call.
+        if (product.productId === supersededProductId || product.status !== 'ACTIVE' || product.variants.some((v) => v.quantity > 0)) continue
+        await archiveProduct(shopify, product.productId)
+        archived.push(other)
+      }
+    } catch (cause) {
+      console.error(`archiving ${other} together with ${sku} failed:`, cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+  return archived
 }

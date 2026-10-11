@@ -2,8 +2,9 @@
 
 Runs on the Canada VPS (`vps-f7d37609.vps.ovh.ca`, Ubuntu 26.04). Every 30 seconds it asks Loupe for one
 queued Enhance job, downloads the phone photos, runs Claude Code with the `enhance` skill on them, and reports
-back. The finals arrive in Loupe's Pending grid through `POST /api/agent/images` (D142) with tags and restock
-suggestions. The batch folder stays under `/home/ubuntu/agent-batches/<label>/` with `claude.log` and `SUMMARY.md`.
+back. The finals of new pieces arrive in Loupe's Pending grid through `POST /api/agent/images` (D142). A photo
+judged a restock, or a possible one, is not rendered: it goes to the Restock section through
+`POST /api/agent/restocks` (D148) and the owner picks use old image, generate new image or wrong restock. The batch folder stays under `/home/ubuntu/agent-batches/<label>/` with `claude.log` and `SUMMARY.md`.
 
 ## Install (once)
 
@@ -32,6 +33,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now qimati-agent-runner.
 ## Operate
 
 - A batch is split into parts of up to `PART_SIZE` photos (default 5), at most `MAX_PARTS` (default 3), each worked by its own Claude Code session at the same time in `<label>/part-N/`; the catalogue matcher (`restock.py match part-1 part-2 …`) starts when the job is claimed and writes each part's sheets as it goes (`matcher.log`, `matcher.done`). 6 photos in two parts: 4 min 10 s (2026-10-10); one session doing 15 in sequence had taken 25.
+- Job kinds: `batch` as above; `redo` (D145, one image sent back with a note, the render replaces it in place); `render` (D148, one photo the owner sent on from the Restock section, `restock` in `job.json` naming the old product or null for a new piece). `redo` and `render` run as one session on the job folder, about 4 minutes each, one after another.
+- Same design under several SKUs: the session records `restock.py verdict <folder> <n> old <handle> "<note>" --also <handle> ...`; the push tool reads every named listing live (stock, price, status, image, creation date) and Loupe shows the latest first.
 - Try it without Loupe: `LOCAL_FOLDER=<folder of photos> PUSH_FLAG=--dry /opt/qimati-agent/agent-runner.sh` (nothing claimed, reported or delivered).
 - Logs: `~/agent-batches/runner.log`, per job `~/agent-batches/<label>/claude.log`; `journalctl -u qimati-agent-runner`.
 - One job by hand: `sudo systemctl start qimati-agent-runner.service` (or `ENV_FILE=/etc/qimati-agent/runner.env /opt/qimati-agent/agent-runner.sh`).

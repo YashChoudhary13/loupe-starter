@@ -29,6 +29,40 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-12 — D148: restocks wait for the owner in the Restock section; `orig` shows the phone photograph
+
+**Goal this session:** the owner's rule of 2026-10-12: a restock is never rendered and never reaches Pending without his choice (use old image, generate new image, wrong restock); and `orig` on an image Claude delivered shows the phone photograph.
+
+**Built:**
+- `supabase/migrations/20261012090000_restock_candidates.sql` → `agent_job_photos.restock`, `restock_state`, `restock_decided_by/at`; job kind `render` and `agent_jobs.restock`; `agent_register_photo`, `post_restock_candidate`, `decide_restock_candidate`, `supersession_also_skus`.
+- `src/lib/agent-intake/restock.ts` → register a photograph from outside Loupe, post a candidate (with a 512 px thumbnail), the Restock read model and badge count, the three choices, the signed phone photograph for `orig`.
+- `src/lib/agent-intake/suggest.ts` → `parseRestockPayload`, `restockPayloadFromRow`, `restockChoice` (which other SKUs ride along, what the note says); `also_archive` on the suggestion.
+- `src/app/api/agent/restocks/route.ts`, `src/app/api/agent/photos/route.ts` → the two agent endpoints. `GET /api/agent/images?batch=` rows gain `sku`, `handle`, `published`.
+- `src/components/restock/RestockCandidates.tsx` + `RestockScreen.tsx`, `/restock` page and actions → the cards above the D112 list. `Sidebar.tsx`, `AppShell.tsx`, `(shell)/layout.tsx`, `live/types.ts` → the Restock badge.
+- `src/components/console/DraftEditor.tsx`, `ConsoleScreen.tsx`, `console/actions.ts`, `console/queue.ts` → the `orig` chip for the phone photograph; "Will archive X and Y on publish".
+- `src/lib/match/supersede.ts` → other sold-out SKUs of the same design are archived after the superseded one.
+- `src/lib/agent-jobs/*`, `EnhanceScreen.tsx` → job kind `render`, claimed with its `restock`.
+- `deploy/agent-runner/{run-job.prompt.md,agent-runner.sh,README.md}` → restock check before rendering, only `new` pieces rendered, `render` jobs; `--also` for one design under several SKUs.
+- Outside this repo: the enhance skill's `loupe_push.py` (candidates instead of restock renders, photo registration for chat zips, the `render` route, `--selftest`).
+
+**Verified:**
+- `npx tsx scripts/verify-restock-candidates-local-db.ts` on a throwaway PostgreSQL 17: `12 checks passed` (register into a finished batch, repeat returns the first photograph, an operator's batch refuses outside photographs, post and refresh, the three choices, second choice refused, a later post does not reopen, labels, events, the also-archive read).
+- `npx tsc --noEmit` clean, `npm run lint` clean, `npm run build` succeeds.
+- Every test that needs no database: `92 files, 688 tests passed`, including the new `tests/api/agent-restocks.test.ts` (validator, routes, badge delta) and `tests/agent-restock-decide.test.ts` (use old image ingests once per photograph with the salted key and the extra SKUs; generate and wrong queue a job and fetch nothing; publish archives only live sold-out listings).
+- `python3 -I loupe_push.py --selftest` → `selftest ok`; a dry run on the 2026-10-10 17.08 batch prints `03 old CB164 restock_candidate 1000168208.jpg -> Restock section: CB164 ACTIVE 0 available`; three real candidates read live from Shopify pass `parseRestockPayload` unchanged (1,654 bytes).
+- The section rendered locally with real listing images and mock rows; screenshot handed to the owner.
+
+**Not finished / known broken:**
+- Nothing is deployed. Not exercised live: the three choices end to end, the CDN fetch from the server, a `render` job on the runner, the multi-SKU archive at a real publish.
+- The SQL tests of this repo run against the real project; they were not run for this change (the migration is not applied there). `tests/restock.sql.test.ts` already had one failing case before this session ("new SKU with a new image" expects `discovered`, D144 made it `enhanced`).
+- A HEIC phone photograph has no thumbnail and no preview outside Safari.
+
+**Surprises:** `next dev` (16.3.5) appends an agent-rules block to `CLAUDE.md` and writes `.next/dev/types` that break `tsc` after a page is removed; both were reverted. `/restock` already existed for D112 (Identify's restocks), so the candidates live on the same page above it.
+
+**Next session should start with:** after the owner's rollout, send one real batch with a known restock through `/enhance` and press each of the three buttons once.
+
+---
+
 ## 2026-10-10 — D147: a coloured watch can be drafted
 
 **Goal this session:** find why the console could not draft watches, and make a normal Color choice work on them.

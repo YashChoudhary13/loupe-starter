@@ -76,12 +76,13 @@ describe('suggest validator', () => {
   it('accepts the documented shape and drops what it does not know', () => {
     const parsed = parseAgentSuggest(JSON.stringify({
       price_paise: 12000, material: '316L', title_suffix: '(Adjustable)', variant_kind: 'colour', colours: ['Gold', 'Silver'],
-      old_handle: 'necklace-951', old_status: 'ACTIVE', available: 0, committed: 2, on_hand: 2, archive_old: true, extra: 'ignored',
+      old_handle: 'necklace-951', old_status: 'ACTIVE', available: 0, committed: 2, on_hand: 2, archive_old: true, also_archive: ['NK190'], extra: 'ignored',
     }))
     expect(parsed).toEqual({
       pricePaise: 12000, material: '316L', titleSuffix: '(Adjustable)', variantKind: 'colour', colours: ['Gold', 'Silver'],
-      oldHandle: 'necklace-951', oldStatus: 'ACTIVE', available: 0, committed: 2, onHand: 2, archiveOld: true,
+      oldHandle: 'necklace-951', oldStatus: 'ACTIVE', available: 0, committed: 2, onHand: 2, archiveOld: true, alsoArchive: ['NK190'],
     })
+    expect(() => parseAgentSuggest(JSON.stringify({ also_archive: ['not a sku'] }))).toThrow(/also_archive/)
     expect(parseAgentSuggest(undefined)).toBeNull()
     expect(parseAgentSuggest('')).toBeNull()
   })
@@ -198,15 +199,20 @@ describe('Agent images endpoint', () => {
     expect((await POST(request({ file: file(), tag: 'ready', replaces: 'nope' }))).status).toBe(400)
   })
 
-  it('lists a batch', async () => {
-    mocks.from.mockImplementation(() => ({
-      select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [
-        { id: 'i1', filename: 'a.png', agent_tag: 'ready', agent_note: null, restock_sku: null, status: 'enhanced', product_draft_id: 'd1', discovered_at: '2026-10-10T00:00:00Z' },
-      ], error: null }) }) }) }),
-    }))
+  it('lists a batch, and says which product each image went into (D148)', async () => {
+    const row = (id: string, draft: string | null) => ({ id, filename: `${id}.png`, agent_tag: 'ready', agent_note: null, restock_sku: null, status: 'enhanced', product_draft_id: draft, discovered_at: '2026-10-10T00:00:00Z' })
+    mocks.from.mockImplementation((table: string) => table === 'product_drafts'
+      ? { select: () => ({ in: async () => ({ data: [
+          { id: 'd1', reserved_sku: 'NK1799', reserved_handle: 'necklace-1799', published_at: '2026-10-11T00:00:00Z' },
+          { id: 'd2', reserved_sku: 'NK1800', reserved_handle: 'necklace-1800', published_at: null },
+        ], error: null }) }) }
+      : { select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: [row('i1', 'd1'), row('i2', 'd2'), row('i3', null)], error: null }) }) }) }) })
     const response = await GET(new Request('http://localhost:3000/api/agent/images?batch=2026-10-09', { headers: { authorization: `Bearer ${TOKEN}` } }))
+    const base = { tag: 'ready', note: null, restock_sku: null, status: 'enhanced', created_at: '2026-10-10T00:00:00Z' }
     expect(await response.json()).toEqual({ ok: true, rows: [
-      { intake_id: 'i1', filename: 'a.png', tag: 'ready', note: null, restock_sku: null, status: 'enhanced', draft_id: 'd1', created_at: '2026-10-10T00:00:00Z' },
+      { ...base, intake_id: 'i1', filename: 'i1.png', draft_id: 'd1', sku: 'NK1799', handle: 'necklace-1799', published: true },
+      { ...base, intake_id: 'i2', filename: 'i2.png', draft_id: 'd2', sku: 'NK1800', handle: 'necklace-1800', published: false },
+      { ...base, intake_id: 'i3', filename: 'i3.png', draft_id: null, sku: null, handle: null, published: false },
     ] })
     expect((await GET(new Request('http://localhost:3000/api/agent/images', { headers: { authorization: `Bearer ${TOKEN}` } }))).status).toBe(400)
   })

@@ -3,6 +3,10 @@
 # them with the enhance skill, and reports the result back. One pass per invocation; the systemd timer
 # calls it every 30 seconds. Never deletes a batch folder.
 #
+# Job kinds: batch (phone photos, split into parts), redo (D145: one image sent back with a note) and render
+# (D148: one photo the owner sent on from the Restock section). A restock is never rendered here by itself:
+# the push tool sends it to the Restock section and the owner decides.
+#
 # Since 2026-10-10 a batch is split into parts that parallel Claude sessions work on at once, and the
 # catalogue matcher starts the moment the job is claimed: one session doing 15 photos in sequence took
 # 25 minutes, almost all of it one model reading and writing.
@@ -99,7 +103,7 @@ Push command: python3 -I ~/.claude/skills/enhance/loupe_push.py \"$work\" --batc
 
 set +e
 parts=()
-if [ "$kind" = "redo" ]; then
+if [ "$kind" = "redo" ] || [ "$kind" = "render" ]; then
   parts=("$folder"); run_claude "$folder"; status=$?
 else
   mapfile -t photos < <(find "$folder" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.heic' \) | sort)
@@ -137,7 +141,8 @@ for d in parts:
     if os.path.exists(s):
         lines += [l.strip() for l in open(s) if l.strip().startswith("-")]
 photos = sum(1 for f in os.listdir(root) if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".heic")))
-head = f"{photos} photos, {ok} delivered" + (": " + ", ".join(f"{v} {k.replace('_', ' ')}" for k, v in tags.most_common()) if tags else "")
+names = {"restock_candidate": "waiting in Restock"}
+head = f"{photos} photos, {ok} delivered" + (": " + ", ".join(f"{v} {names.get(k, k.replace('_', ' '))}" for k, v in tags.most_common()) if tags else "")
 if dead and len(parts) > 1:
     head += f". No delivery from {', '.join(dead)}"
 print(ok)

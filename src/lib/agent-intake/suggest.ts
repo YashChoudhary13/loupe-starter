@@ -105,6 +105,10 @@ export function parseAgentSuggest(raw: unknown): AgentSuggest | null {
   if (s.archive_old !== undefined && typeof s.archive_old !== 'boolean') {
     throw new AgentInputError('suggest.archive_old must be true or false.')
   }
+  const alsoArchive = s.also_archive === undefined || s.also_archive === null ? [] : s.also_archive
+  if (!Array.isArray(alsoArchive) || alsoArchive.length > 8 || alsoArchive.some((sku) => typeof sku !== 'string' || !SKU_PATTERN.test(sku))) {
+    throw new AgentInputError('suggest.also_archive must be a list of up to 8 SKUs.')
+  }
 
   return {
     pricePaise: optionalInt(s.price_paise, 'price_paise'),
@@ -118,6 +122,7 @@ export function parseAgentSuggest(raw: unknown): AgentSuggest | null {
     committed: optionalInt(s.committed, 'committed'),
     onHand: optionalInt(s.on_hand, 'on_hand'),
     archiveOld: s.archive_old === true,
+    alsoArchive: alsoArchive as string[],
   }
 }
 
@@ -137,9 +142,122 @@ export function agentSuggestFromRow(value: unknown): AgentSuggest | null {
     committed: typeof s.committed === 'number' ? s.committed : null,
     onHand: typeof s.onHand === 'number' ? s.onHand : null,
     archiveOld: s.archiveOld === true,
+    alsoArchive: Array.isArray(s.alsoArchive) ? s.alsoArchive.filter((sku): sku is string => typeof sku === 'string' && SKU_PATTERN.test(sku)) : [],
   }
 }
 
 export function agentTagFromRow(value: unknown): AgentTag | null {
   return typeof value === 'string' && (AGENT_TAGS as readonly string[]).includes(value) ? (value as AgentTag) : null
+}
+
+/** D148: one old listing Claude puts beside a phone photograph it believes (or suspects) is a restock. */
+export interface RestockCandidate {
+  readonly sku: string
+  readonly handle: string
+  readonly title: string | null
+  /** Always on Shopify's CDN: the browser shows it, and "Use old image" fetches it. */
+  readonly imageUrl: string | null
+  readonly status: string | null
+  readonly available: number | null
+  readonly pricePaise: number | null
+  readonly createdAt: string | null
+  readonly suggest: AgentSuggest | null
+}
+
+export interface RestockPayload {
+  /** old: Claude is sure, and several candidates are the same design under several SKUs. unsure: look-alikes. */
+  readonly kind: 'old' | 'unsure'
+  readonly note: string | null
+  readonly candidates: readonly RestockCandidate[]
+}
+
+export const RESTOCK_MAX_CANDIDATES = 6
+const SHOPIFY_CDN = 'https://cdn.shopify.com/'
+const HANDLE_PATTERN = /^[a-z0-9][a-z0-9-]{0,119}$/
+
+function candidateText(value: unknown, name: string, max: number): string | null {
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string') throw new AgentInputError(`candidate.${name} must be text.`)
+  const text = value.trim()
+  if (text.length > max) throw new AgentInputError(`candidate.${name} is longer than ${max} characters.`)
+  return text || null
+}
+
+function candidateInt(value: unknown, name: string): number | null {
+  if (value === undefined || value === null) return null
+  if (!Number.isSafeInteger(value)) throw new AgentInputError(`candidate.${name} must be a whole number.`)
+  return value as number
+}
+
+/** The JSON body of POST /api/agent/restocks, minus batch and source_filename. Latest listing first. */
+export function parseRestockPayload(body: Record<string, unknown>): RestockPayload {
+  if (body.kind !== 'old' && body.kind !== 'unsure') throw new AgentInputError('kind must be old or unsure.')
+  const raw = body.candidates === undefined || body.candidates === null ? [] : body.candidates
+  if (!Array.isArray(raw) || raw.length > RESTOCK_MAX_CANDIDATES) throw new AgentInputError(`candidates must be a list of up to ${RESTOCK_MAX_CANDIDATES}.`)
+  if (body.kind === 'old' && raw.length === 0) throw new AgentInputError('A restock needs at least one candidate.')
+  const candidates = raw.map((value): RestockCandidate => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new AgentInputError('Every candidate must be an object.')
+    const c = value as Record<string, unknown>
+    if (typeof c.sku !== 'string' || !SKU_PATTERN.test(c.sku)) throw new AgentInputError('candidate.sku must look like NK951 or RS391-S-7.')
+    if (typeof c.handle !== 'string' || !HANDLE_PATTERN.test(c.handle)) throw new AgentInputError('candidate.handle must be a product handle.')
+    const imageUrl = candidateText(c.image_url, 'image_url', 500)
+    if (imageUrl !== null && !imageUrl.startsWith(SHOPIFY_CDN)) throw new AgentInputError(`candidate.image_url must start with ${SHOPIFY_CDN}`)
+    return {
+      sku: c.sku,
+      handle: c.handle,
+      title: candidateText(c.title, 'title', 200),
+      imageUrl,
+      status: candidateText(c.status, 'status', 20),
+      available: candidateInt(c.available, 'available'),
+      pricePaise: candidateInt(c.price_paise, 'price_paise'),
+      createdAt: candidateText(c.created_at, 'created_at', 40),
+      suggest: c.suggest === undefined || c.suggest === null ? null : parseAgentSuggest(JSON.stringify(c.suggest)),
+    }
+  })
+  if (new Set(candidates.map((c) => c.sku)).size !== candidates.length) throw new AgentInputError('Two candidates carry the same SKU.')
+  // Latest listing first: that is the one whose image is reused when the same design has several SKUs.
+  candidates.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+  return { kind: body.kind, note: parseNote(body.note), candidates }
+}
+
+/** The jsonb column holds the shape above, exactly as validated; anything else reads as no candidate. */
+export function restockPayloadFromRow(value: unknown): RestockPayload | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const row = value as { kind?: unknown; note?: unknown; candidates?: unknown }
+  if (row.kind !== 'old' && row.kind !== 'unsure') return null
+  const candidates = (Array.isArray(row.candidates) ? row.candidates : []).flatMap((value): RestockCandidate[] => {
+    const c = value as Partial<RestockCandidate> | null
+    if (!c || typeof c.sku !== 'string' || typeof c.handle !== 'string') return []
+    return [{
+      sku: c.sku, handle: c.handle,
+      title: typeof c.title === 'string' ? c.title : null,
+      imageUrl: typeof c.imageUrl === 'string' && c.imageUrl.startsWith(SHOPIFY_CDN) ? c.imageUrl : null,
+      status: typeof c.status === 'string' ? c.status : null,
+      available: typeof c.available === 'number' ? c.available : null,
+      pricePaise: typeof c.pricePaise === 'number' ? c.pricePaise : null,
+      createdAt: typeof c.createdAt === 'string' ? c.createdAt : null,
+      suggest: agentSuggestFromRow(c.suggest),
+    }]
+  })
+  return { kind: row.kind, note: typeof row.note === 'string' ? row.note : null, candidates }
+}
+
+/**
+ * What an operator's choice means for the listing: which other SKUs of the same design go with the
+ * chosen one, and what the Pending row says. Only a sure restock (`old`) carries the other SKUs;
+ * for `unsure` the other candidates are look-alikes, not the same piece.
+ */
+export function restockChoice(payload: RestockPayload, sku: string): { chosen: RestockCandidate; others: readonly RestockCandidate[]; alsoArchive: string[]; note: string } | null {
+  const chosen = payload.candidates.find((c) => c.sku === sku)
+  if (!chosen) return null
+  const others = payload.kind === 'old' ? payload.candidates.filter((c) => c !== chosen) : []
+  const alsoArchive = others.filter((c) => c.status === 'ACTIVE' && c.available === 0).map((c) => c.sku)
+  const stocked = [chosen, ...others].filter((c) => (c.available ?? 0) > 0)
+  const lead = stocked.map((c) => `${c.sku} still has ${c.available} available`).join('; ')
+  const note = [
+    lead ? `${lead}: not archived on publish unless you switch it on.` : '',
+    others.length > 0 ? `Same design also listed as ${others.map((c) => c.sku).join(', ')}.` : '',
+    payload.note ?? '',
+  ].filter(Boolean).join(' ').slice(0, NOTE_MAX_LENGTH)
+  return { chosen, others, alsoArchive, note }
 }

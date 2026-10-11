@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers'
 
 import { AppShell } from '@/components/shell/AppShell'
+import { countRestockCandidates } from '@/lib/agent-intake/restock'
 import { requireOperator } from '@/lib/auth/authorize'
 import { faceFromHeader } from '@/lib/faces/faces'
 import { loadAttentionCount } from '@/lib/tracking/attention-count'
@@ -19,7 +20,7 @@ import { loadAttentionCount } from '@/lib/tracking/attention-count'
  */
 export default async function ShellLayout({ children }: { children: React.ReactNode }) {
   const operator = await requireOperator()
-  const [attentionCount, cookieStore, headerStore] = await Promise.all([loadAttentionCount(), cookies(), headers()])
+  const [attentionCount, restockCount, cookieStore, headerStore] = await Promise.all([loadAttentionCount(), countRestockCandidates(), cookies(), headers()])
   const collapsed = cookieStore.get('loupe_nav_collapsed')?.value === '1'
 
   return (
@@ -27,6 +28,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
       operator={operator}
       face={faceFromHeader(headerStore.get('x-face'))}
       initialAttentionCount={attentionCount}
+      initialRestockCount={restockCount}
       initialCollapsed={collapsed}
     >
       {children}

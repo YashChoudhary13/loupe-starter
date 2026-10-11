@@ -29,12 +29,14 @@ export function AppShell({
   operator,
   face,
   initialAttentionCount,
+  initialRestockCount = 0,
   initialCollapsed,
   children,
 }: {
   operator: Operator
   face: Face | null
   initialAttentionCount: number
+  initialRestockCount?: number
   initialCollapsed: boolean
   children?: ReactNode
 }) {
@@ -58,6 +60,7 @@ export function AppShell({
         operator={operator}
         face={face}
         initialAttentionCount={initialAttentionCount}
+        initialRestockCount={initialRestockCount}
         collapsed={collapsed}
         onToggle={toggle}
       />
