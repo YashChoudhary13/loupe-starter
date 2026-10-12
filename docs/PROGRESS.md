@@ -29,6 +29,28 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-12 — D148 released; the runner follows the owner's settled taste
+
+**Goal this session:** release the Restock section and make the Canada runner render in the look the owner settled on pictures that day.
+
+**Built:**
+- `deploy/agent-runner/run-job.prompt.md` → the describe step and the review step point at the Taste section of the enhance skill's `SKILL.md` (dark quiet backdrops chosen per piece, glossy gold under even light, best shape rather than the phone photo's accident, real proportions) instead of the old one-line summary.
+- Outside this repo, on the Mac and synced to the Canada server: the enhance skill (`blocks.py`, `enhance.py`, `SKILL.md`), the taste memory, and `restock.py learn` with a nightly cron on the server.
+
+**Verified:**
+- D148 release: the owner ran `npm run db:push` (migration `20261012090000_restock_candidates.sql` applied, 1 of 123) and pushed `18c9218` to `main`; `POST /api/agent/restocks` and `GET /api/agent/photos` answer 401 without the bearer (404 before the release); the server has the new `run-job.prompt.md`, `agent-runner.sh` and `loupe_push.py` (`--selftest` ok).
+- `GET /api/agent/images?batch=` now reports `sku`, `handle`, `published`: `restock.py learn` read 105 live rows from the Mac and 82 from the server through it.
+
+**Not finished / known broken:**
+- The three Restock buttons, a `render` job on the runner and the multi-SKU archive at publish have not run on a real card yet; no batch has been sent since 2026-10-10.
+- Drops necklaces: flat or on a bust is still the owner's open choice.
+
+**Surprises:** the shop's public product feed answers the Canada server with 429 on every request, so `restock.py sync` there reads the Admin API through the read-only CEO app. On the Mac both Codex homes had been signed in as one account since 2026-10-10 17:52 IST; fixed by the owner's `codex login`.
+
+**Next session should start with:** look at the first real batch after this entry: the Restock cards, and the renders against the Taste section.
+
+---
+
 ## 2026-10-12 — D148: restocks wait for the owner in the Restock section; `orig` shows the phone photograph
 
 **Goal this session:** the owner's rule of 2026-10-12: a restock is never rendered and never reaches Pending without his choice (use old image, generate new image, wrong restock); and `orig` on an image Claude delivered shows the phone photograph.
