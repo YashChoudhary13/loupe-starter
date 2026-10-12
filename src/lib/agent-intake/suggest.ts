@@ -66,9 +66,12 @@ export function parseBatch(raw: unknown): string | null {
   return batch || null
 }
 
-function optionalInt(value: unknown, name: string): number | null {
+/** Shopify counts an oversold listing below zero (RS380 stood at -40 after one 40-piece order), so stock may be negative; a price may not. */
+const OVERSOLD = Number.MIN_SAFE_INTEGER
+
+function optionalInt(value: unknown, name: string, min = 0): number | null {
   if (value === undefined || value === null) return null
-  if (!Number.isSafeInteger(value) || (value as number) < 0) throw new AgentInputError(`suggest.${name} must be a whole number.`)
+  if (!Number.isSafeInteger(value) || (value as number) < min) throw new AgentInputError(`suggest.${name} must be a whole number.`)
   return value as number
 }
 
@@ -118,9 +121,9 @@ export function parseAgentSuggest(raw: unknown): AgentSuggest | null {
     colours: (colours as string[]).map((c) => c.trim()),
     oldHandle: optionalText(s.old_handle, 'old_handle', 120),
     oldStatus: optionalText(s.old_status, 'old_status', 20),
-    available: optionalInt(s.available, 'available'),
-    committed: optionalInt(s.committed, 'committed'),
-    onHand: optionalInt(s.on_hand, 'on_hand'),
+    available: optionalInt(s.available, 'available', OVERSOLD),
+    committed: optionalInt(s.committed, 'committed', OVERSOLD),
+    onHand: optionalInt(s.on_hand, 'on_hand', OVERSOLD),
     archiveOld: s.archive_old === true,
     alsoArchive: alsoArchive as string[],
   }
@@ -251,7 +254,7 @@ export function restockChoice(payload: RestockPayload, sku: string): { chosen: R
   const chosen = payload.candidates.find((c) => c.sku === sku)
   if (!chosen) return null
   const others = payload.kind === 'old' ? payload.candidates.filter((c) => c !== chosen) : []
-  const alsoArchive = others.filter((c) => c.status === 'ACTIVE' && c.available === 0).map((c) => c.sku)
+  const alsoArchive = others.filter((c) => c.status === 'ACTIVE' && c.available !== null && c.available <= 0).map((c) => c.sku)
   const stocked = [chosen, ...others].filter((c) => (c.available ?? 0) > 0)
   const lead = stocked.map((c) => `${c.sku} still has ${c.available} available`).join('; ')
   const note = [

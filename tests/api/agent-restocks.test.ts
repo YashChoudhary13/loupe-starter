@@ -57,6 +57,14 @@ describe('restock candidate validator (D148)', () => {
     expect(restockChoice(payload, 'NK1')).toBeNull()
   })
 
+  it('an oversold listing (stock below zero) is accepted and counts as sold out; a price below zero is still refused', () => {
+    const oversold = { price_paise: 8500, old_status: 'ACTIVE', available: -40, committed: 40, on_hand: -40, archive_old: true }
+    const payload = parseRestockPayload({ kind: 'old', candidates: [candidate('RS380', { created_at: '2026-09-01T00:00:00Z' }), candidate('RS331', { available: -1, suggest: oversold })] })
+    expect(payload.candidates[1]!.suggest).toMatchObject({ available: -40, committed: 40, onHand: -40 })
+    expect(restockChoice(payload, 'RS380')!.alsoArchive).toEqual(['RS331'])
+    expect(() => parseRestockPayload({ kind: 'old', candidates: [candidate('RS331', { suggest: { price_paise: -1 } })] })).toThrow(/price_paise must be a whole number/)
+  })
+
   it('look-alikes of an unsure photograph are never archived with the chosen one', () => {
     const choice = restockChoice(parseRestockPayload({ kind: 'unsure', candidates: [candidate('NK745'), candidate('NK190')] }), 'NK745')!
     expect([choice.others, choice.alsoArchive, choice.note]).toEqual([[], [], ''])

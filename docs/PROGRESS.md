@@ -29,6 +29,20 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-12 — Restock: an oversold listing no longer loses the photograph
+
+**Goal this session:** find why one ring of batch `2026-10-12 14.27` reached neither Pending nor the Restock section.
+
+**Found:** the runner judged photo `1000168784.jpg` a look-alike of RS331 and RS380. Both listings are oversold in Shopify (stock -1 and -40), and `POST /api/agent/restocks` refused the card with "suggest.available must be a whole number". The job reported 12 of 13 delivered and the ring waited nowhere.
+
+**Built:**
+- `src/lib/agent-intake/suggest.ts` → `suggest.available`, `committed` and `on_hand` may be negative (a price may not); `restockChoice` counts stock of zero or less as sold out when it lists the other SKUs to archive.
+- Outside this repo: `loupe_push.py` sets `archive_old` for a live listing with stock of zero or less.
+
+**Verified:** `tests/api/agent-restocks.test.ts` (new case: oversold candidate accepted, counted as sold out, negative price refused), `tests/agent-restock-decide.test.ts`, `tests/api/agent-images.test.ts`: 25 pass. `tsc --noEmit` and eslint clean.
+
+**Not yet seen in production:** this build is not deployed until the owner pushes `main`.
+
 ## 2026-10-12 — D148 released; the runner follows the owner's settled taste
 
 **Goal this session:** release the Restock section and make the Canada runner render in the look the owner settled on pictures that day.
