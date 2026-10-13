@@ -11,7 +11,6 @@ import {
   colourSuggestionsAction,
   deleteUngroupedPhotoAction,
   detachPhotoAction,
-  groupPhotosAction,
   openDraftAction,
   previewPhotosAction,
   publishDraftAction,
@@ -157,8 +156,9 @@ function defaultVersionId(photo: PhotoSummary): string | null {
  * other failure and nothing was catching it: the POST itself never completed —
  * offline, timed out, or a redeploy invalidated the generated action id. That
  * threw straight past `handleResult`, so no error appeared and the saving
- * spinner never cleared, while `ensureDraft` had already grouped the
- * photographs and moved them out of Pending. The result was a draft tile that
+ * spinner never cleared, while an earlier request had already grouped the
+ * photographs and moved them out of Pending (grouping was a request of its
+ * own until D151). The result was a draft tile that
  * looked finished with nothing in Shopify and nothing in `product_drafts`
  * beyond the row itself.
  *
@@ -269,6 +269,9 @@ export function ConsoleScreen({
   /** Latest editor context, readable from background completions without stale closures. */
   const activeDraftIdRef = useRef<string | null>(null)
   const formRef = useRef<EditorForm | null>(null)
+  const selectionKeyRef = useRef('')
+  /** D151: the selection whose draft is being created by a request in flight. */
+  const creatingKeyRef = useRef<string | null>(null)
   const requestedPreviewsRef = useRef(new Set<string>())
   const queueRefreshTimerRef = useRef<number | null>(null)
   const pendingLabelDraftIdRef = useRef<string | null>(null)
@@ -405,6 +408,9 @@ export function ConsoleScreen({
   useEffect(() => {
     formRef.current = form
   }, [form])
+  useEffect(() => {
+    selectionKeyRef.current = selectionKey
+  }, [selectionKey])
 
   const updateForm = useCallback((patch: Partial<EditorForm>) => {
     setForm((current) => ({ ...current, ...patch }))
@@ -456,21 +462,26 @@ export function ConsoleScreen({
       // Starting a product from scratch: leaving an open draft, or beginning a
       // fresh selection. Adding a second photograph to the same product keeps
       // whatever has already been typed.
-      const startingFresh = bundle !== null || selectedPhotoIds.length === 0
+      // D151: the selection on screen is already on its way to the server as
+      // a new draft, so the next click starts the next product instead of
+      // adding a photograph to one that is being saved.
+      const beingCreated = bundle === null && creatingKeyRef.current === selectionKey
+      const startingFresh = bundle !== null || selectedPhotoIds.length === 0 || beingCreated
       setLastPublish(null)
       setBundle(null)
       setSavedForm(null)
       if (startingFresh) setForm(seededForm())
-      setSelectedPhotoIds((current) =>
-        current.includes(intakeFileId)
+      setSelectedPhotoIds((current) => {
+        if (beingCreated) return current.includes(intakeFileId) ? [] : [intakeFileId]
+        return current.includes(intakeFileId)
           ? current.filter((id) => id !== intakeFileId)
-          : [...current, intakeFileId],
-      )
+          : [...current, intakeFileId]
+      })
       // "Selecting a queue tile focuses the price input" — the whole point is
       // that the operator's hands never leave the keyboard between products.
       window.setTimeout(() => priceRef.current?.focus(), 0)
     },
-    [bundle, seededForm, selectedPhotoIds.length],
+    [bundle, seededForm, selectedPhotoIds.length, selectionKey],
   )
 
   /** D101: correct a reserved draft's category — frees the number, new sequence next Draft. */
@@ -511,39 +522,45 @@ export function ConsoleScreen({
     [applyBundle, handleResult],
   )
 
-  /** Creates the draft if the operator is still working from a raw selection. */
-  const ensureDraft = useCallback(async (): Promise<DraftBundle | null> => {
-    if (bundle) return bundle
-    if (!form.categoryId) {
-      setError({
-        kind: 'blocked',
-        message: 'Choose a category first — it decides the SKU sequence, the title and the collection.',
-        detail: null,
-        retryable: true,
-        blocks: [],
-      })
-      return null
-    }
-    const data = handleResult(await settled(groupPhotosAction(form.categoryId, selectedPhotoIds)))
-    if (!data) return null
-    setQueue(data.queue)
-    setBundle(data.bundle)
-    setColours(data.bundle.colours)
-    // The form's image list normally arrives from the preview round trip,
-    // which a fast operator can outrun. Grouping already recorded the
-    // pipeline-chosen version of every photograph server-side, so a form that
-    // still has no images adopts the server's list rather than continuing to
-    // show — and save — an empty one (D107).
-    setForm((current) =>
-      current.images.length > 0
-        ? current
-        : { ...current, images: formFromBundle(data.bundle).images },
-    )
-    return data.bundle
-  }, [bundle, form.categoryId, selectedPhotoIds, handleResult])
+  /** Nothing can be created without a category: it decides the SKU sequence. */
+  const categoryChosen = useCallback((): boolean => {
+    if (bundle || form.categoryId) return true
+    setError({
+      kind: 'blocked',
+      message: 'Choose a category first — it decides the SKU sequence, the title and the collection.',
+      detail: null,
+      retryable: true,
+      blocks: [],
+    })
+    return false
+  }, [bundle, form.categoryId])
+
+  /**
+   * D151: a save or publish that was creating its draft has failed.
+   *
+   * If the request got as far as creating the draft, stay on that draft with
+   * the typing as it is, so the next click saves it instead of trying to create
+   * a second one from photographs that have already left Pending. Either way
+   * the grid re-reads what the server now holds.
+   */
+  const keepCreatedDraft = useCallback(
+    async (createdDraftId: string | undefined, requestedSelection: string) => {
+      const stillThere = () => activeDraftIdRef.current === null && selectionKeyRef.current === requestedSelection
+      if (createdDraftId && stillThere()) {
+        const opened = await settled(openDraftAction(createdDraftId))
+        if (opened.ok && stillThere()) {
+          setBundle(opened.data)
+          setColours(opened.data.colours)
+          setSelectedPhotoIds([])
+        }
+      }
+      void refreshQueue()
+    },
+    [refreshQueue],
+  )
 
   const saveRequest = useCallback(
-    (target: DraftBundle) => {
+    (target: DraftBundle | null) => {
       const price = parseRupeesToPaise(form.price)
       const singleStock = Number.parseInt(form.stock.trim() || '0', 10)
       const variants = form.variants.map((variant) => {
@@ -555,15 +572,18 @@ export function ConsoleScreen({
           ? singleStock
           : variants.reduce((total, variant) => total + Math.max(0, variant.stock), 0)
       const weight = form.weight.trim()
-      // Same race as ensureDraft's adoption, for the request itself: an empty
-      // form list means the preview has not landed, while the bundle carries
-      // the group-time selection. Send the bundle's images rather than an
-      // empty list the operator never created. (The database refuses to treat
-      // an empty list as removal either way — D107.)
-      const images = form.images.length > 0 ? form.images : formFromBundle(target).images
+      // An empty form list means the preview has not landed, while the bundle
+      // carries the group-time selection. Send the bundle's images rather than
+      // an empty list the operator never created. Without a draft there is no
+      // bundle yet, and the empty list is safe: the database refuses to treat
+      // it as removal and keeps what grouping chose (D107).
+      const images = form.images.length > 0 || !target ? form.images : formFromBundle(target).images
       return {
-        draftId: target.draft.id,
-        expectedUpdatedAt: target.draft.updatedAt,
+        // D151: no draft yet — the server creates it from these photographs
+        // inside the same request that saves the typing.
+        draftId: target?.draft.id ?? null,
+        ...(target ? {} : { photoIds: selectedPhotoIds }),
+        expectedUpdatedAt: target?.draft.updatedAt ?? null,
         categoryId: form.categoryId!,
         materialId: form.materialId,
         customMaterial: form.customMaterial.trim() || null,
@@ -584,7 +604,7 @@ export function ConsoleScreen({
         allowZeroStock: form.allowZeroStock,
       }
     },
-    [form],
+    [form, selectedPhotoIds],
   )
 
   /**
@@ -617,6 +637,18 @@ export function ConsoleScreen({
     return () => window.clearTimeout(timer)
   }, [bundle, busy, dirty, listedReadOnly, saveRequest, savingDraftIds])
 
+  /**
+   * D151: ask before the page is left while a save or publish is in flight.
+   * The request itself survives a reload, but its reply — the reserved SKU and
+   * the label offer — would be lost with the page.
+   */
+  useEffect(() => {
+    if (savingDraftIds.size === 0 && busy !== 'publish') return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [busy, savingDraftIds])
+
   const rememberSticky = useCallback(() => {
     const previous = readSticky()
     writeSticky({
@@ -640,48 +672,57 @@ export function ConsoleScreen({
    * Shopify DRAFT push runs server-side after the response and reports back
    * through live events. The operator can select the next photograph the
    * moment the click lands — completion only touches the editor if they are
-   * still looking at the same draft, and never overwrites newer typing.
+   * still looking at the same product, and never overwrites newer typing.
    */
   const handleSaveDraft = useCallback(async () => {
     setLastPublish(null)
-    const target = await ensureDraft()
-    if (!target) return
-    const draftId = target.draft.id
+    if (!categoryChosen()) return
+    // D151: one request. A product that is still a selection of photographs is
+    // created by the server inside this same save, so a reload or a closed tab
+    // can no longer leave a draft that was grouped and never saved.
+    const creating = bundle === null
+    const requestedSelection = selectionKey
+    const savingKey = bundle?.draft.id ?? `new:${requestedSelection}`
     const requestedForm = formRef.current
-    setSavingDraftIds((current) => new Set(current).add(draftId))
-    // The grid is free immediately: grouped photographs already left Pending
-    // via ensureDraft's snapshot, and holding the selection highlight through
-    // a background save made "click the next image" feel broken.
-    setSelectedPhotoIds([])
+    const request = saveRequest(bundle)
+    setSavingDraftIds((current) => new Set(current).add(savingKey))
+    if (creating) creatingKeyRef.current = requestedSelection
     rememberSticky()
 
-    const result = await settled(saveDraftAction(saveRequest(target)))
+    const result = await settled(saveDraftAction(request))
     setSavingDraftIds((current) => {
       const next = new Set(current)
-      next.delete(draftId)
+      next.delete(savingKey)
       return next
     })
+    if (creating && creatingKeyRef.current === requestedSelection) creatingKeyRef.current = null
 
     if (!result.ok) {
       // Surface the failure wherever the operator is now — the draft still
       // holds their typing locally if the save was a conflict.
       handleResult(result)
+      if (creating) await keepCreatedDraft(result.error.createdDraftId, requestedSelection)
       return
     }
 
-    const stillOnThisDraft = activeDraftIdRef.current === draftId
+    const draftId = result.data.bundle.draft.id
+    // The photographs this request grouped leave Pending with its reply.
+    if (result.data.queue) setQueue(result.data.queue)
+    const stillOnThisDraft = creating
+      ? activeDraftIdRef.current === null && selectionKeyRef.current === requestedSelection
+      : activeDraftIdRef.current === draftId
     if (stillOnThisDraft) {
       const untouchedSinceRequest = formRef.current === requestedForm
+      setBundle(result.data.bundle)
+      setColours(result.data.bundle.colours)
+      setSelectedPhotoIds([])
       if (untouchedSinceRequest) {
-        setBundle(result.data.bundle)
-        setColours(result.data.bundle.colours)
         const nextForm = formFromBundle(result.data.bundle)
         setForm(nextForm)
         setSavedForm(nextForm)
       } else {
         // Keep the newer typing; adopt only the server-side draft facts
         // (updatedAt for optimistic concurrency, blocks, reserved identity).
-        setBundle(result.data.bundle)
         setSavedForm(formFromBundle(result.data.bundle))
       }
     }
@@ -701,7 +742,7 @@ export function ConsoleScreen({
         await new Promise(resolve => window.setTimeout(resolve, 500))
       }
     })()
-  }, [ensureDraft, handleResult, refreshQueueSoon, rememberSticky, saveRequest])
+  }, [bundle, categoryChosen, handleResult, keepCreatedDraft, refreshQueueSoon, rememberSticky, saveRequest, selectionKey])
 
   const focusNextUngrouped = useCallback((snapshot: QueueSnapshot) => {
     const nextPhoto = snapshot.tiles.find((tile) => tile.kind === 'photo')
@@ -799,14 +840,16 @@ export function ConsoleScreen({
   }, [])
 
   const handlePublish = useCallback(async () => {
+    if (!categoryChosen()) return
     setBusy('publish')
     setLastPublish(null)
-    const target = await ensureDraft()
-    if (!target) {
-      setBusy(null)
-      return
-    }
-    const data = handleResult(await settled(publishDraftAction(saveRequest(target))))
+    // D151: one request, as for Save draft — the server creates the draft.
+    const creating = bundle === null
+    const requestedSelection = selectionKey
+    if (creating) creatingKeyRef.current = requestedSelection
+    const result = await settled(publishDraftAction(saveRequest(bundle)))
+    if (creating && creatingKeyRef.current === requestedSelection) creatingKeyRef.current = null
+    const data = handleResult(result)
     if (data) {
       setQueue(data.queue)
       setLastPublish(data.summary)
@@ -818,17 +861,19 @@ export function ConsoleScreen({
       // and everything specific to that piece are cleared.
       setForm(seededForm())
       focusNextUngrouped(data.queue)
-    } else {
+    } else if (bundle) {
       // A failed publish keeps the draft open so the operator can fix and retry
       // onto the same reserved identity rather than rebuilding the product.
-      const refreshed = await settled(openDraftAction(target.draft.id))
+      const refreshed = await settled(openDraftAction(bundle.draft.id))
       if (refreshed.ok) {
         setBundle(refreshed.data)
         setColours(refreshed.data.colours)
       }
+    } else if (!result.ok) {
+      await keepCreatedDraft(result.error.createdDraftId, requestedSelection)
     }
     setBusy(null)
-  }, [ensureDraft, focusNextUngrouped, handleResult, rememberSticky, saveRequest, seededForm])
+  }, [bundle, categoryChosen, focusNextUngrouped, handleResult, keepCreatedDraft, rememberSticky, saveRequest, seededForm, selectionKey])
 
   /** D142: "Use suggestion" with archive_old, or "Keep old listing". The form is left alone; only the draft's mark changes. */
   const handleSupersede = useCallback(

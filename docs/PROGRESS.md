@@ -29,6 +29,37 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-14 — D151: Save draft is one request, so a reload cannot leave an empty draft
+
+**Goal this session:** find why a necklace the owner drafted on 13 Oct never reached Shopify, and remove the cause.
+
+**Built:**
+- `src/app/(shell)/console/actions.ts` → `SaveDraftRequest` may carry `photoIds` with a null `draftId`; `withRequestedDraft` creates the draft inside `saveDraftAction` / `publishDraftAction`; a failure after creation returns `createdDraftId`; a creating save returns the queue; `autosaveDraftAction` refuses a request without a draft; `groupPhotosAction` removed.
+- `src/components/console/ConsoleScreen.tsx` → `handleSaveDraft` and `handlePublish` send that one request (`ensureDraft` removed); `keepCreatedDraft` stays on a draft the server created before a later step failed; a click on another photograph while a create is in flight starts the next product; `beforeunload` asks before the page is left during a save or publish.
+- `tests/console-save-draft-one-request.test.ts` → the server contract, 8 tests.
+- `docs/DECISIONS.md` (D151).
+
+**Verified:**
+- The incident, read from production (read-only): draft `d14bc9e5`, `draft.created` 12:12:01.548Z, no `draft.saved`, `reserved_sku` null; nginx `POST /console 499 0` at 12:12:02 and `GET /console 200 31552` at 12:12:01 from the same browser; a healthy sibling (NK1846) shows `draft.created` 12:07:54, a 22 KB reply at 12:07:56, `draft.saved` 12:07:58.
+- New test first, against the old code: `Tests 8 failed (8)`; after the change: `Tests 8 passed (8)`.
+- `npx tsc --noEmit` clean, `npx eslint` on the three files clean, `npx next build` lists every route.
+- `npx vitest run` without the database files (`*.sql.test.ts`, `next-sku.concurrency`, `rls`, `schema`): `92 passed | 3 failed (95)` files, `696 passed | 2 failed` tests. The three failing files (`console-preview`, `publish-identity`, `shopify-webhooks`) stop at "tests need real credentials in .env" or a missing `SHOPIFY_CLIENT_SECRET`: this worktree has no `.env`, on purpose, so nothing here can reach the live project.
+- The click path, on the real `ConsoleScreen` with stubbed actions (throwaway happy-dom file, `npm i --no-save happy-dom`, deleted): `4 tests passed`. (1) select, choose category and material, type price 110 and stock 24, Draft: `saveDraftAction` called once with `{ draftId: null, photoIds: ['p1'], pricePaise: 11000, stock: 24 }`, no other write, button reads "Drafting…" and is disabled, `beforeunload` is cancelled while in flight; on the reply the tile leaves Pending, NK1847 is on screen, `beforeunload` is free again. (2) clicking the next photograph during the save selects only that one, the reply does not pull the editor back, and its own save carries `photoIds: ['p2']`. (3) a failure carrying `createdDraftId` opens that draft and the next Draft click sends `draftId: 'd1'` with no `photoIds`. (4) the same for Publish.
+- The server finishes a request the browser has left (scratch Next 16.3.5 app, action = log, 1.5 s wait, log, `after()`; `curl --max-time 0.4`): `client gave up at +459 ms`, `server +22 ms step 1`, `+1523 ms step 2`, `+1836 ms after() ran`.
+
+**Not finished / known broken:**
+- Not deployed: branch `claude/save-draft-one-request`, awaiting the owner's push to `main`.
+- No committed click-through test (no DOM test dependency in the repository); the harness above was a one-off.
+- Not tried against the live console: no real draft was created through the new path. First real Save draft after the deploy is the acceptance test: one `POST /console` per click and `draft.saved` in the same second as `draft.created`.
+- The empty draft of 13 Oct (`d14bc9e5`, the round and rectangle duo necklace) is still unsaved; the owner types stock and price and presses Draft.
+- `journalctl -u loupe` showed 104 "webhook alert upsert failed: there is no unique or exclusion constraint matching the ON CONFLICT specification" lines on 13 Oct. Not looked into.
+
+**Surprises:** the same failure was already recorded on 2026-08-17 and answered with D106's attention mark on unpushed drafts; the two-request click stayed. `tests/console-preview.test.ts` and `tests/publish-identity.test.ts` need the real database although their names do not say so.
+
+**Next session should start with:** after the owner's push, read the events of the first new draft (`draft.created` and `draft.saved` within one second) and the nginx line for that click.
+
+---
+
 ## 2026-10-13 — D150: an alt line per image from the enhancer
 
 **Goal this session:** make every image that comes through Claude on the Canada runner reach Shopify with a design-describing alt text, like the 5,152 catalogue images rewritten the same day.

@@ -74,6 +74,12 @@ export interface ActionError {
   readonly retryable: boolean
   /** Present for `blocked`: every reason at once, each naming its field. */
   readonly blocks: readonly PublishBlock[]
+  /**
+   * D151: this request created the draft and a later step failed. The browser
+   * opens that draft, so the next click saves it instead of trying to create
+   * a second one from photographs that have already left Pending.
+   */
+  readonly createdDraftId?: string
 }
 
 export type ActionResult<T> =
@@ -91,6 +97,10 @@ function failure(kind: ActionErrorKind, message: string, detail: string | null, 
  * the consequence: an unknown error must never imply that data was saved.
  */
 function toActionError(cause: unknown): ActionResult<never> {
+  if (cause instanceof DraftCreatedError) {
+    const result = toActionError(cause.cause)
+    return result.ok ? result : { ok: false, error: { ...result.error, createdDraftId: cause.draftId } }
+  }
   if (cause instanceof NotAuthorisedError) {
     return failure('auth', cause.message, null, false)
   }
@@ -382,16 +392,6 @@ export async function openDraftAction(
   return withOperator(() => bundle(draftId, allowZeroStock))
 }
 
-export async function groupPhotosAction(
-  categoryId: string,
-  intakeFileIds: readonly string[],
-): Promise<ActionResult<{ bundle: DraftBundle; queue: QueueSnapshot }>> {
-  return withOperator(async (operator) => {
-    const draftId = await createDraftFromPhotos(operator, categoryId, intakeFileIds)
-    return { bundle: await bundle(draftId, false), queue: await loadQueue() }
-  })
-}
-
 export async function detachPhotoAction(
   draftId: string,
   intakeFileId: string,
@@ -441,8 +441,49 @@ export async function phonePhotoUrlAction(intakeFileId: string): Promise<ActionR
   return withOperator(async () => ({ url: (await phonePhotoUrl(intakeFileId)).url }))
 }
 
-export interface SaveDraftRequest extends DraftSaveInput {
+export interface SaveDraftRequest extends Omit<DraftSaveInput, 'draftId'> {
+  /**
+   * Null while the product is still a selection of photographs. The draft is
+   * then created from `photoIds` inside this same request (D151).
+   */
+  readonly draftId: string | null
+  readonly photoIds?: readonly string[]
   readonly allowZeroStock: boolean
+}
+
+/** A failure after this request had already created its draft. */
+class DraftCreatedError extends Error {
+  constructor(
+    readonly draftId: string,
+    override readonly cause: unknown,
+  ) {
+    super('A step failed after the draft was created.')
+  }
+}
+
+/**
+ * D151: the draft is created inside the request that saves or publishes it.
+ *
+ * Grouping used to be a request of its own (`groupPhotosAction`), and the
+ * browser sent the operator's typing only after that reply. A reload, a closed
+ * tab or a dropped connection between the two left an empty draft — no SKU, no
+ * price, nothing in Shopify — and the typing existed nowhere (2026-08-17,
+ * 2026-10-13). One request cannot be split by anything the browser does: it
+ * either reaches the server and runs to the end, or nothing is created.
+ */
+async function withRequestedDraft<T>(
+  operator: Awaited<ReturnType<typeof requireOperatorForAction>>,
+  request: SaveDraftRequest,
+  run: (input: DraftSaveInput, created: boolean) => Promise<T>,
+): Promise<T> {
+  if (request.draftId !== null) return run({ ...request, draftId: request.draftId }, false)
+  const draftId = await createDraftFromPhotos(operator, request.categoryId, request.photoIds ?? [])
+  try {
+    // Made a moment ago by this request: there is no earlier `updated_at` to compare.
+    return await run({ ...request, draftId, expectedUpdatedAt: null }, true)
+  } catch (cause) {
+    throw new DraftCreatedError(draftId, cause)
+  }
 }
 
 /**
@@ -573,9 +614,10 @@ export async function changeDraftCategoryAction(
 
 export async function saveDraftAction(
   request: SaveDraftRequest,
-): Promise<ActionResult<{ bundle: DraftBundle }>> {
-  return withOperator(async (operator) => {
-    await saveDraft(operator, request)
+): Promise<ActionResult<{ bundle: DraftBundle; queue: QueueSnapshot | null }>> {
+  return withOperator((operator) => withRequestedDraft(operator, request, async (input, created) => {
+    const draftId = input.draftId
+    await saveDraft(operator, input)
 
     /**
      * D107: the SKU, title and handle are reserved HERE, inside the click,
@@ -588,7 +630,7 @@ export async function saveDraftAction(
      * nothing — it reports, and pressing Save draft again retries.
      */
     try {
-      await reserveDraftIdentity(request.draftId, operator)
+      await reserveDraftIdentity(draftId, operator)
     } catch (cause) {
       throw new ConsoleError(
         'The typing was saved, but a SKU could not be reserved, so nothing went to Shopify yet. Press Save draft again.',
@@ -611,14 +653,18 @@ export async function saveDraftAction(
      */
     after(async () => {
       await pushDraftToShopifyInBackground(
-        request.draftId,
+        draftId,
         operator,
         request.allowZeroStock,
       ).catch(() => undefined)
     })
 
-    return { bundle: await bundle(request.draftId, request.allowZeroStock) }
-  })
+    return {
+      bundle: await bundle(draftId, request.allowZeroStock),
+      // D151: the photographs this request grouped have left Pending, and the reply says so.
+      queue: created ? await loadQueue() : null,
+    }
+  }))
 }
 
 /**
@@ -634,8 +680,11 @@ export async function autosaveDraftAction(
   request: SaveDraftRequest,
 ): Promise<ActionResult<{ bundle: DraftBundle }>> {
   return withOperator(async (operator) => {
-    await saveDraft(operator, request)
-    return { bundle: await bundle(request.draftId, request.allowZeroStock) }
+    const draftId = request.draftId
+    // Never creates a draft: a selection only becomes a product on Save draft or Publish.
+    if (draftId === null) throw new ConsoleError('Autosave needs a draft. Press Save draft.', null, false)
+    await saveDraft(operator, { ...request, draftId })
+    return { bundle: await bundle(draftId, request.allowZeroStock) }
   })
 }
 
@@ -659,13 +708,14 @@ export interface PublishSummary {
 export async function publishDraftAction(
   request: SaveDraftRequest,
 ): Promise<ActionResult<{ summary: PublishSummary; bundle: DraftBundle; queue: QueueSnapshot }>> {
-  return withOperator(async (operator) => {
+  return withOperator((operator) => withRequestedDraft(operator, request, async (input) => {
+    const draftId = input.draftId
     // Save first, in the same click. Publishing what is on screen while the
     // database holds something older is the one way a "what you see is what you
     // published" preview can lie.
-    await saveDraft(operator, request)
+    await saveDraft(operator, input)
 
-    const published = await publishDraftForOperator(request.draftId, operator, {
+    const published = await publishDraftForOperator(draftId, operator, {
       allowZeroStock: request.allowZeroStock,
     })
 
@@ -681,10 +731,10 @@ export async function publishDraftAction(
         altTexts: published.media.map((m) => ({ mediaId: m.id, alt: m.alt })),
         salesChannels: published.result.salesChannels.map((channel) => channel.name),
       },
-      bundle: await bundle(request.draftId, request.allowZeroStock),
+      bundle: await bundle(draftId, request.allowZeroStock),
       queue: await loadQueue(),
     }
-  })
+  }))
 }
 
 export async function loadDraftLabelPrintAction(
