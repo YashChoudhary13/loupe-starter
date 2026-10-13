@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       }
       try {
         const snapshot = await homeSnapshot(), actions = availableActions(botConfig())
-        const usage = await runChatTurn({ apiKey: serverEnv.openRouterApiKey, model, system: systemPrompt({ now: new Date(), lights: snapshot.lights, numbers: snapshot.numbers, actions }), history, message, tools: READ_TOOLS, actions, ctx: homeToolContext(), uid: operator.id, secret: serverEnv.authSessionSecret, emit })
+        const usage = await runChatTurn({ apiKey: serverEnv.homeClaudeApiKey, workspaceId: process.env.HOME_CLAUDE_WORKSPACE_ID?.trim() || undefined, model, system: systemPrompt({ now: new Date(), lights: snapshot.lights, numbers: snapshot.numbers, actions }), history, message, tools: READ_TOOLS, actions, ctx: homeToolContext(), uid: operator.id, secret: serverEnv.authSessionSecret, emit })
         await log({ ...usage, ok: true })
         emit({ type: 'done', usage })
       } catch (error) {

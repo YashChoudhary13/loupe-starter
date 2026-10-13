@@ -72,9 +72,9 @@ export const serverEnv = {
     return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 1
   },
 
-  /** The Home assistant's chat model is reached through OpenRouter (D137). The enhancer no longer uses it (D144). */
-  get openRouterApiKey(): string {
-    return required('OPENROUTER_API_KEY')
+  /** The Home assistant's chat model is reached on the Claude API directly (D149), with a key issued for this one use. */
+  get homeClaudeApiKey(): string {
+    return required('HOME_CLAUDE_API_KEY')
   },
 
   /** Private Cloudflare R2 S3-compatible endpoint and credentials. */

@@ -76,9 +76,9 @@ export const READ_TOOLS: readonly ToolDef[] = [
     } },
 ]
 
-/** The OpenAI-style function list the model sees. */
+/** The tool list the model sees, in the Claude API's shape. */
 export function toolSpecs(tools: readonly { name: string; description: string; parameters: JsonSchema }[]) {
-  return tools.map(tool => ({ type: 'function' as const, function: { name: tool.name, description: tool.description, parameters: tool.parameters } }))
+  return tools.map(tool => ({ name: tool.name, description: tool.description, input_schema: { ...tool.parameters } }))
 }
 export const TOOL_TIMEOUT_MS = 15_000
 /** Runs one tool for the model. Never throws: a failure is `{ error }` text the model can read out, and a call still running after TOOL_TIMEOUT_MS is cut off so one hung read cannot stall the turn. Output capped so one answer cannot flood the context. */

@@ -29,6 +29,28 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-13 — D149: the Home assistant calls the Claude API directly
+
+**Goal this session:** replace the OpenRouter key behind the Home assistant with the Claude API key the owner issued for it.
+
+**Built:**
+- `src/lib/home/chat.ts` → the turn runs on the Messages API through `@anthropic-ai/sdk` (new dependency): top-level system prompt, `tool_use` / `tool_result` blocks, tools run only on `stop_reason: tool_use`, cost worked out from token counts (`PRICES`), optional `anthropic-workspace-id` header, the API's own sentence on a failure. `DEFAULT_MODEL` is `claude-haiku-4-5` (the same model as before, under its Claude API id). `trimHistory` drops empty messages and a leading assistant message.
+- `src/lib/home/tools.ts` → `toolSpecs` returns the Claude API tool shape.
+- `src/lib/env.ts`, `src/app/api/home/chat/route.ts` → `HOME_CLAUDE_API_KEY` replaces `OPENROUTER_API_KEY`; `HOME_CLAUDE_WORKSPACE_ID` is passed when set.
+- `.env.local.example`, `CLAUDE.md`, `docs/DECISIONS.md` (D149).
+
+**Verified:** `tests/home-chat.test.ts`, `tests/home-tools.test.ts`, `tests/home-routes.test.ts`: 37 pass. `tsc --noEmit` and eslint clean. Live, with the owner's key and workspace id and a temporary test that was then deleted: one question with one tool call returned "Two orders came in today: Qimati7001 and Qimati7002." on `claude-haiku-4-5` (1 351 tokens in, 78 out, USD 0.001741) and the same facts on `claude-haiku-5-5` (1 014 in, 84 out, USD 0.000143); a call without the workspace id failed with the API's sentence about the missing header, not JSON.
+
+**Not finished / known broken:**
+- Not deployed. The server still has no `HOME_CLAUDE_API_KEY`; pushing `main` before it is added makes every Home chat turn fail with "Missing required environment variable HOME_CLAUDE_API_KEY" (the rest of Loupe is unaffected). Rollout order is at the end of D149.
+- Not seen in a browser: the chat panel itself is unchanged and was not opened.
+
+**Surprises:** the owner's keys start `sk-ant-usr-`: personal keys not tied to one workspace. Every call fails with HTTP 400 until it carries `anthropic-workspace-id`; the id is on the Console's Workspaces page.
+
+**Next session should start with:** ask the owner whether the server env has the two new lines, then check `home.chat_turn` events for a first real turn and its cost.
+
+---
+
 ## 2026-10-12 — Restock: an oversold listing no longer loses the photograph
 
 **Goal this session:** find why one ring of batch `2026-10-12 14.27` reached neither Pending nor the Restock section.

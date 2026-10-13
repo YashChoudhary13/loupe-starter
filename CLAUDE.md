@@ -323,8 +323,8 @@ so 0 g is the correct settled value and not a cutover item. See D19.
 OpenRouter route, prompt versions, the art director, redo jobs and the `/prompts` and `/models`
 screens were retired. Every product image is rendered outside Loupe by Claude (the `enhance`
 skill: per-piece prompt, restock match, live stock read, review against the owner's taste) and
-delivered through D142/D143. `OPENROUTER_API_KEY` remains only for the Home assistant's chat
-model (D137).
+delivered through D142/D143. Nothing in Loupe uses OpenRouter any more: the Home assistant's chat
+model is called on the Claude API with `HOME_CLAUDE_API_KEY` (D149).
 
 **Re-enhance (D145):** on a draft's photograph row, **Re-enhance** takes a note ("stones look dull") and queues a `redo` Enhance job carrying the supplier photograph the delivery came from (or the image as it is) and the note; the runner renders once and delivers with `replaces=<intake id>`, and `replace_intake_image_from_agent` appends the new version, selects it and repoints every draft that showed the old one. The row shows "re-enhancing…" until then.
 
@@ -401,8 +401,9 @@ from sequence maxima (D69).
 service-role key is a JWT for the PostgREST API; it cannot authenticate a Postgres wire
 connection, which is what `db:push` and the direct-connection tests need.
 
-Home needs `N8N_URL`, `N8N_API_KEY`, `HOME_N8N_WORKFLOWS` (JSON label → id) and optionally
-`HOME_CHAT_MODEL`; the bot actions need `BOT_REPORT_WEBHOOK_URL`, `BOT_STAFF_TEXT_WEBHOOK_URL`,
+Home needs `HOME_CLAUDE_API_KEY` (plus `HOME_CLAUDE_WORKSPACE_ID` when the key is not tied to
+one workspace), `N8N_URL`, `N8N_API_KEY`, `HOME_N8N_WORKFLOWS` (JSON label → id) and optionally
+`HOME_CHAT_MODEL` (a Claude API model id, default `claude-haiku-4-5`); the bot actions need `BOT_REPORT_WEBHOOK_URL`, `BOT_STAFF_TEXT_WEBHOOK_URL`,
 `BOT_WEBHOOK_SECRET` and stay hidden without them. `FACE_DEV` is dev-only.
 
 ## UI

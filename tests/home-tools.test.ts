@@ -92,10 +92,10 @@ describe('read tools', () => {
     } finally { vi.useRealTimers() }
     expect(JSON.parse(await runTool([tool(() => { throw new Error('boom') })], 'probe', {}, context()))).toEqual({ error: 'boom' })
   })
-  it('describes every tool to the model as a function with a closed schema, and none can write', () => {
+  it('describes every tool to the model with a closed schema, and none can write', () => {
     const specs = toolSpecs(READ_TOOLS)
-    expect(specs.map(spec => spec.function.name)).toEqual(['get_status', 'list_orders', 'low_stock', 'qc_summary', 'dispatch_summary', 'bot_status', 'bot_executions'])
-    for (const spec of specs) { expect(spec.type).toBe('function'); expect(spec.function.parameters.additionalProperties).toBe(false) }
+    expect(specs.map(spec => spec.name)).toEqual(['get_status', 'list_orders', 'low_stock', 'qc_summary', 'dispatch_summary', 'bot_status', 'bot_executions'])
+    for (const spec of specs) { expect(spec.input_schema.type).toBe('object'); expect(spec.input_schema.additionalProperties).toBe(false) }
     expect(JSON.stringify(READ_TOOLS.map(tool => tool.description))).not.toMatch(/write|update|create|delete|cancel|refund/i)
   })
 })
