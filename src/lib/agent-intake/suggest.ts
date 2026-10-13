@@ -32,6 +32,22 @@ export function parseRestockSku(raw: unknown, tag: AgentTag): string | null {
   return sku
 }
 
+/** Shopify's cap on image alt text; `buildAltText` in product-set.ts trims to the same number. */
+export const DESCRIPTION_MAX_LENGTH = 512
+
+/**
+ * D150: the alt line the enhancer wrote for this image. Loupe stores it as the intake file's
+ * `product_description`, which `publish-product.ts` already turns into the Shopify image alt
+ * verbatim. Whitespace is collapsed because the line is read aloud by screen readers.
+ */
+export function parseDescription(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null
+  if (typeof raw !== 'string') throw new AgentInputError('description must be text.')
+  const text = raw.replace(/\s+/g, ' ').trim()
+  if (text.length > DESCRIPTION_MAX_LENGTH) throw new AgentInputError(`description is longer than ${DESCRIPTION_MAX_LENGTH} characters.`)
+  return text || null
+}
+
 export function parseNote(raw: unknown): string | null {
   if (raw === undefined || raw === null) return null
   if (typeof raw !== 'string') throw new AgentInputError('note must be text.')

@@ -2,7 +2,7 @@ import { serverEnv } from '@/lib/env'
 import { isCronAuthorized } from '@/lib/cron/auth'
 import { ConsoleError } from '@/lib/console/mutations'
 import { AGENT_IMAGE_MAX_BYTES, ingestAgentImage, listAgentBatch, replaceAgentImage } from '@/lib/agent-intake/server'
-import { AgentInputError, parseAgentSuggest, parseAgentTag, parseBatch, parseNote, parseReplaces, parseRestockSku, parseSourceFilename } from '@/lib/agent-intake/suggest'
+import { AgentInputError, parseAgentSuggest, parseAgentTag, parseBatch, parseDescription, parseNote, parseReplaces, parseRestockSku, parseSourceFilename } from '@/lib/agent-intake/suggest'
 
 /**
  * D142: machine endpoint for Claude, the enhancer. Bearer AGENT_SECRET only; no operator
@@ -38,12 +38,13 @@ export async function POST(request: Request) {
     const filename = (typeof filenameField === 'string' && filenameField.trim()) || file.name
     const tag = parseAgentTag(form.get('tag'))
     const note = parseNote(form.get('note'))
+    const description = parseDescription(form.get('description'))
     const batch = parseBatch(form.get('batch'))
     const replaces = parseReplaces(form.get('replaces'))
     const bytes = Buffer.from(await file.arrayBuffer())
     if (replaces) {
       // D145: a redo's render takes the old image's place on the same intake row.
-      const result = await replaceAgentImage({ intakeId: replaces, bytes, mimeType: file.type, tag, note, batch })
+      const result = await replaceAgentImage({ intakeId: replaces, bytes, mimeType: file.type, tag, note, description, batch })
       return Response.json({ ok: true, intake_id: result.intakeId, status: result.status, duplicate: result.duplicate, replaced: result.replaced, version_no: result.versionNo }, { headers })
     }
     const result = await ingestAgentImage({
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
       mimeType: file.type,
       tag,
       note,
+      description,
       restockSku: parseRestockSku(form.get('restock_sku'), tag),
       suggest: parseAgentSuggest(form.get('suggest')),
       batch,

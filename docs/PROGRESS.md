@@ -29,6 +29,30 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-13 — D150: an alt line per image from the enhancer
+
+**Goal this session:** make every image that comes through Claude on the Canada runner reach Shopify with a design-describing alt text, like the 5,152 catalogue images rewritten the same day.
+
+**Built:**
+- `src/lib/agent-intake/suggest.ts` → `parseDescription` (512-character cap, whitespace collapsed).
+- `src/lib/agent-intake/server.ts` → `description` on `AgentImageInput` and `AgentReplaceInput`; written to `intake_files.product_description` (and `description_missing_at` cleared) after the finalise RPC and after a redo's replace RPC.
+- `src/app/api/agent/images/route.ts` → reads the `description` form field for both the ingest and the redo path.
+- `src/lib/agent-intake/restock.ts` → the reused-listing path passes null (title fallback stays).
+- Outside the repo: `~/.claude/skills/enhance/loupe_push.py` sends `description` from the item's `alt`; `SKILL.md` documents `alt` (step 3, items.json table, "Writing `alt`"); both synced to the Canada server the same hour.
+- `docs/DECISIONS.md` (D150).
+
+**Verified:** `tsc --noEmit` clean for the touched files (the two `src/lib/home/chat.ts` errors are pre-existing in this worktree: its `node_modules` predates the `@anthropic-ai/sdk` dependency). `eslint` clean on the touched folders. No test was added: the field is parsed by the same shape as `note`, which the existing route tests cover; a real push with an `alt` line has not run yet.
+
+**Not finished / known broken:**
+- Not deployed: the owner pushes `main`. Until then the live route ignores `description`.
+- Restock "use old image" keeps the title fallback alt; the old image's alt now exists in Shopify after the catalogue backfill and could be read there.
+
+**Surprises:** none.
+
+**Next session should start with:** after the push, check the next runner batch's rows carry `product_description`, then the published product's image alt in Shopify Admin.
+
+---
+
 ## 2026-10-13 — D149: the Home assistant calls the Claude API directly
 
 **Goal this session:** replace the OpenRouter key behind the Home assistant with the Claude API key the owner issued for it.

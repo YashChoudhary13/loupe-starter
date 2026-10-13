@@ -29,6 +29,8 @@ export interface AgentImageInput {
   readonly mimeType: string
   readonly tag: AgentTag
   readonly note: string | null
+  /** D150: alt text for the published image, written by the enhancer; null keeps the title fallback. */
+  readonly description: string | null
   readonly restockSku: string | null
   readonly suggest: AgentSuggest | null
   readonly batch: string | null
@@ -124,9 +126,12 @@ export async function ingestAgentImage(input: AgentImageInput): Promise<AgentIma
   if (error) throw new ConsoleError('The image is safely uploaded, but it could not be added to Pending.', error.message, true)
   const result = parsed(data)
   const sourcePhotoId = input.sourcePhotoId ?? await findSourcePhoto(input.batch, input.sourceFilename)
-  if (sourcePhotoId && !result.duplicate) {
-    // ponytail: one extra update instead of a wider finalise signature; a miss here only loses the redo shortcut.
-    await db.from('intake_files').update({ agent_source_photo_id: sourcePhotoId }).eq('id', result.intakeId)
+  // ponytail: one extra update instead of a wider finalise signature; a miss here only loses the redo shortcut or the alt line.
+  const patch: Record<string, string | null> = {}
+  if (sourcePhotoId) patch.agent_source_photo_id = sourcePhotoId
+  if (input.description) { patch.product_description = input.description; patch.description_missing_at = null }
+  if (Object.keys(patch).length && !result.duplicate) {
+    await db.from('intake_files').update(patch).eq('id', result.intakeId)
   }
   return result
 }
@@ -137,6 +142,8 @@ export interface AgentReplaceInput {
   readonly mimeType: string
   readonly tag: AgentTag
   readonly note: string | null
+  /** D150: alt text for the replacement image; null leaves the row's description as it was. */
+  readonly description: string | null
   readonly batch: string | null
 }
 
@@ -181,6 +188,7 @@ export async function replaceAgentImage(input: AgentReplaceInput): Promise<Agent
   if (error) throw new ConsoleError('The new image is stored, but the old one could not be replaced.', [error.code, error.message].filter(Boolean).join(' · '), error.code !== '55000' && error.code !== '22023' && error.code !== 'P0002')
   const row = data as { intake_id?: unknown; version_no?: unknown } | null
   if (!row || typeof row.intake_id !== 'string') throw new ConsoleError('The database returned no intake id.', null, true)
+  if (input.description) await db.from('intake_files').update({ product_description: input.description, description_missing_at: null }).eq('id', row.intake_id)
   return { intakeId: row.intake_id, status: 'enhanced', duplicate: false, replaced: true, versionNo: typeof row.version_no === 'number' ? row.version_no : versionNo }
 }
 

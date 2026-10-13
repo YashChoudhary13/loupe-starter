@@ -174,6 +174,7 @@ export async function decideRestockCandidate(
       mimeType,
       tag: 'restock',
       note: note || null,
+      description: null, // ponytail: the reused listing image keeps the title fallback alt; read the old image's alt from Shopify here if that ever matters
       restockSku: chosen.sku,
       suggest: chosen.suggest ? { ...chosen.suggest, alsoArchive } : null,
       batch: row.agent_jobs?.label ?? null,
