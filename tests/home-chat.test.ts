@@ -10,7 +10,7 @@ const tools: ToolDef[] = [{ name: 'list_orders', description: 'orders', paramete
 const actions: ActionDef[] = [{ name: 'send_staff_text', label: 'Send a message to staff', description: 'text', needs: 'staffText', parameters: { type: 'object', properties: { text: { type: 'string' } }, additionalProperties: false },
   validate: args => typeof args.text === 'string' && args.text ? { ok: true, params: { text: args.text }, summary: args.text } : { ok: false, error: 'Nothing to send.' }, async run() { throw new Error('must never run from a chat turn') } }]
 const ctx = {} as ToolContext
-const MODEL = 'claude-haiku-4-5'
+const MODEL = 'claude-haiku-5-5'
 const text = (value: string) => ({ type: 'text', text: value })
 const call = (name: string, input: unknown, id = 'c1') => ({ type: 'tool_use', id, name, input })
 const reply = (content: { type: string }[], usage = { input_tokens: 100, output_tokens: 20 }, stop_reason = content.some(block => block.type === 'tool_use') ? 'tool_use' : 'end_turn') => ({ id: 'msg_1', type: 'message', role: 'assistant', model: MODEL, content, stop_reason, stop_sequence: null, usage })
@@ -28,9 +28,9 @@ function harness(responses: unknown[], workspaceId?: string) {
 describe('a chat turn', () => {
   it('answers plain text and records usage, with the cost worked out from the token counts', async () => {
     const h = harness([reply([text('All green.')])])
-    expect(await h.turn()).toEqual({ model: MODEL, promptTokens: 100, completionTokens: 20, cost: 0.0002, toolCalls: 0 })
+    expect(await h.turn()).toEqual({ model: MODEL, promptTokens: 100, completionTokens: 20, cost: 0.00002, toolCalls: 0 })
     expect(h.events).toEqual([{ type: 'text', text: 'All green.' }])
-    expect(h.requests[0]).toMatchObject({ model: MODEL, max_tokens: 4000, system: 'sys', tool_choice: { type: 'auto' }, messages: [{ role: 'user', content: 'hello' }] })
+    expect(h.requests[0]).toMatchObject({ model: MODEL, max_tokens: 16000, output_config: { effort: 'max' }, system: 'sys', tool_choice: { type: 'auto' }, messages: [{ role: 'user', content: 'hello' }] })
     expect((h.requests[0].tools as { name: string }[]).map(tool => tool.name)).toEqual(['list_orders', 'send_staff_text'])
     expect(h.headers[0].get('x-api-key')).toBe('k'); expect(h.headers[0].get('anthropic-workspace-id')).toBeNull()
   })
@@ -85,10 +85,10 @@ describe('a chat turn', () => {
     expect(results).toHaveLength(MAX_TOOL_CALLS + 1); expect(results.at(-1)?.content).toMatch(/budget/)
     expect(h.requests[1].tool_choice).toEqual({ type: 'none' }); expect(h.events.at(-1)).toEqual({ type: 'text', text: 'Enough.' })
   })
-  it('the 4 000-token output budget is tracked for the whole turn, not per call', async () => {
-    const h = harness([reply([call('list_orders', { filter: 'today' })], { input_tokens: 100, output_tokens: 3800 }), reply([text('Trimmed.')])])
+  it('the 16 000-token output budget is tracked for the whole turn, not per call, and the last call still gets room to think', async () => {
+    const h = harness([reply([call('list_orders', { filter: 'today' })], { input_tokens: 100, output_tokens: 15000 }), reply([text('Trimmed.')])])
     await h.turn()
-    expect(h.requests[1]).toMatchObject({ max_tokens: 256, tool_choice: { type: 'none' } })
+    expect(h.requests[1]).toMatchObject({ max_tokens: 2000, tool_choice: { type: 'none' } })
     expect(h.events.at(-1)).toEqual({ type: 'text', text: 'Trimmed.' })
   })
   it('a provider error is thrown with the sentence the API gave', async () => {

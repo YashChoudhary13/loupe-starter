@@ -41,7 +41,7 @@ describe('POST /api/home/chat', () => {
     const response = await chat(request('/api/home/chat', { message: 'How are we?', messages: [{ role: 'user', content: 'earlier' }, { role: 'system', content: 'ignored' }] }))
     expect(response.status).toBe(200); expect(response.headers.get('content-type')).toContain('application/x-ndjson'); expect(response.headers.get('x-accel-buffering')).toBe('no')
     expect(await lines(response)).toEqual([{ type: 'text', text: 'All green.' }, { type: 'done', usage: { model: 'm', promptTokens: 10, completionTokens: 5, cost: 0.001, toolCalls: 0 } }])
-    expect(mocks.turn.mock.calls[0][0]).toMatchObject({ uid: 'u1', message: 'How are we?', history: [{ role: 'user', content: 'earlier' }], apiKey: 'claude-key', model: 'claude-haiku-4-5', actions: [] })
+    expect(mocks.turn.mock.calls[0][0]).toMatchObject({ uid: 'u1', message: 'How are we?', history: [{ role: 'user', content: 'earlier' }], apiKey: 'claude-key', model: 'claude-haiku-5-5', actions: [] })
     expect(mocks.turn.mock.calls[0][0].system).toContain('never write')
     expect(mocks.events[0]).toMatchObject({ event: 'home.chat_turn', actor: 'owner@example.test', detail: { toolCalls: 0, cost: 0.001, ok: true } })
   })

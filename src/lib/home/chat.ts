@@ -9,8 +9,10 @@ export interface ChatMessage { role: 'user' | 'assistant'; content: string }
 export interface ConfirmCard { action: string; label: string; summary: string; params: ActionParams; token: string }
 export type ChatEvent = { type: 'status'; text: string } | { type: 'text'; text: string } | { type: 'confirm'; card: ConfirmCard } | { type: 'error'; text: string } | { type: 'done'; usage: TurnUsage }
 export interface TurnUsage { model: string; promptTokens: number | null; completionTokens: number | null; cost: number | null; toolCalls: number }
-export const MAX_TURNS = 20, MAX_HISTORY_CHARS = 24_000, MAX_TOOL_CALLS = 6, MAX_OUTPUT_TOKENS = 4_000
-export const DEFAULT_MODEL = 'claude-haiku-4-5'
+export const MAX_TURNS = 20, MAX_HISTORY_CHARS = 24_000, MAX_TOOL_CALLS = 6, MAX_OUTPUT_TOKENS = 16_000, MIN_CALL_TOKENS = 2_000
+export const DEFAULT_MODEL = 'claude-haiku-5-5'
+/** Owner's choice, 2026-10-13: the model thinks as hard as it can before it answers. Thinking is paid as output, which is why the turn's token budget is 16 000 and no call gets fewer than 2 000. A model older than the 5.5 line (Haiku 4.5) refuses this setting. */
+export const EFFORT = 'max'
 /** List prices in USD per million tokens (input, output). The Claude API reports tokens, not money, so the cost line of `home.chat_turn` is worked out here; a model missing from this table logs a null cost. */
 const PRICES: Record<string, readonly [number, number]> = { 'claude-haiku-4-5': [1, 5], 'claude-haiku-5-5': [0.1, 0.5], 'claude-sonnet-5-5': [2, 10], 'claude-opus-5-5': [4, 20] }
 
@@ -38,7 +40,7 @@ export function systemPrompt(input: { now: Date; lights: readonly ProbeLight[]; 
 export interface TurnInput { apiKey: string; workspaceId?: string; model: string; system: string; history: readonly ChatMessage[]; message: string; tools: readonly ToolDef[]; actions: readonly ActionDef[]; ctx: ToolContext; uid: string; secret: string; fetchImpl?: typeof fetch; now?: () => Date; emit(event: ChatEvent): void }
 const asObject = (value: unknown): Record<string, unknown> | null => value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 
-/** One user message → at most 6 tool calls → one answer, on the Claude API (D149). Read tools run here; an action only becomes a confirm card. Model calls are not streamed; progress is. Every throw below carries the usage accumulated so far as `.usage`, so a caller that logs a failed turn still gets its cost line. */
+/** One user message → at most 6 tool calls → one answer, on the Claude API at maximum effort (D149). Read tools run here; an action only becomes a confirm card. Model calls are not streamed; progress is. Every throw below carries the usage accumulated so far as `.usage`, so a caller that logs a failed turn still gets its cost line. */
 export async function runChatTurn(input: TurnInput): Promise<TurnUsage> {
   const now = input.now ?? (() => new Date())
   // A key that is not tied to one workspace must name its workspace on every call; a single-workspace key needs no header.
@@ -47,10 +49,10 @@ export async function runChatTurn(input: TurnInput): Promise<TurnUsage> {
   const specs = toolSpecs([...input.tools, ...input.actions])
   const usage: TurnUsage = { model: input.model, promptTokens: null, completionTokens: null, cost: null, toolCalls: 0 }
   for (let round = 0; round <= MAX_TOOL_CALLS; round++) {
-    // The 4 000-token budget is for the whole turn, not per call: track what's left and force a final answer once it runs low, same as running out of tool calls.
-    const remaining = MAX_OUTPUT_TOKENS - (usage.completionTokens ?? 0), exhausted = usage.toolCalls >= MAX_TOOL_CALLS || remaining < 512
+    // The 16 000-token budget is for the whole turn, not per call: track what's left and force a final answer once it runs low, same as running out of tool calls.
+    const remaining = MAX_OUTPUT_TOKENS - (usage.completionTokens ?? 0), exhausted = usage.toolCalls >= MAX_TOOL_CALLS || remaining < MIN_CALL_TOKENS
     let reply: Anthropic.Message
-    try { reply = await client.messages.create({ model: input.model, system: input.system, messages, ...(specs.length ? { tools: specs, tool_choice: { type: exhausted ? 'none' : 'auto' } } : {}), max_tokens: Math.max(256, remaining) }) }
+    try { reply = await client.messages.create({ model: input.model, system: input.system, messages, ...(specs.length ? { tools: specs, tool_choice: { type: exhausted ? 'none' : 'auto' } } : {}), max_tokens: Math.max(MIN_CALL_TOKENS, remaining), output_config: { effort: EFFORT } }) }
     catch (error) {
       // The API's own sentence ("Your credit balance is too low…") reads better to the operator than the SDK's status code and JSON.
       const said = error instanceof Anthropic.APIError ? (error.error as { error?: { message?: string } } | undefined)?.error?.message : undefined

@@ -403,7 +403,7 @@ connection, which is what `db:push` and the direct-connection tests need.
 
 Home needs `HOME_CLAUDE_API_KEY` (plus `HOME_CLAUDE_WORKSPACE_ID` when the key is not tied to
 one workspace), `N8N_URL`, `N8N_API_KEY`, `HOME_N8N_WORKFLOWS` (JSON label → id) and optionally
-`HOME_CHAT_MODEL` (a Claude API model id, default `claude-haiku-4-5`); the bot actions need `BOT_REPORT_WEBHOOK_URL`, `BOT_STAFF_TEXT_WEBHOOK_URL`,
+`HOME_CHAT_MODEL` (a Claude API model id, default `claude-haiku-5-5`, run at maximum effort); the bot actions need `BOT_REPORT_WEBHOOK_URL`, `BOT_STAFF_TEXT_WEBHOOK_URL`,
 `BOT_WEBHOOK_SECRET` and stay hidden without them. `FACE_DEV` is dev-only.
 
 ## UI
