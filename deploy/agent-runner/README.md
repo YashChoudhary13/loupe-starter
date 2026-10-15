@@ -41,3 +41,5 @@ sudo systemctl daemon-reload && sudo systemctl enable --now qimati-agent-runner.
 - Claude runs with an explicit tool allowlist (`ALLOWED_TOOLS` in the script): file tools plus `python3`, the restock venv, `qdb`, `codex` and a few coreutils. No shell escape, no git, no permission bypass.
 - A job that fails is marked `failed` in `/enhance` with the last log lines; the folder is kept for a re-run (`agent_job_claim` picks up running jobs whose lease lapsed).
 - Codex credits: the renders spend the two Codex accounts (`~/.codex`, `~/.codex-2`). When both are out, `enhance.py codex` reports it and the job fails with that reason.
+
+**A note for one batch** (2026-10-16): write `~/agent-batches/next-batch-note.md` on the server before the owner uploads. The runner moves it into the job folder at claim, appends it to every session's prompt as the owner's note (it wins over SKILL.md), and a first line `match: --category=anklets` restricts the catalogue matcher to that category. The next batch runs without it.

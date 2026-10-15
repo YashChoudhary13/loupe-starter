@@ -23,6 +23,7 @@ ENV_FILE="${ENV_FILE:-/etc/qimati-agent/runner.env}"
 : "${AGENT_SECRET:?set AGENT_SECRET in $ENV_FILE}"
 RUNNER_NAME="${RUNNER_NAME:-canada-1}"
 WORK_DIR="${WORK_DIR:-$HOME/agent-batches}"
+NOTE_FILE="${NOTE_FILE:-$WORK_DIR/next-batch-note.md}"  # 2026-10-16: the owner's instructions for the next batch only; moved into the job folder on claim. A first line `match: --category=anklets` goes to the matcher, the rest to every session.
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 PROMPT_FILE="${PROMPT_FILE:-/etc/qimati-agent/run-job.prompt.md}"
 LEASE_SECONDS="${LEASE_SECONDS:-1800}"
@@ -57,7 +58,8 @@ else
   folder="$WORK_DIR/$label"
   mkdir -p "$folder"
   printf '%s' "$claim" | json 'json.dumps(d["job"], indent=1)' > "$folder/job.json"
-  echo "$(stamp) claimed $job_id ($label)" >> "$WORK_DIR/runner.log"
+  if [ "$kind" = "batch" ] && [ -f "$NOTE_FILE" ]; then mv "$NOTE_FILE" "$folder/owner-note.md"; fi
+  echo "$(stamp) claimed $job_id ($label)$([ -f "$folder/owner-note.md" ] && echo ' with the owner note')" >> "$WORK_DIR/runner.log"
   # Every photo once, four at a time, keeping the supplier's filenames.
   printf '%s' "$claim" | json '"\n".join(p["filename"]+"\t"+p["url"] for p in d["job"]["photos"])' > "$folder/.photos.tsv"
   python3 - "$folder" <<'PY'
@@ -98,6 +100,10 @@ Folder: $work
 Job id: $job_id
 Job label: $label
 Push command: python3 -I ~/.claude/skills/enhance/loupe_push.py \"$work\" --batch \"$label\" $PUSH_FLAG"
+  if [ -f "$folder/owner-note.md" ]; then prompt="$prompt
+
+Owner's note for this batch. It wins over SKILL.md and the steps above where they differ:
+$(grep -v '^match:' "$folder/owner-note.md")"; fi
   ( cd "$HOME" && printf '%s' "$prompt" | TMPDIR="$work/tmp" timeout "$CLAUDE_TIMEOUT" "$CLAUDE_BIN" -p --output-format text --allowedTools "$ALLOWED_TOOLS" ) > "$work/claude.log" 2>&1  # prompt on stdin: `-p` with flags after it reads no positional prompt
 }
 
@@ -116,7 +122,9 @@ else
     [ -n "$(find "$d" -maxdepth 1 -type f -print -quit)" ] && parts+=("$d")
   done
   # The catalogue matcher for every part: one model load, started before any session, each part's sheets written as soon as it is done.
-  ( "$MATCH_PY" "$HOME/Desktop/AI-Python/restock.py" match "${parts[@]}" > "$folder/matcher.log" 2>&1; echo $? > "$folder/matcher.done" ) &
+  match_args=$(sed -n 's/^match: *//p' "$folder/owner-note.md" 2>/dev/null)  # e.g. --category=anklets
+  # shellcheck disable=SC2086
+  ( "$MATCH_PY" "$HOME/Desktop/AI-Python/restock.py" match "${parts[@]}" $match_args > "$folder/matcher.log" 2>&1; echo $? > "$folder/matcher.done" ) &
   pids=()
   for d in "${parts[@]}"; do run_claude "$d" & pids+=($!); done
   status=0; for pid in "${pids[@]}"; do wait "$pid" || status=$?; done
