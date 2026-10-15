@@ -1,8 +1,9 @@
 import { MISSING, lines, num } from './plan'
-import { NEED_ADDRESS, type SlipAddress, type SlipOrder, type SlipPrintRow, type SlipStrip } from './types'
+import { NEED_ADDRESS, type SlipAddress, type SlipDocumentRow, type SlipOrder, type SlipStrip } from './types'
 
 /** The slip document: one packing slip per order in the layout of Shopify's own slip, a slim mark strip on top, designed
- * for a black-and-white printer. The browser prints it (Ctrl+P or the auto dialog); no file is written anywhere.
+ * for a black-and-white printer. The Print slips page loads it into a hidden frame and opens the print dialog there (D152);
+ * opened on its own it has a Print button. No file is written anywhere.
  * `@page { margin: 0 }` with the margins as padding on each slip: Chrome draws its date/title/URL/page-number lines inside
  * the page margin, so a zero margin is the only way to keep them off the paper whatever the dialog says (seen 2026-10-10). */
 const SHOP_FOOT = ['Qimati', 'Acharya Kriplani Marg, Adarsh Nagar, Jaipur., 302, A-6, SV Tower, 302004 Jaipur RJ, India', 'info@qimati.in', 'www.qimati.in']
@@ -24,7 +25,7 @@ function address(a: SlipAddress | null, phone = true): string {
   const rows = [a?.name, a?.address1, a?.address2, place, a?.country, ...(phone ? [a?.phone] : [])].filter(Boolean)
   return rows.map(row => `<div>${esc(row)}</div>`).join('') || `<div>${MISSING}</div>`
 }
-export function slip(row: SlipPrintRow, order: SlipOrder | undefined): string {
+export function slip(row: SlipDocumentRow, order: SlipOrder | undefined): string {
   if (!order) return `<section class="slip PACK"><div class=mark><b>${esc(row.mark)}</b></div><header><div class=shop>QIMATI</div><div class=right><div>Order ${esc(row.order_name)}</div></div></header><p>Shopify could not return this order, so its slip could not be rendered. Open it in Shopify.</p></section>`
   const items = lines(order).map(line => {
     const variant = line.variantTitle && line.variantTitle !== 'Default Title' ? `<div>${esc(line.variantTitle)}</div>` : ''
@@ -38,7 +39,8 @@ export function slip(row: SlipPrintRow, order: SlipOrder | undefined): string {
 <footer><p>Thank you for shopping with us!</p>${SHOP_FOOT.map(text => `<div>${esc(text)}</div>`).join('')}</footer></section>`
 }
 
-export interface SlipDocument { rows: readonly SlipPrintRow[]; orders: readonly SlipOrder[]; title: string; printedBy: string; printedAt: string; auto: boolean; backHref: string }
+export const SLIP_DOCUMENT_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'SAMEORIGIN', 'Referrer-Policy': 'no-referrer' } as const
+export interface SlipDocument { rows: readonly SlipDocumentRow[]; orders: readonly SlipOrder[]; title: string; printedBy: string; printedAt: string; backHref: string }
 export function renderSlipDocument(doc: SlipDocument): string {
   const byId = new Map(doc.orders.map(order => [order.id, order]))
   const rows = doc.rows.filter(row => row.mark !== 'BASELINE').sort((a, b) => a.order_number - b.order_number)
@@ -69,5 +71,5 @@ tr{break-inside:avoid}.notes{margin-top:7mm}footer{text-align:center;margin-top:
 @media screen{body{background:#e9e7e3}.slip{background:#fff;max-width:150mm;margin:16px auto;padding:10mm 30mm 14mm;box-shadow:0 1px 4px rgba(0,0,0,.15)}}
 @media print{.toolbar{display:none}.slip{padding:10mm 30mm 14mm;box-sizing:border-box}}
 </style></head><body><div class="toolbar"><h1>Qimati packing slips</h1><p>${summary}</p>${warnings}<p>A4, 100% scale, browser headers and footers off. <button type="button" onclick="window.print()">Print</button><a href="${esc(doc.backHref)}">Back to Print slips</a></p></div>
-<main>${slips}</main>${doc.auto && rows.length ? '<script>(function(){var done=false;function go(){if(done)return;done=true;setTimeout(function(){window.print()},300)}window.addEventListener("load",go);setTimeout(go,15000)})()</script>' : ''}</body></html>`
+<main>${slips}</main></body></html>`
 }

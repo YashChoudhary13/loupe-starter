@@ -53,18 +53,25 @@ describe('printSlips', () => {
     expect(outcome).toMatchObject({ batchId: 'b1', printed: 4, baseline: 0, marks: { PACK: 3, HOLD: 1, CLUB: 0, 'CLUB + HOLD': 0 }, failed: [] })
     expect(calls.batches).toEqual([{ by: 'owner', fromNumber: null }])
     expect(ids(calls.rows as { orderId: string }[])).toEqual(['1', '2', '3', '4'])
-    expect(calls.reported).toEqual(['gid://shopify/FulfillmentOrder/1', 'fo4a'])
-    expect(calls.progress).toEqual([
+    expect(calls.reported.sort()).toEqual(['fo4a', 'gid://shopify/FulfillmentOrder/1'])
+    // orders are marked a few at a time, so the writes land in any order
+    expect(calls.progress).toHaveLength(4)
+    expect(calls.progress).toEqual(expect.arrayContaining([
       { orderId: 'gid://shopify/Order/1', progress: 'marked', error: null }, { orderId: 'gid://shopify/Order/2', progress: 'not_needed', error: null },
-      { orderId: 'gid://shopify/Order/3', progress: 'already', error: null }, { orderId: 'gid://shopify/Order/4', progress: 'marked', error: null }])
+      { orderId: 'gid://shopify/Order/3', progress: 'already', error: null }, { orderId: 'gid://shopify/Order/4', progress: 'marked', error: null }]))
+    // the document is rendered from what the click read, in order number, each row carrying its Shopify outcome
+    expect(outcome.rows.map(row => [row.order_name, row.mark, row.progress])).toEqual([['Qimati1', 'PACK', 'marked'], ['Qimati2', 'HOLD', 'not_needed'], ['Qimati3', 'PACK', 'already'], ['Qimati4', 'PACK', 'marked']])
+    expect(outcome.orders.map(order => order.name)).toEqual(['Qimati1', 'Qimati2', 'Qimati3', 'Qimati4'])
+    expect(outcome.printedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     expect(deps.finishBatch).toHaveBeenCalledWith('b1', 4)
-    expect(calls.events[0]).toMatchObject({ event: 'slips.printed', detail: { printed: 4, failed: [], skippedAsTaken: 0 } })
+    expect(calls.events[0]).toMatchObject({ event: 'slips.printed', detail: { printed: 4, failed: [], skippedAsTaken: 0, ms: { read: expect.any(Number), mark: expect.any(Number) } } })
   })
   it('keeps a Shopify failure on the row and in the outcome, and goes on with the next order', async () => {
     const { deps, calls } = fakeDeps([order(1), order(2)], { failOn: ['gid://shopify/FulfillmentOrder/1'] })
     const outcome = await printSlips('owner', null, deps)
     expect(outcome.failed).toEqual([{ name: 'Qimati1', error: 'Shopify refused.' }]); expect(outcome.printed).toBe(2)
-    expect(calls.progress[0]).toEqual({ orderId: 'gid://shopify/Order/1', progress: 'failed', error: 'Shopify refused.' })
+    expect(calls.progress).toContainEqual({ orderId: 'gid://shopify/Order/1', progress: 'failed', error: 'Shopify refused.' })
+    expect(outcome.rows.map(row => row.progress)).toEqual(['failed', 'marked'])
     expect(calls.reported).toEqual(['gid://shopify/FulfillmentOrder/2'])
   })
   it('leaves out an order another click took meanwhile: not printed, not marked', async () => {
@@ -106,5 +113,17 @@ describe('retryProgress', () => {
     const { deps, calls } = fakeDeps([order(1)])
     expect(await retryProgress('b1', [{ order_id: 'gid://shopify/Order/1', order_name: 'Qimati1', mark: 'PACK', progress: 'marked' }], 'owner', deps)).toEqual({ fixed: 0, failed: [] })
     expect(calls.events).toEqual([])
+  })
+})
+
+describe('printSlips marks several orders at once', () => {
+  it('has up to eight Shopify writes in flight, never more, and still marks every order', async () => {
+    const orders = Array.from({ length: 20 }, (_, i) => order(i + 1))
+    const { deps, calls } = fakeDeps(orders)
+    let inFlight = 0, peak = 0
+    deps.reportProgress = async id => { inFlight++; peak = Math.max(peak, inFlight); await new Promise(resolve => setTimeout(resolve, 2)); inFlight--; calls.reported.push(id) }
+    const outcome = await printSlips('owner', null, deps)
+    expect(outcome.printed).toBe(20); expect(calls.reported).toHaveLength(20)
+    expect(peak).toBeGreaterThan(1); expect(peak).toBeLessThanOrEqual(8)
   })
 })

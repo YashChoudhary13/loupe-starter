@@ -29,6 +29,28 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-16 — D152: Print slips prints in place and marks orders eight at a time
+
+**Goal this session:** the owner's three asks on Print slips: it is slow, it must not leave the page, and the print dialog must appear on the Print slips page itself so a tab returned to later cannot be mistaken for an unprinted batch.
+
+**Built:**
+- `src/lib/slips/print.ts` → `printSlips` marks orders in Shopify eight at a time (`MARK_AT_ONCE`), returns `rows`, `orders` and `printedAt` so the document is rendered without a second read, and records `ms.read` / `ms.mark` on the `slips.printed` event.
+- `src/app/api/slips/route.ts` → answers the slip document (200) from the orders just read; a click that printed nothing answers `409` with the note, a problem `400`; no more `303`.
+- `src/app/api/slips/[batch]/route.ts`, `src/lib/slips/render.ts` → `?auto=1` and the auto-print script are gone; the document headers live in `SLIP_DOCUMENT_HEADERS`.
+- `src/components/slips/PrintScreen.tsx` → `printDocument` loads the document into a hidden frame and opens the dialog there (15 s cap for the photos); Print shows Preparing… then Printing…; the list refreshes after the dialog; Reprint is a button that prints the same way; `note` comes from the fetch, not the URL.
+- `src/lib/slips/types.ts` → `SlipDocumentRow`, what rendering needs from a printed row.
+- `docs/DECISIONS.md` (D152).
+
+**Verified:** `tsc --noEmit` clean on the touched files (the two `src/lib/home/chat.ts` implicit-any errors are on `main` already); `eslint` clean on `src/lib/slips`, the two routes, the page and the screen; `vitest` 18 of 18 in `slips-print`, `slips-render`, `slips-screen-render` (new: twenty orders keep at most eight Shopify writes in flight and all twenty are marked; the outcome rows carry each order's progress; the document has no script); `next build` lists `/api/slips`, `/api/slips/[batch]` and `/dispatch/print`. Full suite: 924 passed, the 20 failures are the `*.sql.test.ts`, `schema` and `publish-identity` tests that need the local database in a known state, untouched here.
+
+**Not finished / known broken:**
+- Not clicked live: the frame print on the office printer and the real per-step times. Read `detail.ms` on the next `slips.printed` event in `events`.
+- The click still reads every open order from Shopify once (the page load reads them too); if `ms.read` dominates, that read is the next thing to look at.
+
+**Surprises:** this worktree's `node_modules` predated D149, so `next build` failed on `@anthropic-ai/sdk` until `npm ci`.
+
+**Next session should start with:** the owner's report of the first click: did the dialog open over the page, and what does `ms` say.
+
 ## 2026-10-14 — D151: Save draft is one request, so a reload cannot leave an empty draft
 
 **Goal this session:** find why a necklace the owner drafted on 13 Oct never reached Shopify, and remove the cause.

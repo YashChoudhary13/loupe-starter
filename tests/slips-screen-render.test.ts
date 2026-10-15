@@ -11,12 +11,12 @@ const props = (changes: Partial<PrintScreenProps> = {}): PrintScreenProps => ({ 
 const render = (p: PrintScreenProps) => renderToString(createElement(PrintScreen, p)).replace(/<!-- -->/g, '')
 
 describe('Print slips screen', () => {
-  it('lists the unprinted orders with marks, a form that posts to /api/slips, and the batches with Reprint and Retry', () => {
+  it('lists the unprinted orders with marks, a form that posts to /api/slips, and the batches with a Reprint button (no link away) and Retry', () => {
     const html = render(props())
     expect(html).toContain('action="/api/slips"'); expect(html).toContain('Print 3 slips')
     expect(html).toContain('PACK 1 · CLUB 1 · HOLD 1 · CLUB + HOLD 0 · 6 units to pack')
     expect(html).toContain('main; add 3 (older, in progress)'); expect(html).toContain('Left out, payment not received: Qimati5 (pending)')
-    expect(html).toContain('href="/api/slips/b1"'); expect(html).toContain('Retry marking 1 order'); expect(html).toContain('Qimati6100 (Shopify refused.)')
+    expect(html).toContain('>Reprint</button>'); expect(html).not.toContain('href="/api/slips/b1"'); expect(html).toContain('Retry marking 1 order'); expect(html).toContain('Qimati6100 (Shopify refused.)')
     expect(html).toContain('12 slips'); expect(html).toContain('Qimati6098 to Qimati6110')
   })
   it('turns Print off on an incomplete list or when nothing is left', () => {

@@ -1,5 +1,5 @@
 import { isHeld, num, paid, plan } from './plan'
-import type { Mark, Progress, SlipOrder, SlipRow, SlipStrip } from './types'
+import type { Mark, Progress, SlipDocumentRow, SlipOrder, SlipRow, SlipStrip } from './types'
 
 /** One click of Print slips, with every side effect behind `deps` so the sequence is testable without Shopify or a database. */
 export interface NewPrintRow { orderId: string; orderName: string; orderNumber: number; mark: Mark | 'BASELINE'; strip: SlipStrip }
@@ -17,7 +17,10 @@ export interface PrintDeps {
   record(batchId: string, event: string, detail: Record<string, unknown>, by: string): Promise<void>
 }
 export interface Selection { rows: SlipRow[]; baseline: SlipOrder[]; leftOut: string[]; truncated: boolean; unprinted: number }
-export interface PrintOutcome { batchId: string | null; printed: number; baseline: number; marks: Record<Mark, number>; failed: { name: string; error: string }[]; leftOut: string[] }
+/** `rows` and `orders` are what the click printed, so the document is rendered from them without reading Shopify again. */
+export interface PrintOutcome { batchId: string | null; printed: number; baseline: number; marks: Record<Mark, number>; failed: { name: string; error: string }[]; leftOut: string[]; printedAt: string; rows: SlipDocumentRow[]; orders: SlipOrder[] }
+/** How many orders are told to Shopify at once. One after another cost about half a second each on the first live clicks (2026-10-16); eight at a time stays far under the API's cost bucket, and the client retries a throttle anyway. */
+const MARK_AT_ONCE = 8
 export class NothingToPrint extends Error { constructor(message = 'Nothing new to print.') { super(message); this.name = 'NothingToPrint' } }
 
 /** The orders this click would print: open, paid, no slip yet, and at or above `fromNumber` when one is given.
@@ -48,6 +51,7 @@ export async function markInProgress(order: SlipOrder, mark: Mark | 'BASELINE', 
 }
 
 export async function printSlips(by: string, fromNumber: number | null, deps: PrintDeps): Promise<PrintOutcome> {
+  const started = Date.now()
   const selection = await select(deps, fromNumber)
   if (selection.truncated) throw new Error('Shopify has more open orders than Loupe read in one go, so the list is incomplete and nothing was printed. Archive old fulfilled orders in Shopify and try again.')
   if (!selection.rows.length && !selection.baseline.length) throw new NothingToPrint(selection.leftOut.length ? `Nothing new to print. Left out, payment not received: ${selection.leftOut.join(', ')}.` : undefined)
@@ -59,15 +63,24 @@ export async function printSlips(by: string, fromNumber: number | null, deps: Pr
   const inserted = await deps.insertRows(batchId, wanted)
   const rows = selection.rows.filter(row => inserted.has(row.order.id))
   await deps.finishBatch(batchId, rows.length)
-  // 2. Shopify, one order at a time, after the rows exist: a failure here is shown on the page by order number, never silent.
-  const failed: { name: string; error: string }[] = []
-  for (const row of rows) {
-    const result = await markInProgress(row.order, row.mark, `Packing slip printed from Loupe by ${by}`, deps.reportProgress)
-    await deps.setProgress(batchId, row.order.id, result.progress, result.error)
-    if (result.error) failed.push({ name: row.order.name, error: result.error })
+  const printedAt = new Date().toISOString(), marking = Date.now()
+  // 2. Shopify, a few orders at a time, after the rows exist: a failure here is shown on the page by order number, never silent.
+  const note = `Packing slip printed from Loupe by ${by}`
+  const results: { progress: Progress; error: string | null }[] = []
+  for (let start = 0; start < rows.length; start += MARK_AT_ONCE) {
+    results.push(...await Promise.all(rows.slice(start, start + MARK_AT_ONCE).map(async row => {
+      const result = await markInProgress(row.order, row.mark, note, deps.reportProgress)
+      await deps.setProgress(batchId, row.order.id, result.progress, result.error)
+      return result
+    })))
   }
-  const outcome: PrintOutcome = { batchId, printed: rows.length, baseline: selection.baseline.filter(o => inserted.has(o.id)).length, marks: countMarks(rows), failed, leftOut: selection.leftOut }
-  await deps.record(batchId, 'slips.printed', { printed: outcome.printed, baseline: outcome.baseline, marks: outcome.marks, failed: failed.map(item => item.name), fromNumber, skippedAsTaken: wanted.length - inserted.size }, by)
+  const failed = rows.flatMap((row, i) => { const error = results[i]?.error; return error ? [{ name: row.order.name, error }] : [] })
+  const outcome: PrintOutcome = {
+    batchId, printed: rows.length, baseline: selection.baseline.filter(o => inserted.has(o.id)).length, marks: countMarks(rows), failed, leftOut: selection.leftOut, printedAt,
+    rows: rows.map((row, i) => ({ order_id: row.order.id, order_name: row.order.name, order_number: num(row.order.name), mark: row.mark, strip: row.strip, progress: results[i]?.progress ?? 'failed' })),
+    orders: rows.map(row => row.order),
+  }
+  await deps.record(batchId, 'slips.printed', { printed: outcome.printed, baseline: outcome.baseline, marks: outcome.marks, failed: failed.map(item => item.name), fromNumber, skippedAsTaken: wanted.length - inserted.size, ms: { read: marking - started, mark: Date.now() - marking } }, by)
   return outcome
 }
 

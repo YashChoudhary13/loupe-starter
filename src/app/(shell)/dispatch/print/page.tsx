@@ -8,9 +8,8 @@ import { PrintScreen, type PreviewRow, type PrintBatch } from '@/components/slip
 
 export const dynamic = 'force-dynamic'
 
-export default async function PrintSlipsPage({ searchParams }: { searchParams: Promise<{ note?: string | string[] }> }) {
+export default async function PrintSlipsPage() {
   await requireOperator()
-  const { note } = await searchParams
   const problems: string[] = []
   let rows: PreviewRow[] = [], leftOut: string[] = [], unprinted = 0, truncated = false, oldest: number | null = null, batches: PrintBatch[] = []
   try {
@@ -23,5 +22,5 @@ export default async function PrintSlipsPage({ searchParams }: { searchParams: P
       first: batch.rows.find(row => row.mark !== 'BASELINE')?.order_number ?? null, last: [...batch.rows].reverse().find(row => row.mark !== 'BASELINE')?.order_number ?? null,
       baseline: batch.rows.filter(row => row.mark === 'BASELINE').length, failed: batch.rows.filter(row => row.progress === 'failed').map(row => ({ name: row.order_name, error: row.progress_error ?? '' })) }))
   } catch (cause) { problems.push(cause instanceof Error ? cause.message : 'Printed batches could not be loaded.') }
-  return <PrintScreen rows={rows} leftOut={leftOut} unprinted={unprinted} truncated={truncated} oldest={oldest} batches={batches} note={typeof note === 'string' ? note : undefined} error={problems.join(' ') || undefined} />
+  return <PrintScreen rows={rows} leftOut={leftOut} unprinted={unprinted} truncated={truncated} oldest={oldest} batches={batches} error={problems.join(' ') || undefined} />
 }

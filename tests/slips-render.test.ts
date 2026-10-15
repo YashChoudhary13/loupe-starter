@@ -9,7 +9,7 @@ const order = (n: number): SlipOrder => ({
   shippingAddress: { name: 'A & B', phone: '98', address1: '1 St', address2: null, city: 'Jaipur', provinceCode: 'RJ', zip: '302001', country: 'India' }, billingAddress: null, fulfillmentOrders: [],
   lines: [{ title: 'Ring', variantTitle: 'Red', sku: 'RS1', quantity: 3, unfulfilledQuantity: 2, requiresShipping: true, imageUrl: 'https://cdn/x.jpg' }, { title: 'Tip', variantTitle: null, sku: 'TIP', quantity: 1, unfulfilledQuantity: 1, requiresShipping: false, imageUrl: null }],
 })
-const doc = (rows: SlipPrintRow[], orders: SlipOrder[], auto = false) => renderSlipDocument({ rows, orders, title: 'T', printedBy: 'owner', printedAt: '2026-10-10T09:00:00Z', auto, backHref: '/dispatch/print' })
+const doc = (rows: SlipPrintRow[], orders: SlipOrder[]) => renderSlipDocument({ rows, orders, title: 'T', printedBy: 'owner', printedAt: '2026-10-10T09:00:00Z', backHref: '/dispatch/print' })
 
 describe('the mark strip (packing_list.py mark())', () => {
   it('matches the Mac output byte for byte', () => {
@@ -33,9 +33,9 @@ describe('the slip document', () => {
     const html = doc([row(1)], [order(1)])
     expect(html).toContain('@page{size:A4;margin:0}'); expect(html).toContain('@media print{.toolbar{display:none}.slip{padding:10mm 30mm 14mm;box-sizing:border-box}}')
   })
-  it('opens the print dialog only when asked, and only when there is something to print', () => {
-    expect(doc([row(1)], [order(1)], true)).toContain('window.print()},300)')
-    expect(doc([row(3, 'BASELINE')], [], true)).not.toContain('<script>')
+  it('carries no script: the Print slips page opens the dialog from a hidden frame (D152)', () => {
+    expect(doc([row(1)], [order(1)])).not.toContain('<script')
+    expect(doc([row(1)], [order(1)])).toContain('onclick="window.print()"')
   })
   it('names orders Shopify could not return and orders not marked In progress', () => {
     const html = doc([row(1, 'PACK', { progress: 'failed', progress_error: 'no' }), row(2)], [order(1)])

@@ -18,4 +18,6 @@ export interface SlipStrip { detail: string; flags: string[]; how: string[]; hel
 export interface SlipRow { order: SlipOrder; mark: Mark; strip: SlipStrip }
 export type Progress = 'marked' | 'already' | 'failed' | 'not_needed'
 export interface SlipPrintRow { id: string; batch_id: string; order_id: string; order_name: string; order_number: number; mark: Mark | 'BASELINE'; strip: SlipStrip; progress: Progress; progress_error: string | null; printed_at: string }
+/** What rendering one slip needs from a printed row: the stored row has it, and so does the row still in memory on the click that printed it. */
+export type SlipDocumentRow = Pick<SlipPrintRow, 'order_id' | 'order_name' | 'order_number' | 'mark' | 'strip' | 'progress'>
 export interface SlipBatchRow { id: string; printed_by: string; printed_at: string; order_count: number; from_number: number | null; rows: SlipPrintRow[] }
