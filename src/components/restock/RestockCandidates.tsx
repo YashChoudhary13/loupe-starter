@@ -16,10 +16,12 @@ export function RestockCandidateCard({
   item,
   busy,
   onDecide,
+  onDelete,
 }: {
   item: RestockCandidateItem
   busy: boolean
   onDecide: (choice: RestockDecision, sku: string | null) => void
+  onDelete: () => void
 }) {
   const [sku, setSku] = useState(item.candidates[0]?.sku ?? null)
   const [lightbox, setLightbox] = useState<number | null>(null)
@@ -124,6 +126,15 @@ export function RestockCandidateCard({
               className="rounded-pill bg-chip px-4 py-2 text-[12px] font-medium text-ink hover:bg-[#e7e7e7] disabled:opacity-50"
             >
               Wrong restock
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onDelete}
+              title="Remove this card. Nothing is sent to Pending or to Claude; the photograph stays in its batch."
+              className="rounded-pill px-4 py-2 text-[12px] font-medium text-muted-foreground hover:bg-chip disabled:opacity-50"
+            >
+              Delete
             </button>
           </div>
         </div>

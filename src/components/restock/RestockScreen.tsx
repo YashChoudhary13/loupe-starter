@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   decideRestockCandidateAction,
+  deleteRestockAction,
   newSkuFromRestockAction,
   refreshRestockAction,
   refreshRestockCandidatesAction,
@@ -39,6 +40,7 @@ export function RestockScreen({ initialSnapshot, initialCandidates }: { initialS
   const [candidates, setCandidates] = useState(initialCandidates)
   const [done, setDone] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [clearing, setClearing] = useState(false)
   const [notice, setNotice] = useState<{ title: string; detail: string | null } | null>(null)
   const inFlight = useRef(false)
 
@@ -93,6 +95,27 @@ export function RestockScreen({ initialSnapshot, initialCandidates }: { initialS
     }
   }, [])
 
+  // D154: Delete on a card, or Clear all. Nothing is sent to Pending or to Claude.
+  const remove = useCallback(async (key: string, photoIds: readonly string[], intakeFileIds: readonly string[]) => {
+    setBusy(key)
+    setNotice(null)
+    setDone(null)
+    setClearing(false)
+    try {
+      const result = await deleteRestockAction({ photoIds, intakeFileIds })
+      if (result.ok) {
+        setCandidates(result.data.candidates)
+        setSnapshot(result.data.snapshot)
+        setDone(result.data.deleted === 0 ? 'Nothing to delete: that was already decided in another tab.' : result.data.deleted === 1 ? 'Deleted. Nothing was sent anywhere.' : `Restock cleared: ${result.data.deleted} removed. Nothing was sent anywhere.`)
+      } else setNotice({ title: result.error, detail: result.detail })
+    } finally {
+      setBusy(null)
+    }
+  }, [])
+
+  const total = candidates.length + snapshot.items.length
+  const pill = 'rounded-pill px-4 py-2 text-[12px] font-medium disabled:opacity-50'
+
   return (
     <main className="loupe-scroll flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto pr-1">
       <div>
@@ -102,11 +125,42 @@ export function RestockScreen({ initialSnapshot, initialCandidates }: { initialS
         </div>
       </div>
 
+      {total > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {clearing ? (
+            <>
+              <span className="text-[12px] text-ink-soft">Delete all {total}? Nothing is sent to Pending or to Claude.</span>
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void remove('clear', candidates.map((c) => c.photoId), snapshot.items.map((i) => i.intakeFileId))}
+                className={cn(pill, 'bg-ink text-white hover:bg-[#242428]')}
+              >
+                {busy === 'clear' ? 'Deleting…' : `Delete all ${total}`}
+              </button>
+              <button type="button" disabled={busy !== null} onClick={() => setClearing(false)} className={cn(pill, 'bg-chip text-ink hover:bg-[#e7e7e7]')}>
+                Keep
+              </button>
+            </>
+          ) : (
+            <button type="button" disabled={busy !== null} onClick={() => setClearing(true)} className={cn(pill, 'bg-chip text-ink hover:bg-[#e7e7e7]')}>
+              Clear all · {total}
+            </button>
+          )}
+        </div>
+      ) : null}
+
       {notice ? <Notice tone="attention" title={notice.title} detail={notice.detail} /> : null}
       {done ? <Notice tone="plain" title={done} /> : null}
 
       {candidates.map((item) => (
-        <RestockCandidateCard key={item.photoId} item={item} busy={busy === item.photoId} onDecide={(choice, sku) => void decide(item, choice, sku)} />
+        <RestockCandidateCard
+          key={item.photoId}
+          item={item}
+          busy={busy === item.photoId || busy === 'clear'}
+          onDecide={(choice, sku) => void decide(item, choice, sku)}
+          onDelete={() => void remove(item.photoId, [item.photoId], [])}
+        />
       ))}
 
       {snapshot.items.length === 0 && candidates.length === 0 ? (
@@ -119,7 +173,7 @@ export function RestockScreen({ initialSnapshot, initialCandidates }: { initialS
         <RestockCard
           key={item.decisionId}
           item={item}
-          busy={busy === item.decisionId}
+          busy={busy === item.decisionId || busy === 'clear'}
           onRestock={(productId, quantities) =>
             void run(item.decisionId, () => restockExistingAction({ intakeFileId: item.intakeFileId, productId, quantities }))
           }
@@ -130,6 +184,7 @@ export function RestockScreen({ initialSnapshot, initialCandidates }: { initialS
           onSaveReference={(sku) =>
             void run(item.decisionId, () => saveReferenceOnlyAction({ intakeFileId: item.intakeFileId, decisionId: item.decisionId, sku }))
           }
+          onDelete={() => void remove(item.decisionId, [], [item.intakeFileId])}
         />
       ))}
     </main>
@@ -143,6 +198,7 @@ function RestockCard({
   onNewSku,
   onReopen,
   onSaveReference,
+  onDelete,
 }: {
   item: RestockItem
   busy: boolean
@@ -150,6 +206,7 @@ function RestockCard({
   onNewSku: (productId: string | null) => void
   onReopen: () => void
   onSaveReference: (sku: string) => void
+  onDelete: () => void
 }) {
   const product: ProductStock | null = item.stock?.[0] ?? null
   const [totals, setTotals] = useState<Record<string, string>>({})
@@ -239,6 +296,15 @@ function RestockCard({
               className={cn('rounded-pill px-4 py-2 text-[12px] font-medium', path === 'reference' ? 'bg-ink text-white' : 'bg-chip text-ink hover:bg-[#e7e7e7]', 'disabled:opacity-50')}
             >
               Just save as reference
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onDelete}
+              title="Remove this photograph from Loupe. Nothing is sent to Shopify."
+              className="rounded-pill px-4 py-2 text-[12px] font-medium text-muted-foreground hover:bg-chip disabled:opacity-50"
+            >
+              Delete
             </button>
           </div>
 

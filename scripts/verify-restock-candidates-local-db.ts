@@ -1,4 +1,4 @@
-/** Isolated proof of the D148 SQL: register a photograph given to Claude directly, post a restock candidate, and the three choices.
+/** Isolated proof of the D148 SQL: register a photograph given to Claude directly, post a restock candidate, the three choices, and Delete (D154).
  *  Temporary local PostgreSQL only; no .env, no network. The tables hold the columns the functions touch, with the D143/D145 shapes. */
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
@@ -10,7 +10,8 @@ import { Pool } from 'pg'
 const SCHEMA = `
 create role anon; create role authenticated; create role service_role bypassrls;
 create table public.product_drafts (id uuid primary key);
-create table public.intake_files (id uuid primary key default gen_random_uuid(), product_draft_id uuid, restock_sku text, agent_suggest jsonb, discovered_at timestamptz not null default now());
+create table public.intake_files (id uuid primary key default gen_random_uuid(), product_draft_id uuid, restock_sku text, agent_suggest jsonb, discovered_at timestamptz not null default now(), status text not null default 'restock', filename text not null default 'x.jpg');
+create table public.restock_decisions (id uuid primary key default gen_random_uuid(), intake_file_id uuid not null unique references public.intake_files (id) on delete cascade, match_event_id uuid, sku text not null, status text not null default 'pending');
 create table public.agent_jobs (id uuid primary key default gen_random_uuid(), label text not null unique check (length(btrim(label)) between 3 and 80),
   status text not null default 'collecting' check (status in ('collecting', 'queued', 'running', 'done', 'failed')), created_by text not null,
   created_at timestamptz not null default now(), queued_at timestamptz, finished_at timestamptz, note text, photo_count integer not null default 0);
@@ -25,6 +26,7 @@ const OWNER = 'owner@example.test'
 const P1 = '11111111-1111-4111-8111-111111111111'
 const P2 = '22222222-2222-4222-8222-222222222222'
 const P3 = '33333333-3333-4333-8333-333333333333'
+const P4 = '44444444-4444-4444-8444-444444444444'
 const RESTOCK = JSON.stringify({ kind: 'old', note: 'same clasp', candidates: [{ sku: 'CB554', handle: 'chain-bracelet-554' }] })
 
 async function main() {
@@ -39,6 +41,7 @@ async function main() {
     for (let attempt = 0; ; attempt++) { try { await pool.query('select 1'); break } catch (error) { if (attempt > 49) throw error; await new Promise(r => setTimeout(r, 100)) } }
     await pool.query(SCHEMA)
     await pool.query(readFileSync('supabase/migrations/20261012090000_restock_candidates.sql', 'utf8'))
+    await pool.query(readFileSync('supabase/migrations/20261017090000_restock_delete.sql', 'utf8'))
 
     // A zip given to Claude in a chat: the first photograph creates a finished batch, the next ones join it.
     const reg = (id: string, name: string, label = 'WhatsApp 2026-10-12 at 18.58') =>
@@ -92,6 +95,33 @@ async function main() {
     await pool.query(`insert into public.intake_files (product_draft_id, restock_sku, agent_suggest) values ($1, 'CB554', '{"alsoArchive":["CB483","CB12"]}'), ($1, null, null)`, [draft])
     assert.deepEqual((await one<{ s: string[] }>(`select public.supersession_also_skus($1, 'CB554') as s`, [draft])).s, ['CB483', 'CB12'])
     assert.deepEqual((await one<{ s: string[] }>(`select public.supersession_also_skus($1, 'NK1') as s`, [draft])).s, []); checks.push('publish reads the other SKUs of the same design, and none for any other SKU')
+
+    // D154 Delete: a pending candidate closes under the operator with no job; one already decided is skipped, not an error.
+    await reg(P4, 'd.jpg'); assert.equal((await post(P4)).s, 'pending')
+    const del = (ids: string[]) => one<{ n: number }>(`select public.delete_restock_candidates($1::uuid[], $2) as n`, [ids, OWNER])
+    assert.equal((await del([P4, P1])).n, 1)
+    const gone = await one<{ restock_state: string; restock_decided_by: string }>(`select restock_state, restock_decided_by from public.agent_job_photos where id = $1`, [P4])
+    assert.deepEqual(gone, { restock_state: 'deleted', restock_decided_by: OWNER })
+    assert.equal((await one<{ s: string }>(`select restock_state as s from public.agent_job_photos where id = $1`, [P1])).s, 'use_old')
+    assert.equal((await one<{ n: number }>(`select count(*)::int as n from public.agent_jobs where kind = 'render'`)).n, 2)
+    assert.equal((await one<{ n: number }>(`select count(*)::int as n from public.events where event = 'restock.candidate_decided' and detail->>'choice' = 'deleted'`)).n, 1)
+    checks.push('delete closes a pending candidate as deleted under the operator, queues nothing, writes one decided event, and skips a card already decided')
+    assert.equal((await post(P4)).s, 'deleted'); assert.equal((await del([P4])).n, 0); assert.equal((await del([])).n, 0); checks.push('a deleted candidate is not reopened by a later post, and deleting it again or deleting nothing counts zero')
+    await assert.rejects(del([P4]).then(() => pool.query(`select public.delete_restock_candidates('{}', '  ')`)), (e: { code?: string }) => e.code === '22023'); checks.push('delete without an actor is refused')
+
+    // D154 Delete on an Identify restock (D112): the intake row goes with its decision, after the event; an applied one stays.
+    const F1 = '55555555-5555-4555-8555-555555555555', F2 = '66666666-6666-4666-8666-666666666666', F3 = '77777777-7777-4777-8777-777777777777'
+    await pool.query(`insert into public.intake_files (id, status, filename) values ($1, 'restock', 'one.jpg'), ($2, 'restock', 'two.jpg'), ($3, 'identifying', 'three.jpg')`, [F1, F2, F3])
+    await pool.query(`insert into public.restock_decisions (intake_file_id, sku, status) values ($1, 'NK5', 'pending'), ($2, 'NK6', 'completed')`, [F1, F2])
+    const delDecision = (id: string) => pool.query(`select public.delete_restock_decision($1, $2)`, [id, OWNER])
+    await delDecision(F1)
+    assert.equal((await one<{ n: number }>(`select count(*)::int as n from public.intake_files where id = $1`, [F1])).n, 0)
+    assert.equal((await one<{ n: number }>(`select count(*)::int as n from public.restock_decisions where intake_file_id = $1`, [F1])).n, 0)
+    const trail = await one<{ detail: { filename: string; sku: string }; actor: string }>(`select detail, actor from public.events where event = 'restock.deleted' and entity_id = $1`, [F1])
+    assert.deepEqual([trail.detail.filename, trail.detail.sku, trail.actor], ['one.jpg', 'NK5', OWNER]); checks.push('deleting an Identify restock removes the photograph and its decision after writing restock.deleted')
+    await assert.rejects(delDecision(F2), (e: { code?: string }) => e.code === '55000')
+    await assert.rejects(delDecision(F3), (e: { code?: string }) => e.code === '55000')
+    assert.equal((await one<{ n: number }>(`select count(*)::int as n from public.intake_files`)).n, 4); checks.push('a restock already applied, or a photograph not waiting in Restock, is refused and kept')
 
     for (const c of checks) console.log('ok  ' + c)
     console.log(`${checks.length} checks passed`)

@@ -10,7 +10,7 @@ vi.mock('@/lib/agent-intake/server', () => ({
 }))
 vi.mock('@/lib/shopify/inventory', () => ({ readProductStockBySku: mocks.stock, archiveProduct: mocks.archive, setAvailableQuantities: mocks.setQty }))
 
-import { decideRestockCandidate } from '@/lib/agent-intake/restock'
+import { decideRestockCandidate, deleteRestockCandidates } from '@/lib/agent-intake/restock'
 import { parseRestockPayload } from '@/lib/agent-intake/suggest'
 import type { Operator } from '@/lib/auth/authorize'
 import { supersedeAfterPublish } from '@/lib/match/supersede'
@@ -72,6 +72,21 @@ describe('the three choices on a restock candidate (D148)', () => {
     photoRow()
     await expect(decideRestockCandidate(owner, { photoId: PHOTO, choice: 'use_old', sku: 'NK1' })).rejects.toMatchObject({ operatorMessage: expect.stringMatching(/Pick which listing/) })
     expect(mocks.rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('delete on a restock candidate (D154)', () => {
+  it('passes the cards to one call under the operator and returns the count; nothing is fetched or ingested', async () => {
+    mocks.rpc.mockResolvedValue({ data: 2, error: null })
+    expect(await deleteRestockCandidates(owner, [PHOTO, '22222222-2222-4222-8222-222222222222'])).toBe(2)
+    expect(mocks.rpc).toHaveBeenCalledWith('delete_restock_candidates', { p_photo_ids: [PHOTO, '22222222-2222-4222-8222-222222222222'], p_actor: owner.email })
+    expect(mocks.ingest).not.toHaveBeenCalled()
+  })
+  it('an empty list touches nothing, and a database refusal reaches the operator', async () => {
+    expect(await deleteRestockCandidates(owner, [])).toBe(0)
+    expect(mocks.rpc).not.toHaveBeenCalled()
+    mocks.rpc.mockResolvedValue({ data: null, error: { code: '22023', message: 'delete_restock_candidates: p_actor is required', hint: null } })
+    await expect(deleteRestockCandidates(owner, [PHOTO])).rejects.toMatchObject({ operatorMessage: 'The restock could not be deleted.', retryable: false })
   })
 })
 

@@ -1,9 +1,9 @@
 'use server'
 
-import { decideRestockCandidate, loadRestockCandidates, type RestockCandidateItem, type RestockDecision } from '@/lib/agent-intake/restock'
+import { decideRestockCandidate, deleteRestockCandidates, loadRestockCandidates, type RestockCandidateItem, type RestockDecision } from '@/lib/agent-intake/restock'
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
 import { ConsoleError } from '@/lib/console/mutations'
-import { newSkuFromRestock, reopenIdentification, restockExisting, saveReferenceOnly, type RestockQuantity } from '@/lib/match/restock-actions'
+import { deleteRestockDecision, newSkuFromRestock, reopenIdentification, restockExisting, saveReferenceOnly, type RestockQuantity } from '@/lib/match/restock-actions'
 import { loadRestockQueue, type RestockSnapshot } from '@/lib/match/restock-read-model'
 
 export type RestockActionResult<T> =
@@ -80,5 +80,22 @@ export async function decideRestockCandidateAction(input: {
     if (input.choice !== 'use_old' && input.choice !== 'generate' && input.choice !== 'wrong') throw new ConsoleError('Unknown choice.', null, false)
     await decideRestockCandidate(operator, { photoId: String(input.photoId), choice: input.choice, sku: typeof input.sku === 'string' ? input.sku : null })
     return loadRestockCandidates()
+  })
+}
+
+/** D154: Delete on one card, or Clear all. Nothing is sent anywhere; both lists come back fresh. */
+export async function deleteRestockAction(input: {
+  readonly photoIds: readonly string[]
+  readonly intakeFileIds: readonly string[]
+}): Promise<RestockActionResult<{ readonly candidates: readonly RestockCandidateItem[]; readonly snapshot: RestockSnapshot; readonly deleted: number }>> {
+  return withOperator(async (operator) => {
+    const ids = (raw: unknown) => (Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string').slice(0, 500) : [])
+    let deleted = await deleteRestockCandidates(operator, ids(input.photoIds))
+    for (const intakeFileId of ids(input.intakeFileIds)) {
+      await deleteRestockDecision(operator, intakeFileId)
+      deleted += 1
+    }
+    const [candidates, snapshot] = await Promise.all([loadRestockCandidates(), loadRestockQueue()])
+    return { candidates, snapshot, deleted }
   })
 }

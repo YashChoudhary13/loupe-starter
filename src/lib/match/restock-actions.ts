@@ -139,3 +139,9 @@ export async function reopenIdentification(operator: Operator, intakeFileId: str
   const { error } = await supabaseServer().rpc('reopen_identification', { p_intake_file_id: intakeFileId, p_actor: operator.email })
   if (error) throw new ConsoleError(error.hint || error.message, error.message, false)
 }
+
+/** D154: the photograph leaves Loupe the way the console discards one; a restock already applied stays. */
+export async function deleteRestockDecision(operator: Operator, intakeFileId: string): Promise<void> {
+  const { error } = await supabaseServer().rpc('delete_restock_decision', { p_intake_file_id: intakeFileId, p_actor: operator.email })
+  if (error) throw new ConsoleError(error.hint || error.message, error.message, false)
+}

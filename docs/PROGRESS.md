@@ -70,6 +70,31 @@ Removed only the temporary verification product; absence verified.
 
 **Next session should start with:** confirm the owner's first HA draft in Loupe's records (category `aa-2-14`, option Color linked to `shopify.color-pattern`).
 
+## 2026-10-17 — D154: Delete on every Restock card, Clear all for the section
+
+**Goal this session:** the owner's ask "clear the restock section in the loupe and give option to delete the restock": the section held 21 Claude candidates and 11 Identify restocks, and no card could be removed without sending something somewhere.
+
+**Built:**
+- `supabase/migrations/20261017090000_restock_delete.sql` → `restock_state` gains `deleted`; `delete_restock_candidates(uuid[], actor)` closes pending candidates with one `restock.candidate_decided` (`choice: deleted`) event each and returns the count; `delete_restock_decision(uuid, actor)` deletes an Identify restock's intake row after a `restock.deleted` event, refusing one already applied.
+- `src/lib/agent-intake/restock.ts` → `deleteRestockCandidates`; `src/lib/match/restock-actions.ts` → `deleteRestockDecision`.
+- `src/app/(shell)/restock/actions.ts` → `deleteRestockAction({ photoIds, intakeFileIds })`, one call for a card or for Clear all; both lists come back fresh with the count.
+- `src/components/restock/RestockCandidates.tsx`, `RestockScreen.tsx` → a muted **Delete** pill on both card kinds; **Clear all · N** above the cards with an inline Delete all N / Keep row; the done line says what happened and that nothing was sent.
+- `scripts/verify-restock-candidates-local-db.ts` → now loads the new migration too; 17 checks (was 12).
+- `tests/agent-restock-decide.test.ts` (+2), `tests/restock-screen-render.test.ts` (new, 2).
+- `docs/DECISIONS.md` (D154).
+
+**Verified:** `tsc --noEmit` clean apart from the two `src/lib/home/chat.ts` errors already on `main`; `eslint` clean on every touched file; `npx tsx scripts/verify-restock-candidates-local-db.ts` 17 checks passed on a temporary local PostgreSQL 17 (delete closes a pending card and skips a decided one, a later post does not reopen it, no actor is refused, an Identify delete removes the intake row and its decision after the event, an applied one is refused); `vitest` 8 of 8 in the two test files. The real `RestockScreen`, bundled with esbuild against mocked actions and the compiled `globals.css`, in Chromium at 390 × 844: `scrollWidth` 390, cards 24 px, pills 999 px; Delete on one card left the other two and said "Deleted. Nothing was sent anywhere."; Clear all showed "Delete all 2? Nothing is sent to Pending or to Claude." with Keep restoring the list; Delete all emptied the section ("Restock cleared: 2 removed."), the mock receiving `{photoIds:["p2"],intakeFileIds:["f1"]}`; 1280 × 800 rendered the same. Screenshots: `~/.playwright-mcp/restock-delete-390-before.png`, `restock-delete-390-cleared.png`, `restock-delete-1280.png`. The harness was a throwaway in the session scratchpad.
+
+**Not finished / known broken:**
+- Not clicked live: needs `npm run db:push` and a push to `main` first. The owner then presses Clear all · 32 on `/restock`.
+- Seen in the harness, not changed: at 390 px the D112 card's black "Confirmed as" panel is cramped (the "Not this one — back to Identify" button overlaps the SKU). Older than this change.
+- Another tab's Identify-restock delete is not picked up by the live feed (`restock.deleted` is not a `match.` event); that tab sees it on its next action or reload.
+
+**Surprises:** none in the code. The repo's `*.sql.test.ts` still connect to the real project and were not run.
+
+**Next session should start with:** the owner runs `npm run db:push` in this worktree (`.env` copied), pushes `claude/restock-delete` to `main`, opens `/restock` and presses Clear all; then check `events` for `restock.candidate_decided` with `choice: deleted` and `restock.deleted` rows under the owner's email.
+
+---
 
 ## 2026-10-16 — D152: Print slips prints in place and marks orders eight at a time
 

@@ -201,6 +201,14 @@ export async function decideRestockCandidate(
   if (decideError) throw rpcError('The choice could not be recorded.', decideError)
 }
 
+/** D154: Delete. The cards leave the section and nothing is sent anywhere; the photographs stay in their batches. Returns how many went. */
+export async function deleteRestockCandidates(operator: Operator, photoIds: readonly string[]): Promise<number> {
+  if (photoIds.length === 0) return 0
+  const { data, error } = await supabaseServer().rpc('delete_restock_candidates', { p_photo_ids: photoIds, p_actor: operator.email })
+  if (error) throw rpcError('The restock could not be deleted.', error)
+  return typeof data === 'number' ? data : 0
+}
+
 /** `orig` in the console: the phone photograph an agent image was rendered from, signed only when asked for. */
 export async function phonePhotoUrl(intakeFileId: string): Promise<SignedImage> {
   const db = supabaseServer()

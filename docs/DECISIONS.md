@@ -3810,6 +3810,17 @@ Decision: the HA category's taxonomy id becomes the parent, Hair Accessories (`a
 
 Rollout: `npm run db:push`, then push `main` (docs and the proof script only). The first real HA draft in the console is the live proof; if Shopify refuses it, the error names the metafield.
 
+### D154 — A restock can be deleted; Clear all empties the section (2026-10-17)
+
+Every card in the Restock section led somewhere: **Use old image** put the old listing image into Pending, **Generate new image** and **Wrong restock** each queued a render job for the runner (D148), and an Identify restock (D112) could only be applied, re-identified or saved as a reference. A photograph the owner wanted gone, a repeat of a piece already handled by hand, or a whole batch posted before the look was settled, had no way out, and the section held 21 Claude candidates and 11 Identify restocks on 2026-10-17, some from 22 August. The owner asked for the section cleared and for a delete.
+
+Now every card has **Delete**, and the section has **Clear all · N** with an inline confirmation (Delete all N / Keep; no browser dialog). Nothing is sent to Pending, to Claude or to Shopify. A Claude candidate keeps its row: `agent_job_photos.restock_state` moves to `deleted` (`delete_restock_candidates(uuid[], actor)`, one `restock.candidate_decided` event with `choice: deleted` per card, so the badge arithmetic of the live feed still holds; a card decided meanwhile in another tab is skipped, not an error; a later post from the enhancer does not reopen it). An Identify restock is deleted the way the console discards a photograph: `delete_restock_decision(uuid, actor)` writes `restock.deleted` first, then deletes the intake row, and its decision, image versions and match rows follow by cascade; a restock already applied (decision `completed` or `draft_created`, or a draft attached) is refused and kept. Clear all passes the ids the operator saw, so a candidate posted after the page loaded survives.
+
+**Rejected — reusing `wrong` for a delete:** it queues a render job, which is the opposite of what the owner wants. **Rejected — deleting the `agent_job_photos` row:** the photograph belongs to its batch and to `GET /api/agent/images?batch=`, which `restock.py learn` reads. **Rejected — a server-side "delete everything pending":** what the operator sees is what is cleared.
+
+Rollout: `npm run db:push` (migration `20261017090000_restock_delete.sql`), push `main`; no variable. Then open `/restock` and press Clear all.
+
+
 ### D155 — The hair category is Hair Jewellery, prefix HJ; the Shopify tag stays HA (2026-10-17)
 
 Owner, 2026-10-17: "Make Hair Bands or SKU HA (Hair accessories) from HA to HJ, Hand Bands to Hand jewellery" — read as the hair category (titles `Hairband {n}`, SKU `HA`) becoming **Hair Jewellery** with prefix **HJ**; "Hand" is taken as a slip for "Hair", since the store has no hand bands and the 17 drafts of 2026-10-16 are the owner's own back-of-head shots.
