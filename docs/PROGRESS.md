@@ -29,6 +29,33 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-16 — D153: hair accessories draft with the native Color option
+
+**Goal this session:** the owner is about to list hair accessories from Loupe; make sure a coloured HA draft goes through the way watches now do (D147).
+
+**Built:**
+- `supabase/migrations/20261016150000_hair_accessories_taxonomy.sql` → moves the HA category from Hair Bands (`aa-2-14-13`) to its parent Hair Accessories (`aa-2-14`). No code change: `colourMetafieldFor` already links `Color` to `shopify.color-pattern` for every non-watch category.
+- `scripts/verify-hair-colour-live.ts` → opt-in live proof: one zero-stock DRAFT under Hair Accessories with Color (White, Red), read back, deleted.
+- `CLAUDE.md` → the Hair Bands note under Colours now records the parent-category rule.
+
+**Verified:** live read of the `shopify.color-pattern` definition's constraints (10,897 categories): `aa-2-14` present, `aa-2-14-13` absent, as is `aa-6-11` (D147); `aa-2-14-2`, `aa-2-14-4`, `aa-2-14-14` present. `shopify.dial-color` constrains only Watches and Smart Watches.
+
+```
+$ npx tsx scripts/verify-hair-colour-live.ts --create-test-draft <env-file>
+Shopify accepted a DRAFT hair with option "Color" (White #FFFFFF, Red #F61F1F), linked to shopify.color-pattern.
+Removed only the temporary verification product; absence verified.
+```
+(The message now reads "DRAFT hair accessory"; the wording was changed after this run.) A `tag:loupe-verification` search found nothing afterwards. `eslint` on the script and `tsc --noEmit` clean.
+
+**Not finished / known broken:**
+- Migration not applied; no real HA draft made yet. The first real hair draft in the console is the proof.
+- The first run of the proof script had a typo in its read-back query; it created and deleted one verification draft and threw. The store was searched afterwards and holds no verification product.
+
+**Surprises:** Shopify's taxonomy lists the same `Color` attribute (#1) on Hair Bands, Watches and Bracelets, yet the store's `shopify.color-pattern` definition excludes Hair Bands and Watches. The taxonomy attribute list does not predict the metafield; only the definition's constraints do.
+
+**Next session should start with:** confirm the owner's first HA draft in Loupe's records (category `aa-2-14`, option Color linked to `shopify.color-pattern`).
+
+
 ## 2026-10-16 — D152: Print slips prints in place and marks orders eight at a time
 
 **Goal this session:** the owner's three asks on Print slips: it is slow, it must not leave the page, and the print dialog must appear on the Print slips page itself so a tab returned to later cannot be mistaken for an unprinted batch.

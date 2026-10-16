@@ -215,7 +215,8 @@ The app therefore requires `read_metaobjects` and `write_metaobjects` in additio
 and inventory scopes. **Watches are the exception (D147):** Shopify's Watches category has no
 `shopify.color-pattern`, so the same `Color` option links to `shopify.dial-color` there, with the
 same saved colour entries (`colourMetafieldFor` in `src/lib/shopify/colour-options.ts`). Hair Bands
-(`HA`) has no plain Color field either and its own key is not yet known. Shopify exposes no public standard-definition template for this category
+(`aa-2-14-13`) has no plain Color field either, so the `HA` category sits on its parent Hair
+Accessories (`aa-2-14`), which has it (D153). Shopify exposes no public standard-definition template for this category
 type, so a new store must activate it once in Admin: on any categorized draft product, add Color,
 select one Default entry, and save. Each category must carry its official Shopify taxonomy id.
 
