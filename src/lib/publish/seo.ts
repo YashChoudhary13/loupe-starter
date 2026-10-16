@@ -33,7 +33,7 @@ const NOUN_BY_PREFIX: Readonly<Record<string, string>> = {
   WH: 'Watch',
   HC: 'Hand Chain',
   INJ: 'Pendant Set',
-  HA: 'Hair Accessory',
+  HJ: 'Hair Jewellery',
   WC: 'Waist Chain',
 }
 

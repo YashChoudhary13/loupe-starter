@@ -439,7 +439,7 @@ describe('seed data', () => {
       { name: 'Watches', sku_prefix: 'WH', title_pattern: 'Watch {n}', shopify_tag: 'watch' },
       { name: 'Hand Chains', sku_prefix: 'HC', title_pattern: 'Hand Chain {n}', shopify_tag: 'Hand Chain' },
       { name: 'Indian Jewellery', sku_prefix: 'INJ', title_pattern: 'Indian Pendant Sets {n}', shopify_tag: 'INJ' },
-      { name: 'Hair Accessories', sku_prefix: 'HA', title_pattern: 'Hairband {n}', shopify_tag: 'HA' },
+      { name: 'Hair Jewellery', sku_prefix: 'HJ', title_pattern: 'Hair Jewellery {n}', shopify_tag: 'HA' },
       { name: 'Waist Chains', sku_prefix: 'WC', title_pattern: 'Waist Chain {n}', shopify_tag: 'Waist Chain' },
     ])
   })
@@ -453,7 +453,7 @@ describe('seed data', () => {
     // inference from those unresolved prefixes; it was a new owner-requested sequence.
     const { data } = await serviceClient().from('categories').select('sku_prefix')
     expect((data as { sku_prefix: string }[]).map((c) => c.sku_prefix).sort()).toEqual([
-      'AK', 'BK', 'CB', 'ER', 'HA', 'HC', 'INJ', 'NK', 'NP', 'RS', 'WC', 'WH',
+      'AK', 'BK', 'CB', 'ER', 'HC', 'HJ', 'INJ', 'NK', 'NP', 'RS', 'WC', 'WH',
     ])
   })
 

@@ -142,7 +142,7 @@ Category drives the SKU prefix, the title, the tag and therefore the collection.
 | Watches | `WH` | `Watch {n}` | `watch` |
 | Hand Chains | `HC` | `Hand Chain {n}` | `Hand Chain` |
 | Indian Jewellery | `INJ` | `Indian Pendant Sets {n}` | `INJ` |
-| Hair Accessories | `HA` | `Hairband {n}` | `HA` |
+| Hair Jewellery | `HJ` | `Hair Jewellery {n}` | `HA` |
 | Waist Chains | `WC` | `Waist Chain {n}` | `Waist Chain` |
 | Jewellery Box, Bags, Brass | **TBD — ask before inventing** | | |
 
@@ -215,7 +215,7 @@ The app therefore requires `read_metaobjects` and `write_metaobjects` in additio
 and inventory scopes. **Watches are the exception (D147):** Shopify's Watches category has no
 `shopify.color-pattern`, so the same `Color` option links to `shopify.dial-color` there, with the
 same saved colour entries (`colourMetafieldFor` in `src/lib/shopify/colour-options.ts`). Hair Bands
-(`aa-2-14-13`) has no plain Color field either, so the `HA` category sits on its parent Hair
+(`aa-2-14-13`) has no plain Color field either, so the `HJ` category (Hair Jewellery, prefix `HA` until D155 on 2026-10-17; the tag stays `HA`) sits on its parent Hair
 Accessories (`aa-2-14`), which has it (D153). Shopify exposes no public standard-definition template for this category
 type, so a new store must activate it once in Admin: on any categorized draft product, add Color,
 select one Default entry, and save. Each category must carry its official Shopify taxonomy id.

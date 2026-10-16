@@ -29,6 +29,21 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-17 — D155: hair category renamed Hair Jewellery, prefix HA → HJ
+
+**Goal this session:** the owner's request to rename the hair category's SKU prefix from HA to HJ and its name to Hair Jewellery.
+
+**Built:**
+- `supabase/migrations/20261017100000_hair_jewellery_prefix.sql` → category row (Hair Jewellery, `HJ`, `Hair Jewellery {n}`), counter by cascade, the 17 drafts HA013–HA029 (`reserved_sku`, `reserved_handle`), `intake_files.restock_sku`, `match_references`, waiting Restock cards. Tag stays `HA` (collection rule), taxonomy stays `aa-2-14`.
+- `scripts/rename-hair-jewellery.ts` → dry run / `--apply` / `--undo <receipt>`: the 17 Shopify drafts get title, handle `hair-jewellery-0nn`, SKU + barcode `HJ0nn`, SEO from `buildSeo`; the two legacy products HA001 and HA012 get the title noun, SKUs and SEO noun only (handles kept). Refuses `--apply` before the migration.
+- `src/lib/publish/seo.ts` → `HJ: 'Hair Jewellery'`. `tests/schema.test.ts` and the `CLAUDE.md` category table updated. `~/.claude/skills/enhance/loupe_push.py` `TITLE_PREFIX` learns `Hair Jewellery` (synced to the Canada runner).
+
+**Verified:** eslint and `tsc --noEmit` clean; `tests/product-seo.test.ts` passes; dry run against the live store lists 19 products, 19 with changes (17 drafts + HA001 + HA012), nothing written. Loupe DB read: counter HA = 29, `freed_skus` has no HA row, the 17 drafts are `assembling` with `variant_kind` none and `sku_scheme` variant-v1.
+
+**Mistake this session:** `tests/publish-identity.test.ts` was run in this worktree, which carries a `.env`, so its deployed-function cases ran against production for about ten seconds (02:48 IST). Its `afterAll` removed its drafts and events and put every counter back; read after: no test drafts left, every counter equals the highest reserved number of its prefix. Three of its cases fail against real data by design (NK1000 exists). Never run the database suites from a worktree with `.env`.
+
+**Open, owner-run:** `npm run db:push` here (D153 + D155), then `npx tsx scripts/rename-hair-jewellery.ts --apply` in the same sitting, then push `claude/hair-colour` to `main`. `claude/restock-delete` (D154) also adds a 2026-10-17 migration and a DECISIONS entry; whichever lands second rebases.
+
 ## 2026-10-16 — D153: hair accessories draft with the native Color option
 
 **Goal this session:** the owner is about to list hair accessories from Loupe; make sure a coloured HA draft goes through the way watches now do (D147).
