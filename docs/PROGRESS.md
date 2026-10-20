@@ -29,6 +29,27 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-20 — D156: Print slips prints new orders by itself on the office PC
+
+**Goal this session:** the owner wants every new order's slip printed as it comes in, from the moment the office PC is on in the morning until the 4:30 PM IST dispatch cutoff, without anyone clicking.
+
+**Built:**
+- `src/lib/slips/auto.ts` → the cutoff (16:30 IST), the read interval (3 min) and the IST clock helpers; `tests/slips-auto.test.ts`.
+- `src/app/(shell)/dispatch/print/page.tsx` + `src/components/slips/PrintScreen.tsx` → `?auto`: the page re-reads the open orders every 3 minutes (`router.refresh()`), and whenever the latest read lists orders before the cutoff it runs the same print path as the button (records the batch, marks PACK and CLUB In progress). The server's clock decides `due`; the page shows "Auto print on … Last read hh:mm IST". A failed print is retried on the next read.
+- `src/lib/auth/authorize.ts` (`safeNext`, `requireOperator(next)`), `src/app/login/page.tsx`, `src/app/api/auth/google/{start,callback}/route.ts` → sign-in returns to the screen that asked for it, for a same-site path only. Needed because the session lasts 12 hours (not sliding), so the office PC signs in every morning and must land back on `/dispatch/print?auto`.
+- Office PC side (not in this repo): a Windows scheduled task at logon opens Edge with `--kiosk-printing` (prints to the default printer without a dialog) and its own profile on `https://ship.qimati-eng.site/dispatch/print?auto`.
+
+**Verified:** eslint and `tsc --noEmit` clean; `tests/slips-auto.test.ts` (cutoff 16:29 prints, 16:30 does not; 11:00 UTC reads as 16:30 IST, midnight as 0 not 24:00), `tests/auth-routes.test.ts` (next `/dispatch/print?auto` kept; `//evil.example/x`, `https://…` and a backslash path dropped), the slips and auth suites: 51 tests pass. No database suite was run (this worktree has no `.env`).
+
+**Not finished / known broken:**
+- Not deployed: `claude/slips-auto` (`3a971a3`) awaits the owner's push to `main`. First live auto print pending.
+- The office PC task, Edge profile sign-in and default printer (A4, the slip document is `@page{size:A4}`) are owner-run on the Windows desktop.
+- Each read is a full open-order read from Shopify (the page's existing cost); about 150 reads a day between PC on and 16:30. Cheaper change-detection only if this shows in rate limits.
+
+**Surprises:** the `react-hooks/set-state-in-effect` rule refuses a print started from an effect (it sets `stage`); disabled on that one line with the reason, since the print is the effect of a new read.
+
+**Next session should start with:** read `detail.ms` on the newest `slips.printed` rows after the first auto day and check that the 3-minute cadence is not stacking reads.
+
 ## 2026-10-17 — D155: hair category renamed Hair Jewellery, prefix HA → HJ
 
 **Goal this session:** the owner's request to rename the hair category's SKU prefix from HA to HJ and its name to Hair Jewellery.
