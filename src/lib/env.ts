@@ -50,6 +50,14 @@ export const serverEnv = {
     return required('CRON_BASE_URL')
   },
 
+  /** The office print relay's system door (D157). Both empty = office printing off, labels print from the browser. */
+  get printRelayUrl(): string {
+    return (process.env.PRINT_RELAY_URL ?? '').trim().replace(/\/+$/, '')
+  },
+  get printRelayToken(): string {
+    return (process.env.PRINT_RELAY_TOKEN ?? '').trim()
+  },
+
   /** Shared secret the vision worker presents to /api/worker/* (D111). */
   get workerSecret(): string {
     return validatedCronSecret(process.env.WORKER_SECRET)

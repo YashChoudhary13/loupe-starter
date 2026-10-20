@@ -50,7 +50,7 @@ export function DraftLabelPrintDialog({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="draft-label-title">
       <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-card bg-white p-5 shadow-sm">
         <h2 id="draft-label-title" className="text-[18px] font-medium">Print labels for {offer.sku}</h2>
-        <p className="mt-2 text-[13px] text-ink-soft">Copies start at the quantity you saved. Cancel leaves this draft as label not printed.</p>
+        <p className="mt-2 text-[13px] text-ink-soft">Copies start at the quantity you saved. Print sends the labels to the office label printer; Cancel leaves this draft as label not printed.</p>
         <ul className="mt-4 grid gap-3">
           {offer.items.map(item => (
             <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-panel bg-chip p-4">

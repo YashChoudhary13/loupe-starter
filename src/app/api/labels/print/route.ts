@@ -2,7 +2,8 @@ import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authori
 import { isOwnOrigin } from '@/lib/faces/server'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { readLabelVariants, verifyLabelCodes } from '@/lib/labels/catalogue'
-import { parseLabelRequest, renderLabelDocument } from '@/lib/labels/print'
+import { readLabelForm } from '@/lib/labels/form'
+import { renderLabelDocument } from '@/lib/labels/print'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -12,22 +13,8 @@ export async function POST(request: Request) {
   try {
     await requireOperatorForAction()
     if (!isOwnOrigin(request.headers.get('origin'))) return new Response('Open Labels in Loupe before printing.', { status: 403 })
-    if (Number(request.headers.get('content-length') ?? '0') > 32000) return new Response('Print selection too large.', { status: 413 })
-    if (request.headers.get('content-type')?.split(';')[0] !== 'application/x-www-form-urlencoded') return new Response('Use the label selection form.', { status: 415 })
-    const reader = request.body?.getReader()
-    if (!reader) return new Response('No labels selected.', { status: 400 })
-    const chunks: Uint8Array[] = []
-    let bytes = 0
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      bytes += value.byteLength
-      if (bytes > 32000) { await reader.cancel(); return new Response('Print selection too large.', { status: 413 }) }
-      chunks.push(value)
-    }
-    const form = new FormData()
-    for (const [key, value] of new URLSearchParams(Buffer.concat(chunks).toString('utf8'))) form.append(key, value)
-    const selection = parseLabelRequest(form)
+    const selection = await readLabelForm(request)
+    if (selection instanceof Response) return selection
     const client = new ShopifyClient()
     const variants = await readLabelVariants(client, selection.items.map(item => item.id))
     await verifyLabelCodes(client, variants)

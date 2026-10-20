@@ -22,7 +22,8 @@ export function LabelsScreen({ query, variants, error }: { query: string; varian
         <label className="grid gap-2 text-[12px]">Code type<select name="symbology" defaultValue="qr" className={field}><option value="qr">QR — small pouches</option><option value="code128">Code 128 — wider labels</option></select></label>
         <label className="grid gap-2 text-[12px]">Width (mm)<input name="width" type="number" min={30} max={100} defaultValue={38} required className={`${field} w-28`} /></label>
         <label className="grid gap-2 text-[12px]">Height (mm)<input name="height" type="number" min={25} max={70} defaultValue={25} required className={`${field} w-28`} /></label>
-        <button className="rounded-pill bg-ink px-6 py-2.5 text-[13px] text-white">Preview labels</button>
+        <button className="rounded-pill bg-ink px-6 py-2.5 text-[13px] text-white" formAction="/api/labels/office-print">Print at office</button>
+        <button className="rounded-pill bg-chip px-6 py-2.5 text-[13px] text-ink">Preview here</button>
       </div>
       <p className="mt-4 text-[12px] leading-relaxed text-ink-soft">Default paper: 38 × 25 mm. Leave copies at 0 to skip a variant. QR needs a 2D scanner or phone. Code 128 usually needs a wider label (try 70 × 30 mm). Sizes are for individual roll labels; match your printer paper. Preview checks saved codes for duplicates before printing.</p>
     </form>}

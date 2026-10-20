@@ -29,6 +29,28 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-10-20 — D157: labels print on the office TSC printer from any laptop
+
+**Goal this session:** the owner wants a new listing's labels to come out of the TSC TE244 on the office Windows PC whichever laptop lists the product, with no printer connected to that laptop.
+
+**Built:**
+- `src/lib/labels/tspl.ts` → the label as TSPL2 (the TSC's own language): 38 x 25 mm, QR left with the code under it, product and option on the right, `PRINT 1,n` for copies; `tests/labels-tspl.test.ts`.
+- `src/lib/print-relay/client.ts` → the relay's system door (`PRINT_RELAY_URL`, `PRINT_RELAY_TOKEN`; both empty = off, 501 to callers).
+- `src/app/api/labels/office-print/route.ts` → same selection form as `/api/labels/print`, rendered to TSPL and sent to the relay; JSON to a fetch, a small page to a form post; `labels.office_print` event with the relay job id. `src/lib/labels/form.ts` holds the form reader both routes share.
+- Console popup (D139) tries the office printer first and falls back to the browser dialog on 501; the Labels screen gets a **Print at office** button beside **Preview here**.
+- Relay side (repo `~/Desktop/Qimati/office-print-relay`, 77e6727 + 1266562): `/system/*` door, `.tspl` jobs with `settings.printer = label` accepted while the Brother is down, `push.sh` mints the system token once. Desktop agent on the office PC still needs: `.tspl` validation (pages = PRINT lines) and raw printing to "TSC TE244" via win32print when `settings.printer` is `label`.
+
+**Verified:** eslint and `tsc --noEmit` clean; `tests/labels-tspl.test.ts`, `tests/barcode-labels.test.ts`, `tests/draft-label-print.test.ts`: 22 tests pass. Relay: `tests/test_relay.py` drives the portal flow and the system door (PDF and .tspl queued after validation; .tspl accepted with the office printer down, PDF refused) and the handle-leak check.
+
+**Not finished / known broken:**
+- Not deployed: `claude/labels-office-print` awaits the owner's push to `main`; the relay awaits `sh deploy/push.sh` (prints the token once) and the token in `~/loupe/shared/.env` + `systemctl restart loupe`.
+- The agent patch on the office PC (desktop Claude session) and the first physical label are pending. The TSPL layout (fonts "1" and "2", QR cell 5, gap 2 mm) is a first guess at the roll; tune after the first print.
+- No relay status is shown in Loupe after sending; the relay's portal queue page has it.
+
+**Surprises:** none.
+
+**Next session should start with:** the first label out of the TSC; then compare its look with the browser label and adjust `tspl.ts`.
+
 ## 2026-10-20 — D156: Print slips prints new orders by itself on the office PC
 
 **Goal this session:** the owner wants every new order's slip printed as it comes in, from the moment the office PC is on in the morning until the 4:30 PM IST dispatch cutoff, without anyone clicking.

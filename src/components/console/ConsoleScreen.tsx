@@ -1085,10 +1085,16 @@ export function ConsoleScreen({
     try {
       const form = new URLSearchParams({ symbology: 'qr', width: '38', height: '25' })
       for (const item of labelOffer.items) form.set(`copies:${item.id}`, String(copies[item.id] ?? 0))
-      const response = await fetch('/api/labels/print', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form, credentials: 'same-origin' })
-      const html = await response.text()
-      if (!response.ok) throw new Error(html || 'Could not prepare labels.')
-      await printLabelSheet(html)
+      // D157: the office label printer first; 501 = this server has no relay, so the browser's print dialog as before.
+      const office = await fetch('/api/labels/office-print', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: form, credentials: 'same-origin' })
+      if (office.status === 501) {
+        const response = await fetch('/api/labels/print', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form, credentials: 'same-origin' })
+        const html = await response.text()
+        if (!response.ok) throw new Error(html || 'Could not prepare labels.')
+        await printLabelSheet(html)
+      } else if (!office.ok) {
+        throw new Error((await office.text()) || 'The office label printer could not take this job.')
+      }
       const marked = await settled(confirmDraftLabelsPrintedAction(labelOffer.draftId))
       if (!marked.ok) throw new Error(marked.error.message)
       pendingLabelDraftIdRef.current = null
