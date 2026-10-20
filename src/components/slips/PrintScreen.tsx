@@ -1,14 +1,17 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { retryProgressAction } from '@/app/(shell)/dispatch/print/actions'
+import { AUTO_EVERY_MS } from '@/lib/slips/auto'
 import { fmtWhen } from '@/lib/slips/render'
 import type { Mark } from '@/lib/slips/types'
 
 export interface PreviewRow { id: string; number: number; name: string; mark: Mark; detail: string; flags: string[]; how: string[]; customer: string; phone: string; city: string; units: number; status: string }
 export interface PrintBatch { id: string; printedBy: string; printedAt: string; count: number; fromNumber: number | null; first: number | null; last: number | null; baseline: number; failed: { name: string; error: string }[] }
-export interface PrintScreenProps { rows: PreviewRow[]; leftOut: string[]; unprinted: number; truncated: boolean; oldest: number | null; batches: PrintBatch[]; error?: string }
+/** Auto print (?auto): whether the server's clock is before the dispatch cutoff, and when it read the orders. */
+export interface AutoPrint { due: boolean; readAt: string }
+export interface PrintScreenProps { rows: PreviewRow[]; leftOut: string[]; unprinted: number; truncated: boolean; oldest: number | null; batches: PrintBatch[]; error?: string; auto?: AutoPrint | null }
 
 const pill = 'rounded-pill px-4 py-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40'
 const MARK_CLASS: Record<Mark, string> = { PACK: 'text-ink', HOLD: 'text-amber', CLUB: 'text-ink', 'CLUB + HOLD': 'text-amber' }
@@ -35,7 +38,7 @@ function printDocument(html: string): Promise<void> {
   })
 }
 
-export function PrintScreen({ rows, leftOut, unprinted, truncated, oldest, batches, error }: PrintScreenProps) {
+export function PrintScreen({ rows, leftOut, unprinted, truncated, oldest, batches, error, auto = null }: PrintScreenProps) {
   const router = useRouter()
   const [from, setFrom] = useState('')
   const [messages, setMessages] = useState<Record<string, string>>({})
@@ -58,11 +61,22 @@ export function PrintScreen({ rows, leftOut, unprinted, truncated, oldest, batch
     } catch { setNote('Loupe could not be reached. Try again.') }
     finally { setStage('idle') }
   }
-  const print = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const printAll = async () => {
     await printFrom('/api/slips', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ from }) })
     router.refresh() // the printed orders leave the list and the batch appears below, whatever the dialog did
   }
+  const print = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); return printAll() }
+  /** Auto print: re-read the open orders on a timer, and print whatever the latest read lists while it is before the
+   * dispatch cutoff. Each server refresh hands over a new rows array, so the second effect runs once per read, never
+   * when a print merely finishes; a failed print is tried again on the next read. */
+  useEffect(() => {
+    if (!auto) return
+    const timer = setInterval(() => router.refresh(), AUTO_EVERY_MS)
+    return () => clearInterval(timer)
+  }, [auto, router])
+  useEffect(() => {
+    if (auto?.due && rows.length > 0 && stage === 'idle' && !error && !truncated) void printAll() // eslint-disable-line react-hooks/set-state-in-effect -- the print is the effect of a new read
+  }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps -- once per server read, see above
   const retry = (batchId: string) => {
     setBusy(batchId)
     retryProgressAction(batchId)
@@ -74,6 +88,7 @@ export function PrintScreen({ rows, leftOut, unprinted, truncated, oldest, batch
   return <section className="h-full overflow-auto px-3 py-4 md:px-8 md:py-6">
     <h1 className="text-[26px] font-medium tracking-[-0.025em]">Print slips</h1>
     <p className="mt-2 max-w-2xl text-[13px] text-ink-soft">Every open paid order without a slip yet, marked PACK, HOLD, CLUB or CLUB + HOLD by the packing-list rules. Print opens the browser&apos;s print dialog here with one slip per order, records them, and marks the PACK and CLUB orders In progress in Shopify. Click again later and only new orders print.</p>
+    {auto && <p role="status" className="mt-4 rounded-panel bg-white p-4 text-[13px]">Auto print on: this page re-reads the orders every {AUTO_EVERY_MS / 60_000} minutes and prints new slips here until 4:30 PM IST. Last read {auto.readAt} IST{auto.due ? '' : ', paused until tomorrow morning'}.</p>}
     {note && <p role="status" className="mt-4 rounded-panel bg-white p-4 text-[13px]">{note}</p>}
     {error && <p role="alert" className="mt-4 rounded-panel bg-white p-4 text-[13px] text-amber">{error}</p>}
     {truncated && <p role="alert" className="mt-4 rounded-panel bg-white p-4 text-[13px] text-amber">Shopify has more open orders than Loupe reads in one go, so this list is incomplete and Print is off. Archive old fulfilled orders in Shopify.</p>}
