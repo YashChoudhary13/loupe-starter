@@ -20,6 +20,9 @@ describe('proxy', () => {
       expect(response.headers.get('x-middleware-request-x-face')).toBe('qc')
     }
   })
+  it('tells the app the path and query asked for in x-next, overriding anything the client sent', () => {
+    expect(proxy(at('https://ship.qimati-eng.site/dispatch/print?auto', { 'x-next': '//evil.example' })).headers.get('x-middleware-request-x-next')).toBe('/dispatch/print?auto')
+  })
   it('never trusts an x-face header sent by the client', () => {
     expect(proxy(at('https://qc.qimati-eng.site/qc', { 'x-face': 'home' })).headers.get('x-middleware-request-x-face')).toBe('qc')
   })
