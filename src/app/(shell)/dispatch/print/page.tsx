@@ -10,8 +10,8 @@ import { PrintScreen, type PreviewRow, type PrintBatch } from '@/components/slip
 export const dynamic = 'force-dynamic'
 
 export default async function PrintSlipsPage({ searchParams }: { searchParams: Promise<{ auto?: string | string[] }> }) {
-  await requireOperator()
   const auto = (await searchParams).auto !== undefined ? { due: autoDue(istMinutes()), readAt: istClock() } : null // ?auto: print new orders as they come, the server's clock decides (lib/slips/auto.ts)
+  await requireOperator(auto ? '/dispatch/print?auto' : undefined) // the office PC signs in each morning and must land back here
   const problems: string[] = []
   let rows: PreviewRow[] = [], leftOut: string[] = [], unprinted = 0, truncated = false, oldest: number | null = null, batches: PrintBatch[] = []
   try {

@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
 
-import { findActiveAppUser, googleOAuthConfig, touchLastSeen } from '@/lib/auth/authorize'
+import { findActiveAppUser, googleOAuthConfig, safeNext, touchLastSeen } from '@/lib/auth/authorize'
 import { clearedCookieOptions, sessionCookieOptions, shortLivedCookieOptions } from '@/lib/auth/cookies'
 import { exchangeCodeForIdentity, GoogleAuthError } from '@/lib/auth/google'
 import {
@@ -24,6 +24,7 @@ interface Handshake {
   state: string
   codeVerifier: string
   face?: string
+  next?: string
 }
 
 function backToLogin(reason: string): NextResponse {
@@ -99,8 +100,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const { value, payload } = issueSession(serverEnv.authSessionSecret, operator)
 
-  // `/` on that host is sent by the proxy to the face's first screen.
-  const response = NextResponse.redirect(faceReturnUrl(handshake.face, serverEnv.authBaseUrl))
+  // `/` on that host is sent by the proxy to the face's first screen; `next` is the screen the sign-in started from.
+  const response = NextResponse.redirect(new URL(safeNext(handshake.next) ?? '/', faceReturnUrl(handshake.face, serverEnv.authBaseUrl)))
   response.cookies.set(SESSION_COOKIE, value, sessionCookieOptions())
   response.cookies.set(OAUTH_COOKIE, '', clearedCookieOptions())
   response.cookies.set(DENIED_COOKIE, '', clearedCookieOptions())

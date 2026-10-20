@@ -125,10 +125,16 @@ export const currentOperator = cache(async function currentOperator(): Promise<O
   return findActiveAppUserById(session.uid)
 })
 
-/** For pages. Sends an unauthenticated visitor to the sign-in screen. */
-export async function requireOperator(): Promise<Operator> {
+/** A path on this site to come back to after sign-in, or null: one leading slash, no scheme, host, backslash or control
+ * character, so `next` can never send anyone off the platform. */
+export function safeNext(value: string | string[] | null | undefined): string | null {
+  return typeof value === 'string' && /^\/(?!\/)[\x21-\x5b\x5d-\x7e]*$/.test(value) ? value : null
+}
+
+/** For pages. Sends an unauthenticated visitor to the sign-in screen, and back to `next` afterwards. */
+export async function requireOperator(next?: string): Promise<Operator> {
   const operator = await currentOperator()
-  if (!operator) redirect('/login')
+  if (!operator) redirect(safeNext(next) ? `/login?next=${encodeURIComponent(next!)}` : '/login')
   return operator
 }
 

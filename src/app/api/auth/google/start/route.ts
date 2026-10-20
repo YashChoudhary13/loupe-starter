@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
 
-import { googleOAuthConfig } from '@/lib/auth/authorize'
+import { googleOAuthConfig, safeNext } from '@/lib/auth/authorize'
 import { shortLivedCookieOptions } from '@/lib/auth/cookies'
 import { authorizationUrl } from '@/lib/auth/google'
 import {
@@ -29,7 +29,7 @@ export const dynamic = 'force-dynamic'
  *
  * The face whose host started the sign-in travels in the same signed cookie, so
  * the callback (always on the Home host) can send the operator back where they
- * were.
+ * were; `next`, a path on that face, narrows it to the screen they asked for.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const state = randomToken()
@@ -40,9 +40,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   )
 
   const face = faceOfHost(request.headers.get('host'))
+  const next = safeNext(request.nextUrl.searchParams.get('next'))
   response.cookies.set(
     OAUTH_COOKIE,
-    encodeSignedValue(serverEnv.authSessionSecret, { state, codeVerifier, ...(face ? { face } : {}) }),
+    encodeSignedValue(serverEnv.authSessionSecret, { state, codeVerifier, ...(face ? { face } : {}), ...(next ? { next } : {}) }),
     shortLivedCookieOptions(HANDSHAKE_TTL_SECONDS),
   )
   // Starting a new sign-in clears any previous refusal, so the denied screen

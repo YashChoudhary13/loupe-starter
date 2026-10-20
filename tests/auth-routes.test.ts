@@ -4,7 +4,8 @@ const SECRET = 'a'.repeat(64)
 vi.mock('server-only', () => ({}))
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }) }))
 vi.mock('@/lib/env', () => ({ serverEnv: { authSessionSecret: 'a'.repeat(64), authBaseUrl: 'https://qimati-eng.site' } }))
-vi.mock('@/lib/auth/authorize', () => ({
+vi.mock('@/lib/auth/authorize', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/lib/auth/authorize')>()),
   currentOperator: async () => null,
   googleOAuthConfig: () => ({ clientId: 'x.apps.googleusercontent.com', clientSecret: 's', redirectUri: 'https://qimati-eng.site/api/auth/google/callback' }),
 }))
@@ -25,6 +26,17 @@ describe('sign-in start', () => {
   it('records no face for a host outside the platform', async () => {
     const cookie = (await startOn('evil.example')).cookies.get(OAUTH_COOKIE)
     expect(decodeSignedValue<{ face?: string }>(SECRET, cookie?.value)?.face).toBeUndefined()
+  })
+  it('carries a same-site next path in the cookie and drops anything else', async () => {
+    const next = async (value: string) => {
+      const host = 'ship.qimati-eng.site'
+      const response = await start(new NextRequest(`https://${host}/api/auth/google/start?next=${encodeURIComponent(value)}`, { headers: { host } }))
+      return decodeSignedValue<{ next?: string }>(SECRET, response.cookies.get(OAUTH_COOKIE)?.value)?.next
+    }
+    expect(await next('/dispatch/print?auto')).toBe('/dispatch/print?auto')
+    expect(await next('//evil.example/x')).toBeUndefined()
+    expect(await next('https://evil.example')).toBeUndefined()
+    expect(await next('/x\\evil')).toBeUndefined()
   })
 })
 describe('sign-out', () => {

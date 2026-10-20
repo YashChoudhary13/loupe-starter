@@ -1,7 +1,7 @@
 import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
-import { currentOperator } from '@/lib/auth/authorize'
+import { currentOperator, safeNext } from '@/lib/auth/authorize'
 import { decodeSignedValue, DENIED_COOKIE } from '@/lib/auth/session'
 import { serverEnv } from '@/lib/env'
 import { FACES, faceFromHeader } from '@/lib/faces/faces'
@@ -28,7 +28,8 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  if (await currentOperator()) redirect('/') // the proxy sends `/` to the face's first screen
+  const next = safeNext((await searchParams).next) // where the visitor was going; the proxy sends `/` to the face's first screen
+  if (await currentOperator()) redirect(next ?? '/')
 
   const face = faceFromHeader((await headers()).get('x-face'))
   const brand = face ? FACES[face].label : 'Loupe'
@@ -76,7 +77,7 @@ export default async function LoginPage({
         ) : null}
 
         <a
-          href="/api/auth/google/start"
+          href={next ? `/api/auth/google/start?next=${encodeURIComponent(next)}` : '/api/auth/google/start'}
           className="mt-7 flex h-[46px] w-full items-center justify-center gap-2.5 rounded-pill bg-ink text-[13px] font-medium text-white transition-colors hover:bg-[#242428]"
         >
           <GoogleMark />
