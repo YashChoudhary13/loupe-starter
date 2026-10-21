@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
   put: vi.fn(),
   update: vi.fn(),
+  push: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/env', () => ({
@@ -17,6 +18,7 @@ vi.mock('@/lib/manual-upload/server', () => ({ beginManualUpload: mocks.begin, v
 vi.mock('@/lib/images/storage', () => ({ R2ObjectStore: class { putImmutable = mocks.put } }))
 vi.mock('@/lib/images/image', () => ({ readImageDimensions: async () => ({ width: 1254, height: 1254 }), makeThumbnail: async () => Buffer.from('thumb') }))
 vi.mock('@/lib/duplicates/phash', () => ({ perceptualHash: async () => 'fedcba9876543210' }))
+vi.mock('@/lib/console/shopify-push', () => ({ pushDraftToShopifyInBackground: mocks.push }))
 
 import { GET, POST } from '@/app/api/agent/images/route'
 import { AgentInputError, parseAgentSuggest, parseReplaces, parseRestockSku, parseSourceFilename } from '@/lib/agent-intake/suggest'
@@ -179,7 +181,7 @@ describe('Agent images endpoint', () => {
     mocks.rpc.mockResolvedValue({ data: { intake_id: INTAKE, version_no: 1 }, error: null })
     const response = await POST(request({ file: file(), tag: 'ready', note: 'brighter stones', batch: 'redo 2026-10-10 14.30 tulip', replaces: INTAKE }))
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ ok: true, intake_id: INTAKE, status: 'enhanced', duplicate: false, replaced: true, version_no: 1 })
+    expect(await response.json()).toEqual({ ok: true, intake_id: INTAKE, status: 'enhanced', duplicate: false, replaced: true, version_no: 1, drafts_synced: 0 })
     expect(mocks.begin).not.toHaveBeenCalled()
     expect(mocks.put).toHaveBeenCalledWith(`versions/${INTAKE}/v1.png`, expect.any(Buffer), 'image/png', expect.objectContaining({ source: 'agent-redo' }))
     expect(mocks.put).toHaveBeenCalledWith(`versions/${INTAKE}/v1_thumb.webp`, expect.any(Buffer), 'image/webp', expect.anything())
@@ -190,10 +192,21 @@ describe('Agent images endpoint', () => {
     }))
   })
 
+  it('D158: a replaced picture is pushed again to every unpublished draft already on Shopify', async () => {
+    chainDatabase({ image_versions: [{ version_no: 2 }], agent_jobs: null })
+    mocks.rpc.mockResolvedValue({ data: { intake_id: INTAKE, version_no: 3, draft_ids: ['d1', 'd2'] }, error: null })
+    mocks.push.mockResolvedValue(undefined)
+    const response = await POST(request({ file: file(), tag: 'ready', replaces: INTAKE }))
+    expect(await response.json()).toEqual({ ok: true, intake_id: INTAKE, status: 'enhanced', duplicate: false, replaced: true, version_no: 3, drafts_synced: 2 })
+    expect(mocks.push).toHaveBeenCalledTimes(2)
+    expect(mocks.push).toHaveBeenNthCalledWith(1, 'd1', expect.objectContaining({ email: 'agent@claude.local' }), true)
+    expect(mocks.push).toHaveBeenNthCalledWith(2, 'd2', expect.objectContaining({ email: 'agent@claude.local' }), true)
+  })
+
   it('D145: a repeated file never replaces anything', async () => {
     chainDatabase({ intake_files: { id: 'i0', status: 'enhanced' } })
     const response = await POST(request({ file: file(), tag: 'ready', replaces: INTAKE }))
-    expect(await response.json()).toEqual({ ok: true, intake_id: 'i0', status: 'enhanced', duplicate: true, replaced: false, version_no: null })
+    expect(await response.json()).toEqual({ ok: true, intake_id: 'i0', status: 'enhanced', duplicate: true, replaced: false, version_no: null, drafts_synced: 0 })
     expect(mocks.put).not.toHaveBeenCalled()
     expect(mocks.rpc).not.toHaveBeenCalled()
     expect((await POST(request({ file: file(), tag: 'ready', replaces: 'nope' }))).status).toBe(400)

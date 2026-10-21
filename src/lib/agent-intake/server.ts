@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 
 import type { Operator } from '@/lib/auth/authorize'
 import { ConsoleError } from '@/lib/console/mutations'
+import { pushDraftToShopifyInBackground } from '@/lib/console/shopify-push'
 import type { AgentSuggest, AgentTag } from '@/lib/console/types'
 import { perceptualHash } from '@/lib/duplicates/phash'
 import { serverEnv } from '@/lib/env'
@@ -150,6 +151,8 @@ export interface AgentReplaceInput {
 export interface AgentReplaceResult extends AgentImageResult {
   readonly replaced: boolean
   readonly versionNo: number | null
+  /** D158: how many unpublished Shopify drafts were pushed again so they show the new picture. */
+  readonly draftsSynced: number
 }
 
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
@@ -164,7 +167,7 @@ export async function replaceAgentImage(input: AgentReplaceInput): Promise<Agent
   const sha256 = createHash('sha256').update(input.bytes).digest('hex')
   const db = supabaseServer()
   const existing = await findDuplicate(sha256)
-  if (existing) return { ...existing, replaced: false, versionNo: null }
+  if (existing) return { ...existing, replaced: false, versionNo: null, draftsSynced: 0 }
 
   const { data: versions, error: versionsError } = await db
     .from('image_versions').select('version_no').eq('intake_file_id', input.intakeId).order('version_no', { ascending: false }).limit(1)
@@ -186,10 +189,15 @@ export async function replaceAgentImage(input: AgentReplaceInput): Promise<Agent
     p_actor: AGENT_OPERATOR.email, p_tag: input.tag, p_note: input.note, p_job_id: job?.id ?? null, p_sha256: sha256,
   })
   if (error) throw new ConsoleError('The new image is stored, but the old one could not be replaced.', [error.code, error.message].filter(Boolean).join(' · '), error.code !== '55000' && error.code !== '22023' && error.code !== 'P0002')
-  const row = data as { intake_id?: unknown; version_no?: unknown } | null
+  const row = data as { intake_id?: unknown; version_no?: unknown; draft_ids?: unknown } | null
   if (!row || typeof row.intake_id !== 'string') throw new ConsoleError('The database returned no intake id.', null, true)
   if (input.description) await db.from('intake_files').update({ product_description: input.description, description_missing_at: null }).eq('id', row.intake_id)
-  return { intakeId: row.intake_id, status: 'enhanced', duplicate: false, replaced: true, versionNo: typeof row.version_no === 'number' ? row.version_no : versionNo }
+  // D158: a draft already saved to Shopify still shows the old picture there. The RPC forgot its media
+  // id and named the unpublished drafts; the same push as Save draft sends each one again, so productSet
+  // uploads the new file and drops the old one. Failures land on the draft row, as after Save draft.
+  const draftIds = Array.isArray(row.draft_ids) ? row.draft_ids.filter((id): id is string => typeof id === 'string') : []
+  for (const draftId of draftIds) await pushDraftToShopifyInBackground(draftId, AGENT_OPERATOR, true)
+  return { intakeId: row.intake_id, status: 'enhanced', duplicate: false, replaced: true, versionNo: typeof row.version_no === 'number' ? row.version_no : versionNo, draftsSynced: draftIds.length }
 }
 
 export interface AgentBatchRow {

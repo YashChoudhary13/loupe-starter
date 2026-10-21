@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     if (replaces) {
       // D145: a redo's render takes the old image's place on the same intake row.
       const result = await replaceAgentImage({ intakeId: replaces, bytes, mimeType: file.type, tag, note, description, batch })
-      return Response.json({ ok: true, intake_id: result.intakeId, status: result.status, duplicate: result.duplicate, replaced: result.replaced, version_no: result.versionNo }, { headers })
+      return Response.json({ ok: true, intake_id: result.intakeId, status: result.status, duplicate: result.duplicate, replaced: result.replaced, version_no: result.versionNo, drafts_synced: result.draftsSynced }, { headers })
     }
     const result = await ingestAgentImage({
       bytes,
