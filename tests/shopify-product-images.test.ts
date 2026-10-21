@@ -619,6 +619,17 @@ describe('building the file list', () => {
     expect(published.every((image) => image.reused === false)).toBe(true)
   })
 
+  it('D158: with fresh media the one existing media is never adopted by position', async () => {
+    const existing = [{ id: 'gid://shopify/MediaImage/old', status: 'READY' }]
+    const { files, published } = await buildProductFiles([image()], existing, 'Necklace 005', sign, true)
+    expect(files[0].mediaId).toBeNull()
+    expect(files[0].originalSource).toContain('versions/file-1/v1.png')
+    expect(published[0].reused).toBe(false)
+    // Without the flag the same call is the crash repair and adopts the media.
+    const repaired = await buildProductFiles([image()], existing, 'Necklace 005', sign)
+    expect(repaired.files[0].mediaId).toBe('gid://shopify/MediaImage/old')
+  })
+
   it('continues to reuse PROCESSING media during crash repair', async () => {
     const processing = [{ id: 'gid://m/processing', status: 'PROCESSING' }]
     const { files } = await buildProductFiles([image()], processing, 'Necklace 005', sign)

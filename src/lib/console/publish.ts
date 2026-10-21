@@ -51,6 +51,7 @@ export async function publishDraftForOperator(
     allowZeroStock?: boolean
     extraTags?: readonly string[]
     shopifyStatus?: 'ACTIVE' | 'DRAFT'
+    freshMedia?: boolean
   } = {},
 ): Promise<ConsolePublishResult> {
   return runPublish(draftId, operator.email, options, {

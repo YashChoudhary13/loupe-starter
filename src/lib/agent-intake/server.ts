@@ -193,10 +193,11 @@ export async function replaceAgentImage(input: AgentReplaceInput): Promise<Agent
   if (!row || typeof row.intake_id !== 'string') throw new ConsoleError('The database returned no intake id.', null, true)
   if (input.description) await db.from('intake_files').update({ product_description: input.description, description_missing_at: null }).eq('id', row.intake_id)
   // D158: a draft already saved to Shopify still shows the old picture there. The RPC forgot its media
-  // id and named the unpublished drafts; the same push as Save draft sends each one again, so productSet
+  // id and named the unpublished drafts; the same push as Save draft sends each one again with fresh
+  // media (no repair by position: the product's one existing media is the old picture), so productSet
   // uploads the new file and drops the old one. Failures land on the draft row, as after Save draft.
   const draftIds = Array.isArray(row.draft_ids) ? row.draft_ids.filter((id): id is string => typeof id === 'string') : []
-  for (const draftId of draftIds) await pushDraftToShopifyInBackground(draftId, AGENT_OPERATOR, true)
+  for (const draftId of draftIds) await pushDraftToShopifyInBackground(draftId, AGENT_OPERATOR, true, true)
   return { intakeId: row.intake_id, status: 'enhanced', duplicate: false, replaced: true, versionNo: typeof row.version_no === 'number' ? row.version_no : versionNo, draftsSynced: draftIds.length }
 }
 

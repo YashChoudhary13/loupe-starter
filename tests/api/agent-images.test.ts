@@ -199,8 +199,8 @@ describe('Agent images endpoint', () => {
     const response = await POST(request({ file: file(), tag: 'ready', replaces: INTAKE }))
     expect(await response.json()).toEqual({ ok: true, intake_id: INTAKE, status: 'enhanced', duplicate: false, replaced: true, version_no: 3, drafts_synced: 2 })
     expect(mocks.push).toHaveBeenCalledTimes(2)
-    expect(mocks.push).toHaveBeenNthCalledWith(1, 'd1', expect.objectContaining({ email: 'agent@claude.local' }), true)
-    expect(mocks.push).toHaveBeenNthCalledWith(2, 'd2', expect.objectContaining({ email: 'agent@claude.local' }), true)
+    expect(mocks.push).toHaveBeenNthCalledWith(1, 'd1', expect.objectContaining({ email: 'agent@claude.local' }), true, true)
+    expect(mocks.push).toHaveBeenNthCalledWith(2, 'd2', expect.objectContaining({ email: 'agent@claude.local' }), true, true)
   })
 
   it('D145: a repeated file never replaces anything', async () => {

@@ -239,6 +239,9 @@ export async function loadPublishImages(
  *      down;
  *   3. otherwise upload from a freshly presigned URL.
  *
+ * `freshMedia` (D158) skips case 2: the agent has just replaced the pictures and
+ * cleared their ids, so the product's existing media are the old files.
+ *
  * Case 2 is deliberately all-or-nothing. A MIXED set — some ids recorded, one
  * not — is not a crash, it is an edit: the usual way an image loses its id is the
  * operator swapping which version to publish, which replaces the row. Repairing
@@ -250,6 +253,7 @@ export async function buildProductFiles(
   existingMedia: readonly { id: string; status?: string }[] | null,
   productTitle: string,
   signImageUrl: (storageKey: string) => Promise<string>,
+  freshMedia = false,
 ): Promise<{ files: readonly ProductSetFile[]; published: readonly PublishedImage[] }> {
   // Shopify keeps a MediaImage row when fetching its originalSource fails. Its
   // id is still returned by the product media query, but productSet rejects that
@@ -258,7 +262,10 @@ export async function buildProductFiles(
   // that is the normal state immediately after a successful productSet call.
   const reusableMedia = (existingMedia ?? []).filter((media) => media.status !== 'FAILED')
   const known = new Set(reusableMedia.map((media) => media.id))
+  // D158: after an agent replacement the one existing media is the OLD picture,
+  // so adopting it by position would republish exactly what was just replaced.
   const repairable =
+    !freshMedia &&
     existingMedia !== null &&
     reusableMedia.length === images.length &&
     images.every((image) => image.shopifyMediaId === null)
@@ -583,7 +590,7 @@ export async function publishProduct(
         )
       }
       const existingMedia = await readProductMedia(shopify, identity.handle)
-      const built = await buildProductFiles(input.images, existingMedia, identity.title, signImageUrl)
+      const built = await buildProductFiles(input.images, existingMedia, identity.title, signImageUrl, options.freshMedia === true)
       files = built.files
       published = built.published
     }

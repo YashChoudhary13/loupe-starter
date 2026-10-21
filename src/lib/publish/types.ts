@@ -133,6 +133,13 @@ export interface PublishOptions {
   /** Extra Shopify tags alongside the category's. Used to mark test products. */
   readonly extraTags?: readonly string[]
   /**
+   * D158: the draft's pictures were just replaced (an agent redo). Every image
+   * without a recorded media id is uploaded afresh; the crash repair that adopts
+   * the product's existing media by position is switched off, because here the
+   * existing media IS the old picture.
+   */
+  readonly freshMedia?: boolean
+  /**
    * Defaults to TRUE — a Qimati product exists because somebody photographed it,
    * so publishing one with no image is a mistake by default.
    *

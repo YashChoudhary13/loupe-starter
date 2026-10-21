@@ -57,6 +57,8 @@ export async function publishDraftForOperator(
     extraTags?: readonly string[]
     /** D60: 'DRAFT' saves to Shopify unfinished; 'ACTIVE' publishes live. */
     shopifyStatus?: 'ACTIVE' | 'DRAFT'
+    /** D158: the pictures were just replaced; upload them, never adopt the old media. */
+    freshMedia?: boolean
   },
   deps: ConsolePublishDeps,
 ): Promise<ConsolePublishResult> {
@@ -84,6 +86,7 @@ export async function publishDraftForOperator(
       requireImages: options.shopifyStatus !== 'DRAFT',
       signImageUrl: deps.signImageUrl,
       shopifyStatus: options.shopifyStatus,
+      freshMedia: options.freshMedia,
     })
   } finally {
     // Fenced release. If this publish overran its lease and a second attempt has

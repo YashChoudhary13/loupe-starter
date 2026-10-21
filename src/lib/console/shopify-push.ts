@@ -28,12 +28,15 @@ export async function pushDraftToShopifyInBackground(
   draftId: string,
   operator: Operator,
   allowZeroStock: boolean,
+  /** D158: true after an agent replaced the pictures; see PublishOptions.freshMedia. */
+  freshMedia = false,
 ): Promise<void> {
   const db = supabaseServer()
   try {
     await publishDraftForOperator(draftId, operator, {
       allowZeroStock,
       shopifyStatus: 'DRAFT',
+      freshMedia,
     })
     await db
       .from('product_drafts')
