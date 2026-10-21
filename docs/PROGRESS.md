@@ -51,6 +51,8 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 **Next session should start with:** the first label out of the TSC; then compare its look with the browser label and adjust `tspl.ts`.
 
+**2026-10-21 follow-up:** LIVE at `b27cd77` (owner pushed main; relay `d6c905f` first, because the office agent parses device ids as UUIDs and the system door sent `'system'`). First real labels (RS429) printed with the QR touching the top edge and QIMATI twice: a 2 mm `GAP` on a 3 mm roll starts the print about 1 mm high, the layout had 1.5 mm margins, and the option line (QIMATI for a single-option product, as on the browser sheet) sat above a separate QIMATI brand line. `tspl.ts` now: `GAP 3 mm`, everything inside 3 mm margins (a millimetre of drift clips nothing), QR cell 4 (0.5 mm modules, the browser sheet's size), right column = product, option, code in the largest built-in font that fits (font 3 up to 9 characters, 2 up to 12, 1 on two lines beyond), no brand line. Test asserts the margins. Same day on the office PC (desktop Claude): the agent's LAN bind address drifted and killed it (static IP + 0.0.0.0 fallback), and Windows "Let Windows manage my default printer" made the TSC the default after the first label, so D156's Chrome kiosk print sent an order slip to the label printer; `LegacyDefaultPrinterMode=1` pins the Brother now.
+
 ## 2026-10-20 — D156: Print slips prints new orders by itself on the office PC
 
 **Goal this session:** the owner wants every new order's slip printed as it comes in, from the moment the office PC is on in the morning until the 4:30 PM IST dispatch cutoff, without anyone clicking.
