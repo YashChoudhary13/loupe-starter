@@ -28,6 +28,15 @@ describe('console colour swatches', () => {
     expect(swatch).toContain('#f7f7f5')
   })
 
+  it('covers every Shopify taxonomy colour with its own swatch', () => {
+    for (const name of ['Beige', 'Brown', 'Bronze', 'Grey', 'Navy', 'Orange', 'Clear']) {
+      expect(colourSwatchHex(name)).toMatch(/^#[0-9a-f]{6}$/)
+    }
+    expect(colourSwatchBackground('Grey')).not.toBe(colourSwatchBackground('Silver'))
+    expect(colourSwatchBackground('gray')).toBe(colourSwatchBackground('Grey'))
+    expect(colourSwatchBackground('Light Brown')).toBe(colourSwatchBackground('Brown'))
+  })
+
   it('only exports honest solids for Shopify saved-colour entries', () => {
     expect(colourSwatchHex('Gold')).toBe('#d4af37')
     expect(colourSwatchHex('Red / White')).toBeNull()

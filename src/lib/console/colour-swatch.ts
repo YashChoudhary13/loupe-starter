@@ -37,6 +37,23 @@ export const JEWELLERY_COLOUR_PALETTE: readonly JewelleryColour[] = [
   { name: 'Pink', colour: '#df8faa', background: '#df8faa' },
   { name: 'Purple', colour: '#7954a8', background: '#7954a8' },
   { name: 'Yellow', colour: '#e7bd38', background: '#e7bd38' },
+  // 2026-10-23: the rest of Shopify's taxonomy Color values, so every Shopify colour can be
+  // picked as a chip and created as a saved colour (the resin kada sets needed Beige, Brown…).
+  { name: 'Beige', colour: '#e0cfae', background: '#e0cfae' },
+  { name: 'Brown', colour: '#8b5a2b', background: '#8b5a2b' },
+  {
+    name: 'Bronze',
+    colour: '#b0783c',
+    background: 'linear-gradient(135deg, #7a4f22 0%, #b0783c 45%, #e0b07a 70%, #8e5f2b 100%)',
+  },
+  { name: 'Grey', colour: '#9a9ca1', background: '#9a9ca1' },
+  { name: 'Navy', colour: '#243b73', background: '#243b73' },
+  { name: 'Orange', colour: '#e8842a', background: '#e8842a' },
+  {
+    name: 'Clear',
+    colour: '#eef3f6',
+    background: 'linear-gradient(135deg, #ffffff 0%, #dfe8ee 50%, #ffffff 100%)',
+  },
   {
     name: 'Multi Colour',
     colour: '#7954a8',
@@ -49,8 +66,9 @@ const normalise = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCa
 const byName = new Map(JEWELLERY_COLOUR_PALETTE.map((colour) => [normalise(colour.name), colour]))
 
 const aliases = new Map<string, string>([
-  ['gray', 'Silver'],
-  ['grey', 'Silver'],
+  ['gray', 'Grey'], // 2026-10-23: Grey is its own Shopify colour, no longer previewed as Silver
+  ['transparent', 'Clear'],
+  ['navy blue', 'Navy'],
   ['gold tone', 'Gold'],
   ['gold-tone', 'Gold'],
   ['yellow gold', 'Gold'],

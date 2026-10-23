@@ -89,6 +89,39 @@ describe('Shopify native Color default entries', () => {
     })
   })
 
+  it('creates Beige with its own taxonomy reference instead of refusing it', async () => {
+    const graphql = vi
+      .fn()
+      .mockResolvedValueOnce({ metaobjects: { nodes: [] } })
+      .mockResolvedValueOnce({
+        metaobjectUpsert: {
+          metaobject: {
+            id: 'gid://shopify/Metaobject/beige',
+            handle: 'loupe-beige',
+            displayName: 'Beige',
+          },
+          userErrors: [],
+        },
+      })
+
+    await expect(syncShopifySavedColours(client(graphql), ['Beige'])).resolves.toEqual([
+      { name: 'Beige', metaobjectId: 'gid://shopify/Metaobject/beige' },
+    ])
+
+    expect(graphql.mock.calls[1]?.[1]).toMatchObject({
+      metaobject: {
+        fields: expect.arrayContaining([
+          { key: 'label', value: 'Beige' },
+          { key: 'color', value: '#e0cfae' },
+          {
+            key: 'color_taxonomy_reference',
+            value: '["gid://shopify/TaxonomyValue/6"]',
+          },
+        ]),
+      },
+    })
+  })
+
   it('explains the one-time Shopify setup when native Color entries are not active', async () => {
     const graphql = vi
       .fn()

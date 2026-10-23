@@ -44,6 +44,15 @@ const TAXONOMY_COLOUR_IDS = new Map<string, string>([
   ['red', 'gid://shopify/TaxonomyValue/13'],
   ['yellow', 'gid://shopify/TaxonomyValue/14'],
   ['rose gold', 'gid://shopify/TaxonomyValue/16'],
+  // 2026-10-23: the remaining taxonomy colours (read from the Bracelets category).
+  ['beige', 'gid://shopify/TaxonomyValue/6'],
+  ['brown', 'gid://shopify/TaxonomyValue/7'],
+  ['bronze', 'gid://shopify/TaxonomyValue/657'],
+  ['grey', 'gid://shopify/TaxonomyValue/8'],
+  ['gray', 'gid://shopify/TaxonomyValue/8'],
+  ['navy', 'gid://shopify/TaxonomyValue/15'],
+  ['orange', 'gid://shopify/TaxonomyValue/10'],
+  ['clear', 'gid://shopify/TaxonomyValue/17'],
   ['multicolor', 'gid://shopify/TaxonomyValue/2865'],
   ['multi colour', 'gid://shopify/TaxonomyValue/2865'],
 ])

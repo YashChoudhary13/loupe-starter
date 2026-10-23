@@ -971,7 +971,7 @@ export function DraftEditor(props: DraftEditorProps) {
                         (variant) => variant.value.toLowerCase() === name.toLowerCase(),
                       ),
                   )
-                  .slice(0, 12)
+                  .slice(0, 32) // 2026-10-23: was 12, which hid most of the palette once Shopify's full colour list joined it
                   .map((name) => {
                     const suggestion = colourSuggestions.find(
                       (candidate) => candidate.name.toLowerCase() === name.toLowerCase(),
