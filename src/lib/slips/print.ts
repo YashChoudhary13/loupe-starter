@@ -1,5 +1,6 @@
+import { carriersFor, pinOf, type CarrierCheck } from './carrier'
 import { isHeld, num, paid, plan } from './plan'
-import type { Mark, Progress, SlipDocumentRow, SlipOrder, SlipRow, SlipStrip } from './types'
+import { NEED_ADDRESS, type Mark, type Progress, type SlipDocumentRow, type SlipOrder, type SlipRow, type SlipStrip } from './types'
 
 /** One click of Print slips, with every side effect behind `deps` so the sequence is testable without Shopify or a database. */
 export interface NewPrintRow { orderId: string; orderName: string; orderNumber: number; mark: Mark | 'BASELINE'; strip: SlipStrip }
@@ -15,6 +16,8 @@ export interface PrintDeps {
   setProgress(batchId: string, orderId: string, progress: Progress, error: string | null): Promise<void>
   reportProgress(fulfillmentOrderId: string, note: string): Promise<void>
   record(batchId: string, event: string, detail: Record<string, unknown>, by: string): Promise<void>
+  /** The courier for a six-digit pincode with what each checker said (D162); carrier null when it could not be settled. Never throws. */
+  carrierFor(pin: string): Promise<CarrierCheck>
 }
 export interface Selection { rows: SlipRow[]; baseline: SlipOrder[]; leftOut: string[]; truncated: boolean; unprinted: number }
 /** `rows` and `orders` are what the click printed, so the document is rendered from them without reading Shopify again. */
@@ -55,6 +58,15 @@ export async function printSlips(by: string, fromNumber: number | null, deps: Pr
   const selection = await select(deps, fromNumber)
   if (selection.truncated) throw new Error('Shopify has more open orders than Loupe read in one go, so the list is incomplete and nothing was printed. Archive old fulfilled orders in Shopify and try again.')
   if (!selection.rows.length && !selection.baseline.length) throw new NothingToPrint(selection.leftOut.length ? `Nothing new to print. Left out, payment not received: ${selection.leftOut.join(', ')}.` : undefined)
+  // The courier, by pincode, before the rows are stored: the strip is kept as printed, so a reprint says the same (D162).
+  // A slip still waiting for its address carries no courier (owner, 2026-10-29), whatever pincode it has.
+  const checking = Date.now()
+  const pinToCheck = (row: SlipRow) => (row.strip.flags.includes(NEED_ADDRESS) ? null : pinOf(row.order))
+  const carriers = await carriersFor(selection.rows.map(pinToCheck).filter((pin): pin is string => pin !== null), deps.carrierFor)
+  for (const row of selection.rows) { const pin = pinToCheck(row); if (pin) row.strip.carrier = carriers.get(pin)?.carrier ?? null }
+  // Every pin not going by DTDC is written into the print record with both checkers' words, so a courier line can be audited.
+  const checks = [...carriers].filter(([, check]) => check.carrier !== 'DTDC').map(([pin, check]) => ({ pin, ...check }))
+  const batching = Date.now()
   const batchId = await deps.createBatch({ by, fromNumber })
   const wanted: NewPrintRow[] = [
     ...selection.rows.map(row => ({ orderId: row.order.id, orderName: row.order.name, orderNumber: num(row.order.name), mark: row.mark, strip: row.strip })),
@@ -80,7 +92,9 @@ export async function printSlips(by: string, fromNumber: number | null, deps: Pr
     rows: rows.map((row, i) => ({ order_id: row.order.id, order_name: row.order.name, order_number: num(row.order.name), mark: row.mark, strip: row.strip, progress: results[i]?.progress ?? 'failed' })),
     orders: rows.map(row => row.order),
   }
-  await deps.record(batchId, 'slips.printed', { printed: outcome.printed, baseline: outcome.baseline, marks: outcome.marks, failed: failed.map(item => item.name), fromNumber, skippedAsTaken: wanted.length - inserted.size, ms: { read: marking - started, mark: Date.now() - marking } }, by)
+  const couriers: Record<string, number> = {}
+  for (const row of rows) { const key = row.strip.carrier ?? (row.strip.carrier === null ? 'unchecked' : 'no pin'); couriers[key] = (couriers[key] ?? 0) + 1 }
+  await deps.record(batchId, 'slips.printed', { printed: outcome.printed, baseline: outcome.baseline, marks: outcome.marks, couriers, checks, failed: failed.map(item => item.name), fromNumber, skippedAsTaken: wanted.length - inserted.size, ms: { read: checking - started, courier: batching - checking, mark: Date.now() - marking } }, by)
   return outcome
 }
 

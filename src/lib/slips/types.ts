@@ -13,8 +13,12 @@ export interface SlipOrder {
 export const MARKS = ['PACK', 'HOLD', 'CLUB', 'CLUB + HOLD'] as const
 export type Mark = (typeof MARKS)[number]
 export const NEED_ADDRESS = 'Need Address'
-/** What the strip on the slip says, besides the mark. Stored with the printed row so a reprint shows exactly what was printed. */
-export interface SlipStrip { detail: string; flags: string[]; how: string[]; heldWith: number[]; with: { number: number; status: string }[] }
+export const SLIP_CARRIERS = ['DTDC', 'Delhivery', 'Speed Post'] as const
+export type SlipCarrier = (typeof SLIP_CARRIERS)[number]
+/** What the strip on the slip says, besides the mark. Stored with the printed row so a reprint shows exactly what was printed.
+ * `carrier` (D162): the courier the pincode check picked (DTDC prints nothing); null = the check failed (prints CHECK COURIER);
+ * absent = nothing was checked (no pincode, or the slip asks for the address). */
+export interface SlipStrip { detail: string; flags: string[]; how: string[]; heldWith: number[]; with: { number: number; status: string }[]; carrier?: SlipCarrier | null }
 export interface SlipRow { order: SlipOrder; mark: Mark; strip: SlipStrip }
 export type Progress = 'marked' | 'already' | 'failed' | 'not_needed'
 export interface SlipPrintRow { id: string; batch_id: string; order_id: string; order_name: string; order_number: number; mark: Mark | 'BASELINE'; strip: SlipStrip; progress: Progress; progress_error: string | null; printed_at: string }

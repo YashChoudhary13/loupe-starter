@@ -357,6 +357,28 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 **Next session should start with:** the owner's deploy, then one real club order end to end with the WhatsApp offer.
 
 **2026-11-12 follow-up:** LIVE at `1c5fe50` (release `20261112-100403-1c5fe50`), pushed at the owner's word. Bot first: `deploy_loupe_missing.py --apply` published workflow version `1f2f5f6e` (82 nodes; rollback to `5ffb116b`), offers go to the owner's fixed staff number. Live webhook proof without messaging anyone: `{}` with the bearer gave 400, no bearer and a wrong bearer gave 403. `BOT_MISSING_WEBHOOK_URL` and `BOT_WEBHOOK_SECRET` are in `~/loupe/shared/.env` (copy of the old file beside it) and `.env.railway`; after the deploy `/login` gave 200 and `/api/qc/club/1` without a session gave 401 (404 on the old release). Still not seen live: a real club on the screen and a real WhatsApp offer.
+## 2026-10-29 — D162: the packing slip names the courier, from the pincode
+
+**Goal this session:** the owner wants each packing slip to say on its mark strip, in the middle, when a parcel leaves the DTDC default: DELHIVERY or SPEED POST, decided from the destination pincode's serviceability, readable in white on the black HOLD band. Mid-session rules from the owner: whatever DTDC serves goes by DTDC and prints nothing; Delhivery only where DTDC does not serve (those orders are kept on a list); the check must be fail-proof, never a guess; a slip that asks for the address carries no courier.
+
+**Built:**
+- `src/lib/slips/carrier.ts` → the rule (`chooseCarrier`), the two checkers and a one-day memory of "DTDC serves". DTDC is the website pincode checker (`www.dtdc.com/wp-json/custom/v1/dtdc-pincode/`, origin 302029, no key); a "not served" is asked twice and must agree, anything unexpected is no answer. Delhivery is the account's pin-code API (`DELHIVERY_API_KEY`, prepaid Y = served), asked only when DTDC does not serve. `dtdc.com` omits the Go Daddy G2 intermediate from its chain, so when `fetch` fails with `UNABLE_TO_VERIFY_LEAF_SIGNATURE` the same request goes over `node:https` with the public intermediate (in the file, valid to 2031) added to Node's roots. `tests/slips-carrier.test.ts`.
+- `src/lib/slips/print.ts` → before the rows are stored, each distinct pin is checked (six at a time; a Need Address slip is not checked) and the verdict goes on the row's strip (`strip.carrier`: `DTDC`, `Delhivery`, `Speed Post`, `null` = not settled, absent = no pincode), so a reprint says what was printed. The `slips.printed` event carries `couriers` (count per courier) and `checks` (every pin not going by DTDC, with what each checker said).
+- `src/lib/slips/render.ts` → the strip is three cells: mark and club orders left, courier in the middle (`DELHIVERY`, `SPEED POST`, `CHECK COURIER` when the check failed, nothing for DTDC), Need Address right; the courier inherits the band's colour, so white on HOLD. The document warns by order number when a check failed.
+- `src/lib/env.ts` → `DELHIVERY_API_KEY` (optional). Without it an unserved-by-DTDC pin prints CHECK COURIER.
+- Local copy: `loupe-twin/fakeworld/server.mjs` answers as DTDC and Delhivery from a fictional map; `up.sh` sets a pretend key.
+
+**Verified:** `tsc --noEmit` and eslint clean; `tests/slips-*.test.ts` 53 tests pass (44 in the slips plan, print, render and carrier files). Live, read-only, from this Mac (2026-10-29): 12 known pins in 7.6 s; Aizawl 796012, Doda 182222 and Shillong 793017 = Delhivery (DTDC not served), Imphal East 795010 = Speed Post (neither), Kerala special destinations 679340, 686510, 685605 and Hooghly 712415 = DTDC (served, flagged), metros DTDC. Printed on the local copy: 7 slips, HOLD band white SPEED POST, PACK DELHIVERY, DTDC rows blank; the event row shows `couriers` and `checks`.
+
+**Not finished / known broken:**
+- Not deployed: `claude/slips-carrier` awaits the owner's push to `main`, and `DELHIVERY_API_KEY` (the Delhivery token from `Qimati SHIPPING/.env`) in `~/loupe/shared/.env` + `systemctl restart loupe`. Without the key every slip DTDC does not serve prints CHECK COURIER.
+- Open with the owner: DTDC "special destination" pins (Kerala, Hooghly, Shillong 793012) now print DTDC; on 23 and 27 Oct the owner sent some of those by Delhivery. The flag is recorded in `checks` but not acted on.
+- The DTDC checker is the public website tool, not an account API; it is asked twice before a pin is called unserved, and a disagreement or an unexpected answer prints CHECK COURIER rather than a guess.
+- The courier memory is in-process (a day, DTDC answers only); the first print after a restart asks every pin again.
+
+**Surprises:** `dtdc.com` sends an incomplete certificate chain, so plain Node `fetch` cannot reach it; curl on a Mac fetches the missing intermediate itself, Node does not. DTDC answers an unserved pin with `DESTPIN is not valid` and `SERVFLAG: Y`; the message is what counts.
+
+**Next session should start with:** the owner's word on special destinations, the key on the server, then the first live print and a look at the `checks` of that batch.
 
 ## 2026-10-20 — D157: labels print on the office TSC printer from any laptop
 

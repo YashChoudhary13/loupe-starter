@@ -1,5 +1,5 @@
 import { MISSING, lines, num } from './plan'
-import { NEED_ADDRESS, type SlipAddress, type SlipDocumentRow, type SlipOrder, type SlipStrip } from './types'
+import { NEED_ADDRESS, type SlipAddress, type SlipCarrier, type SlipDocumentRow, type SlipOrder, type SlipStrip } from './types'
 
 /** The slip document: one packing slip per order in the layout of Shopify's own slip, a slim mark strip on top, designed
  * for a black-and-white printer. The Print slips page loads it into a hidden frame and opens the print dialog there (D152);
@@ -8,17 +8,23 @@ import { NEED_ADDRESS, type SlipAddress, type SlipDocumentRow, type SlipOrder, t
  * the page margin, so a zero margin is the only way to keep them off the paper whatever the dialog says (seen 2026-10-10). */
 const SHOP_FOOT = ['Qimati', 'Acharya Kriplani Marg, Adarsh Nagar, Jaipur., 302, A-6, SV Tower, 302004 Jaipur RJ, India', 'info@qimati.in', 'www.qimati.in']
 const CLS: Record<string, string> = { PACK: 'PACK', HOLD: 'HOLD', CLUB: 'CLUB', 'CLUB + HOLD': 'CLUBHOLD' }
+/** The courier line in the middle of the strip (D162), as the packer reads it. DTDC is the default and says nothing;
+ * only a parcel leaving DTDC is named (owner, 2026-10-29: Delhivery orders are kept on a list). */
+export const CARRIER_LABEL: Record<SlipCarrier, string> = { DTDC: '', Delhivery: 'DELHIVERY', 'Speed Post': 'SPEED POST' }
+export const CHECK_COURIER = 'CHECK COURIER'
 export const esc = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
 const ist = (iso: string) => new Date(iso)
 const fmtDate = (iso: string) => ist(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kolkata' })
 export const fmtWhen = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
 
-/** Strip on the slip: PACK, HOLD, CLUB or CLUB + HOLD; CLUB kinds add → and the orders to club with, status under each.
- * Need Address sits at the right end; every other flag stays off the strip (owner, 2026-10-05 and 2026-10-07). */
+/** Strip on the slip, three cells: left PACK, HOLD, CLUB or CLUB + HOLD (CLUB kinds add → and the orders to club with,
+ * status under each); middle the courier (D162): DELHIVERY or SPEED POST, CHECK COURIER when the check failed, nothing
+ * for DTDC or when there was nothing to check; right Need Address. Every other flag stays off the strip (owner, 2026-10-05 and 2026-10-07). */
 export function strip(mark: string, strip: SlipStrip): string {
   const orders = strip.with.map(other => `<div class=w><b>${other.number}</b><small>${esc(other.status)}</small></div>`).join('')
   const flag = strip.flags.includes(NEED_ADDRESS) ? `<em>${NEED_ADDRESS}</em>` : ''
-  return `<b>${esc(mark)}</b>${orders ? `<i>→</i>${orders}` : ''}${flag}`
+  const courier = strip.carrier === undefined ? '' : strip.carrier === null ? CHECK_COURIER : CARRIER_LABEL[strip.carrier]
+  return `<div class=l><b>${esc(mark)}</b>${orders ? `<i>→</i>${orders}` : ''}</div><div class=c>${courier}</div><div class=r>${flag}</div>`
 }
 function address(a: SlipAddress | null, phone = true): string {
   const place = [a?.zip, a?.city, a?.provinceCode].filter(Boolean).join(' ')
@@ -26,7 +32,7 @@ function address(a: SlipAddress | null, phone = true): string {
   return rows.map(row => `<div>${esc(row)}</div>`).join('') || `<div>${MISSING}</div>`
 }
 export function slip(row: SlipDocumentRow, order: SlipOrder | undefined): string {
-  if (!order) return `<section class="slip PACK"><div class=mark><b>${esc(row.mark)}</b></div><header><div class=shop>QIMATI</div><div class=right><div>Order ${esc(row.order_name)}</div></div></header><p>Shopify could not return this order, so its slip could not be rendered. Open it in Shopify.</p></section>`
+  if (!order) return `<section class="slip PACK"><div class=mark>${strip(row.mark, row.strip)}</div><header><div class=shop>QIMATI</div><div class=right><div>Order ${esc(row.order_name)}</div></div></header><p>Shopify could not return this order, so its slip could not be rendered. Open it in Shopify.</p></section>`
   const items = lines(order).map(line => {
     const variant = line.variantTitle && line.variantTitle !== 'Default Title' ? `<div>${esc(line.variantTitle)}</div>` : ''
     return `<tr><td class=pic>${line.imageUrl ? `<img src="${esc(line.imageUrl)}" alt="" loading="eager">` : '<i></i>'}</td><td><div>${esc(line.title)}</div>${variant}<div>${esc(line.sku || MISSING)}</div></td><td class=q>${line.unfulfilledQuantity} of ${line.quantity}</td></tr>`
@@ -47,21 +53,25 @@ export function renderSlipDocument(doc: SlipDocument): string {
   const slips = rows.map(row => slip(row, byId.get(row.order_id))).join('')
   const missing = rows.filter(row => !byId.has(row.order_id)).map(row => row.order_name)
   const failed = rows.filter(row => row.progress === 'failed').map(row => row.order_name)
+  const unchecked = rows.filter(row => row.strip.carrier === null).map(row => row.order_name)
   const first = rows[0] ? num(rows[0].order_name) : 0, last = rows.length ? num(rows[rows.length - 1].order_name) : 0
   const summary = `${rows.length} slip${rows.length === 1 ? '' : 's'}${rows.length ? ` · Qimati${first} to Qimati${last}` : ''} · printed ${esc(fmtWhen(doc.printedAt))} IST by ${esc(doc.printedBy)}`
   const warnings = [
     ...(failed.length ? [`Not marked In progress in Shopify (mark by hand or use Retry on the Print slips page): ${failed.join(', ')}`] : []),
     ...(missing.length ? [`Could not be read from Shopify: ${missing.join(', ')}`] : []),
+    ...(unchecked.length ? [`Courier not checked (DTDC or Delhivery did not answer, or the Delhivery key is not set), so the slip says ${CHECK_COURIER}: ${unchecked.join(', ')}`] : []),
   ].map(text => `<p class=warn>${esc(text)}</p>`).join('')
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(doc.title)}</title><style>
 @page{size:A4;margin:0}
 body{font:10px/1.45 "Helvetica Neue",Helvetica,Arial,sans-serif;color:#000;margin:0;background:#fff}
 .toolbar{font-size:14px;line-height:1.5;padding:16px 20px;max-width:760px;margin:auto}.toolbar h1{font-size:18px;margin:0 0 6px}.toolbar button{background:#111;color:#fff;border:0;border-radius:999px;padding:10px 22px;cursor:pointer;font:inherit}.toolbar a{color:#111;margin-left:14px}.warn{color:#a8302a;font-weight:600}
 .slip{break-after:page}.slip:last-child{break-after:auto}
-.mark{display:flex;align-items:center;gap:14px;padding:4px 10px;border:2px solid #000;border-radius:3px;background:#fff;color:#000;margin-bottom:9mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}.mark>b{font-size:13px;letter-spacing:.05em;white-space:nowrap}.mark i{font-style:normal;font-size:14px}
+.mark{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:4px 10px;border:2px solid #000;border-radius:3px;background:#fff;color:#000;margin-bottom:9mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.l{display:flex;align-items:center;gap:14px}.l>b{font-size:13px;letter-spacing:.05em;white-space:nowrap}.mark i{font-style:normal;font-size:14px}
+.c{font-size:13px;font-weight:700;letter-spacing:.1em;white-space:nowrap;text-align:center}.r{justify-self:end}
 .w{display:flex;flex-direction:column;line-height:1.15}.w b{font-size:12px}.w small{font-size:8px;text-transform:uppercase;letter-spacing:.03em}
-.mark em{margin-left:auto;font-style:normal;font-weight:700;font-size:12px;white-space:nowrap;padding:1px 7px;border:1.5px solid currentColor;border-radius:3px}
-.PACK .mark{border-color:#b5b5b5;color:#555}.PACK .mark>b{font-size:11px}.PACK .mark em{color:#000}.HOLD .mark,.CLUBHOLD .mark{background:#000;color:#fff}
+.mark em{font-style:normal;font-weight:700;font-size:12px;white-space:nowrap;padding:1px 7px;border:1.5px solid currentColor;border-radius:3px}
+.PACK .mark{border-color:#b5b5b5;color:#555}.PACK .l>b{font-size:11px}.PACK .c,.PACK .mark em{color:#000}.HOLD .mark,.CLUBHOLD .mark{background:#000;color:#fff}
 header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9mm}.shop{font-size:19px;letter-spacing:.02em}.right{text-align:right}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:7mm}h6{margin:0 0 7px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
 table{width:100%;border-collapse:collapse;border-top:2px solid #000;border-bottom:2px solid #000}

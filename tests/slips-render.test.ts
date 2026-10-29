@@ -11,12 +11,19 @@ const order = (n: number): SlipOrder => ({
 })
 const doc = (rows: SlipPrintRow[], orders: SlipOrder[]) => renderSlipDocument({ rows, orders, title: 'T', printedBy: 'owner', printedAt: '2026-10-10T09:00:00Z', backHref: '/dispatch/print' })
 
-describe('the mark strip (packing_list.py mark())', () => {
-  it('matches the Mac output byte for byte', () => {
-    expect(strip('PACK', { ...empty, flags: [NEED_ADDRESS] })).toBe(`<b>PACK</b><em>${NEED_ADDRESS}</em>`)
-    expect(strip('CLUB', { ...empty, heldWith: [85], with: [{ number: 85, status: 'HOLD' }] })).toBe('<b>CLUB</b><i>→</i><div class=w><b>85</b><small>HOLD</small></div>')
-    expect(strip('PACK', empty)).toBe('<b>PACK</b>')
-    expect(strip('CLUB + HOLD', { ...empty, flags: ['addresses differ, check before clubbing'] })).toBe('<b>CLUB + HOLD</b>')
+describe('the mark strip (packing_list.py mark(), plus the courier cell in the middle, D162)', () => {
+  it('keeps the Mac wording in the left cell, Need Address in the right cell', () => {
+    expect(strip('PACK', { ...empty, flags: [NEED_ADDRESS] })).toBe(`<div class=l><b>PACK</b></div><div class=c></div><div class=r><em>${NEED_ADDRESS}</em></div>`)
+    expect(strip('CLUB', { ...empty, heldWith: [85], with: [{ number: 85, status: 'HOLD' }] })).toBe('<div class=l><b>CLUB</b><i>→</i><div class=w><b>85</b><small>HOLD</small></div></div><div class=c></div><div class=r></div>')
+    expect(strip('PACK', empty)).toBe('<div class=l><b>PACK</b></div><div class=c></div><div class=r></div>')
+    expect(strip('CLUB + HOLD', { ...empty, flags: ['addresses differ, check before clubbing'] })).toBe('<div class=l><b>CLUB + HOLD</b></div><div class=c></div><div class=r></div>')
+  })
+  it('names only a parcel leaving DTDC in the middle: DELHIVERY, SPEED POST; CHECK COURIER when the check failed; nothing for DTDC or without a pincode', () => {
+    expect(strip('PACK', { ...empty, carrier: 'DTDC' })).toContain('<div class=c></div>')
+    expect(strip('HOLD', { ...empty, carrier: 'Delhivery' })).toContain('<div class=c>DELHIVERY</div>')
+    expect(strip('CLUB', { ...empty, carrier: 'Speed Post' })).toContain('<div class=c>SPEED POST</div>')
+    expect(strip('PACK', { ...empty, carrier: null })).toContain('<div class=c>CHECK COURIER</div>')
+    expect(strip('PACK', empty)).toContain('<div class=c></div>')
   })
 })
 describe('the slip document', () => {
@@ -36,6 +43,13 @@ describe('the slip document', () => {
   it('carries no script: the Print slips page opens the dialog from a hidden frame (D152)', () => {
     expect(doc([row(1)], [order(1)])).not.toContain('<script')
     expect(doc([row(1)], [order(1)])).toContain('onclick="window.print()"')
+  })
+  it('prints the courier inside the strip, so on a HOLD slip it is white on the black band, and warns when a check failed', () => {
+    const html = doc([row(1, 'HOLD', { strip: { ...empty, carrier: 'Delhivery' } }), row(2, 'PACK', { strip: { ...empty, carrier: null } })], [order(1), order(2)])
+    expect(html).toContain('<section class="slip HOLD" data-order="Qimati1"><div class=mark><div class=l><b>HOLD</b></div><div class=c>DELHIVERY</div><div class=r></div></div>')
+    expect(html).toContain('.HOLD .mark,.CLUBHOLD .mark{background:#000;color:#fff}'); expect(html).toContain('grid-template-columns:1fr auto 1fr')
+    expect(html).toContain('<div class=c>CHECK COURIER</div>'); expect(html).toContain('so the slip says CHECK COURIER: Qimati2')
+    expect(doc([row(1)], [order(1)])).not.toContain('CHECK COURIER')
   })
   it('names orders Shopify could not return and orders not marked In progress', () => {
     const html = doc([row(1, 'PACK', { progress: 'failed', progress_error: 'no' }), row(2)], [order(1)])

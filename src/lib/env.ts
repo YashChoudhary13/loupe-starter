@@ -58,6 +58,12 @@ export const serverEnv = {
     return (process.env.PRINT_RELAY_TOKEN ?? '').trim()
   },
 
+  /** Delhivery's API token, asked for pin-code serviceability on packing slips (D162). Empty = Delhivery is not
+   * asked: a pin DTDC flags still prints DTDC and a pin DTDC does not serve prints CHECK COURIER. */
+  get delhiveryApiKey(): string {
+    return (process.env.DELHIVERY_API_KEY ?? '').trim()
+  },
+
   /** Shared secret the vision worker presents to /api/worker/* (D111). */
   get workerSecret(): string {
     return validatedCronSecret(process.env.WORKER_SECRET)

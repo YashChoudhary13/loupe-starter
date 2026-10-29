@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NothingToPrint, printSlips, retryProgress, select, type PrintDeps } from '@/lib/slips/print'
-import type { SlipOrder } from '@/lib/slips/types'
+import type { SlipCarrier, SlipOrder } from '@/lib/slips/types'
 
 const order = (n: number, changes: Partial<SlipOrder> = {}, phone = `90000000${String(n).padStart(2, '0')}`): SlipOrder => ({
   id: `gid://shopify/Order/${n}`, name: `Qimati${n}`, createdAt: '2026-10-10T05:00:00Z', note: null, tags: [], email: null, phone, financialStatus: 'PAID', fulfillmentStatus: 'UNFULFILLED', total: 100, customer: null, billingAddress: null,
@@ -10,8 +10,8 @@ const order = (n: number, changes: Partial<SlipOrder> = {}, phone = `90000000${S
 })
 const held = (n: number) => order(n, { fulfillmentStatus: 'ON_HOLD', fulfillmentOrders: [{ id: `gid://shopify/FulfillmentOrder/${n}`, status: 'ON_HOLD', holdReasons: ['other'] }] })
 
-function fakeDeps(orders: SlipOrder[], options: { printed?: string[]; taken?: string[]; failOn?: string[]; truncated?: boolean } = {}) {
-  const calls = { batches: [] as unknown[], rows: [] as unknown[], progress: [] as unknown[], reported: [] as string[], events: [] as unknown[] }
+function fakeDeps(orders: SlipOrder[], options: { printed?: string[]; taken?: string[]; failOn?: string[]; truncated?: boolean; carriers?: Record<string, SlipCarrier | null> } = {}) {
+  const calls = { batches: [] as unknown[], rows: [] as unknown[], progress: [] as unknown[], reported: [] as string[], events: [] as unknown[], pins: [] as string[] }
   const deps: PrintDeps = {
     listOpenOrders: async () => ({ orders, truncated: !!options.truncated }),
     readOrders: async ids => orders.filter(o => ids.includes(o.id)),
@@ -22,6 +22,7 @@ function fakeDeps(orders: SlipOrder[], options: { printed?: string[]; taken?: st
     setProgress: async (batchId, orderId, progress, error) => { calls.progress.push({ orderId, progress, error }) },
     reportProgress: async id => { if ((options.failOn ?? []).includes(id)) throw new Error('Shopify refused.'); calls.reported.push(id) },
     record: async (batchId, event, detail) => { calls.events.push({ event, detail }) },
+    carrierFor: async pin => { calls.pins.push(pin); const carrier = options.carriers && pin in options.carriers ? options.carriers[pin] : 'DTDC'; return { carrier, dtdc: carrier === 'DTDC' ? 'served' : 'not served', delhivery: carrier === 'DTDC' ? 'not asked' : 'no answer' } },
   }
   return { deps, calls }
 }
@@ -45,6 +46,18 @@ describe('select: what one click would print', () => {
 })
 
 describe('printSlips', () => {
+  it('asks the courier once per pincode before the rows are stored, keeps it on the strip, skips a slip that asks for its address, and counts it in the event (D162)', async () => {
+    const orders = [order(1), order(2), order(3, { shippingAddress: { name: 'B', phone: null, address1: 'x', address2: null, city: 'Aizawl', provinceCode: null, zip: '796 012', country: null } }), order(4, { shippingAddress: null }), order(5, { shippingAddress: { name: 'C', phone: null, address1: null, address2: null, city: 'Imphal', provinceCode: null, zip: '795010', country: null } })]
+    const { deps, calls } = fakeDeps(orders, { carriers: { '302001': 'DTDC', '796012': null, '795010': 'Speed Post' } })
+    const outcome = await printSlips('owner', null, deps)
+    expect(calls.pins).toEqual(['302001', '796012'])
+    expect(outcome.rows.map(row => row.strip.carrier)).toEqual(['DTDC', 'DTDC', null, undefined, undefined])
+    expect(outcome.rows[4].strip.flags).toContain('Need Address')
+    expect((calls.rows as { orderId: string; strip: { carrier?: string | null } }[]).map(row => row.strip.carrier)).toEqual(['DTDC', 'DTDC', null, undefined, undefined])
+    const printed = calls.events.find(event => (event as { event: string }).event === 'slips.printed') as { detail: { couriers: Record<string, number>; checks: unknown[] } }
+    expect(printed.detail.couriers).toEqual({ DTDC: 2, unchecked: 1, 'no pin': 2 })
+    expect(printed.detail.checks).toEqual([{ pin: '796012', carrier: null, dtdc: 'not served', delhivery: 'no answer' }])
+  })
   it('records the batch and rows, then marks only PACK and CLUB orders In progress through their OPEN fulfilment orders', async () => {
     const already = order(3, { fulfillmentOrders: [{ id: 'fo3', status: 'IN_PROGRESS', holdReasons: [] }] })
     const twoLocations = order(4, { fulfillmentOrders: [{ id: 'fo4a', status: 'OPEN', holdReasons: [] }, { id: 'fo4b', status: 'CLOSED', holdReasons: [] }] })
