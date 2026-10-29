@@ -3,14 +3,17 @@ import tls from 'node:tls'
 import type { SlipCarrier } from './types'
 
 /**
- * Which courier a parcel goes by, from the destination pincode (D162). The owner's rule (2026-10-29): whatever DTDC
- * serves goes by DTDC, surcharge flags or not; only a pin DTDC does not serve goes by Delhivery, when Delhivery serves
- * it; a pin neither serves (Manipur) goes by India Post Speed Post from the office. Nothing is guessed: a check that
- * fails prints CHECK COURIER. Pure rule and parsers here; the two lookups below are the only I/O.
+ * Which courier a parcel goes by, from the destination (D162). The owner's rules (2026-10-29): every Gujarat parcel
+ * goes by Tirupati Courier; elsewhere whatever DTDC serves plainly goes by DTDC; a pin DTDC flags (special destination,
+ * remote area) goes by Delhivery when Delhivery serves it, since Delhivery serves those better, and stays DTDC when it
+ * does not; a pin DTDC does not serve goes by Delhivery when Delhivery serves it; a pin neither serves (Manipur) goes
+ * by India Post Speed Post from the office. Nothing is guessed: a check that fails prints CHECK COURIER. Pure rules and
+ * parsers here; the two lookups below are the only I/O.
  */
-export interface DtdcVerdict { serviceable: boolean; flagged: boolean }
+export type DtdcFlag = 'special destination' | 'remote area' | 'no B2C'
+export interface DtdcVerdict { serviceable: boolean; flag: DtdcFlag | null }
 /** One pin's verdict with what each checker said, kept in the print record so a courier line can be audited. */
-export interface CarrierCheck { carrier: SlipCarrier | null; dtdc: 'served' | 'served, special destination' | 'not served' | 'no answer'; delhivery: 'served' | 'not served' | 'not asked' | 'no key' | 'no answer' }
+export interface CarrierCheck { carrier: SlipCarrier | null; dtdc: 'served' | `served, ${DtdcFlag}` | 'not served' | 'no answer'; delhivery: 'served' | 'not served' | 'not asked' | 'no key' | 'no answer' }
 export const DTDC_ORIGIN = '302029' // the office's DTDC pin, as dtdc_check.py asks since 2026-09-30
 const DTDC_URL = 'https://www.dtdc.com/wp-json/custom/v1/dtdc-pincode/'
 const DELHIVERY_URL = 'https://track.delhivery.com/c/api/pin-codes/json/?filter_codes='
@@ -19,9 +22,14 @@ const CACHE_MS = 24 * 60 * 60 * 1000
 
 export function chooseCarrier(dtdc: DtdcVerdict | null, delhivery: boolean | null): SlipCarrier | null {
   if (!dtdc) return null // DTDC could not be asked: nothing to decide on
-  if (dtdc.serviceable) return 'DTDC'
+  if (dtdc.serviceable && !dtdc.flag) return 'DTDC'
+  if (dtdc.serviceable) return delhivery ? 'Delhivery' : 'DTDC' // flagged: Delhivery when it serves, otherwise DTDC still carries it
   if (delhivery === null) return null // Delhivery not asked (no key) or no answer
   return delhivery ? 'Delhivery' : 'Speed Post'
+}
+/** All Gujarat parcels go by Tirupati Courier (owner, 2026-10-29): the state code, or a pin in Gujarat's 36xxxx to 39xxxx band. */
+export function gujarat(order: { shippingAddress: { provinceCode: string | null; zip: string | null } | null }): boolean {
+  return (order.shippingAddress?.provinceCode ?? '').trim().toUpperCase() === 'GJ' || /^3[6-9]/.test(pinOf(order) ?? '')
 }
 /** Six digits or nothing. */
 export function pinOf(order: { shippingAddress: { zip: string | null } | null }): string | null {
@@ -36,8 +44,9 @@ export function readDtdc(json: unknown): DtdcVerdict {
   const answer = json as { ZIPCODE_RESP?: { MESSAGE?: string; SERVFLAG?: string }[]; SERV_LIST?: Record<string, string>[] } | null
   if (!answer || !Array.isArray(answer.ZIPCODE_RESP)) throw new Error('DTDC gave an unexpected answer.')
   const flags = answer.SERV_LIST?.[0] ?? {}
-  if (answer.ZIPCODE_RESP.some(row => row.MESSAGE === 'SUCCESS' && row.SERVFLAG === 'Y')) return { serviceable: true, flagged: flags.special_Destination === 'YES' || flags.remote_Delivery_Area === 'YES' || flags.b2C_SERVICEABLE === 'NO' }
-  if (answer.ZIPCODE_RESP.some(row => row.MESSAGE === 'DESTPIN is not valid')) return { serviceable: false, flagged: false }
+  const flag: DtdcFlag | null = flags.special_Destination === 'YES' ? 'special destination' : flags.remote_Delivery_Area === 'YES' ? 'remote area' : flags.b2C_SERVICEABLE === 'NO' ? 'no B2C' : null
+  if (answer.ZIPCODE_RESP.some(row => row.MESSAGE === 'SUCCESS' && row.SERVFLAG === 'Y')) return { serviceable: true, flag }
+  if (answer.ZIPCODE_RESP.some(row => row.MESSAGE === 'DESTPIN is not valid')) return { serviceable: false, flag: null }
   throw new Error('DTDC gave an unexpected answer.')
 }
 /** Delhivery's pin-code API: served when the pin comes back with prepaid Y; an unserved pin comes back as an empty list. */
@@ -52,10 +61,10 @@ export function readDelhivery(json: unknown): boolean {
  * failure, the same request goes again over node:https with the public intermediate added to Node's roots. */
 export async function dtdcCheck(pin: string): Promise<DtdcVerdict> {
   const first = await dtdcAsk(pin)
-  if (first.serviceable) return first
-  // "Not served" is what moves a parcel off DTDC, so it is never taken from one answer: DTDC is asked again and must say it twice.
+  if (first.serviceable && !first.flag) return first
+  // "Not served" or a flag is what moves a parcel off DTDC, so it is never taken from one answer: DTDC is asked again and must say the same.
   const second = await dtdcAsk(pin)
-  if (second.serviceable) throw new Error('DTDC gave two different answers.')
+  if (second.serviceable !== first.serviceable || second.flag !== first.flag) throw new Error('DTDC gave two different answers.')
   return first
 }
 async function dtdcAsk(pin: string): Promise<DtdcVerdict> {
@@ -96,8 +105,8 @@ export async function delhiveryCheck(pin: string, key: string): Promise<boolean 
 // ponytail: in-process cache, gone on restart; a pincode table if the first print after a deploy feels slow.
 const cache = new Map<string, { check: CarrierCheck; until: number }>()
 const fail = (error: unknown) => { console.error('courier check:', error instanceof Error ? error.message : error) }
-/** One pin's courier: DTDC first, Delhivery only when DTDC does not serve. Only "DTDC serves" is remembered, for a day;
- * anything that would move a parcel off DTDC is asked afresh on every print. Never throws: a failed check is a null
+/** One pin's courier: DTDC first, Delhivery only when DTDC does not serve or flags the pin. Only a DTDC verdict is
+ * remembered, for a day; anything that moves a parcel off DTDC is asked afresh on every print. Never throws: a failed check is a null
  * carrier, which prints as CHECK COURIER, and the reason goes to the server log. */
 export function carrierLookup(delhiveryKey: string, now: () => number = Date.now): (pin: string) => Promise<CarrierCheck> {
   return async pin => {
@@ -105,8 +114,8 @@ export function carrierLookup(delhiveryKey: string, now: () => number = Date.now
     if (hit && hit.until > now()) return hit.check
     const check: CarrierCheck = { carrier: null, dtdc: 'no answer', delhivery: 'not asked' }
     let dtdc: DtdcVerdict | null = null, delhivery: boolean | null = null
-    try { dtdc = await dtdcCheck(pin); check.dtdc = dtdc.serviceable ? (dtdc.flagged ? 'served, special destination' : 'served') : 'not served' } catch (error) { fail(error) }
-    if (dtdc && !dtdc.serviceable) {
+    try { dtdc = await dtdcCheck(pin); check.dtdc = dtdc.serviceable ? (dtdc.flag ? `served, ${dtdc.flag}` : 'served') : 'not served' } catch (error) { fail(error) }
+    if (dtdc && (!dtdc.serviceable || dtdc.flag)) {
       if (!delhiveryKey) check.delhivery = 'no key'
       else try { delhivery = await delhiveryCheck(pin, delhiveryKey); check.delhivery = delhivery ? 'served' : 'not served' } catch (error) { check.delhivery = 'no answer'; fail(error) }
     }

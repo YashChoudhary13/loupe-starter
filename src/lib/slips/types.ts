@@ -13,7 +13,7 @@ export interface SlipOrder {
 export const MARKS = ['PACK', 'HOLD', 'CLUB', 'CLUB + HOLD'] as const
 export type Mark = (typeof MARKS)[number]
 export const NEED_ADDRESS = 'Need Address'
-export const SLIP_CARRIERS = ['DTDC', 'Delhivery', 'Speed Post'] as const
+export const SLIP_CARRIERS = ['DTDC', 'Delhivery', 'Speed Post', 'Tirupati'] as const
 export type SlipCarrier = (typeof SLIP_CARRIERS)[number]
 /** What the strip on the slip says, besides the mark. Stored with the printed row so a reprint shows exactly what was printed.
  * `carrier` (D162): the courier the pincode check picked (DTDC prints nothing); null = the check failed (prints CHECK COURIER);

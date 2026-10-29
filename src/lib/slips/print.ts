@@ -1,4 +1,4 @@
-import { carriersFor, pinOf, type CarrierCheck } from './carrier'
+import { carriersFor, gujarat, pinOf, type CarrierCheck } from './carrier'
 import { isHeld, num, paid, plan } from './plan'
 import { NEED_ADDRESS, type Mark, type Progress, type SlipDocumentRow, type SlipOrder, type SlipRow, type SlipStrip } from './types'
 
@@ -59,11 +59,17 @@ export async function printSlips(by: string, fromNumber: number | null, deps: Pr
   if (selection.truncated) throw new Error('Shopify has more open orders than Loupe read in one go, so the list is incomplete and nothing was printed. Archive old fulfilled orders in Shopify and try again.')
   if (!selection.rows.length && !selection.baseline.length) throw new NothingToPrint(selection.leftOut.length ? `Nothing new to print. Left out, payment not received: ${selection.leftOut.join(', ')}.` : undefined)
   // The courier, by pincode, before the rows are stored: the strip is kept as printed, so a reprint says the same (D162).
-  // A slip still waiting for its address carries no courier (owner, 2026-10-29), whatever pincode it has.
+  // A slip still waiting for its address carries no courier (owner, 2026-10-29), whatever pincode it has; a Gujarat parcel
+  // goes by Tirupati without a check.
   const checking = Date.now()
-  const pinToCheck = (row: SlipRow) => (row.strip.flags.includes(NEED_ADDRESS) ? null : pinOf(row.order))
+  const pinToCheck = (row: SlipRow) => (row.strip.flags.includes(NEED_ADDRESS) || gujarat(row.order) ? null : pinOf(row.order))
   const carriers = await carriersFor(selection.rows.map(pinToCheck).filter((pin): pin is string => pin !== null), deps.carrierFor)
-  for (const row of selection.rows) { const pin = pinToCheck(row); if (pin) row.strip.carrier = carriers.get(pin)?.carrier ?? null }
+  for (const row of selection.rows) {
+    if (row.strip.flags.includes(NEED_ADDRESS)) continue
+    if (gujarat(row.order)) { row.strip.carrier = 'Tirupati'; continue }
+    const pin = pinOf(row.order)
+    if (pin) row.strip.carrier = carriers.get(pin)?.carrier ?? null
+  }
   // Every pin not going by DTDC is written into the print record with both checkers' words, so a courier line can be audited.
   const checks = [...carriers].filter(([, check]) => check.carrier !== 'DTDC').map(([pin, check]) => ({ pin, ...check }))
   const batching = Date.now()

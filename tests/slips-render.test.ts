@@ -22,6 +22,7 @@ describe('the mark strip (packing_list.py mark(), plus the courier cell in the m
     expect(strip('PACK', { ...empty, carrier: 'DTDC' })).toContain('<div class=c></div>')
     expect(strip('HOLD', { ...empty, carrier: 'Delhivery' })).toContain('<div class=c>DELHIVERY</div>')
     expect(strip('CLUB', { ...empty, carrier: 'Speed Post' })).toContain('<div class=c>SPEED POST</div>')
+    expect(strip('PACK', { ...empty, carrier: 'Tirupati' })).toContain('<div class=c>TIRUPATI</div>')
     expect(strip('PACK', { ...empty, carrier: null })).toContain('<div class=c>CHECK COURIER</div>')
     expect(strip('PACK', empty)).toContain('<div class=c></div>')
   })
