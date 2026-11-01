@@ -2,24 +2,43 @@ import 'server-only'
 
 import { serverEnv } from '@/lib/env'
 import { R2ObjectStore } from '@/lib/images/storage'
+import { imageUrl, type ImageSize } from '@/lib/images/url'
 
 import type { SignedImage } from './types'
 
 /**
- * Presigned R2 access for the console.
+ * How the console reaches R2.
  *
- * The bucket is private (D4) and stays private. Nothing here produces a durable
- * URL: every link the browser receives carries a signature and an expiry, so a
- * copied console page stops rendering images fifteen minutes later rather than
- * handing out unpublished product photography indefinitely.
+ * The bucket is private (D4) and stays private. Since D165 the console's own
+ * pictures come from Loupe's `/api/images/<version>?size=…` route — one stable
+ * URL per version and size, behind the operator's session, served from the VPS
+ * disk cache — so the browser keeps them and a refreshed snapshot downloads
+ * nothing. `stableImage()` builds those.
  *
- * Thumbnails are what the queue grid uses — the enhancement worker writes a
- * ~50 KB WebP next to every version precisely so twenty tiles cost about a
- * megabyte instead of fifty (CLAUDE.md · Storage).
+ * Presigned URLs remain for readers that cannot send a Loupe cookie or do not
+ * key by version: Shopify's fetch at publish (publish.ts), the Restock and
+ * Identify screens (agent-intake/restock.ts, match/**) and Tracking. Every such
+ * link carries a signature and an expiry, so a copied page stops rendering
+ * images fifteen minutes later rather than handing out unpublished product
+ * photography indefinitely.
+ *
+ * Thumbnails are what the queue grid uses — a ~50 KB WebP sits next to every
+ * version precisely so twenty tiles cost about a megabyte instead of fifty
+ * (CLAUDE.md · Storage).
  */
 
 /** Long enough for a batch of products, short enough that a leaked URL rots. */
 export const SIGNED_URL_TTL_SECONDS = 15 * 60
+
+/** Far enough that nothing treats a stable URL as about to expire. */
+export const STABLE_IMAGE_EXPIRES_AT = Date.UTC(2100, 0, 1)
+
+export { imageUrl }
+
+/** The console's picture of a version (D165): Loupe's own route, cached by the browser, no signature to rot. */
+export function stableImage(versionId: string, size: ImageSize): SignedImage {
+  return { url: imageUrl(versionId, size), expiresAt: STABLE_IMAGE_EXPIRES_AT }
+}
 
 let cached: R2ObjectStore | undefined
 
