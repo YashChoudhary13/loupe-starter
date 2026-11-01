@@ -25,13 +25,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  */
 
 export interface LightboxImage {
+  /** The exact stored bytes, ~2 MB for a render. Shown only after **Full size**. */
   readonly url: string
   /**
-   * The queue-grid thumbnail of the same version, shown while the full file
-   * downloads. The full image is a ~2 MB PNG behind a presigned URL that
-   * differs on every snapshot, so the browser almost never has it cached —
-   * without a placeholder every open is seconds of black.
+   * The 1280 px preview of the same version (D165), what the lightbox opens on.
+   * Stable URL, so after the first open the browser has it. Absent for the
+   * screens that still pass presigned URLs; `url` is shown directly then.
    */
+  readonly previewUrl?: string | null
+  /** The queue-grid thumbnail, shown blurred while the preview downloads. */
   readonly thumbUrl: string | null
   readonly alt: string
   readonly caption: string
@@ -50,8 +52,10 @@ export interface ImageLightboxProps {
 export function ImageLightbox({ images, index, onClose, onIndexChange, action }: ImageLightboxProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const returnFocusTo = useRef<Element | null>(null)
-  /** Which full-size URL has finished downloading; keyed by URL, not index. */
+  /** Which URL has finished downloading; keyed by URL, not index. */
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null)
+  /** The image (by its full URL) whose exact bytes the operator asked for. */
+  const [fullFor, setFullFor] = useState<string | null>(null)
   const open = index !== null && images.length > 0
   const current = open ? images[index] : undefined
 
@@ -102,7 +106,22 @@ export function ImageLightbox({ images, index, onClose, onIndexChange, action }:
     }
   }, [onClose, open, step])
 
+  /** The neighbours' previews are stable URLs: fetched once here, they open from cache. */
+  useEffect(() => {
+    if (index === null || images.length < 2) return
+    for (const delta of [-1, 1]) {
+      const neighbour = images[(index + delta + images.length) % images.length]
+      new Image().src = neighbour.previewUrl ?? neighbour.url
+    }
+  }, [images, index])
+
   if (!open || !current) return null
+
+  const hasPreview = Boolean(current.previewUrl) && current.previewUrl !== current.url
+  const showFull = !hasPreview || fullFor === current.url
+  const display = showFull ? current.url : current.previewUrl!
+  // What sits underneath until `display` has loaded: the preview under the full file, the thumb under the preview.
+  const under = showFull && hasPreview ? current.previewUrl! : current.thumbUrl
 
   return (
     <div
@@ -119,27 +138,42 @@ export function ImageLightbox({ images, index, onClose, onIndexChange, action }:
             {index + 1} of {images.length}
           </span>
         ) : null}
-        {action ? (
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {hasPreview ? (
+            <button
+              type="button"
+              disabled={showFull}
+              onClick={(event) => {
+                event.stopPropagation()
+                setFullFor(current.url)
+              }}
+              className="rounded-pill bg-white/10 px-3.5 py-1.5 text-[12px] text-white transition-colors hover:bg-white/20 focus:outline-none focus-visible:shadow-[0_0_0_2px_white] disabled:text-white/60 disabled:hover:bg-white/10"
+            >
+              {!showFull ? 'Full size' : loadedUrl === current.url ? 'Full size shown' : 'Loading full size…'}
+            </button>
+          ) : null}
+          {action ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                action.onClick()
+              }}
+              className="rounded-pill bg-white px-3.5 py-1.5 text-[12px] font-medium text-black transition-colors hover:bg-white/90 focus:outline-none focus-visible:shadow-[0_0_0_2px_white]"
+            >
+              {action.label}
+            </button>
+          ) : null}
           <button
+            // Inside the editor's <form>, whose submit publishes the product.
             type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              action.onClick()
-            }}
-            className="ml-auto shrink-0 rounded-pill bg-white px-3.5 py-1.5 text-[12px] font-medium text-black transition-colors hover:bg-white/90 focus:outline-none focus-visible:shadow-[0_0_0_2px_white]"
+            ref={closeRef}
+            onClick={onClose}
+            className="rounded-pill bg-white/10 px-3.5 py-1.5 text-[12px] text-white transition-colors hover:bg-white/20 focus:outline-none focus-visible:shadow-[0_0_0_2px_white]"
           >
-            {action.label}
+            Close · Esc
           </button>
-        ) : null}
-        <button
-          // Inside the editor's <form>, whose submit publishes the product.
-          type="button"
-          ref={closeRef}
-          onClick={onClose}
-          className={`${action ? '' : 'ml-auto '}shrink-0 rounded-pill bg-white/10 px-3.5 py-1.5 text-[12px] text-white transition-colors hover:bg-white/20 focus:outline-none focus-visible:shadow-[0_0_0_2px_white]`}
-        >
-          Close · Esc
-        </button>
+        </div>
       </div>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-5 pb-5">
@@ -148,21 +182,21 @@ export function ImageLightbox({ images, index, onClose, onIndexChange, action }:
         ) : null}
 
         <div className="relative h-full w-full">
-          {current.thumbUrl && current.thumbUrl !== current.url && loadedUrl !== current.url ? (
-            // eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL.
+          {under && under !== display && loadedUrl !== display ? (
+            // eslint-disable-next-line @next/next/no-img-element -- Loupe's own authenticated image route (D165); the optimiser would re-encode a private picture.
             <img
-              src={current.thumbUrl}
+              src={under}
               alt=""
               aria-hidden
-              className="absolute inset-0 m-auto max-h-full max-w-full object-contain blur-[1.5px]"
+              className={`absolute inset-0 m-auto max-h-full max-w-full object-contain${under === current.thumbUrl ? ' blur-[1.5px]' : ''}`}
               onClick={(event) => event.stopPropagation()}
             />
           ) : null}
-          {/* eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL. */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- Loupe's own authenticated image route (D165); the optimiser would re-encode a private picture. */}
           <img
-            src={current.url}
+            src={display}
             alt={current.alt}
-            onLoad={() => setLoadedUrl(current.url)}
+            onLoad={() => setLoadedUrl(display)}
             className="absolute inset-0 m-auto max-h-full max-w-full object-contain"
             // The backdrop closes; the image itself must not.
             onClick={(event) => event.stopPropagation()}

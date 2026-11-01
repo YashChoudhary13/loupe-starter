@@ -135,7 +135,7 @@ export function QueueGrid({
             )}
           >
             {tile.thumb ? (
-              // eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL: Next's optimiser would cache it past its expiry.
+              // eslint-disable-next-line @next/next/no-img-element -- Loupe's own authenticated image route (D165): stable and browser-cached; the optimiser would re-encode a private picture.
               <img
                 src={tile.thumb.url}
                 alt=""

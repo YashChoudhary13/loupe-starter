@@ -9,6 +9,7 @@ import {
 } from '@/lib/console/colour-swatch'
 import { formatPaise } from '@/lib/console/money'
 import type { PredictedIdentity } from '@/lib/console/preview'
+import { imageUrl } from '@/lib/images/url'
 import type {
   CategoryOption,
   ColourSuggestion,
@@ -352,11 +353,12 @@ export function DraftEditor(props: DraftEditorProps) {
    * versions is what the orig/v1/v2 chips below are for.
    */
   const lightboxImages: LightboxImage[] = orderedImages
-    .map((row) => {
+    .map((row): LightboxImage | null => {
       const version = row.photo.versions.find((v) => v.id === row.image.imageVersionId)
       if (!version?.full) return null
       return {
         url: version.full.url,
+        previewUrl: imageUrl(version.id, 'preview'),
         thumbUrl: version.thumb?.url ?? null,
         alt: row.photo.description ?? row.photo.filename,
         caption: `${row.photo.filename} · ${
@@ -394,16 +396,9 @@ export function DraftEditor(props: DraftEditorProps) {
               const fullSizeIndex = version?.full
                 ? lightboxImages.findIndex((image) => image.url === version.full!.url)
                 : -1
-              // A Drive original is the raw multi-MB download; render its
-              // backfilled 1280px preview (or thumb) in the panel and keep the
-              // exact bytes for the lightbox. Generated versions are already
-              // display-sized.
-              const panelUrl =
-                version?.kind === 'original'
-                  ? (version.thumb?.url ??
-                    (version.id ? originalPreviews[version.id] : undefined) ??
-                    version.full?.url)
-                  : version?.full?.url
+              // The panel shows the 1280 px preview of every kind (D165); the
+              // exact bytes wait behind the lightbox's Full size.
+              const panelUrl = version ? imageUrl(version.id, 'preview') : undefined
               return (
                 <div
                   key={`preview:${row.image.intakeFileId}`}
@@ -419,7 +414,7 @@ export function DraftEditor(props: DraftEditorProps) {
                       title="View full size"
                       className="group absolute inset-0 cursor-zoom-in focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--ink)_inset]"
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- presigned, short-lived, private-bucket URL. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element -- Loupe's own authenticated image route (D165); the optimiser would re-encode a private picture. */}
                       <img
                         src={panelUrl ?? version.full.url}
                         alt={row.photo.description ?? row.photo.filename}

@@ -3,15 +3,15 @@
  *
  * These are the ONLY shapes that cross from the server into the console. There
  * is no storage key, no bucket name, no draft-internal id the operator cannot
- * already see, and no permanent URL — image access is a presigned URL with an
- * expiry stamped on it, so a snapshot that leaks is a snapshot that stops
- * working.
+ * already see, and no public URL — an image is Loupe's own route for a version,
+ * which needs the operator's session (D165), or, where Shopify or the Restock
+ * screens still need one, a presigned URL with an expiry stamped on it.
  */
 
 export interface SignedImage {
-  /** Short-lived presigned R2 GET. Never persisted, never public. */
+  /** `/api/images/<version>?size=…` (D165), or a short-lived presigned R2 GET. Never public. */
   readonly url: string
-  /** Epoch milliseconds. The console refreshes itself before this passes. */
+  /** Epoch milliseconds. Far in the future for a stable Loupe URL; Tracking refreshes presigned ones before it passes. */
   readonly expiresAt: number
 }
 

@@ -31,7 +31,6 @@ import {
 import { parseRupeesToPaise } from '@/lib/console/money'
 import { predictIdentity, type PredictedIdentity } from '@/lib/console/preview'
 import {
-  preserveThumbs,
   QUEUE_VIEW_LABELS,
   tilesForQueueView,
   type QueueView,
@@ -79,8 +78,6 @@ import { QueueGrid } from './QueueGrid'
  */
 
 const STICKY_KEY = 'loupe.sticky.v1'
-/** Presigned URLs live 15 minutes; refresh well inside that. */
-const QUEUE_REFRESH_MS = 9 * 60 * 1000
 
 export interface UploadItem {
   readonly key: string
@@ -298,7 +295,7 @@ export function ConsoleScreen({
   const refreshQueue = useCallback(async () => {
     const result = await settled(refreshQueueAction())
     if (!result.ok) return
-    setQueue((current) => preserveThumbs(current, result.data.queue))
+    setQueue(result.data.queue)
     // Counters move under this page — every Save draft reserves the next
     // number inside the save request (D107), and a webhook raises it when
     // somebody creates a product in Shopify admin. A stale `lastNumber` shows
@@ -317,12 +314,6 @@ export function ConsoleScreen({
       queueRefreshTimerRef.current = null
       void refreshQueue()
     }, 1_500)
-  }, [refreshQueue])
-
-  /** Signed URLs expire on their own schedule, regardless of Drive activity. */
-  useEffect(() => {
-    const timer = window.setInterval(() => void refreshQueue(), QUEUE_REFRESH_MS)
-    return () => window.clearInterval(timer)
   }, [refreshQueue])
 
   /**

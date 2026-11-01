@@ -5,7 +5,7 @@ import { loadDuplicateCandidates } from '@/lib/duplicates/read-model'
 
 import { agentSuggestFromRow, agentTagFromRow } from '@/lib/agent-intake/suggest'
 
-import { signKeys } from './images'
+import { stableImage } from './images'
 import { isUnpushedDraft, startOfKolkataDayIso } from './queue-view'
 import type {
   AgentMarks,
@@ -296,18 +296,11 @@ export async function loadQueue(): Promise<QueueSnapshot> {
     versionsByIntake.set(version.intake_file_id, list)
   }
 
-  // One presigned URL per distinct object, for the tiles only. The grid never
+  // Tiles carry Loupe's stable thumb URL for the version (D165). The grid never
   // loads a full-resolution image; that is what the thumbnails exist for.
-  const thumbKeys: (string | null)[] = []
-  for (const photo of [...photos, ...draftPhotos]) {
-    const version = preferredVersion(versionsByIntake.get(photo.id) ?? [])
-    thumbKeys.push(version?.thumb_key ?? null)
-  }
-  const signed = await signKeys(thumbKeys)
-
   function tileThumb(intakeFileId: string) {
     const version = preferredVersion(versionsByIntake.get(intakeFileId) ?? [])
-    return (version?.thumb_key ? signed.get(version.thumb_key) : null) ?? null
+    return version ? stableImage(version.id, 'thumb') : null
   }
 
   const photoTiles: QueueTile[] = photos.map((photo) => ({
@@ -393,7 +386,7 @@ export async function loadQueue(): Promise<QueueSnapshot> {
 }
 
 /**
- * The versions of a set of photographs, with full images signed.
+ * The versions of a set of photographs, with their full-size image URLs.
  *
  * Used by the "new product" panel, where the operator is looking at photographs
  * that are not in a draft yet and still has to be able to review them large and
@@ -428,11 +421,6 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
   const duplicateByIntake = new Map(
     duplicateCandidates.map((candidate) => [candidate.intakeFileId, candidate]),
   )
-  const signed = await signKeys([
-    ...versions.map((v) => v.thumb_key),
-    ...versions.map((v) => v.storage_key),
-  ])
-
   const byIntake = new Map<string, VersionRow[]>()
   for (const version of versions) {
     const list = byIntake.get(version.intake_file_id) ?? []
@@ -462,15 +450,12 @@ export async function loadPhotos(intakeFileIds: readonly string[]): Promise<read
         : null,
       versions: (byIntake.get(file.id) ?? [])
         .sort((a, b) => a.version_no - b.version_no)
-        .map((v) => toVersionSummary(v, signed)),
+        .map((v) => toVersionSummary(v)),
       ...agentMarks(file),
     }))
 }
 
-function toVersionSummary(
-  row: VersionRow,
-  signed: Map<string, { url: string; expiresAt: number }>,
-): VersionSummary {
+function toVersionSummary(row: VersionRow): VersionSummary {
   return {
     id: row.id,
     kind: row.kind,
@@ -480,8 +465,8 @@ function toVersionSummary(
     width: row.width,
     height: row.height,
     createdAt: row.created_at,
-    thumb: (row.thumb_key ? signed.get(row.thumb_key) : null) ?? null,
-    full: signed.get(row.storage_key) ?? null,
+    thumb: stableImage(row.id, 'thumb'),
+    full: stableImage(row.id, 'full'),
   }
 }
 
@@ -543,14 +528,6 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
     duplicateCandidates.map((candidate) => [candidate.intakeFileId, candidate]),
   )
 
-  // Here the full images ARE signed: the editor shows one large review image and
-  // lets the operator compare versions. That is the "larger review" case, and it
-  // is per-draft rather than per-tile.
-  const signed = await signKeys([
-    ...versions.map((v) => v.thumb_key),
-    ...versions.map((v) => v.storage_key),
-  ])
-
   const versionsByIntake = new Map<string, VersionRow[]>()
   for (const version of versions) {
     const list = versionsByIntake.get(version.intake_file_id) ?? []
@@ -577,7 +554,7 @@ export async function loadDraft(draftId: string): Promise<DraftDetail | null> {
       : null,
     versions: (versionsByIntake.get(photo.id) ?? [])
       .sort((a, b) => a.version_no - b.version_no)
-      .map((v) => toVersionSummary(v, signed)),
+      .map((v) => toVersionSummary(v)),
     ...agentMarks(photo),
   }))
 
