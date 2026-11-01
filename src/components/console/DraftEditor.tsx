@@ -101,8 +101,6 @@ export interface DraftEditorProps {
   readonly savingDraft: boolean
   /** Photograph ids with a delete in flight — deletes run in parallel now. */
   readonly deletingIds: ReadonlySet<string>
-  /** Signed 1280px previews backfilled for Drive originals, by image version id. */
-  readonly originalPreviews: Readonly<Record<string, string>>
   readonly dirty: boolean
   readonly priceRef: RefObject<HTMLInputElement | null>
   readonly onPublish: () => void
@@ -149,7 +147,6 @@ export function DraftEditor(props: DraftEditorProps) {
     busy,
     savingDraft,
     deletingIds,
-    originalPreviews,
     dirty,
     priceRef,
     supersedesSku = null,

@@ -280,7 +280,7 @@ export async function beginManualUploadAction(
  * Verifies the bytes and atomically makes the ready image visible in Pending.
  *
  * Returns only the intake id: the multi-file upload queue finalises several
- * files concurrently, and each carrying a full presigned queue snapshot made
+ * files concurrently, and each carrying a full queue snapshot made
  * every completion pay for a whole grid re-sign. The client refreshes the
  * queue once, debounced, as completions land.
  */
@@ -294,7 +294,7 @@ export async function finalizeManualUploadAction(
 }
 
 /**
- * The cheap poll: two counters, no rows and no presigned URLs. The console asks
+ * The cheap poll: two counters, no rows and no image URLs. The console asks
  * for this every few seconds while Drive intake is moving and only pays for a
  * full `refreshQueueAction()` when the counters say something actually finished.
  */
@@ -345,21 +345,6 @@ export async function deleteUngroupedPhotoAction(
     // No queue snapshot: the client removes the tile optimistically and deletes
     // run in parallel; a snapshot per delete re-signed the whole grid each time.
     return { intakeFileId }
-  })
-}
-
-/**
- * Signed 1280px preview for a Drive-sourced original, generated on first
- * request (see original-preview.ts). Called when the operator switches a
- * photograph to its "orig" version and the row predates original thumbnails.
- */
-export async function originalPreviewAction(
-  intakeFileId: string,
-): Promise<ActionResult<{ imageVersionId: string; thumbUrl: string }>> {
-  return withOperator(async () => {
-    const { ensureOriginalPreview } = await import('@/lib/console/original-preview')
-    const preview = await ensureOriginalPreview(intakeFileId)
-    return { imageVersionId: preview.imageVersionId, thumbUrl: preview.thumb.url }
   })
 }
 

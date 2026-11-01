@@ -2,7 +2,7 @@ import { ConsoleScreen } from '@/components/console/ConsoleScreen'
 import { requireOperatorWith } from '@/lib/auth/authorize'
 import { loadCatalog, loadQueue } from '@/lib/console/queue'
 
-// Every render is a fresh authorisation check and a fresh set of presigned URLs.
+// Every render is a fresh authorisation check and a fresh queue.
 // Caching either would be caching who is allowed in.
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300

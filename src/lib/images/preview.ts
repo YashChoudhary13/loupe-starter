@@ -2,7 +2,7 @@ import sharp from 'sharp'
 
 import type { ImageSize } from './url'
 
-/** The editor's review size: the numbers the retired R2 backfill (original-preview.ts) used. */
+/** The editor's review size: the numbers the retired R2 backfill of Drive originals used. */
 export const PREVIEW_LONG_EDGE = 1280
 export const PREVIEW_QUALITY = 78
 export const THUMB_LONG_EDGE = 512

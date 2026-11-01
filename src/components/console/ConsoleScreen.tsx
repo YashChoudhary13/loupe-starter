@@ -14,7 +14,6 @@ import {
   openDraftAction,
   previewPhotosAction,
   publishDraftAction,
-  originalPreviewAction,
   refreshQueueAction,
   saveDraftAction,
   loadDraftLabelPrintAction,
@@ -255,8 +254,6 @@ export function ConsoleScreen({
   const [savingDraftIds, setSavingDraftIds] = useState<ReadonlySet<string>>(new Set())
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set())
   const [uploads, setUploads] = useState<readonly UploadItem[]>([])
-  /** Backfilled 1280px previews for Drive originals, by image version id. */
-  const [originalPreviews, setOriginalPreviews] = useState<Record<string, string>>({})
   const [labelOffer, setLabelOffer] = useState<DraftLabelOffer | null>(null)
   const [labelPrintBusy, setLabelPrintBusy] = useState(false)
   const [labelPrintError, setLabelPrintError] = useState<string | null>(null)
@@ -269,7 +266,6 @@ export function ConsoleScreen({
   const selectionKeyRef = useRef('')
   /** D151: the selection whose draft is being created by a request in flight. */
   const creatingKeyRef = useRef<string | null>(null)
-  const requestedPreviewsRef = useRef(new Set<string>())
   const queueRefreshTimerRef = useRef<number | null>(null)
   const pendingLabelDraftIdRef = useRef<string | null>(null)
   const tileRefs = useRef(new Map<number, HTMLButtonElement>())
@@ -306,7 +302,7 @@ export function ConsoleScreen({
   /**
    * At most one queue re-read per 1.5s no matter how many background
    * completions land together — ten parallel uploads must not cost ten full
-   * presigned snapshots.
+   * full snapshots.
    */
   const refreshQueueSoon = useCallback(() => {
     if (queueRefreshTimerRef.current !== null) return
@@ -1005,32 +1001,6 @@ export function ConsoleScreen({
     })
   }, [])
 
-  /**
-   * Backfill a display-sized preview whenever a Drive original (no thumb row)
-   * becomes a selected version — covers both the "orig" chip click and a saved
-   * draft that reopens with an original selected. Runs once per version; the
-   * server stores the preview permanently.
-   */
-  useEffect(() => {
-    for (const image of form.images) {
-      const photo = photos.find((candidate) => candidate.intakeFileId === image.intakeFileId)
-      const version = photo?.versions.find((candidate) => candidate.id === image.imageVersionId)
-      if (!version || version.kind !== 'original' || version.thumb) continue
-      if (originalPreviews[version.id] || requestedPreviewsRef.current.has(version.id)) continue
-      requestedPreviewsRef.current.add(version.id)
-      void originalPreviewAction(image.intakeFileId).then((result) => {
-        if (result.ok) {
-          setOriginalPreviews((current) => ({
-            ...current,
-            [result.data.imageVersionId]: result.data.thumbUrl,
-          }))
-        } else {
-          requestedPreviewsRef.current.delete(version.id)
-        }
-      })
-    }
-  }, [photos, form.images, originalPreviews])
-
   const chooseVersion = useCallback((intakeFileId: string, imageVersionId: string) => {
     setForm((current) => ({
       ...current,
@@ -1304,7 +1274,6 @@ export function ConsoleScreen({
                 bundle ? savingDraftIds.has(bundle.draft.id) : savingDraftIds.size > 0
               }
               deletingIds={deletingIds}
-              originalPreviews={originalPreviews}
               dirty={dirty}
               priceRef={priceRef}
               onPublish={() => void handlePublish()}
