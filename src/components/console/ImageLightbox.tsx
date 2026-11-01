@@ -56,6 +56,8 @@ export function ImageLightbox({ images, index, onClose, onIndexChange, action }:
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null)
   /** The image (by its full URL) whose exact bytes the operator asked for. */
   const [fullFor, setFullFor] = useState<string | null>(null)
+  /** The full URL that failed to load; the button says so and offers it again. */
+  const [fullFailed, setFullFailed] = useState<string | null>(null)
   const open = index !== null && images.length > 0
   const current = open ? images[index] : undefined
 
@@ -106,12 +108,12 @@ export function ImageLightbox({ images, index, onClose, onIndexChange, action }:
     }
   }, [onClose, open, step])
 
-  /** The neighbours' previews are stable URLs: fetched once here, they open from cache. */
+  /** The neighbours' previews are stable URLs: fetched once here, they open from cache. A caller with no previews (presigned originals) gets no prefetch. */
   useEffect(() => {
     if (index === null || images.length < 2) return
     for (const delta of [-1, 1]) {
       const neighbour = images[(index + delta + images.length) % images.length]
-      new Image().src = neighbour.previewUrl ?? neighbour.url
+      if (neighbour.previewUrl) new Image().src = neighbour.previewUrl
     }
   }, [images, index])
 
@@ -149,7 +151,7 @@ export function ImageLightbox({ images, index, onClose, onIndexChange, action }:
               }}
               className="rounded-pill bg-white/10 px-3.5 py-1.5 text-[12px] text-white transition-colors hover:bg-white/20 focus:outline-none focus-visible:shadow-[0_0_0_2px_white] disabled:text-white/60 disabled:hover:bg-white/10"
             >
-              {!showFull ? 'Full size' : loadedUrl === current.url ? 'Full size shown' : 'Loading full size…'}
+              {!showFull ? (fullFailed === current.url ? 'Full size did not load · Try again' : 'Full size') : loadedUrl === current.url ? 'Full size shown' : 'Loading full size…'}
             </button>
           ) : null}
           {action ? (
@@ -197,6 +199,12 @@ export function ImageLightbox({ images, index, onClose, onIndexChange, action }:
             src={display}
             alt={current.alt}
             onLoad={() => setLoadedUrl(display)}
+            onError={() => {
+              // A failed full file goes back to the preview; the button offers it again.
+              if (!hasPreview || display !== current.url) return
+              setFullFor(null)
+              setFullFailed(current.url)
+            }}
             className="absolute inset-0 m-auto max-h-full max-w-full object-contain"
             // The backdrop closes; the image itself must not.
             onClick={(event) => event.stopPropagation()}
