@@ -12,7 +12,8 @@ import path from 'node:path'
  * removes files not read for IMAGE_CACHE_DAYS and, when the directory is over
  * IMAGE_CACHE_MAX_MB, the least recently read until it is under 90 % of the cap.
  * A directory that cannot be written never stops an image being served — the
- * bytes still go out from R2, and one warning is logged.
+ * bytes still go out from R2, and one warning is logged. Only the cache's own files
+ * are counted or swept; anything else in the directory is left alone.
  */
 
 export interface CacheConfig {
@@ -26,6 +27,8 @@ export interface SweepResult {
   readonly bytes: number
   readonly deletedOld: number
   readonly deletedOverCap: number
+  /** Names in the directory the cache did not write, never counted or deleted. */
+  readonly leftAlone: number
 }
 
 export function cacheConfig(env: Readonly<Record<string, string | undefined>> = process.env): CacheConfig {
@@ -54,16 +57,25 @@ interface Entry {
   readonly mtimeMs: number
 }
 
-async function scan(dir: string): Promise<Entry[]> {
+/** `<image_version id>.<size>` as the route names it, or the temp file of a write a crash left behind. */
+const CACHE_ENTRY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(thumb|preview|full)(\.[0-9a-f]{8}\.tmp)?$/i
+
+async function scan(dir: string): Promise<{ entries: Entry[]; leftAlone: number }> {
   let names: string[]
   try {
     names = await readdir(dir)
   } catch (error) {
-    if ((error as { code?: string }).code === 'ENOENT') return []
+    if ((error as { code?: string }).code === 'ENOENT') return { entries: [], leftAlone: 0 }
     throw error
   }
   const entries: Entry[] = []
+  let leftAlone = 0
   for (const name of names) {
+    // A mistyped IMAGE_CACHE_DIR (say, the shared directory holding .env) must lose nothing.
+    if (!CACHE_ENTRY.test(name)) {
+      leftAlone += 1
+      continue
+    }
     const file = path.join(dir, name)
     try {
       const info = await stat(file)
@@ -72,7 +84,7 @@ async function scan(dir: string): Promise<Entry[]> {
       // Removed between readdir and stat; nothing to count.
     }
   }
-  return entries
+  return { entries, leftAlone }
 }
 
 /** Bytes in the directory as last measured, so a write can notice the cap without a scan. */
@@ -81,7 +93,7 @@ let sweeping: Promise<SweepResult> | null = null
 
 async function account(config: CacheConfig, added: number): Promise<void> {
   if (known?.dir === config.dir) known.bytes += added
-  else known = { dir: config.dir, bytes: (await scan(config.dir)).reduce((sum, e) => sum + e.bytes, 0) }
+  else known = { dir: config.dir, bytes: (await scan(config.dir)).entries.reduce((sum, e) => sum + e.bytes, 0) }
   if (known.bytes > config.maxBytes) await sweepImageCache(config)
 }
 
@@ -136,7 +148,8 @@ export function sweepImageCache(config: CacheConfig = cacheConfig()): Promise<Sw
 
 async function sweep(config: CacheConfig): Promise<SweepResult> {
   const cutoff = Date.now() - config.maxAgeMs
-  const entries = (await scan(config.dir)).sort((a, b) => a.mtimeMs - b.mtimeMs)
+  const { entries, leftAlone } = await scan(config.dir)
+  entries.sort((a, b) => a.mtimeMs - b.mtimeMs)
   let bytes = entries.reduce((sum, e) => sum + e.bytes, 0)
   let deletedOld = 0
   let deletedOverCap = 0
@@ -159,5 +172,5 @@ async function sweep(config: CacheConfig): Promise<SweepResult> {
     }
   }
   known = { dir: config.dir, bytes }
-  return { files: entries.length - deletedOld - deletedOverCap, bytes, deletedOld, deletedOverCap }
+  return { files: entries.length - deletedOld - deletedOverCap, bytes, deletedOld, deletedOverCap, leftAlone }
 }

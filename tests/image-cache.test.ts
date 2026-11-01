@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -20,6 +20,8 @@ let root: string
 const config = (dir: string, over: Partial<CacheConfig> = {}): CacheConfig => ({ dir, maxBytes: 10 * 1024 * 1024, maxAgeMs: 30 * DAY, ...over })
 const bytesOf = (text: string) => Buffer.from(text)
 const names = async (dir: string) => (await readdir(dir)).sort()
+/** The route names a cache file `<image_version id>.<size>`; the sweep touches nothing else. */
+const v = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'loupe-image-cache-test-'))
@@ -66,30 +68,44 @@ describe('disk cache', () => {
 
   it('sweeps files nobody has read for the age limit', async () => {
     const dir = path.join(root, 'age')
-    await cached('old.thumb', async () => bytesOf('old'), config(dir))
-    await cached('fresh.thumb', async () => bytesOf('fresh'), config(dir))
+    await cached(`${v(1)}.thumb`, async () => bytesOf('old'), config(dir))
+    await cached(`${v(2)}.thumb`, async () => bytesOf('fresh'), config(dir))
     const stale = new Date(Date.now() - 31 * DAY)
-    await utimes(path.join(dir, 'old.thumb'), stale, stale)
-    expect(await sweepImageCache(config(dir))).toEqual({ files: 1, bytes: 5, deletedOld: 1, deletedOverCap: 0 })
-    expect(await names(dir)).toEqual(['fresh.thumb'])
+    await utimes(path.join(dir, `${v(1)}.thumb`), stale, stale)
+    expect(await sweepImageCache(config(dir))).toEqual({ files: 1, bytes: 5, deletedOld: 1, deletedOverCap: 0, leftAlone: 0 })
+    expect(await names(dir)).toEqual([`${v(2)}.thumb`])
+  })
+
+  it('never counts or deletes a file the cache did not write, however old or large', async () => {
+    // IMAGE_CACHE_DIR set one segment short: the shared directory holding .env and the deploy log.
+    const dir = path.join(root, 'shared')
+    await mkdir(path.join(dir, 'releases'), { recursive: true })
+    const stale = new Date(Date.now() - 40 * DAY)
+    for (const name of ['.env', 'autodeploy.log', `${v(3)}.full`, `${v(4)}.preview.0a1b2c3d.tmp`]) {
+      await writeFile(path.join(dir, name), Buffer.alloc(name === 'autodeploy.log' ? 1000 : 10, 1))
+      await utimes(path.join(dir, name), stale, stale)
+    }
+    // Over a 100-byte cap only because of the log; the cache's own bytes are what count.
+    expect(await sweepImageCache(config(dir, { maxBytes: 100 }))).toEqual({ files: 0, bytes: 0, deletedOld: 2, deletedOverCap: 0, leftAlone: 3 })
+    expect(await names(dir)).toEqual(['.env', 'autodeploy.log', 'releases'])
   })
 
   it('over the cap, drops the least recently read files until it is under 90 % of it', async () => {
     const dir = path.join(root, 'cap')
     const now = Date.now()
-    for (const [name, age] of [['a.full', 4], ['b.full', 3], ['c.full', 2], ['d.full', 1]] as const) {
+    for (const [name, age] of [[`${v(11)}.full`, 4], [`${v(12)}.full`, 3], [`${v(13)}.full`, 2], [`${v(14)}.full`, 1]] as const) {
       await cached(name, async () => Buffer.alloc(100, 1), config(dir))
       await utimes(path.join(dir, name), new Date(now - age * DAY), new Date(now - age * DAY))
     }
     // 400 bytes on a 350-byte cap: a (oldest) goes, 300 > 315? no — 300 ≤ 315 stops there.
-    expect(await sweepImageCache(config(dir, { maxBytes: 350 }))).toEqual({ files: 3, bytes: 300, deletedOld: 0, deletedOverCap: 1 })
-    expect(await names(dir)).toEqual(['b.full', 'c.full', 'd.full'])
+    expect(await sweepImageCache(config(dir, { maxBytes: 350 }))).toEqual({ files: 3, bytes: 300, deletedOld: 0, deletedOverCap: 1, leftAlone: 0 })
+    expect(await names(dir)).toEqual([`${v(12)}.full`, `${v(13)}.full`, `${v(14)}.full`])
     // Under the cap nothing moves.
-    expect(await sweepImageCache(config(dir, { maxBytes: 350 }))).toEqual({ files: 3, bytes: 300, deletedOld: 0, deletedOverCap: 0 })
+    expect(await sweepImageCache(config(dir, { maxBytes: 350 }))).toEqual({ files: 3, bytes: 300, deletedOld: 0, deletedOverCap: 0, leftAlone: 0 })
   })
 
   it('a missing directory sweeps to nothing without complaint', async () => {
-    expect(await sweepImageCache(config(path.join(root, 'never-made')))).toEqual({ files: 0, bytes: 0, deletedOld: 0, deletedOverCap: 0 })
+    expect(await sweepImageCache(config(path.join(root, 'never-made')))).toEqual({ files: 0, bytes: 0, deletedOld: 0, deletedOverCap: 0, leftAlone: 0 })
   })
 
   it('still serves the bytes when the directory cannot be written, warning once', async () => {
