@@ -55,5 +55,6 @@ describe('global live activity', () => {
     expect(shouldRefreshTracking([event(23, 'image.generated')])).toBe(false)
     expect(shouldRefreshTracking([event(24, 'intake.original_selected')])).toBe(true)
     expect(shouldRefreshTracking([event(25, 'intake.failed')])).toBe(true)
+    expect(shouldRefreshConsole([event(23, 'webhook.sku_counter_raised', null)])).toBe(true)
   })
 })

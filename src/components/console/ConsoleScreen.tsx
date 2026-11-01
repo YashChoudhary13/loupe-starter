@@ -77,6 +77,13 @@ import { QueueGrid } from './QueueGrid'
  */
 
 const STICKY_KEY = 'loupe.sticky.v1'
+/**
+ * A slow re-read beside the event-driven one: age-based tile states ("Waiting 2d", the
+ * Listed today cut at midnight IST) move on no event at all, and a counter a Shopify
+ * webhook raises arrives as `webhook.sku_counter_raised`. Not the old nine-minute URL
+ * rotation; image URLs are stable since D165, so a refresh downloads no pictures.
+ */
+const QUEUE_REFRESH_MS = 10 * 60 * 1000
 
 export interface UploadItem {
   readonly key: string
@@ -315,7 +322,7 @@ export function ConsoleScreen({
   /**
    * The shared sidebar owns the one cheap site-wide heartbeat. Audit-event ids
    * cannot miss a complete enhancement between polls; this screen pays for a
-   * full, image-signed queue read only when a transition changes the grid.
+   * full queue read when a transition changes the grid, and on the slow timer below.
    */
   useEffect(() => {
     const onLiveActivity = (rawEvent: Event) => {
@@ -325,6 +332,11 @@ export function ConsoleScreen({
     }
     window.addEventListener(LIVE_ACTIVITY_EVENT, onLiveActivity)
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLiveActivity)
+  }, [refreshQueue])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => void refreshQueue(), QUEUE_REFRESH_MS)
+    return () => window.clearInterval(timer)
   }, [refreshQueue])
 
   /** Versions and full images for photographs that are selected but not grouped. */

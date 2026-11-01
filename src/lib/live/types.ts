@@ -59,6 +59,8 @@ const CONSOLE_REFRESH_EVENTS = new Set([
   'draft.labels_printed',
   'publish.failed',
   'publish.published',
+  // A product made in Shopify admin raised a counter: the "will publish as" SKU moves.
+  'webhook.sku_counter_raised',
 ])
 
 const TRACKING_INTAKE_EVENTS = new Set([
