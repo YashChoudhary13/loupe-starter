@@ -50,7 +50,7 @@ describe('product descriptions', () => {
     }
     const legacy = 'Custom detail\nAdvanced PVD Coating, not standard plating – long-lasting colour, anti-tarnish & scratch resistance\nRemove before bathing'
     expect(buildDescriptionHtml('316L', legacy)).toBe(
-      `<ul><li>Custom detail</li><li>Advanced PVD Coating, not standard plating – long-lasting colour &amp; anti-tarnish</li><li>Remove before bathing</li><li>${magnetBullet('316L')}</li></ul>`,
+      `<ul><li>Custom detail</li><li>Advanced PVD Coating, not standard plating – long-lasting colour &amp; anti-tarnish</li><li>${magnetBullet('316L')}</li><li>Remove before bathing</li></ul>`,
     )
     expect(resolveDescriptionText('304', 'Not scratch-resistant. Handle with care.')).toBe(
       `Not scratch-resistant. Handle with care.\n• ${magnetBullet('304')}`,
@@ -59,18 +59,19 @@ describe('product descriptions', () => {
 
   it('escapes override text and never passes operator HTML through', () => {
     expect(buildDescriptionHtml('Brass', '<script>alert("x")</script>\nSafe & bright')).toBe(
-      `<ul><li>&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</li><li>Safe &amp; bright</li><li>${magnetBullet('Brass')}</li></ul>`,
+      `<ul><li>&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</li><li>${magnetBullet('Brass')}</li><li>Safe &amp; bright</li></ul>`,
     )
   })
 
-  it('puts the magnet line right under the material line, and only for known materials', () => {
+  it('puts the magnet line second-last, and only for known materials', () => {
     for (const material of ['304', '316L']) {
       const lines = defaultDescriptionText(material).split('\n')
-      expect(lines[1]).toBe(
+      expect(lines).toHaveLength(7)
+      expect(lines[5]).toBe(
         `• May or may not attract a magnet – normal for ${material} stainless steel after shaping and polishing. Magnet pull does not mean lower grade jewellery: it is the same quality, anti-tarnish and rust-resistant`,
       )
     }
-    expect(defaultDescriptionText('Brass').split('\n')[1]).toBe(
+    expect(defaultDescriptionText('Brass').split('\n')[5]).toBe(
       '• Brass is non-magnetic – only a steel clasp, post or spring may attract a magnet; the brass body and its finish are unaffected',
     )
     expect(magnetBullet('Sterling Silver')).toBeNull()

@@ -31,7 +31,7 @@ function materialBullet(descriptor: string, material: string): string {
 
 // Owner 2026-11-03: a magnet test is the usual "this is iron, not steel" accusation
 // a reseller hears. 304 and 316L can pull a magnet lightly once shaped and polished,
-// so every steel and brass listing carries the answer right under the material line.
+// so every steel and brass listing carries the answer as its second-last bullet.
 // A custom material gets no magnet line: we do not know what it is.
 export function magnetBullet(material: string): string | null {
   const clean = material.trim().replace(/\s+/g, ' ')
@@ -49,12 +49,12 @@ export function magnetBullet(material: string): string | null {
 
 const STANDARD_BULLETS = [
   (descriptor: string, material: string) => materialBullet(descriptor, material),
-  (_descriptor: string, material: string) => magnetBullet(material),
   () => 'Water-resistant for daily wear — remove before swimming, bathing or physical activity',
   () => 'Not fully soap-proof or chemical-proof – avoid harsh chemicals for longer life',
   () => 'Finished in 18KT Gold Tone for a rich luxury look',
   () =>
     'Advanced PVD Coating, not standard plating – long-lasting colour & anti-tarnish',
+  (_descriptor: string, material: string) => magnetBullet(material),
   () => 'Extra E-Coating Layer on top – added protection and shine',
 ] as const
 
@@ -89,10 +89,12 @@ export function resolveDescriptionText(
     /(long-lasting\s+colou?r),\s*(anti-tarnish)\s*&\s*scratch[\s\-\u2010-\u2015]*(?:resistance|resistant|proof)\b/gi,
     '$1 & $2',
   )
-  // An operator override keeps its wording but still carries the magnet line (owner 2026-11-03).
+  // An operator override keeps its wording but still carries the magnet line, second-last (owner 2026-11-03).
   const magnet = material ? magnetBullet(material) : null
   if (!cleaned || !magnet || /magnet/i.test(cleaned)) return cleaned
-  return `${cleaned}\n• ${magnet}`
+  const lines = cleaned.split('\n')
+  lines.splice(Math.max(lines.length - 1, 1), 0, `• ${magnet}`)
+  return lines.join('\n')
 }
 
 function escapeHtml(value: string): string {
