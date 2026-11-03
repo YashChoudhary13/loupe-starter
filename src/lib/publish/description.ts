@@ -29,8 +29,27 @@ function materialBullet(descriptor: string, material: string): string {
   return `Premium ${descriptor} – durable and ready for everyday wear`
 }
 
+// Owner 2026-11-03: a magnet test is the usual "this is iron, not steel" accusation
+// a reseller hears. 304 and 316L can pull a magnet lightly once shaped and polished,
+// so every steel and brass listing carries the answer right under the material line.
+// A custom material gets no magnet line: we do not know what it is.
+export function magnetBullet(material: string): string | null {
+  const clean = material.trim().replace(/\s+/g, ' ')
+  if (clean === 'Brass') {
+    return 'Brass is non-magnetic – only a steel clasp, post or spring may attract a magnet; the brass body and its finish are unaffected'
+  }
+  if (clean === '304' || clean === '316L') {
+    return (
+      `May or may not attract a magnet – normal for ${clean} stainless steel after shaping and polishing. ` +
+      'Magnet pull does not mean a lower grade, and rust resistance stays the same'
+    )
+  }
+  return null
+}
+
 const STANDARD_BULLETS = [
   (descriptor: string, material: string) => materialBullet(descriptor, material),
+  (_descriptor: string, material: string) => magnetBullet(material),
   () => 'Water-resistant for daily wear — remove before swimming, bathing or physical activity',
   () => 'Not fully soap-proof or chemical-proof – avoid harsh chemicals for longer life',
   () => 'Finished in 18KT Gold Tone for a rich luxury look',
@@ -53,7 +72,10 @@ export function materialDescriptor(material: string): string {
 export function defaultDescriptionText(material: string): string {
   const descriptor = materialDescriptor(material)
   if (!descriptor) return ''
-  return STANDARD_BULLETS.map((line) => `• ${line(descriptor, material)}`).join('\n')
+  return STANDARD_BULLETS.map((line) => line(descriptor, material))
+    .filter((line): line is string => line !== null)
+    .map((line) => `• ${line}`)
+    .join('\n')
 }
 
 export function resolveDescriptionText(
@@ -63,10 +85,14 @@ export function resolveDescriptionText(
   const text = override?.trim() || (material ? defaultDescriptionText(material) : '')
   // Older drafts may have saved the former default as an override. Remove only
   // that known claim fragment, preserving the operator's other wording.
-  return text.replace(
+  const cleaned = text.replace(
     /(long-lasting\s+colou?r),\s*(anti-tarnish)\s*&\s*scratch[\s\-\u2010-\u2015]*(?:resistance|resistant|proof)\b/gi,
     '$1 & $2',
   )
+  // An operator override keeps its wording but still carries the magnet line (owner 2026-11-03).
+  const magnet = material ? magnetBullet(material) : null
+  if (!cleaned || !magnet || /magnet/i.test(cleaned)) return cleaned
+  return `${cleaned}\n• ${magnet}`
 }
 
 function escapeHtml(value: string): string {
