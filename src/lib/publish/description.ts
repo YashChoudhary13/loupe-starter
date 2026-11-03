@@ -41,7 +41,7 @@ export function magnetBullet(material: string): string | null {
   if (clean === '304' || clean === '316L') {
     return (
       `May or may not attract a magnet – normal for ${clean} stainless steel after shaping and polishing. ` +
-      'Magnet pull does not mean a lower grade or lesser jewellery: it is the same quality, anti-tarnish and rust-resistant'
+      'Magnet pull does not mean lower grade jewellery: it is the same quality, anti-tarnish and rust-resistant'
     )
   }
   return null

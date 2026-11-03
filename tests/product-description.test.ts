@@ -67,7 +67,7 @@ describe('product descriptions', () => {
     for (const material of ['304', '316L']) {
       const lines = defaultDescriptionText(material).split('\n')
       expect(lines[1]).toBe(
-        `• May or may not attract a magnet – normal for ${material} stainless steel after shaping and polishing. Magnet pull does not mean a lower grade or lesser jewellery: it is the same quality, anti-tarnish and rust-resistant`,
+        `• May or may not attract a magnet – normal for ${material} stainless steel after shaping and polishing. Magnet pull does not mean lower grade jewellery: it is the same quality, anti-tarnish and rust-resistant`,
       )
     }
     expect(defaultDescriptionText('Brass').split('\n')[1]).toBe(
