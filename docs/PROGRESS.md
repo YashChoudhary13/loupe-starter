@@ -58,6 +58,8 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 **Next session should start with:** the owner's deploy, then one real club order end to end with the WhatsApp offer.
 
+**2026-11-12 follow-up:** LIVE at `1c5fe50` (release `20261112-100403-1c5fe50`), pushed at the owner's word. Bot first: `deploy_loupe_missing.py --apply` published workflow version `1f2f5f6e` (82 nodes; rollback to `5ffb116b`), offers go to the owner's fixed staff number. Live webhook proof without messaging anyone: `{}` with the bearer gave 400, no bearer and a wrong bearer gave 403. `BOT_MISSING_WEBHOOK_URL` and `BOT_WEBHOOK_SECRET` are in `~/loupe/shared/.env` (copy of the old file beside it) and `.env.railway`; after the deploy `/login` gave 200 and `/api/qc/club/1` without a session gave 401 (404 on the old release). Still not seen live: a real club on the screen and a real WhatsApp offer.
+
 ## 2026-10-20 — D157: labels print on the office TSC printer from any laptop
 
 **Goal this session:** the owner wants a new listing's labels to come out of the TSC TE244 on the office Windows PC whichever laptop lists the product, with no printer connected to that laptop.
