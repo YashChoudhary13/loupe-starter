@@ -3,6 +3,7 @@ import { renderToString } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('next/link', () => ({ default: (props: { href: string; children: unknown }) => createElement('a', { href: props.href }, props.children as string) }))
 import { QcScreen } from '@/components/qc/QcScreen'
+import { ClubQcScreen } from '@/components/qc/ClubQcScreen'
 import { QcHistoryScreen } from '@/components/qc/QcHistoryScreen'
 import type { QcEvent, QcSession, QcShortage, QcView } from '@/lib/qc/types'
 
@@ -59,5 +60,30 @@ describe('QC screens render from a saved view', () => {
     expect(html).toContain('Open — refund or coupon pending')
     expect(html).toContain('Open live checklist')
     expect(html).toContain('QC history · 3 events')
+  })
+  it('shows a club on one screen: the passed order ticked and locked, the new one to scan, one Confirm for what is left', () => {
+    const done: QcView = { order: { ...order, id: 'gid://shopify/Order/2', name: 'Qimati5700', fulfillmentStatus: 'ON_HOLD' }, events: [], shortages: [], operatorId: 'op',
+      session: { ...session, id: 's2', order_id: 'gid://shopify/Order/2', status: 'passed', counts: { 'gid://shopify/LineItem/1': 3, 'gid://shopify/LineItem/2': 1 }, completed_at: '2026-09-17T08:00:00Z' } }
+    const html = render(createElement(ClubQcScreen, { initialClub: { anchorId: order.id, customer: 'Asha Traders', members: [done, view], operatorId: 'op' } }))
+    expect(html).toContain('CLUB · 2 orders · Asha Traders')
+    expect(html).toContain('5700 + 5713')
+    expect(html).toContain('value="5" max="8"') // 4 of the passed order + 1 scanned of the open one, of 4 + 4
+    const passed = html.slice(html.indexOf('data-club-member="passed"'), html.indexOf('data-club-member="open"'))
+    expect(passed).toContain('✓ QC done · 17 Sept')
+    expect(passed).toContain('Hold')
+    expect(passed).not.toContain('By hand')
+    expect(passed).not.toContain('mark')
+    const open = html.slice(html.indexOf('data-club-member="open"'))
+    expect(open).toContain('Don’t have it · mark 1 missing')
+    expect(open).toContain('Undo missing')
+    expect(open).toContain('href="/qc/1?solo=1"')
+    expect(html).toContain('Confirm QC · 1 order · 1 missing')
+    expect(html).not.toContain('QC passed · all')
+  })
+  it('says the whole club passed once every order has', () => {
+    const passedView: QcView = { ...view, shortages: [], session: { ...session, status: 'passed', counts: { 'gid://shopify/LineItem/1': 3, 'gid://shopify/LineItem/2': 1 }, completed_at: '2026-09-18T09:00:00Z' } }
+    const html = render(createElement(ClubQcScreen, { initialClub: { anchorId: order.id, customer: 'Asha', members: [passedView, { ...passedView, order: { ...order, id: 'gid://shopify/Order/3', name: 'Qimati5800' } }], operatorId: 'op' } }))
+    expect(html).toContain('QC passed · all 2 orders')
+    expect(html).not.toContain('Confirm QC')
   })
 })

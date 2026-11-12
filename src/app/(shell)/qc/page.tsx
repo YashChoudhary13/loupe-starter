@@ -3,6 +3,7 @@ import { requireOperator } from '@/lib/auth/authorize'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { listQcOrders, qcShopifyError } from '@/lib/shopify/qc-orders'
 import { listRecentPasses, qcOrderStatuses } from '@/lib/qc/server'
+import { loadClubs, type Club } from '@/lib/qc/club'
 import type { QcPass } from '@/lib/qc/types'
 
 export const dynamic = 'force-dynamic'
@@ -20,10 +21,13 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
   let error: string | undefined
   let passes: QcPass[] = []
   let passesError: string | undefined
+  let clubs = new Map<string, Club>()
   try {
     result = await listQcOrders(new ShopifyClient(), q, after)
     statuses = await qcOrderStatuses(result.nodes.map(order => order.id))
   } catch (cause) { error = qcShopifyError(cause) }
+  // The club pill is a convenience: without it every order still opens, alone.
+  try { clubs = await loadClubs() } catch (cause) { console.warn('QC list: clubs not loaded:', cause instanceof Error ? cause.message : cause) }
   try { passes = await listRecentPasses(30) } catch (cause) { passesError = cause instanceof Error ? cause.message : 'Past QC checks could not be loaded.' }
   const orders = result?.nodes ?? []
   const toCheck = orders.filter(order => statuses[order.id]?.status !== 'passed')
@@ -36,9 +40,10 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
     const status = saved?.status === 'stale' ? 'Recount needed' : saved ? 'In progress' : 'Not checked'
     const statusClass = saved?.status === 'stale' ? 'bg-amber text-black' : saved ? 'bg-ink text-white' : 'bg-line text-ink'
     const held = order.displayFulfillmentStatus === 'ON_HOLD'
+    const club = clubs.get(order.id)
     const short = passed ? passByOrder.get(order.id)?.short : undefined
     return <Link key={order.id} href={orderPath(order.id)} className="flex min-h-16 flex-wrap items-center justify-between gap-3 rounded-panel border border-line bg-white p-4 focus-visible:outline-2 focus-visible:outline-ink">
-      <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-[20px] font-medium">{order.name}{held && <span className="rounded-pill bg-amber px-2.5 py-1 text-[15px] font-semibold text-black">Hold</span>}</div><p className="mt-1 text-[15px] text-ink-soft">{day(order.createdAt)} · {order.displayFinancialStatus.toLowerCase().replaceAll('_', ' ')}</p></div>
+      <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-[20px] font-medium">{order.name}{held && <span className="rounded-pill bg-amber px-2.5 py-1 text-[15px] font-semibold text-black">Hold</span>}{club && <span className="rounded-pill border border-ink px-2.5 py-1 text-[15px] font-semibold">Club · {club.numbers.join(' + ')}</span>}</div><p className="mt-1 text-[15px] text-ink-soft">{day(order.createdAt)} · {order.displayFinancialStatus.toLowerCase().replaceAll('_', ' ')}</p></div>
       <div className="flex flex-wrap items-center gap-2 text-[15px]"><span className={`rounded-pill px-3 py-2 font-medium ${passed ? 'bg-green text-white' : statusClass}`}>{passed ? held ? 'HOLD box' : 'Ready to ship' : status}</span>{short !== undefined && short > 0 && <span className="rounded-pill bg-chip px-3 py-2">{short} short</span>}<span aria-hidden="true">→</span></div>
     </Link>
   }
@@ -46,7 +51,7 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
   return <section className="h-full min-w-0 overflow-auto px-1 py-2 md:px-3 md:py-3" aria-label="Order QC orders">
     <div className="flex flex-wrap items-start justify-between gap-4"><div>
       <h1 className="text-[28px] font-medium tracking-[-0.025em]">Order QC</h1>
-      <p className="mt-1 text-[15px] text-ink-soft">Choose a paid order. Check each pouch before it goes in the box.</p>
+      <p className="mt-1 text-[15px] text-ink-soft">Choose a paid order. Check each pouch before it goes in the box. Orders marked Club open together.</p>
     </div><div className="flex flex-wrap gap-2"><Link href="/qc/shortages" className="inline-flex min-h-11 items-center rounded-pill bg-white px-4 py-2 text-[15px] focus-visible:outline-2">Shortages</Link><Link href="/labels" className="inline-flex min-h-11 items-center rounded-pill bg-white px-4 py-2 text-[15px] focus-visible:outline-2">Prepare labels</Link></div></div>
     <form action="/qc" className="my-5 flex flex-wrap items-end gap-3">
       <label className="grid min-w-0 gap-2 text-[15px]">Shopify order number<input name="q" defaultValue={q} placeholder="Qimati5019" maxLength={60} className="min-h-11 min-w-0 rounded-pill bg-white px-4 py-3 text-[16px] focus:outline-2 focus:outline-ink" /></label>

@@ -1,6 +1,7 @@
 import { NotAuthorisedError, requireOperatorIdForAction } from '@/lib/auth/authorize'
 import { isOwnOrigin } from '@/lib/faces/server'
 import { loadQcView } from '@/lib/qc/server'
+import { withMissingNotice } from '@/lib/qc/bot'
 import { orderGid, parseQcCommand } from '@/lib/qc/validation'
 import { qcShopifyError } from '@/lib/shopify/qc-orders'
 
@@ -41,6 +42,6 @@ export async function POST(request: Request, context: Context) {
     }
     const command = parseQcCommand(JSON.parse(Buffer.concat(chunks).toString('utf8')))
     const { orderId } = await context.params
-    return Response.json(await loadQcView(orderGid(orderId), operator, command), { headers })
+    return Response.json(await withMissingNotice(await loadQcView(orderGid(orderId), operator, command), command.action), { headers })
   } catch (error) { return failure(error) }
 }

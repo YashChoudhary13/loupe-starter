@@ -407,6 +407,11 @@ one workspace), `N8N_URL`, `N8N_API_KEY`, `HOME_N8N_WORKFLOWS` (JSON label → i
 `HOME_CHAT_MODEL` (a Claude API model id, default `claude-haiku-5-5`, run at maximum effort); the bot actions need `BOT_REPORT_WEBHOOK_URL`, `BOT_STAFF_TEXT_WEBHOOK_URL`,
 `BOT_WEBHOOK_SECRET` and stay hidden without them. `FACE_DEV` is dev-only.
 
+**Club QC (D168):** the same customer's open paid orders (the Print slips rules, `clubsOf` in `src/lib/qc/club.ts`) open on
+one Order QC screen with one scan field; each order keeps its own checklist, a scan counts in the oldest unfinished order
+that needs the piece, an order already passed shows ticked. When a checklist passes with missing pieces Loupe posts the
+order number and pieces to `BOT_MISSING_WEBHOOK_URL` (bearer `BOT_WEBHOOK_SECRET`); the bot offers staff Create / Cancel.
+
 ## UI
 
 `docs/DESIGN.md` holds the design tokens and component rules. `design/console-mockup.html` and `design/tracking-mockup.html` are the visual reference — open them before building any screen. Build with **shadcn/ui + Tailwind**, themed to those tokens.

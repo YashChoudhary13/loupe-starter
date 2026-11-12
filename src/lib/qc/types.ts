@@ -87,6 +87,16 @@ export interface QcView {
   replayed?: boolean
   /** Server-side milliseconds for the last request; shown so slow scans can be explained, never used for logic. */
   timings?: { totalMs: number; shopifyMs: number; rpcMs: number; snapshotAgeMs: number }
+  /** What the WhatsApp bot was told about this checklist's missing pieces when it passed (D168). */
+  botNotice?: string
+}
+
+/** The same customer's open orders, checked together; each member keeps its own checklist (D168). Oldest order first. */
+export interface ClubView {
+  anchorId: string
+  customer: string
+  members: QcView[]
+  operatorId: string
 }
 
 /** A passed checklist, read from the append-only audit; survives later fulfillment or order edits. */

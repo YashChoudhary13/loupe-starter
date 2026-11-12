@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { requireOperator } from '@/lib/auth/authorize'
 import { listShortages } from '@/lib/qc/shortages'
-import { ShortageResolveForm } from '@/components/qc/ShortageResolveForm'
+import { SendMissingForm, ShortageResolveForm } from '@/components/qc/ShortageResolveForm'
 import type { QcShortage } from '@/lib/qc/types'
 
 export const dynamic = 'force-dynamic'
@@ -34,6 +34,7 @@ export default async function ShortagesPage() {
     {error && <p role="alert" className="mt-4 rounded-panel bg-white p-4 text-[13px] text-amber">{error}</p>}
     <div className="mt-6 rounded-card bg-surface p-4 md:p-6">
       <h2 className="mb-4 text-[15px] font-medium">Open · {lists.open.length}</h2>
+      {lists.open.length > 0 && <div className="mb-4 flex flex-wrap gap-2">{[...new Map(lists.open.map(item => [item.order_id, item.order_name]))].map(([id, name]) => <SendMissingForm key={id} orderId={id} orderName={name} />)}</div>}
       {lists.open.length === 0 && !error && <p className="py-4 text-[13px] text-ink-soft">Nothing is short. Every checked order had all its units.</p>}
       <div className="grid gap-3">{lists.open.map(item => <Row key={item.id} item={item} />)}</div>
     </div>

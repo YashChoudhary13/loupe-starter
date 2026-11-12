@@ -8,15 +8,15 @@ import { summarizeQc } from '@/lib/qc/summary'
 import { playQcTone, toneForOutcome, vibrateQc, type QcTone } from '@/lib/qc/sound'
 import { CameraScan } from './CameraScan'
 
-const button = 'min-h-11 min-w-11 rounded-pill px-4 py-2.5 text-[15px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
+export const button = 'min-h-11 min-w-11 rounded-pill px-4 py-2.5 text-[15px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
 // One identity for the whole module: an inline ref callback runs again on every render and would pull focus back from the scan field.
 const focusWithoutScroll = (node: HTMLInputElement | null) => { node?.focus({ preventScroll: true }) }
 const time = (value: string) => new Date(value).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Kolkata' })
 
-interface Feedback { tone: QcTone; headline: string; message: string; image: string | null; title: string | null; variantTitle: string | null; progress: string | null; code: string | null }
+export interface Feedback { tone: QcTone; headline: string; message: string; image: string | null; title: string | null; variantTitle: string | null; progress: string | null; code: string | null }
 
 /** What the last action deserves on the feedback card, or null when the view carries no outcome worth a tone. */
-function feedbackFor(payload: QcView): Feedback | null {
+export function feedbackFor(payload: QcView): Feedback | null {
   const outcome = payload.event?.outcome
   const tone = toneForOutcome(outcome)
   if (!tone) return null
@@ -34,7 +34,7 @@ function feedbackFor(payload: QcView): Feedback | null {
 }
 
 /** A small inline "reason, then confirm" control; every count-changing correction needs an audit reason. */
-function ReasonAction({ label, confirm, disabled, onConfirm }: { label: string; confirm: string; disabled: boolean; onConfirm: (reason: string) => void }) {
+export function ReasonAction({ label, confirm, disabled, onConfirm }: { label: string; confirm: string; disabled: boolean; onConfirm: (reason: string) => void }) {
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
   if (!open) return <button type="button" disabled={disabled} onClick={() => setOpen(true)} className={`${button} bg-white border border-chip`}>{label}</button>
@@ -226,6 +226,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       {passed && <div role="status" className="rounded-panel bg-green p-5 text-white">
         <h2 className="text-[24px] font-medium leading-tight">QC passed · {destination}</h2>
         <p className="mt-3 text-[15px]">Checked at {time(view.session.completed_at!)}. Extra items were confirmed removed.{shortTotal > 0 && ` ${shortTotal} unit(s) accepted as short; follow up under Shortages for refund or coupon.`} Fulfil in Shopify after packing. Order changes require a new check.</p>
+        {view.botNotice && <p className="mt-3 text-[15px] font-medium">{view.botNotice}</p>}
         <Link href="/qc" className={`${button} mt-4 inline-flex items-center bg-white text-ink`}>Back to order list →</Link>
       </div>}
       {/* The scan field stays after a pass: a pouch scanned then is recorded as an extra to remove. */}

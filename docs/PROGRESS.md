@@ -29,6 +29,35 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-11-12 — D168: club orders are checked together in Order QC; missing pieces go to the bot
+
+**Goal this session:** the owner wants club orders on one QC screen (already-checked orders ticked, a new order joining shown beside them), mark missing + Confirm at the end, and the bot's coupon offer for what is missing.
+
+**Built:**
+- `src/lib/shopify/club-orders.ts` → light identity read of every open order (no lines).
+- `src/lib/qc/club.ts` → `clubsOf` (Print slips rules), `loadClubs` (5-minute cache for scans), `pickScanTarget`, `loadClubView`, `clubScan`.
+- `src/app/api/qc/club/[orderId]/route.ts` → GET the club, POST one scan (server picks the order).
+- `src/components/qc/ClubQcScreen.tsx` → the club screen; `/qc/<order>` opens it for a clubbed order, `?solo=1` opens one order alone. `/qc` shows a **Club · 7831 + 7949** pill.
+- `src/lib/qc/bot.ts` → on a pass with missing pieces, POST to `BOT_MISSING_WEBHOOK_URL`; result shown on the pass card. Shortages page: **Send <order> to WhatsApp**.
+- Bot side (`~/Desktop/WhatsApp Bot`, not in this repo): the `loupe-missing` webhook; see its own notes.
+
+**Verified:** `tsc --noEmit` and eslint clean; `vitest run tests/qc-*.test.ts tests/slips-*.test.ts`: 15 files, 107 tests pass (new: `qc-club` 14, `qc-bot` 5, two club render tests, the list pill). `next build` passed on the twin. On the twin (`./up.sh loupe-club-qc --dev`, fictional data, port 7002):
+- `/qc` showed `Club · 7316 + 7320` and `Club · 7315 + 7319`; #7317 (no club) opened the single screen, `?solo=1` too; `/api/qc/club/<unclubbed>` answered 409.
+- Club 7316 + 7320: #7316 (passed in the seed) showed "✓ QC done", locked; eight codes fired 170 ms apart all landed in #7320 (6 × ER562, 1 × RG233, one unknown code refused); marked the last RG233 missing; Confirm passed the club.
+- Club 7315 + 7319 (both carry ER902 × 6): seven ER902 scans gave #7315 6/6 and #7319 1/6; the rest marked missing; **Confirm QC · 2 orders · 12 missing** passed both, and the pretend n8n logged `{"order":"7315","by":"Packing desk","items":[{"code":"HJ030","qty":3}]}` and `{"order":"7319",…,"items":[{"code":"ER902","qty":5},{"code":"NK1932","qty":2},{"code":"HJ030","qty":2}]}`.
+- Shortages → **Send #7314 to WhatsApp** answered "sent to WhatsApp". Screenshots: `~/Downloads/club-qc-2026-11-12/`.
+
+**Not finished / known broken:**
+- Not deployed. Needs the owner's push to `main`, `BOT_MISSING_WEBHOOK_URL` + `BOT_WEBHOOK_SECRET` in `~/loupe/shared/.env` (and `.env.railway`) + `sudo systemctl restart loupe`, and the bot deploy. Until the variables exist Loupe sends nothing and club QC works without the bot.
+- No live proof: a real club on the store, a real scanner gun on the club screen, a real WhatsApp offer.
+- The twin has no order with option variants, so the `"<SKU> <option>"` code was proved only in unit tests and against the bot's `matchLine` tests.
+- A member that changed in Shopify after its pass shows "Recount needed" and must be recounted alone; the club cannot read "all passed" until then.
+- `claude/loupe-cleanup` (not deployed) also edits QC-adjacent files; whoever merges second resolves it.
+
+**Surprises:** the twin's `up.sh` writes `app.env` on every start, so the two pretend bot variables were added to `up.sh`; this branch (off `main`) has no local faces, so the twin runs it with `--dev` and writes only work from port 7002 (`AUTH_BASE_URL`).
+
+**Next session should start with:** the owner's deploy, then one real club order end to end with the WhatsApp offer.
+
 ## 2026-10-20 — D157: labels print on the office TSC printer from any laptop
 
 **Goal this session:** the owner wants a new listing's labels to come out of the TSC TE244 on the office Windows PC whichever laptop lists the product, with no printer connected to that laptop.

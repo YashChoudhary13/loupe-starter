@@ -4,13 +4,15 @@ import { loadQcHistory, loadQcView } from '@/lib/qc/server'
 import { qcShopifyError } from '@/lib/shopify/qc-orders'
 import { QcScreen } from '@/components/qc/QcScreen'
 import { QcHistoryScreen } from '@/components/qc/QcHistoryScreen'
+import { ClubQcScreen } from '@/components/qc/ClubQcScreen'
+import { loadClubView } from '@/lib/qc/club'
 import type { QcView } from '@/lib/qc/types'
 
 export const dynamic = 'force-dynamic'
-export default async function QcOrderPage({ params, searchParams }: { params: Promise<{ orderId: string }>; searchParams: Promise<{ view?: string }> }) {
+export default async function QcOrderPage({ params, searchParams }: { params: Promise<{ orderId: string }>; searchParams: Promise<{ view?: string; solo?: string }> }) {
   const operator = await requireOperator()
   const { orderId } = await params
-  const { view: mode } = await searchParams
+  const { view: mode, solo } = await searchParams
   if (mode === 'history') {
     let record: Awaited<ReturnType<typeof loadQcHistory>> = null
     let historyError: string | undefined
@@ -19,9 +21,15 @@ export default async function QcOrderPage({ params, searchParams }: { params: Pr
     return <QcHistoryScreen session={record.session} events={record.events} shortages={record.shortages} />
   }
   let view: QcView | undefined
+  let club: Awaited<ReturnType<typeof loadClubView>> = null
   let error: string | undefined
-  try { view = await loadQcView(orderId, operator) }
+  try {
+    // The same customer's open orders are checked together (D168); ?solo=1 opens one of them alone, for a recount.
+    club = solo ? null : await loadClubView(orderId, operator)
+    if (!club) view = await loadQcView(orderId, operator)
+  }
   catch (cause) { error = qcShopifyError(cause) }
+  if (club) return <ClubQcScreen key={club.anchorId} initialClub={club} />
   if (!view) return <section className="p-6"><Link href="/qc" className="text-[13px] underline">← Order QC</Link><h1 className="mt-6 text-[26px] font-medium">Could not open QC</h1><p role="alert" className="mt-4 max-w-2xl text-[13px] text-amber">{error}</p><Link href={`/qc/${encodeURIComponent(orderId)}`} className="mt-6 inline-block rounded-pill bg-ink px-5 py-3 text-[13px] text-white">Try again</Link></section>
   return <QcScreen key={view.order.id} initialView={view} />
 }

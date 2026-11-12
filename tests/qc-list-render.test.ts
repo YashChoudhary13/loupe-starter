@@ -5,6 +5,7 @@ vi.mock('@/lib/auth/authorize', () => ({ requireOperator: vi.fn() }))
 vi.mock('@/lib/shopify/client', () => ({ ShopifyClient: class {} }))
 vi.mock('@/lib/shopify/qc-orders', () => ({ listQcOrders: vi.fn(), qcShopifyError: () => 'QC status unavailable' }))
 vi.mock('@/lib/qc/server', () => ({ qcOrderStatuses: vi.fn(), listRecentPasses: vi.fn() }))
+vi.mock('@/lib/qc/club', () => ({ loadClubs: vi.fn(async () => new Map([['new', { ids: ['new', 'pass'], numbers: [7831, 7949], customer: 'Buyer' }]])) }))
 import Page from '@/app/(shell)/qc/page'
 import { listQcOrders } from '@/lib/shopify/qc-orders'
 import { listRecentPasses, qcOrderStatuses } from '@/lib/qc/server'
@@ -23,6 +24,8 @@ describe('QC order columns', () => {
     expect(left).not.toContain('held-pass')
     expect(right).toContain('Checked · 2')
     for (const label of ['held-pass', 'HOLD box', 'Ready to ship', '1 short']) expect(right).toContain(label)
+    expect(left).toContain('Club · 7831 + 7949')
+    expect(right).not.toContain('Club ·')
     expect(html).toContain('on this page')
     expect(html).toContain('More orders')
     expect(html).not.toMatch(/<details[^>]* open/)
