@@ -141,7 +141,7 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       const payload: QcView = await response.json()
       if (!response.ok) throw new Error((payload as unknown as { error?: string }).error || 'QC could not confirm this request. Retry it.')
       applyView(payload); setVerified(true)
-      sessionStorage.removeItem(pendingKey); setPending(null); setCode(''); setReason(''); setResetOpen(false); setRecoveryRequired(false)
+      sessionStorage.removeItem(pendingKey); setPending(null); setReason(''); setResetOpen(false); setRecoveryRequired(false)
       const outcome = payload.event?.outcome
       setNotice({ text: `${payload.replayed ? 'Saved request confirmed. ' : ''}${payload.event?.message ?? 'QC saved.'}`, attention: !['accepted', 'passed', 'undone', 'reset', 'removed', 'short'].includes(outcome ?? '') })
       const next = command.action === 'reset' ? null : feedbackFor(payload)
@@ -169,20 +169,23 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
   const shortTotal = stale ? 0 : view.shortages.reduce((sum, item) => sum + item.quantity, 0)
   const actionsBlocked = busy || !!pending || recoveryRequired || !verified || stale
 
-  function submitCode(scannedCode: string) {
+  /** True when the code left the field's hands (sent or queued). Only the form empties the field, and only then: a queued code sent later must not wipe the next pouch being typed. */
+  function submitCode(scannedCode: string): boolean {
     const trimmed = scannedCode.trim()
-    if (!trimmed) return
+    if (!trimmed) return false
     if (inFlight.current && !recoveryRequired && !stale && !view.order.blockedReason) {
       // The gun fires faster than a round trip: keep scanning, each code is sent in order after the current one confirms.
-      if (queue.current.length < 20) { queue.current.push(trimmed); setQueued(queue.current.length); setCode('') }
-      return
+      if (queue.current.length >= 20) return false
+      queue.current.push(trimmed); setQueued(queue.current.length)
+      return true
     }
-    if (blocked) return
-    try { void send(parseQcCommand({ action: 'scan', requestId: crypto.randomUUID(), code: trimmed, expectedGeneration: view.session.generation })) }
-    catch (cause) { signal('reject'); setError(cause instanceof Error ? cause.message : 'Scan a valid code.'); if (!cameraOpen.current) { input.current?.focus({ preventScroll: true }); input.current?.setSelectionRange(0, input.current.value.length) } }
+    if (blocked) return false
+    // The form empties the field as the scan leaves, never when its answer lands: the next pouch's code is typed during the round trip and must neither join this one nor be wiped (131 glued scans, 1 Oct to 13 Nov 2026).
+    try { void send(parseQcCommand({ action: 'scan', requestId: crypto.randomUUID(), code: trimmed, expectedGeneration: view.session.generation })); return true }
+    catch (cause) { signal('reject'); setError(cause instanceof Error ? cause.message : 'Scan a valid code.'); if (!cameraOpen.current) { input.current?.focus({ preventScroll: true }); input.current?.setSelectionRange(0, input.current.value.length) }; return false }
   }
 
-  function scan(event: FormEvent) { event.preventDefault(); submitCode(code) }
+  function scan(event: FormEvent) { event.preventDefault(); if (submitCode(code)) setCode('') }
 
   const toScan = lines.filter(line => (stale ? 0 : (view.session.counts[line.id] ?? 0) + (wrap.shortByLine[line.id] ?? 0)) < line.required)
   const settledLines = lines.filter(line => !toScan.includes(line))

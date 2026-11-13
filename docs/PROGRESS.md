@@ -40,6 +40,8 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 **Not done:** the device itself (owner to check a notes-app scan, keyboard auto-correction, scanner inter-character delay); glued double scans are still refused.
 
+**Same day, glued scans:** 131 of 352 refusals since 1 Oct were two codes in one (`NK1741NK1741`, `BK702ER1061`), on almost every working day. Cause in Loupe: the scan field was emptied only when the answer landed, so a pouch scanned during the round trip was typed after the previous code, and a half-typed code was wiped when the answer arrived (a lone `80` was refused). Now only the form empties the field, as the scan leaves (`submitCode` returns whether the code was sent or queued; a queued code sent later touches nothing), on `QcScreen` and `ClubQcScreen`. Twin, 900 ms pretend delay, five gun-speed scans with one straddling an answer: five separate codes sent on the single and the club screen (the first attempt, clearing inside `submitCode`, still chopped the straddling code to `932`). QC and slips tests 110 passed. QC speed: measurement script handed to the owner, nothing changed yet.
+
 ## 2026-11-12 — D168: club orders are checked together in Order QC; missing pieces go to the bot
 
 **Goal this session:** the owner wants club orders on one QC screen (already-checked orders ticked, a new order joining shown beside them), mark missing + Confirm at the end, and the bot's coupon offer for what is missing.

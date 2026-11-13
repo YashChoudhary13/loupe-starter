@@ -102,7 +102,7 @@ export function ClubQcScreen({ initialClub }: { initialClub: ClubView }) {
       sessionStorage.setItem(pendingKey, JSON.stringify({ url, command }))
       const view = await post(url, command)
       merge(view); setVerified(true)
-      sessionStorage.removeItem(pendingKey); setPending(null); setCode('')
+      sessionStorage.removeItem(pendingKey); setPending(null)
       const said = `${view.replayed ? 'Saved request confirmed. ' : ''}${view.event?.message ?? 'QC saved.'}`
       // A refused scan, an extra or a conflict must read as a warning, not as the usual grey line.
       if (['accepted', 'passed', 'undone', 'removed', 'short'].includes(view.event?.outcome ?? '')) setNotice(said); else { setNotice(null); setError(said) }
@@ -128,19 +128,22 @@ export function ClubQcScreen({ initialClub }: { initialClub: ClubView }) {
   const blocked = busy || !!pending || !verified
   const canConfirm = !blocked && open.length > 0 && open.every(member => member.wrap.canPass)
 
-  function submitCode(scanned: string) {
+  function submitCode(scanned: string): boolean {
     const trimmed = scanned.trim()
-    if (!trimmed) return
+    if (!trimmed) return false
     if (inFlight.current) {
       // The gun fires faster than a round trip: each code is sent in order after the current one confirms.
-      if (queue.current.length < 20) { queue.current.push(trimmed); setQueued(queue.current.length); setCode('') }
-      return
+      if (queue.current.length >= 20) return false
+      queue.current.push(trimmed); setQueued(queue.current.length)
+      return true
     }
-    if (blocked) return
-    if (!/^[\x21-\x7e]{1,64}$/.test(trimmed)) { signal('reject'); setError('Scan a barcode or SKU of 1–64 characters.'); return }
+    if (blocked) return false
+    if (!/^[\x21-\x7e]{1,64}$/.test(trimmed)) { signal('reject'); setError('Scan a barcode or SKU of 1–64 characters.'); return false }
     void send(`/api/qc/club/${anchor}`, { action: 'scan', requestId: crypto.randomUUID(), code: trimmed })
+    return true
   }
-  function scan(event: FormEvent) { event.preventDefault(); submitCode(code) }
+  // Only the form empties the field, as the scan leaves: see QcScreen.
+  function scan(event: FormEvent) { event.preventDefault(); if (submitCode(code)) setCode('') }
 
   /** Passes every unfinished order, oldest first. Each pass tells the bot about that order's missing pieces. */
   async function confirm() {
