@@ -1,4 +1,4 @@
-import type { QcEvent, QcSession, QcShortage } from './types'
+import type { QcEvent, QcLine, QcSession, QcShortage } from './types'
 
 export interface QcMissing {
   lineId: string
@@ -50,4 +50,16 @@ export function summarizeQc(session: QcSession, events: QcEvent[], shortages: re
   }))
   const openExtras = extras.filter(item => !item.removed)
   return { missing, extras, openExtras, shortByLine, canPass: missing.length === 0 && openExtras.length === 0 && session.snapshot.lines.length > 0 }
+}
+
+/**
+ * The office scanner began dropping one of two repeated characters on 2026-11-12 (GREEN arrives as GREN).
+ * For a code Shopify does not know: the one variant on these order lines whose longer code equals the scan once
+ * repeats are collapsed, or null when none or several fit. Never searches the catalogue.
+ */
+export function droppedRepeatVariant(lines: readonly Pick<QcLine, 'variantId' | 'sku' | 'barcode'>[], code: string): string | null {
+  const squash = (value: string) => value.trim().toUpperCase().replace(/(.)\1+/g, '$1')
+  const want = squash(code)
+  const ids = new Set(lines.filter(line => line.variantId && [line.sku, line.barcode].some(known => known && known.trim().length > code.trim().length && squash(known) === want)).map(line => line.variantId!))
+  return ids.size === 1 ? [...ids][0] : null
 }

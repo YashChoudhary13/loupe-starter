@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { summarizeQc } from '@/lib/qc/summary'
+import { droppedRepeatVariant, summarizeQc } from '@/lib/qc/summary'
 import type { QcEvent, QcSession } from '@/lib/qc/types'
 
 const line = (id: string, variantId: string, required: number, title = 'Ring', variantTitle = 'Gold / 7') => ({
@@ -75,5 +75,22 @@ describe('QC extra and missing wrap-up', () => {
     expect(result.extras).toEqual([expect.objectContaining({ eventId: 'extra-1', removed: true })])
     expect(result.openExtras).toEqual([])
     expect(result.canPass).toBe(true)
+  })
+})
+
+describe('a scan with a repeated character dropped by the scanner', () => {
+  const line = (variantId: string | null, sku: string | null, barcode: string | null = null) => ({ variantId, sku, barcode })
+  const lines = [line('green', 'NK2049-C-GREEN'), line('gold', 'NK2049-C-GOLD'), line('zero', null, 'NK2100')]
+  it('finds the one line of the order whose longer code collapses to the scan', () => {
+    expect(droppedRepeatVariant(lines, 'NK2049-C-GREN')).toBe('green')
+    expect(droppedRepeatVariant(lines, 'nk210')).toBe('zero')
+  })
+  it('refuses a code that fits no line, an exact or longer code, a line without a variant, and two lines that both fit', () => {
+    expect(droppedRepeatVariant(lines, 'NK2049-C-BLUE')).toBeNull()
+    expect(droppedRepeatVariant(lines, 'NK2049-C-GREEN')).toBeNull()
+    expect(droppedRepeatVariant(lines, 'NK2049-C-GREEEN')).toBeNull()
+    expect(droppedRepeatVariant([line(null, 'RS1-C-GREEN')], 'RS1-C-GREN')).toBeNull()
+    expect(droppedRepeatVariant([line('a', 'RS11-C-RED'), line('b', 'RS1-C-REED')], 'RS1-C-RED')).toBeNull()
+    expect(droppedRepeatVariant([line('a', 'RS1-C-GREEN'), line('a', 'X', 'RS1-C-GREEN')], 'RS1-C-GREN')).toBe('a')
   })
 })

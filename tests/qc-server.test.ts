@@ -20,6 +20,15 @@ beforeEach(() => {
 })
 const noBackground = { background: () => {} }
 describe('QC server authority', () => {
+  it('counts a code Shopify does not know when it is one line of this order with a repeated character dropped, and only then', async () => {
+    mocks.find.mockResolvedValue([])
+    mocks.read.mockResolvedValue({ ...order, lines: [{ id: 'l1', variantId: 'green', title: 'Necklace', variantTitle: 'Green', sku: 'NK2049-C-GREEN', barcode: null, required: 1 }] })
+    await loadQcView('1', operator, { action: 'scan', expectedGeneration: 1, requestId: 'request', code: 'NK2049-C-GREN' }, noBackground)
+    expect(mocks.rpc).toHaveBeenLastCalledWith('qc_command', expect.objectContaining({ p_variant_id: 'green', p_rejection: null, p_code: 'NK2049-C-GREN' }))
+    clearQcSnapshotCache()
+    await loadQcView('1', operator, { action: 'scan', expectedGeneration: 1, requestId: 'request2', code: 'NK2049-C-BLUE' }, noBackground)
+    expect(mocks.rpc).toHaveBeenLastCalledWith('qc_command', expect.objectContaining({ p_variant_id: null, p_rejection: expect.stringContaining('not found') }))
+  })
   it('requires one globally unique variant, allowing its identical SKU and barcode', async () => {
     mocks.find.mockResolvedValue([{ id: 'v1' }, { id: 'v1' }])
     expect(await resolveQcCode(new ShopifyClient(), 'CODE')).toEqual({ variantId: 'v1', rejection: null })

@@ -29,6 +29,17 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+
+## 2026-11-13 — QC counts a scan with a dropped repeated character (D169)
+
+**Goal this session:** find why every green variant was refused in QC with "Code not found in Shopify", and stop it blocking the floor.
+
+**Found:** `qc_events` shows scans arriving as `…-C-GREN` for lines whose SKU is `…-C-GREEN`: 119 refusals on 12–13 Nov, first at 2026-11-12 05:48 UTC, none between 1 Oct and 6 Nov (no green scans 7–11 Nov). It began four hours before D168 went live; the scan field and the label code are unchanged. One operator, the Lenovo tab; 102 of 152 correct green entries followed a refusal within five minutes (typed by hand). Two scans glued together (`NK1741NK1741`) also appear. The cause on the tab or scanner is not found.
+
+**Built:** `droppedRepeatVariant` in `src/lib/qc/summary.ts`, used by `loadQcView` (after the snapshot, only when the lookup found nothing) and by `clubScan` for routing. Tests in `tests/qc-summary.test.ts` and `tests/qc-server.test.ts`; `tests/qc-*.test.ts tests/slips-*.test.ts` 110 passed, tsc and eslint clean.
+
+**Not done:** the device itself (owner to check a notes-app scan, keyboard auto-correction, scanner inter-character delay); glued double scans are still refused.
+
 ## 2026-11-12 — D168: club orders are checked together in Order QC; missing pieces go to the bot
 
 **Goal this session:** the owner wants club orders on one QC screen (already-checked orders ticked, a new order joining shown beside them), mark missing + Confirm at the end, and the bot's coupon offer for what is missing.

@@ -6,6 +6,7 @@ import { listClubOrders } from '@/lib/shopify/club-orders'
 import { customers, name as customerName, num, paid } from '@/lib/slips/plan'
 import type { SlipOrder } from '@/lib/slips/types'
 import { loadQcView, resolveQcCode } from './server'
+import { droppedRepeatVariant } from './summary'
 import { orderGid } from './validation'
 import type { ClubView, QcCommand, QcLine } from './types'
 
@@ -85,7 +86,7 @@ export async function clubScan(orderId: string, operator: { readonly id: string 
   const prior = await db.from('qc_events').select('session_id').eq('request_id', command.requestId).in('session_id', sessions.map(s => s.id)).limit(1)
   if (prior.error) throw new Error('QC could not read the club. Retry the same request.')
   const replayOf = sessions.find(s => s.id === prior.data?.[0]?.session_id)
-  const target = replayOf ?? pickScanTarget(sessions, (await resolveQcCode(client, command.code!)).variantId)
+  const target = replayOf ?? pickScanTarget(sessions, (await resolveQcCode(client, command.code!)).variantId ?? droppedRepeatVariant(sessions.flatMap(s => s.snapshot.lines ?? []), command.code!))
   if (!target) throw new Error('This club has no checklist to scan into. Reload the page.')
   return loadQcView(target.order_id, operator, { ...command, expectedGeneration: target.generation })
 }
