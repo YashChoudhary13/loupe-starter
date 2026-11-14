@@ -1,0 +1,20 @@
+[Unit]
+Description=Qimati agent control: reports limits and state to Loupe, runs its fixed requests (D170)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/etc/qimati-agent/runner.env
+WorkingDirectory=/home/ubuntu
+ExecStart=/usr/bin/python3 /opt/qimati-agent/agent-control.py
+Restart=always
+RestartSec=10
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

@@ -30,6 +30,31 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ---
 
 
+## 2026-11-14 — Enhance: every photograph tracked, passes, the server on the page (D170)
+
+**Goal this session:** the owner can see which photographs of a batch are done, undelivered ones go back to the queue by themselves, and a lost sign-in or a used-up limit is visible and fixable on /enhance.
+
+**Built:**
+- `supabase/migrations/20261114090000_enhance_photo_tracking.sql` → per-photo state and tries, job holds and passes, `agent_job_claim` with `max_photos`, `agent_job_pass`, `agent_job_retry_photos`, `agent_jobs_release_holds`, `agent_runner_status`, `agent_runner_commands`, `agent_runner_report`, backfill
+- `src/lib/agent-jobs/tracking.ts`, `tracking-server.ts` → shapes, readers, the page's and the runner's doors
+- `src/app/api/agent/jobs` (claim takes `max_photos`, new action `pass`), `src/app/api/agent/runner/route.ts` (heartbeat)
+- `src/components/enhance/BatchList.tsx`, `RunnerPanel.tsx`, `EnhanceScreen.tsx` → counts, photo grid with filters and reasons, Retry, limits, log, sign-in card, Pause / Resume / Try now
+- `deploy/agent-runner/agent-runner.sh` (from the server copy: preflight, passes, outcome, readable log), `agent-control.py` + `qimati-agent-control.service`
+- `scripts/verify-enhance-tracking-local-db.ts`
+
+**Verified:** `npx tsx scripts/verify-enhance-tracking-local-db.ts` on a temporary local PostgreSQL 17: 17 checks (claim cap, requeue with no wait, limit hold with no try counted, Try now, one-minute wait after a failed try, third try final, Retry reopens a finished batch, lost sign-in, three crashes stop, old runner's done/failed, redo, command handed out once, sign-in code wiped, unknown command kind refused). It found one fault, fixed: a crashed run was retried at once instead of after a minute. `vitest` 52 passed in the six touched files; eslint clean; tsc shows only the errors already on `main`. The real `EnhanceScreen` bundled with esbuild against mocked actions and the compiled `globals.css`, Chromium 390 × 844, seven situations (limit, working, signed out, Claude code entry, Codex code, paused, server silent): no element past the right edge, radii 24 / 18 / 16 / 14 / 999 px only; Finish sign-in disabled until a code is typed and sends `claude_login_code`, Pause sends `pause`, Retry sends the batch and the Failed chip goes. Screenshots `~/Downloads/loupe-enhance-d170-2026-11-14/`. On the Canada server, read-only: `agent-control.py --limits` returned Claude 16 %, codex-1 100 %, codex-2 54 % with reset times; the sign-in driver captured Claude's link and Codex's link and code and was cancelled, the live sign-in untouched.
+
+**Not finished / known broken:**
+- Not live until: `npm run db:push` (first: the new code reads the new columns), push to `main`, then the runner and the control service installed on the Canada server. Live proof with a real batch still to do.
+- A photograph used only as a second angle ends `failed` after three tries.
+- Pass sizes (15, 5 near the limit) are untuned.
+
+**Surprises:** the two batches of 14 Nov failed because `~/.claude/.credentials.json` on the server had been rewritten on 7 Nov with no refresh token. tmux sessions started over ssh do not survive on that host; use `setsid nohup`.
+
+**Next session should start with:** read `docs/PROGRESS.md`, confirm the three deploy steps ran, then upload a small batch and watch /enhance.
+
+---
+
 ## 2026-11-13 — QC counts a scan with a dropped repeated character (D169)
 
 **Goal this session:** find why every green variant was refused in QC with "Code not found in Shopify", and stop it blocking the floor.

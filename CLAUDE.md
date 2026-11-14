@@ -98,6 +98,10 @@ elsewhere. A tracking page surfaces what needs a human; Shopify webhooks (D102) 
 changes back into Loupe in seconds. **Loupe itself never calls an image or text model and has no
 Drive inbox** (D144).
 
+**Every photograph of a batch is tracked (D170):** a batch is worked in passes, a photograph that did not land goes back
+to the queue (three tries; none counted for a used-up limit or a lost sign-in), and /enhance shows which are done, the
+server's Claude and Codex limits, its log, and a sign-in card. The page sends the server fixed requests only, never text to run.
+
 A photograph that still arrives without a render — an operator's Identify or Restock decision on
 an older upload — goes to the console as it is, original selected, carrying a "Not enhanced" note.
 **Identify** (D110) and **Restock** (D112) remain for those uploads; the matching runs on the owner's

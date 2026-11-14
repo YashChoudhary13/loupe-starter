@@ -41,3 +41,29 @@ sudo systemctl daemon-reload && sudo systemctl enable --now qimati-agent-runner.
 - Claude runs with an explicit tool allowlist (`ALLOWED_TOOLS` in the script): file tools plus `python3`, the restock venv, `qdb`, `codex` and a few coreutils. No shell escape, no git, no permission bypass.
 - A job that fails is marked `failed` in `/enhance` with the last log lines; the folder is kept for a re-run (`agent_job_claim` picks up running jobs whose lease lapsed).
 - Codex credits: the renders spend the two Codex accounts (`~/.codex`, `~/.codex-2`). When both are out, `enhance.py codex` reports it and the job fails with that reason.
+
+## D170: passes, limits and sign-in from Loupe (2026-11-14)
+
+The runner now takes at most `MAX_PHOTOS` (15) photographs per pass and reports why the pass ended; Loupe sends the
+undelivered ones back to the queue. `agent-control.py` runs beside it as `qimati-agent-control.service` and is what the
+/enhance page talks to. Shared state is in `$WORK_DIR/.state/`:
+
+| File | Meaning |
+|---|---|
+| `paused` | exists = the runner claims nothing (Pause / Resume on the page) |
+| `hold` | `{until, reason, note}`: no claim until then (a limit, or a lost sign-in; Try now removes it) |
+| `limits.json` | what the control service last read; older than ten minutes is ignored |
+| `current` | label of the batch being worked on |
+
+Install or update (the server's `run-job.prompt.md` is newer than this folder's: never copy it over):
+
+```bash
+sudo install -m 755 agent-runner.sh agent-control.py /opt/qimati-agent/
+sudo install -m 644 qimati-agent-control.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now qimati-agent-control
+journalctl -u qimati-agent-control -n 20     # "tick failed" lines mean Loupe did not answer
+python3 /opt/qimati-agent/agent-control.py --limits   # the limits, once, as JSON
+```
+
+Install the runner only after Loupe has the D170 migration and release: it sends `max_photos` and the `pass` action.
+

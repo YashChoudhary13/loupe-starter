@@ -126,9 +126,17 @@ function Log({ text }: { text: string }) {
     <pre ref={ref} tabIndex={0} aria-label="Server log"
       onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24 }}
       className="mt-3 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-panel bg-ink px-4 py-3.5 font-mono text-[11.5px] leading-[1.7] text-[#d8d8d8]">
-      {text.trim() || 'Nothing logged yet.'}
+      {localTimes(text).trim() || 'Nothing logged yet.'}
     </pre>
   )
+}
+
+/** The server stamps its lines in UTC; the reader wants their own clock. */
+function localTimes(text: string): string {
+  return text.replace(/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) /gmu, (_, stamp: string) => {
+    const t = new Date(stamp)
+    return Number.isFinite(t.getTime()) ? `${t.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}  ` : `${stamp} `
+  })
 }
 
 function SignIn({ login, claudeOut, pending, error, ask }: {
@@ -201,7 +209,7 @@ function SignIn({ login, claudeOut, pending, error, ask }: {
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
     <li className="flex items-start gap-2.5 text-[12.5px] text-ink-soft">
-      <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-amber text-[11px] font-semibold text-white" aria-hidden>{n}</span>
+      <span className="grid size-[22px] shrink-0 place-items-center rounded-pill bg-amber text-[11px] font-semibold text-white" aria-hidden>{n}</span>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">{children}</div>
     </li>
   )
