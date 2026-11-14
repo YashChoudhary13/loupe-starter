@@ -58,14 +58,14 @@ describe('/api/agent/jobs', () => {
     const response = await POST(post('/api/agent/jobs', { action: 'claim', runner: 'canada-1', lease_seconds: 1800 }))
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true, job: null })
-    expect(mocks.rpc).toHaveBeenCalledWith('agent_job_claim', { p_runner: 'canada-1', p_lease_seconds: 1800 })
+    expect(mocks.rpc).toHaveBeenCalledWith('agent_job_claim', { p_runner: 'canada-1', p_lease_seconds: 1800, p_max_photos: null })
   })
 
   it('claims a job and signs every uploaded photo', async () => {
     mocks.rpc.mockResolvedValue({ data: { id: JOB_ID, label: '2026-10-10 14.05', photo_count: 2 }, error: null })
-    mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ eq: () => ({ order: async () => ({
+    mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ order: async () => ({
       data: [{ id: 'p1', filename: 'a.jpg', storage_key: `intake/${JOB_ID}/p1.jpg` }, { id: 'p2', filename: 'b.jpg', storage_key: `intake/${JOB_ID}/p2.jpg` }], error: null,
-    }) }) }) }) })
+    }) }) }) }) }) })
     mocks.presignGet.mockImplementation(async (key: string) => `https://r2.example/${key}?sig`)
     const response = await POST(post('/api/agent/jobs', { action: 'claim', runner: 'canada-1' }))
     const body = await response.json()
@@ -82,13 +82,27 @@ describe('/api/agent/jobs', () => {
   it('D145: a redo claim carries the note and names the image every photo replaces', async () => {
     const intake = '0f9a2b3c-4d5e-4f60-8a71-82b394c5d6e7'
     mocks.rpc.mockResolvedValue({ data: { id: JOB_ID, label: 'redo 2026-10-10 14.05 tulip', photo_count: 1, kind: 'redo', instructions: 'stones look dull', redo_of: intake }, error: null })
-    mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ eq: () => ({ order: async () => ({
+    mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({ order: async () => ({
       data: [{ id: 'p1', filename: 'IMG_0012.jpg', storage_key: `intake/${JOB_ID}/p1.jpg` }], error: null,
-    }) }) }) }) })
+    }) }) }) }) }) })
     mocks.presignGet.mockResolvedValue('https://r2.example/signed')
     const body = await (await POST(post('/api/agent/jobs', { action: 'claim', runner: 'canada-1' }))).json()
     expect(body.job).toMatchObject({ kind: 'redo', instructions: 'stones look dull', redo_of: intake })
     expect(body.job.photos).toEqual([{ id: 'p1', filename: 'IMG_0012.jpg', url: 'https://r2.example/signed', replaces: intake }])
+  })
+
+  it('D170: a claim may cap the photographs, and a pass report reaches the RPC', async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: null })
+    await POST(post('/api/agent/jobs', { action: 'claim', runner: 'canada-1', max_photos: 15 }))
+    expect(mocks.rpc).toHaveBeenCalledWith('agent_job_claim', { p_runner: 'canada-1', p_lease_seconds: 1800, p_max_photos: 15 })
+    expect((await POST(post('/api/agent/jobs', { action: 'claim', runner: 'canada-1', max_photos: 0 }))).status).toBe(400)
+    mocks.rpc.mockResolvedValue({ data: 'queued', error: null })
+    const response = await one({ action: 'pass', runner: 'canada-1', outcome: 'limit', resume_at: '2026-11-14T11:53:00Z', note: '3 delivered', result_count: 3 })
+    expect(await response.json()).toEqual({ ok: true, status: 'queued' })
+    expect(mocks.rpc).toHaveBeenLastCalledWith('agent_job_pass', {
+      p_job_id: JOB_ID, p_runner: 'canada-1', p_outcome: 'limit', p_resume_at: '2026-11-14T11:53:00.000Z', p_note: '3 delivered', p_error: null, p_result_count: 3,
+    })
+    expect((await one({ action: 'pass', runner: 'canada-1', outcome: 'finished' })).status).toBe(400)
   })
 
   it('rejects a bad runner, a bad action and a bad lease', async () => {

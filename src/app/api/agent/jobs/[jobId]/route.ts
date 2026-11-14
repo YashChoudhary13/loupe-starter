@@ -1,5 +1,7 @@
 import { JobInputError, parseLeaseSeconds, parseRunner } from '@/lib/agent-jobs/label'
 import { finishJob, heartbeatJob } from '@/lib/agent-jobs/server'
+import { parsePassOutcome, parseResumeAt } from '@/lib/agent-jobs/tracking'
+import { passJob } from '@/lib/agent-jobs/tracking-server'
 
 import { JOB_HEADERS as headers, authorized, bad, failure, readBody } from '@/lib/agent-jobs/http'
 
@@ -27,13 +29,23 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
       await heartbeatJob(jobId, runner, parseLeaseSeconds(body.lease_seconds))
       return Response.json({ ok: true }, { headers })
     }
+    if (body.action === 'pass') {
+      // D170: one pass over the job ended. Loupe decides from its own records which photographs were delivered.
+      const count = body.result_count ?? 0
+      if (!Number.isSafeInteger(count) || Number(count) < 0) throw new JobInputError('result_count must be a whole number.')
+      const status = await passJob({
+        jobId, runner, outcome: parsePassOutcome(body.outcome), resumeAt: parseResumeAt(body.resume_at),
+        note: text(body.note, 500), error: text(body.error, 2000), resultCount: Number(count),
+      })
+      return Response.json({ ok: true, status }, { headers })
+    }
     if (body.action === 'done' || body.action === 'failed') {
       const count = body.result_count ?? 0
       if (!Number.isSafeInteger(count) || Number(count) < 0) throw new JobInputError('result_count must be a whole number.')
       await finishJob({ jobId, runner, status: body.action, note: text(body.note, 500), error: text(body.error, 2000), resultCount: Number(count) })
       return Response.json({ ok: true }, { headers })
     }
-    return bad('Unknown action. Use heartbeat, done or failed.')
+    return bad('Unknown action. Use heartbeat, pass, done or failed.')
   } catch (error) {
     return failure(error)
   }

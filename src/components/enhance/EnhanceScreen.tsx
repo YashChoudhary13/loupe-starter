@@ -1,18 +1,23 @@
 'use client'
 
 import { Check } from 'lucide-react'
-import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { beginJobPhotoUploadAction, createJobAction, finishJobPhotoUploadAction, listJobsAction, queueJobAction } from '@/app/(shell)/enhance/actions'
-import { defaultJobLabel, queueIsStale } from '@/lib/agent-jobs/label'
+import {
+  beginJobPhotoUploadAction, createJobAction, enhanceStateAction, finishJobPhotoUploadAction, jobThumbsAction, queueJobAction,
+  retryPhotosAction, runnerCommandAction, type EnhanceState,
+} from '@/app/(shell)/enhance/actions'
+import { defaultJobLabel } from '@/lib/agent-jobs/label'
 import { photoSignature, pickPhotos } from '@/lib/agent-jobs/photos'
 import type { JobSummary } from '@/lib/agent-jobs/server'
+import { leftPhotos, type JobPhoto, type RunnerView } from '@/lib/agent-jobs/tracking'
 import { cn } from '@/lib/utils'
 
 import { Card, Notice, SectionLabel } from '../console/primitives'
 import { putUploadedObject } from '../upload/put-object'
-import { shrinkPhoto } from './shrink-photo'
+import { BatchList } from './BatchList'
+import { RunnerPanel } from './RunnerPanel'
+import { photoThumb, shrinkPhoto } from './shrink-photo'
 
 type FileState = 'waiting' | 'preparing' | 'uploading' | 'verifying' | 'uploaded' | 'failed'
 interface PhotoItem { key: string; sig: string; file: File; previewUrl: string; progress: number; state: FileState; detail: string | null }
@@ -47,8 +52,18 @@ function tileText(p: PhotoItem): string {
  * private storage, then one tap sends the batch to the enhancer. Every step answers on
  * screen: a tile per photo the moment it is picked, its progress, and why it failed.
  */
-export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummary[] }) {
+/** Open by default: a batch in the queue or running, and a finished one that still has photographs left. */
+const opensByDefault = (j: JobSummary) => j.status === 'queued' || j.status === 'running' || (j.status !== 'collecting' && leftPhotos(j.counts) > 0 && Date.now() - Date.parse(j.createdAt) < 3 * 86_400_000)
+
+export function EnhanceScreen({ initialJobs, initialRunner }: { initialJobs: readonly JobSummary[]; initialRunner: RunnerView | null }) {
   const [jobs, setJobs] = useState(initialJobs)
+  const [runner, setRunner] = useState(initialRunner)
+  const [jobPhotos, setJobPhotos] = useState<Readonly<Record<string, readonly JobPhoto[]>>>({})
+  const [thumbs, setThumbs] = useState<Readonly<Record<string, Readonly<Record<string, string>>>>>({})
+  // What the operator opened or closed by hand wins over the default.
+  const [toggled, setToggled] = useState<Readonly<Record<string, boolean>>>({})
+  const open = useMemo(() => new Set(jobs.filter((j) => toggled[j.id] ?? opensByDefault(j)).map((j) => j.id)), [jobs, toggled])
+  const openKey = [...open].sort().join(',')
   // Server and browser clocks differ, so the default label is set in the browser's time zone once the input mounts.
   const [label, setLabel] = useState('')
   const [job, setJob] = useState<JobSummary | null>(null)
@@ -59,24 +74,65 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
   const inputRef = useRef<HTMLInputElement>(null)
   const [now, setNow] = useState(() => new Date())
 
+  const take = useCallback((state: EnhanceState) => {
+    setJobs(state.jobs); setRunner(state.runner); setJobPhotos((prev) => ({ ...prev, ...state.photos })); setNow(new Date())
+  }, [])
+
   const refresh = useCallback(async () => {
     try {
-      const result = await listJobsAction()
-      if (result.ok) setJobs(result.data)
-      setNow(new Date())
+      const result = await enhanceStateAction(openKey ? openKey.split(',') : [])
+      if (result.ok) take(result.data)
     } catch (cause) {
       const why = explain(cause)
       if (why.stale) setSaid(why)
     }
-  }, [])
+  }, [openKey, take])
 
-  // A queued or running batch changes without us; poll while one exists.
-  const active = jobs.some((j) => j.status === 'queued' || j.status === 'running')
+  // States only, never an image: every 5 s while something moves (a batch in the queue or running, a
+  // sign-in under way), every 30 s otherwise so the limits stay current. Nothing while the tab is hidden.
+  const active = jobs.some((j) => j.status === 'queued' || j.status === 'running') || (runner?.login != null && runner.login.state !== 'ok' && runner.login.state !== 'failed')
   useEffect(() => {
-    if (!active) return
-    const timer = window.setInterval(() => { void refresh() }, 15_000)
-    return () => window.clearInterval(timer)
+    const tick = () => { if (!document.hidden) void refresh() }
+    // `refresh` changes when a batch is opened or closed, so this also fetches a newly opened batch's photographs at once.
+    const first = window.setTimeout(tick, 0)
+    const timer = window.setInterval(tick, active ? 5_000 : 30_000)
+    document.addEventListener('visibilitychange', tick)
+    return () => { window.clearTimeout(first); window.clearInterval(timer); document.removeEventListener('visibilitychange', tick) }
   }, [active, refresh])
+
+  // A batch that opens gets its thumbnails once (a poll never re-signs them).
+  const thumbsAsked = useRef(new Set<string>())
+  useEffect(() => {
+    for (const id of openKey ? openKey.split(',') : []) {
+      if (thumbsAsked.current.has(id)) continue
+      thumbsAsked.current.add(id)
+      void jobThumbsAction(id).then((r) => { if (r.ok) setThumbs((prev) => ({ ...prev, [id]: r.data })) }).catch(() => thumbsAsked.current.delete(id))
+    }
+  }, [openKey])
+
+  const retry = useCallback(async (jobId: string, photoIds: readonly string[] | null) => {
+    setBusy(true)
+    try {
+      const result = await retryPhotosAction(jobId, photoIds, openKey ? openKey.split(',') : [])
+      if (result.ok) take(result.data)
+      else setSaid({ text: result.error.message, tone: 'error', stale: false })
+    } catch (cause) {
+      setSaid(explain(cause))
+    } finally {
+      setBusy(false)
+    }
+  }, [openKey, take])
+
+  const command = useCallback(async (kind: string, payload: Record<string, string> = {}): Promise<string | null> => {
+    try {
+      const result = await runnerCommandAction(kind, payload)
+      if (!result.ok) return result.error.message
+      window.setTimeout(() => { void refresh() }, 2_000)
+      return null
+    } catch (cause) {
+      return explain(cause).text
+    }
+  }, [refresh])
 
   const patch = useCallback((key: string, change: Partial<PhotoItem>) => {
     setPhotos((prev) => prev.map((p) => (p.key === key ? { ...p, ...change } : p)))
@@ -100,6 +156,11 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
       if (!ticket.ok) { patch(item.key, { state: 'failed', detail: ticket.error.message }); return }
       await putUploadedObject(ticket.data.uploadUrl, file, ticket.data.contentType, (percent) => patch(item.key, { progress: percent }))
       patch(item.key, { state: 'verifying' })
+      // D170: a small thumbnail for the batch grid. Best effort; the photograph itself is already safe.
+      try {
+        const small = await photoThumb(file)
+        if (small) await putUploadedObject(ticket.data.thumbUploadUrl, new File([small], 'thumb.jpg', { type: 'image/jpeg' }), 'image/jpeg', () => undefined)
+      } catch { /* the grid shows the filename instead */ }
       const done = await finishJobPhotoUploadAction(ticket.data.photoId)
       if (!done.ok) { patch(item.key, { state: 'failed', detail: done.error.message }); return }
       patch(item.key, { state: 'uploaded', progress: 100 })
@@ -158,7 +219,7 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
       if (!result.ok) { setSaid({ text: result.error.message, tone: 'error', stale: false }); return }
       setJobs(result.data)
       setNow(new Date())
-      setSaid({ text: `Sent ${plural(uploaded, 'photo')} to Claude. Finished images appear in the Console in ${eta(uploaded)}.`, tone: 'info', stale: false })
+      setSaid({ text: `Sent ${plural(uploaded, 'photo')} to Claude. Each one shows below as it is done; about ${eta(uploaded).replace('about ', '')} in all.`, tone: 'info', stale: false })
       for (const p of photos) URL.revokeObjectURL(p.previewUrl)
       setJob(null); setPhotos([]); setUploaded(0); setLabel(defaultJobLabel(new Date()))
     } catch (cause) {
@@ -255,54 +316,18 @@ export function EnhanceScreen({ initialJobs }: { initialJobs: readonly JobSummar
           </div>
         </Card>
 
+        <RunnerPanel runner={runner} now={now} onCommand={command} />
+
         <div className="mt-2 flex items-center justify-between">
           <SectionLabel>Batches</SectionLabel>
           <button type="button" className={small} onClick={() => void refresh()}>Refresh</button>
         </div>
         <div className="flex flex-col gap-2 pb-10">
-          {jobs.length === 0 && <p className="rounded-panel bg-surface p-4 text-[12.5px] text-muted-foreground">No batches yet.</p>}
-          {jobs.map((j) => (
-            <article key={j.id} className="rounded-panel bg-surface p-3.5">
-              <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate text-[13px] font-medium">
-                  {j.label}
-                  {j.kind !== 'batch' && <span className="ml-2 rounded-pill bg-chip px-2 py-0.5 text-[10px] font-normal text-muted-foreground">{j.kind === 'redo' ? 'redo' : 'from Restock'}</span>}
-                </span>
-                <Status job={j} now={now} />
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-3 text-[12px] text-muted-foreground">
-                <span>
-                  {plural(job?.id === j.id ? uploaded : j.photoCount, 'photo')}
-                  {j.status === 'done' && ` · ${plural(j.resultCount, 'final')} in the Console`}
-                </span>
-                {j.status === 'done' && j.resultCount > 0 && <Link href="/console" className={small}>Open Console</Link>}
-                {j.status === 'collecting' && j.kind === 'batch' && (job?.id === j.id
-                  ? <span className="text-[11.5px]">open above</span>
-                  : <button type="button" disabled={busy} onClick={() => resume(j)} className={small}>Continue</button>)}
-              </div>
-              {j.kind !== 'batch' && j.instructions && <p className="mt-1.5 text-[12px] text-ink-soft">“{j.instructions}”</p>}
-              {j.status === 'running' && <p className="mt-1.5 text-[12px] text-ink-soft">Claude is matching, rendering and checking. {plural(j.photoCount, 'photo')} take{j.photoCount === 1 ? 's' : ''} {eta(j.photoCount)}, then the images appear in the Console.</p>}
-              {j.status === 'queued' && (queueIsStale(j.queuedAt, now)
-                ? <p className="mt-1.5 text-[12px] text-amber">Nothing has picked this up yet.</p>
-                : <p className="mt-1.5 text-[12px] text-ink-soft">Waiting for Claude, usually under a minute.</p>)}
-              {j.note && <p className="mt-1.5 line-clamp-6 whitespace-pre-line text-[12px] text-ink-soft">{j.note}</p>}
-              {j.error && <p className="mt-1.5 line-clamp-4 whitespace-pre-line text-[12px] text-amber">{j.error}</p>}
-            </article>
-          ))}
+          <BatchList jobs={jobs} photos={jobPhotos} thumbs={thumbs} open={open} now={now} busy={busy}
+            currentJobId={job?.id ?? null} uploaded={uploaded}
+            onToggle={(id) => setToggled((prev) => ({ ...prev, [id]: !open.has(id) }))} onResume={resume} onRetry={(id, ids) => void retry(id, ids)} />
         </div>
       </div>
     </section>
-  )
-}
-
-/** Tracking's status pill: black while it runs, amber when a human is needed, grey otherwise. */
-function Status({ job, now }: { job: JobSummary; now: Date }) {
-  const since = job.startedAt ? Math.max(0, Math.round((now.getTime() - Date.parse(job.startedAt)) / 60_000)) : 0
-  const text = job.status === 'running' ? `Running · ${since} min` : job.status
-  return (
-    <span className={cn('shrink-0 rounded-pill px-2.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.04em]',
-      job.status === 'failed' ? 'bg-[#faf2e4] text-amber' : job.status === 'running' ? 'bg-ink text-white' : 'bg-chip text-muted-foreground')}>
-      {text}
-    </span>
   )
 }

@@ -1,10 +1,12 @@
 import { parseJobStatus, parseLeaseSeconds, parseRunner } from '@/lib/agent-jobs/label'
 import { JOB_HEADERS as headers, authorized, bad, failure, readBody } from '@/lib/agent-jobs/http'
 import { claimJob, listJobsByStatus } from '@/lib/agent-jobs/server'
+import { parseMaxPhotos } from '@/lib/agent-jobs/tracking'
 
 /**
  * D143: the enhancer's side of the job queue. Bearer AGENT_SECRET only.
- * POST {action:'claim', runner, lease_seconds} takes one job; GET ?status= lists.
+ * POST {action:'claim', runner, lease_seconds, max_photos?} takes one job, and of it at most
+ * max_photos waiting photographs (D170); GET ?status= lists.
  */
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -15,7 +17,7 @@ export async function POST(request: Request) {
   try {
     const body = await readBody(request)
     if (body.action !== 'claim') return bad('Unknown action. Use claim.')
-    const job = await claimJob(parseRunner(body.runner), parseLeaseSeconds(body.lease_seconds))
+    const job = await claimJob(parseRunner(body.runner), parseLeaseSeconds(body.lease_seconds), parseMaxPhotos(body.max_photos))
     return Response.json({ ok: true, job }, { headers })
   } catch (error) {
     return failure(error)

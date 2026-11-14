@@ -3,6 +3,8 @@
 import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authorize'
 import { JobInputError } from '@/lib/agent-jobs/label'
 import { beginJobPhotoUpload, createJob, finishJobPhotoUpload, listJobs, queueJob, type JobSummary } from '@/lib/agent-jobs/server'
+import type { JobPhoto, RunnerView } from '@/lib/agent-jobs/tracking'
+import { jobPhotoUrl, jobThumbUrls, listJobPhotos, retryJobPhotos, runnerView, sendRunnerCommand } from '@/lib/agent-jobs/tracking-server'
 import { ConsoleError } from '@/lib/console/mutations'
 
 /** D143 — the Enhance jobs page. Same result contract as the Upload section. */
@@ -44,4 +46,53 @@ export async function queueJobAction(jobId: string): Promise<EnhanceActionResult
 
 export async function listJobsAction(): Promise<EnhanceActionResult<readonly JobSummary[]>> {
   return withOperator(() => listJobs())
+}
+
+// ---------------------------------------------------------------------------------------------
+// D170: per-photo tracking and the server panel
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuids = (raw: readonly string[]): string[] => raw.filter((id) => typeof id === 'string' && UUID.test(id))
+
+export interface EnhanceState {
+  readonly jobs: readonly JobSummary[]
+  readonly runner: RunnerView | null
+  /** Photographs of the batches open on the page, by job id. States only; a poll never signs an image. */
+  readonly photos: Readonly<Record<string, readonly JobPhoto[]>>
+}
+
+async function enhanceState(openJobIds: readonly string[]): Promise<EnhanceState> {
+  const [jobs, runner, photos] = await Promise.all([listJobs(), runnerView(), listJobPhotos(uuids(openJobIds))])
+  return { jobs, runner, photos }
+}
+
+export async function enhanceStateAction(openJobIds: readonly string[]): Promise<EnhanceActionResult<EnhanceState>> {
+  return withOperator(() => enhanceState(openJobIds))
+}
+
+export async function jobThumbsAction(jobId: string): Promise<EnhanceActionResult<Readonly<Record<string, string>>>> {
+  return withOperator(async () => (UUID.test(jobId) ? jobThumbUrls(jobId) : {}))
+}
+
+export async function photoUrlAction(photoId: string): Promise<EnhanceActionResult<string>> {
+  return withOperator(async () => {
+    if (!UUID.test(photoId)) throw new JobInputError('That photograph was not found.')
+    return jobPhotoUrl(photoId)
+  })
+}
+
+/** Sends failed photographs back to the queue: the ones named, or every failed one of the batch. */
+export async function retryPhotosAction(jobId: string, photoIds: readonly string[] | null, openJobIds: readonly string[]): Promise<EnhanceActionResult<EnhanceState>> {
+  return withOperator(async (operator) => {
+    if (!UUID.test(jobId)) throw new JobInputError('That batch was not found.')
+    await retryJobPhotos(operator, jobId, photoIds ? uuids(photoIds) : null)
+    return enhanceState(openJobIds)
+  })
+}
+
+export async function runnerCommandAction(kind: string, payload: Record<string, string>): Promise<EnhanceActionResult<null>> {
+  return withOperator(async (operator) => {
+    await sendRunnerCommand(operator, kind, payload)
+    return null
+  })
 }

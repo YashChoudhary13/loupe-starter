@@ -3,6 +3,7 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 
 import { jobLabel, parseJobLabel } from '@/lib/agent-jobs/label'
+import { markPhotoDelivered } from '@/lib/agent-jobs/tracking-server'
 import type { Operator } from '@/lib/auth/authorize'
 import { consoleObjectStore, signKeys } from '@/lib/console/images'
 import { ConsoleError } from '@/lib/console/mutations'
@@ -87,6 +88,7 @@ export async function postRestockCandidate(batch: string, sourceFilename: string
   }
   const { data, error } = await db.rpc('post_restock_candidate', { p_photo_id: photoId, p_restock: payload, p_actor: AGENT_OPERATOR.email })
   if (error) throw rpcError('The restock candidate could not be recorded.', error)
+  await markPhotoDelivered(photoId, 'restock')  // D170
   return { photoId, state: typeof data === 'string' ? data : 'pending' }
 }
 

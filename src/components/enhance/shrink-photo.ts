@@ -40,3 +40,36 @@ async function shrink(file: File): Promise<File> {
     return file
   }
 }
+
+const THUMB_EDGE = 320
+
+/**
+ * D170: a small JPEG of the photograph for the batch grid (about 15 KB), made on the phone so the
+ * grid of a hundred photographs never loads a hundred full files. Null when the browser cannot decode it.
+ */
+export function photoThumb(file: File): Promise<Blob | null> {
+  const run = turn.then(() => thumb(file))
+  turn = run.catch(() => undefined)
+  return run
+}
+
+async function thumb(file: File): Promise<Blob | null> {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+    try {
+      const scale = Math.min(1, THUMB_EDGE / Math.max(bitmap.width, bitmap.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+      const context = canvas.getContext('2d')
+      if (!context) return null
+      context.imageSmoothingQuality = 'high'
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+      return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.72))
+    } finally {
+      bitmap.close()
+    }
+  } catch {
+    return null
+  }
+}

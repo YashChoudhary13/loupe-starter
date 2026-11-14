@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   put: vi.fn(),
   update: vi.fn(),
   push: vi.fn(),
+  delivered: vi.fn(),
+  jobDelivered: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/env', () => ({
@@ -19,6 +21,7 @@ vi.mock('@/lib/images/storage', () => ({ R2ObjectStore: class { putImmutable = m
 vi.mock('@/lib/images/image', () => ({ readImageDimensions: async () => ({ width: 1254, height: 1254 }), makeThumbnail: async () => Buffer.from('thumb') }))
 vi.mock('@/lib/duplicates/phash', () => ({ perceptualHash: async () => 'fedcba9876543210' }))
 vi.mock('@/lib/console/shopify-push', () => ({ pushDraftToShopifyInBackground: mocks.push }))
+vi.mock('@/lib/agent-jobs/tracking-server', () => ({ markPhotoDelivered: mocks.delivered, markJobPhotosDelivered: mocks.jobDelivered }))
 
 import { GET, POST } from '@/app/api/agent/images/route'
 import { AgentInputError, parseAgentSuggest, parseReplaces, parseRestockSku, parseSourceFilename } from '@/lib/agent-intake/suggest'
@@ -174,6 +177,7 @@ describe('Agent images endpoint', () => {
     const response = await POST(request({ file: file(), tag: 'ready', batch: '2026-10-10 14.30', source_filename: 'IMG_0012.jpg' }))
     expect(await response.json()).toEqual({ ok: true, intake_id: 'i1', status: 'enhanced', duplicate: false })
     expect(mocks.update).toHaveBeenCalledWith('intake_files', { agent_source_photo_id: 'photo1' })
+    expect(mocks.delivered).toHaveBeenCalledWith('photo1', 'done')  // D170: the batch grid shows it at once
   })
 
   it('D145: a redo render replaces the image on its intake row instead of making a new one', async () => {
@@ -190,6 +194,7 @@ describe('Agent images endpoint', () => {
       p_width: 1254, p_height: 1254, p_phash: 'fedcba9876543210', p_tag: 'ready', p_note: 'brighter stones', p_job_id: 'job7',
       p_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
     }))
+    expect(mocks.jobDelivered).toHaveBeenCalledWith('job7')  // D170
   })
 
   it('D158: a replaced picture is pushed again to every unpublished draft already on Shopify', async () => {

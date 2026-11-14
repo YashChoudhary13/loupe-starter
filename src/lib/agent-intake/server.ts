@@ -11,6 +11,7 @@ import { serverEnv } from '@/lib/env'
 import { makeThumbnail, readImageDimensions } from '@/lib/images/image'
 import { R2ObjectStore } from '@/lib/images/storage'
 import { beginManualUpload, verifyUploadedObject } from '@/lib/manual-upload/server'
+import { markJobPhotosDelivered, markPhotoDelivered } from '@/lib/agent-jobs/tracking-server'
 import { supabaseServer } from '@/lib/supabase/server'
 
 /**
@@ -134,6 +135,7 @@ export async function ingestAgentImage(input: AgentImageInput): Promise<AgentIma
   if (Object.keys(patch).length && !result.duplicate) {
     await db.from('intake_files').update(patch).eq('id', result.intakeId)
   }
+  if (sourcePhotoId) await markPhotoDelivered(sourcePhotoId, 'done')  // D170: the batch grid shows it at once
   return result
 }
 
@@ -192,6 +194,7 @@ export async function replaceAgentImage(input: AgentReplaceInput): Promise<Agent
   const row = data as { intake_id?: unknown; version_no?: unknown; draft_ids?: unknown } | null
   if (!row || typeof row.intake_id !== 'string') throw new ConsoleError('The database returned no intake id.', null, true)
   if (input.description) await db.from('intake_files').update({ product_description: input.description, description_missing_at: null }).eq('id', row.intake_id)
+  if (job?.id) await markJobPhotosDelivered(job.id)  // D170: a redo's one photograph is done
   // D158: a draft already saved to Shopify still shows the old picture there. The RPC forgot its media
   // id and named the unpublished drafts; the same push as Save draft sends each one again with fresh
   // media (no repair by position: the product's one existing media is the old picture), so productSet

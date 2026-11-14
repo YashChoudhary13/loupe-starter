@@ -8,6 +8,8 @@ import { ConsoleError } from '@/lib/console/mutations'
 import { supabaseServer } from '@/lib/supabase/server'
 
 import { parseJobKind, parseJobLabel, redoJobLabel, type JobKind, type JobStatus } from './label'
+import { NO_COUNTS, type PhotoCounts } from './tracking'
+import { photoCountsFor } from './tracking-server'
 
 /**
  * D143: Enhance jobs. Operator side: a job collects phone photographs under
@@ -39,17 +41,24 @@ export interface JobSummary {
   readonly kind: JobKind
   readonly instructions: string | null
   readonly redoOf: string | null
+  /** D170: every photograph's state, a wait the job is under, and how many passes it has had. */
+  readonly counts: PhotoCounts
+  readonly notBefore: string | null
+  readonly holdReason: 'limit' | 'login' | null
+  readonly passes: number
 }
 
 interface JobRow {
   id: string; label: string; status: JobStatus; created_at: string; queued_at: string | null; started_at: string | null
   finished_at: string | null; runner: string | null; note: string | null; error: string | null; photo_count: number; result_count: number
   kind?: JobKind | null; instructions?: string | null; redo_of_intake_id?: string | null
+  not_before?: string | null; hold_reason?: string | null; passes?: number | null
 }
-const JOB_COLUMNS = 'id, label, status, created_at, queued_at, started_at, finished_at, runner, note, error, photo_count, result_count, kind, instructions, redo_of_intake_id'
+const JOB_COLUMNS = 'id, label, status, created_at, queued_at, started_at, finished_at, runner, note, error, photo_count, result_count, kind, instructions, redo_of_intake_id, not_before, hold_reason, passes'
 
-function summary(r: JobRow): JobSummary {
+function summary(r: JobRow, counts: PhotoCounts = NO_COUNTS): JobSummary {
   return {
+    counts, notBefore: r.not_before ?? null, holdReason: r.hold_reason === 'limit' || r.hold_reason === 'login' ? r.hold_reason : null, passes: r.passes ?? 0,
     id: r.id, label: r.label, status: r.status, createdAt: r.created_at, queuedAt: r.queued_at, startedAt: r.started_at,
     finishedAt: r.finished_at, runner: r.runner, note: r.note, error: r.error, photoCount: r.photo_count, resultCount: r.result_count,
     kind: parseJobKind(r.kind), instructions: r.instructions ?? null, redoOf: r.redo_of_intake_id ?? null,
@@ -75,7 +84,7 @@ export async function createJob(operator: Operator, rawLabel: unknown): Promise<
 export async function beginJobPhotoUpload(
   _operator: Operator,
   input: { jobId: string; filename: string; mimeType: string; bytes: number },
-): Promise<{ photoId: string; uploadUrl: string; contentType: PhotoMime }> {
+): Promise<{ photoId: string; uploadUrl: string; contentType: PhotoMime; thumbUploadUrl: string }> {
   const filename = input.filename.trim()
   if (!filename || filename.length > 255 || /[/\\\u0000-\u001f\u007f]/u.test(filename)) throw new ConsoleError('That filename cannot be used.', null, false)
   if (!(input.mimeType in EXTENSIONS)) throw new ConsoleError('Photos must be JPEG, PNG, WebP or HEIC.', `Received ${input.mimeType || '(missing)'}`, false)
@@ -89,9 +98,13 @@ export async function beginJobPhotoUpload(
   const key = `intake/${input.jobId}/${photoId}.${EXTENSIONS[mime]}`
   const { error } = await db.from('agent_job_photos').insert({ id: photoId, job_id: input.jobId, storage_key: key, filename, bytes: input.bytes })
   if (error) throw new ConsoleError('The photo upload could not be started.', error.message, true)
-  const uploadUrl = await consoleObjectStore().presignPut(key, mime, PUT_TTL_SECONDS)
-  return { photoId, uploadUrl, contentType: mime }
+  const store = consoleObjectStore()
+  const [uploadUrl, thumbUploadUrl] = await Promise.all([store.presignPut(key, mime, PUT_TTL_SECONDS), store.presignPut(thumbKeyFor(key), 'image/jpeg', PUT_TTL_SECONDS)])
+  return { photoId, uploadUrl, contentType: mime, thumbUploadUrl }
 }
+
+/** `intake/<job>/<photo>.jpg` → `intake/<job>/<photo>.thumb.jpg` (D170). */
+export const thumbKeyFor = (storageKey: string): string => `${storageKey.replace(/\.[^./]+$/u, '')}.thumb.jpg`
 
 export async function finishJobPhotoUpload(_operator: Operator, photoId: string): Promise<{ photoCount: number }> {
   const db = supabaseServer()
@@ -100,6 +113,9 @@ export async function finishJobPhotoUpload(_operator: Operator, photoId: string)
   const head = await consoleObjectStore().head(photo.storage_key)
   if (!head) throw new ConsoleError('The photo never reached storage. Try it again.', photo.storage_key, true)
   // ponytail: no decode here; the enhancer reads the file itself. Width/height stay null.
+  // D170: the browser sends a small thumbnail beside the photo; when it arrived, the batch grid shows it.
+  const thumbKey = thumbKeyFor(photo.storage_key)
+  if (await consoleObjectStore().head(thumbKey).catch(() => null)) await db.from('agent_job_photos').update({ thumb_key: thumbKey }).eq('id', photoId)
   const { data, error: rpcErr } = await db.rpc('agent_job_photo_uploaded', { p_photo_id: photoId, p_bytes: head.bytes })
   if (rpcErr) throw rpcError('The photo could not be recorded.', rpcErr)
   return { photoCount: typeof data === 'number' ? data : 0 }
@@ -113,13 +129,15 @@ export async function queueJob(operator: Operator, jobId: string): Promise<void>
 export async function listJobs(limit = 30): Promise<readonly JobSummary[]> {
   const { data, error } = await supabaseServer().from('agent_jobs').select(JOB_COLUMNS).order('created_at', { ascending: false }).limit(limit)
   if (error) throw new ConsoleError('The batches could not be listed.', error.message, true)
-  return ((data ?? []) as JobRow[]).map(summary)
+  const rows = (data ?? []) as JobRow[]
+  const counts = await photoCountsFor(rows.map((r) => r.id))
+  return rows.map((r) => summary(r, counts.get(r.id)))
 }
 
 export async function listJobsByStatus(status: JobStatus, limit: number): Promise<readonly JobSummary[]> {
   const { data, error } = await supabaseServer().from('agent_jobs').select(JOB_COLUMNS).eq('status', status).order('created_at', { ascending: false }).limit(limit)
   if (error) throw new ConsoleError('The batches could not be listed.', error.message, true)
-  return ((data ?? []) as JobRow[]).map(summary)
+  return ((data ?? []) as JobRow[]).map((r) => summary(r))
 }
 
 export interface ClaimedJob {
@@ -133,26 +151,28 @@ export interface ClaimedJob {
   /** D148: a `render` job of an approved restock names the old product; null when it is a new piece. */
   readonly restock: unknown
   readonly photos: readonly { id: string; filename: string; url: string; replaces: string | null }[]
+  /** D170: which pass over the job this is; only the photographs still waiting come with it. */
+  readonly pass: number
 }
 
-export async function claimJob(runner: string, leaseSeconds: number): Promise<ClaimedJob | null> {
+export async function claimJob(runner: string, leaseSeconds: number, maxPhotos: number | null = null): Promise<ClaimedJob | null> {
   const db = supabaseServer()
-  const { data, error } = await db.rpc('agent_job_claim', { p_runner: runner, p_lease_seconds: leaseSeconds })
+  const { data, error } = await db.rpc('agent_job_claim', { p_runner: runner, p_lease_seconds: leaseSeconds, p_max_photos: maxPhotos })
   if (error) throw rpcError('No job could be claimed.', error)
-  const job = data as { id: string; label: string; photo_count: number; kind?: string | null; instructions?: string | null; redo_of?: string | null } | null
+  const job = data as { id: string; label: string; photo_count: number; kind?: string | null; instructions?: string | null; redo_of?: string | null; pass?: number | null } | null
   if (!job) return null
   const kind = parseJobKind(job.kind)
   const redoOf = kind === 'redo' ? job.redo_of ?? null : null
   // ponytail: one extra read for a render job instead of a third version of agent_job_claim.
   const { data: extra } = kind === 'render' ? await db.from('agent_jobs').select('restock').eq('id', job.id).maybeSingle<{ restock: unknown }>() : { data: null }
   const { data: photos, error: photosError } = await db.from('agent_job_photos')
-    .select('id, filename, storage_key').eq('job_id', job.id).eq('status', 'uploaded').order('created_at', { ascending: true })
+    .select('id, filename, storage_key').eq('job_id', job.id).eq('status', 'uploaded').eq('work_state', 'working').order('created_at', { ascending: true })
   if (photosError) throw new ConsoleError('The job photos could not be listed.', photosError.message, true)
   const store = consoleObjectStore()
   const signed = await Promise.all(((photos ?? []) as { id: string; filename: string; storage_key: string }[]).map(async (p) => ({
     id: p.id, filename: p.filename, url: await store.presignGet(p.storage_key, GET_TTL_SECONDS), replaces: redoOf,
   })))
-  return { id: job.id, label: job.label, photo_count: job.photo_count, kind, instructions: job.instructions ?? null, redo_of: redoOf, restock: extra?.restock ?? null, photos: signed }
+  return { id: job.id, label: job.label, photo_count: job.photo_count, kind, instructions: job.instructions ?? null, redo_of: redoOf, restock: extra?.restock ?? null, photos: signed, pass: job.pass ?? 1 }
 }
 
 /** D145: "Re-enhance" — one redo job, queued at once, with the supplier photograph (or the image as it is) and the note. */
