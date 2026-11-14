@@ -18,8 +18,8 @@ import { cn } from '@/lib/utils'
 const small = 'shrink-0 rounded-pill bg-chip px-3.5 py-[7px] text-[11.5px] text-ink-soft transition-colors hover:bg-[#ebebeb] disabled:opacity-45'
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
-type Filter = 'all' | 'notdone' | 'done' | 'restock' | 'failed'
-const TAG: Record<PhotoState, string> = { waiting: 'Waiting', working: 'Working', done: 'Done', restock: 'Restock', failed: 'Failed' }
+type Filter = 'all' | 'notdone' | 'done' | 'restock' | 'failed' | 'cancelled'
+const TAG: Record<PhotoState, string> = { waiting: 'Waiting', working: 'Working', done: 'Done', restock: 'Restock', failed: 'Failed', cancelled: 'Cancelled' }
 
 export interface BatchListProps {
   readonly jobs: readonly JobSummary[]
@@ -34,6 +34,7 @@ export interface BatchListProps {
   readonly onToggle: (jobId: string) => void
   readonly onResume: (job: JobSummary) => void
   readonly onRetry: (jobId: string, photoIds: readonly string[] | null) => void
+  readonly onCancel: (jobId: string) => void
 }
 
 export function BatchList(props: BatchListProps) {
@@ -42,7 +43,9 @@ export function BatchList(props: BatchListProps) {
   return <>{jobs.map((j) => <Batch key={j.id} job={j} {...props} />)}</>
 }
 
-function Batch({ job: j, photos, thumbs, open, now, busy, currentJobId, uploaded, onToggle, onResume, onRetry }: BatchListProps & { job: JobSummary }) {
+function Batch({ job: j, photos, thumbs, open, now, busy, currentJobId, uploaded, onToggle, onResume, onRetry, onCancel }: BatchListProps & { job: JobSummary }) {
+  const [confirming, setConfirming] = useState(false)
+  const unfinished = j.counts.waiting + j.counts.working
   const total = totalPhotos(j.counts)
   const finished = finishedPhotos(j.counts)
   const left = leftPhotos(j.counts)
@@ -62,7 +65,7 @@ function Batch({ job: j, photos, thumbs, open, now, busy, currentJobId, uploaded
       {sent ? (
         <>
           <p className="mt-1.5 text-[14px] font-medium tabular-nums tracking-[-0.01em]">
-            {finished} of {total} done{left > 0 ? ` · ${left} left` : ''}
+            {finished} of {total} done{left > 0 ? ` · ${left} left` : ''}{j.counts.cancelled > 0 ? ` · ${j.counts.cancelled} cancelled` : ''}
           </p>
           <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-pill bg-chip" aria-hidden>
             <span className="h-full bg-ink" style={{ width: `${(finished / total) * 100}%` }} />
@@ -96,7 +99,19 @@ function Batch({ job: j, photos, thumbs, open, now, busy, currentJobId, uploaded
         {j.status === 'collecting' && j.kind === 'batch' && (currentJobId === j.id
           ? <span className="text-[11.5px] text-muted-foreground">open above</span>
           : <button type="button" disabled={busy} onClick={() => onResume(j)} className={small}>Continue</button>)}
+        {sent && unfinished > 0 && (j.status === 'queued' || j.status === 'running') && !confirming && (
+          <button type="button" disabled={busy} className={small} onClick={() => setConfirming(true)}>Cancel batch</button>
+        )}
       </div>
+      {confirming && unfinished > 0 && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-tile bg-chip p-3" role="group" aria-label="Cancel this batch">
+          <p className="min-w-0 flex-1 basis-48 text-[12px] leading-relaxed text-ink-soft">
+            Cancel the {plural(unfinished, 'photo')} not done yet? Finished images stay.{j.counts.working > 0 ? ' Photos being rendered right now may still land.' : ''}
+          </p>
+          <button type="button" disabled={busy} className={cn(small, 'bg-ink text-white hover:bg-ink')} onClick={() => { setConfirming(false); onCancel(j.id) }}>Cancel {plural(unfinished, 'photo')}</button>
+          <button type="button" className={cn(small, 'bg-surface')} onClick={() => setConfirming(false)}>Keep</button>
+        </div>
+      )}
 
       {sent && isOpen && <PhotoGrid job={j} photos={photos[j.id]} thumbs={thumbs[j.id]} busy={busy} onRetry={onRetry} />}
     </article>
@@ -112,9 +127,9 @@ function PhotoGrid({ job, photos, thumbs, busy, onRetry }: {
   if (!photos) return <p className="mt-3 text-[12px] text-muted-foreground">Loading the photographs…</p>
   const c = job.counts
   const chips: readonly (readonly [Filter, string, number])[] = [
-    ['all', 'All', photos.length], ['notdone', 'Not done', leftPhotos(c)], ['done', 'Done', c.done], ['restock', 'Restock', c.restock], ['failed', 'Failed', c.failed],
+    ['all', 'All', photos.length], ['notdone', 'Not done', leftPhotos(c)], ['done', 'Done', c.done], ['restock', 'Restock', c.restock], ['failed', 'Failed', c.failed], ['cancelled', 'Cancelled', c.cancelled],
   ]
-  const shows = (p: JobPhoto) => filter === 'all' || (filter === 'notdone' ? p.state !== 'done' && p.state !== 'restock' : p.state === filter)
+  const shows = (p: JobPhoto) => filter === 'all' || (filter === 'notdone' ? p.state === 'waiting' || p.state === 'working' || p.state === 'failed' : p.state === filter)
   const visible = photos.filter(shows)
   const picked = photos.find((p) => p.id === selected) ?? null
   return (
@@ -138,7 +153,7 @@ function PhotoGrid({ job, photos, thumbs, busy, onRetry }: {
                     p.id === selected && 'outline-2 outline-offset-2 outline-ink')}>
                   {thumbs?.[p.id]
                     // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={thumbs[p.id]} alt="" loading="lazy" className={cn('size-full object-cover', (p.state === 'waiting' || p.state === 'failed') && 'opacity-60')} />
+                    ? <img src={thumbs[p.id]} alt="" loading="lazy" className={cn('size-full object-cover', (p.state === 'waiting' || p.state === 'failed' || p.state === 'cancelled') && 'opacity-60')} />
                     : <span className="absolute inset-x-1.5 top-1.5 break-all font-mono text-[9px] leading-tight text-muted-foreground">{p.filename}</span>}
                   <span className={cn('absolute bottom-1.5 left-1.5 rounded-pill px-2 py-[3px] text-[9px] font-medium uppercase tracking-[0.05em]',
                     p.state === 'done' ? 'bg-ink text-white' : p.state === 'failed' ? 'bg-amber text-white' : p.state === 'working' ? 'animate-pulse bg-white text-ink' : 'bg-white text-ink-soft')}>
@@ -193,6 +208,7 @@ function Status({ job, now }: { job: JobSummary; now: Date }) {
   else if (job.status === 'queued' && job.holdReason === 'login') { text = 'Needs sign-in'; tone = 'need' }
   else if (job.status === 'queued') text = job.passes > 0 ? 'Back in queue' : 'Queued'
   else if (failed > 0) { text = `${failed} need${failed === 1 ? 's' : ''} you`; tone = 'need' }
+  else if (job.counts.cancelled > 0) text = finishedPhotos(job.counts) > 0 ? 'Done · rest cancelled' : 'Cancelled'
   return (
     <span className={cn('shrink-0 rounded-pill px-2.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.04em]',
       tone === 'need' ? 'bg-[#faf2e4] text-amber' : tone === 'run' ? 'bg-ink text-white' : 'bg-chip text-muted-foreground')}>

@@ -2,7 +2,7 @@
 
 import { JobInputError } from './label'
 
-export const PHOTO_STATES = ['waiting', 'working', 'done', 'restock', 'failed'] as const
+export const PHOTO_STATES = ['waiting', 'working', 'done', 'restock', 'failed', 'cancelled'] as const
 export type PhotoState = (typeof PHOTO_STATES)[number]
 
 export function parsePhotoState(raw: unknown): PhotoState {
@@ -10,7 +10,7 @@ export function parsePhotoState(raw: unknown): PhotoState {
 }
 
 export type PhotoCounts = Readonly<Record<PhotoState, number>>
-export const NO_COUNTS: PhotoCounts = { waiting: 0, working: 0, done: 0, restock: 0, failed: 0 }
+export const NO_COUNTS: PhotoCounts = { waiting: 0, working: 0, done: 0, restock: 0, failed: 0, cancelled: 0 }
 
 export function countPhotos(states: readonly PhotoState[]): PhotoCounts {
   const counts = { ...NO_COUNTS }
@@ -18,7 +18,7 @@ export function countPhotos(states: readonly PhotoState[]): PhotoCounts {
   return counts
 }
 
-export const totalPhotos = (c: PhotoCounts): number => c.waiting + c.working + c.done + c.restock + c.failed
+export const totalPhotos = (c: PhotoCounts): number => c.waiting + c.working + c.done + c.restock + c.failed + c.cancelled
 /** Done for the owner's purposes: a render in Pending or a card in Restock. */
 export const finishedPhotos = (c: PhotoCounts): number => c.done + c.restock
 export const leftPhotos = (c: PhotoCounts): number => c.waiting + c.working + c.failed
@@ -38,6 +38,7 @@ export function photoReason(photo: JobPhoto, jobStatus: string): string {
     case 'done': return 'Rendered and delivered. It is in Pending in the Console.'
     case 'restock': return 'Looks like a piece the shop already has. It went to the Restock section for your choice.'
     case 'working': return jobStatus === 'running' ? 'Being worked on now.' : 'Was being worked on when the run stopped. It goes again by itself.'
+    case 'cancelled': return 'Cancelled by you. It was not rendered.'
     case 'failed': return `Tried ${photo.attempts} times and stopped. ${photo.lastError ?? 'No reason was recorded.'}`
     default:
       return photo.attempts > 0

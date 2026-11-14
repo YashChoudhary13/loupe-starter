@@ -3864,3 +3864,5 @@ Known limits: a photograph used only as a second angle of another piece gets no 
 
 **D170 amendment (2026-11-14, same day):** the delivery link is written by itself and its failure fails the delivery, because the whole feature rests on it; the alt line is a second write that fills all four description columns (the describer-era check wants them together) and is only logged when it fails. Photographs of old batches that delivered anything are taken as done: the link was not being saved for deliveries with an alt line, so "no link" proved nothing for them.
 
+**D170 amendment 2 (2026-11-14): Cancel batch.** The owner asked for it on a batch held until a limit reset. `agent_job_cancel` turns photographs not yet done into a sixth state, `cancelled` (grey, not amber: nobody is needed), and takes a queued job out of the queue; a running job ends at its pass. A photograph that lands after the cancel is still done. The button asks once inline ("Cancel the 8 photos not done yet?"), no browser dialog. There is no undo: a cancelled photograph is uploaded again in a new batch.
+

@@ -150,6 +150,22 @@ async function main() {
     await assert.rejects(pool.query(`insert into public.agent_runner_commands (runner, kind, created_by) values ($1, 'shell', 'x')`, [R])); checks.push('a command kind outside the fixed list cannot even be stored')
     assert.equal((await one<{ n: number }>(`select count(*)::int as n from public.agent_runner_status`)).n, 1)
 
+    // Cancel: a held batch leaves the queue; what was done stays; a photograph that lands after the cancel still counts.
+    await pool.query(readFileSync('supabase/migrations/20261114130000_enhance_cancel.sql', 'utf8'))
+    const e = await job('2026-11-14 13.58', 4)
+    await pool.query(`update public.agent_jobs set queued_at = now() - interval '2 hours' where id = $1`, [e])
+    assert.equal((await claim(2)).r?.id, e); await deliver(e, '1.jpg')
+    await pass(e, 'limit', new Date(Date.now() + 3_600_000).toISOString(), 'limit', 1)
+    assert.equal((await one<{ n: number }>(`select public.agent_job_cancel($1, 'owner@example.test') as n`, [e])).n, 3)
+    assert.deepEqual([await states(e), (await jobRow(e)).status, (await jobRow(e)).hold_reason], ['1.jpg:done:0 2.jpg:cancelled:0 3.jpg:cancelled:0 4.jpg:cancelled:0', 'done', null])
+    assert.equal((await claim()).r, null)
+    await deliver(e, '2.jpg'); await pool.query(`select public.agent_job_sync_photos($1)`, [e])
+    assert.equal(await states(e).then((s) => s.split(' ')[1]), '2.jpg:done:0'); checks.push('Cancel takes the unfinished photographs out of the queue, keeps what is done, and a late delivery still counts')
+    const g = await job('2026-11-14 14.30', 2)
+    await pool.query(`update public.agent_jobs set queued_at = now() - interval '2 hours' where id = $1`, [g])
+    await claim(); await pool.query(`select public.agent_job_cancel($1, 'owner@example.test')`, [g])
+    assert.equal((await pass(g, 'ok')).s, 'failed'); assert.equal(await states(g), '1.jpg:cancelled:0 2.jpg:cancelled:0'); checks.push('a batch cancelled while running ends at its pass and is not taken again')
+
     console.log(JSON.stringify({ ok: true, checks: checks.length, proved: checks }, null, 1))
   } finally {
     await pool.end().catch(() => undefined)

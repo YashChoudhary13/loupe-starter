@@ -82,17 +82,24 @@ export async function retryJobPhotos(operator: Operator, jobId: string, photoIds
   return typeof data === 'number' ? data : 0
 }
 
+/** The owner cancels a batch: what is not done yet leaves the queue. A pass already running ends by itself. */
+export async function cancelJob(operator: Operator, jobId: string): Promise<number> {
+  const { data, error } = await supabaseServer().rpc('agent_job_cancel', { p_job_id: jobId, p_actor: operator.email })
+  if (error) throw fail('The batch could not be cancelled.', error)
+  return typeof data === 'number' ? data : 0
+}
+
 /** A delivery or a restock card just landed for this photograph; the page should show it at once. */
 export async function markPhotoDelivered(photoId: string, state: 'done' | 'restock'): Promise<void> {
   // ponytail: best effort for liveness only. agent_job_sync_photos recomputes the truth at every claim and pass end.
   await supabaseServer().from('agent_job_photos').update({ work_state: state, worked_at: new Date().toISOString(), last_error: null })
-    .eq('id', photoId).in('work_state', ['waiting', 'working', 'failed'])
+    .eq('id', photoId).in('work_state', ['waiting', 'working', 'failed', 'cancelled'])
 }
 
 /** A redo's replacement landed: its job's one photograph is done. */
 export async function markJobPhotosDelivered(jobId: string): Promise<void> {
   await supabaseServer().from('agent_job_photos').update({ work_state: 'done', worked_at: new Date().toISOString(), last_error: null })
-    .eq('job_id', jobId).in('work_state', ['waiting', 'working', 'failed'])
+    .eq('job_id', jobId).in('work_state', ['waiting', 'working', 'failed', 'cancelled'])
 }
 
 export async function passJob(input: {

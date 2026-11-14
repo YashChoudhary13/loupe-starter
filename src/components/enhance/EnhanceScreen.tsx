@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   beginJobPhotoUploadAction, createJobAction, enhanceStateAction, finishJobPhotoUploadAction, jobThumbsAction, queueJobAction,
-  retryPhotosAction, runnerCommandAction, type EnhanceState,
+  cancelJobAction, retryPhotosAction, runnerCommandAction, type EnhanceState,
 } from '@/app/(shell)/enhance/actions'
 import { defaultJobLabel } from '@/lib/agent-jobs/label'
 import { photoSignature, pickPhotos } from '@/lib/agent-jobs/photos'
@@ -114,6 +114,19 @@ export function EnhanceScreen({ initialJobs, initialRunner }: { initialJobs: rea
     setBusy(true)
     try {
       const result = await retryPhotosAction(jobId, photoIds, openKey ? openKey.split(',') : [])
+      if (result.ok) take(result.data)
+      else setSaid({ text: result.error.message, tone: 'error', stale: false })
+    } catch (cause) {
+      setSaid(explain(cause))
+    } finally {
+      setBusy(false)
+    }
+  }, [openKey, take])
+
+  const cancel = useCallback(async (jobId: string) => {
+    setBusy(true)
+    try {
+      const result = await cancelJobAction(jobId, openKey ? openKey.split(',') : [])
       if (result.ok) take(result.data)
       else setSaid({ text: result.error.message, tone: 'error', stale: false })
     } catch (cause) {
@@ -325,7 +338,7 @@ export function EnhanceScreen({ initialJobs, initialRunner }: { initialJobs: rea
         <div className="flex flex-col gap-2 pb-10">
           <BatchList jobs={jobs} photos={jobPhotos} thumbs={thumbs} open={open} now={now} busy={busy}
             currentJobId={job?.id ?? null} uploaded={uploaded}
-            onToggle={(id) => setToggled((prev) => ({ ...prev, [id]: !open.has(id) }))} onResume={resume} onRetry={(id, ids) => void retry(id, ids)} />
+            onToggle={(id) => setToggled((prev) => ({ ...prev, [id]: !open.has(id) }))} onResume={resume} onRetry={(id, ids) => void retry(id, ids)} onCancel={(id) => void cancel(id)} />
         </div>
       </div>
     </section>

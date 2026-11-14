@@ -4,7 +4,7 @@ import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authori
 import { JobInputError } from '@/lib/agent-jobs/label'
 import { beginJobPhotoUpload, createJob, finishJobPhotoUpload, listJobs, queueJob, type JobSummary } from '@/lib/agent-jobs/server'
 import type { JobPhoto, RunnerView } from '@/lib/agent-jobs/tracking'
-import { jobPhotoUrl, jobThumbUrls, listJobPhotos, retryJobPhotos, runnerView, sendRunnerCommand } from '@/lib/agent-jobs/tracking-server'
+import { jobPhotoUrl, jobThumbUrls, listJobPhotos, retryJobPhotos, runnerView, sendRunnerCommand, cancelJob } from '@/lib/agent-jobs/tracking-server'
 import { ConsoleError } from '@/lib/console/mutations'
 
 /** D143 — the Enhance jobs page. Same result contract as the Upload section. */
@@ -86,6 +86,15 @@ export async function retryPhotosAction(jobId: string, photoIds: readonly string
   return withOperator(async (operator) => {
     if (!UUID.test(jobId)) throw new JobInputError('That batch was not found.')
     await retryJobPhotos(operator, jobId, photoIds ? uuids(photoIds) : null)
+    return enhanceState(openJobIds)
+  })
+}
+
+/** Cancels what is left of a batch. */
+export async function cancelJobAction(jobId: string, openJobIds: readonly string[]): Promise<EnhanceActionResult<EnhanceState>> {
+  return withOperator(async (operator) => {
+    if (!UUID.test(jobId)) throw new JobInputError('That batch was not found.')
+    await cancelJob(operator, jobId)
     return enhanceState(openJobIds)
   })
 }
