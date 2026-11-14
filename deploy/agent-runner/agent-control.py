@@ -255,6 +255,14 @@ def step_login(login):
 
 # ---------------------------------------------------------------------------------------------- the loop
 
+def seat_free(limits):
+    """A limit hold may end early: Claude is signed in and some Codex seat has room again (90, not the runner's 98, so it does not flap)."""
+    if limits["claude"]["signed_in"] is False:
+        return False
+    return any(c.get("signed_in") and c.get("five_hour") is not None and c["five_hour"] < 90 and (c.get("week") is None or c["week"] < 98)
+               for c in limits["codex"])
+
+
 def runner_state(limits, hold, paused):
     if paused:
         return "paused"
@@ -300,6 +308,10 @@ def main():
             hold = load(state_path("hold"))
             if hold and float(hold.get("until") or 0) <= time.time():
                 hold = None
+            if hold and hold.get("reason") == "limit" and seat_free(limits):
+                os.remove(state_path("hold"))  # a seat was reset before the planned time: no reason to wait for the clock
+                hold = None
+                say("a Codex seat is free again: starting before the planned time")
             paused = os.path.exists(state_path("paused"))
             try:
                 with open(state_path("current")) as f:

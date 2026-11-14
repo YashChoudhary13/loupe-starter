@@ -130,6 +130,14 @@ export interface RunnerCommandOut { readonly id: string; readonly kind: string; 
 export async function reportRunner(runner: string, status: unknown, log: string, results: readonly unknown[]): Promise<readonly RunnerCommandOut[]> {
   const { data, error } = await supabaseServer().rpc('agent_runner_report', { p_runner: runner, p_status: status, p_log: log, p_results: results })
   if (error) throw fail('The report could not be stored.', error)
+  // A limit can end before its clock time (a seat reset by hand). Once the server says it is ready again,
+  // the batches that wait for the limit may be claimed at once. The one-minute wait after a failed try has
+  // no hold_reason and is left alone.
+  const state = (status as { state?: unknown } | null)?.state
+  if (state === 'idle' || state === 'working') {
+    const { error: releaseError } = await supabaseServer().from('agent_jobs').update({ not_before: null, hold_reason: null }).eq('status', 'queued').eq('hold_reason', 'limit')
+    if (releaseError) console.error('enhance: could not release limit holds', releaseError.message)
+  }
   return Array.isArray(data) ? (data as RunnerCommandOut[]) : []
 }
 
