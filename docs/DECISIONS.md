@@ -3862,3 +3862,5 @@ The owner: "I upload 20 images, I do not know which image is enhanced and which 
 
 Known limits: a photograph used only as a second angle of another piece gets no delivery of its own and ends `failed` after three tries (the push tool does not report "merged into" yet); photographs of batches from before this change with no delivery on record are backfilled as `failed`; the 15 / 5 pass sizes are a guess to tune against real batches.
 
+**D170 amendment (2026-11-14, same day):** the delivery link is written by itself and its failure fails the delivery, because the whole feature rests on it; the alt line is a second write that fills all four description columns (the describer-era check wants them together) and is only logged when it fails. Photographs of old batches that delivered anything are taken as done: the link was not being saved for deliveries with an alt line, so "no link" proved nothing for them.
+

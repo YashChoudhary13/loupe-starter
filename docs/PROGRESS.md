@@ -49,6 +49,8 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - A photograph used only as a second angle ends `failed` after three tries.
 - Pass sizes (15, 5 near the limit) are untuned.
 
+**Live, then a fault found the same afternoon (fixed in the next commit):** after go-live the page showed delivered photographs as Failed (`12.27`: 10 failed of 11 although 11 were delivered). Cause, read from production with `scripts/diagnose-enhance-links.ts`: `ingestAgentImage` wrote the photo link and the alt line in one unchecked update, and the alt line breaks the check `intake_files_description_is_complete` (description, model, time and cost must be set together), so every delivery with an alt line lost both; 708 of 1,101 agent deliveries have no link and no alt line was ever saved (D150 never worked live). Fix: the link is its own checked write; the alt line is written with `description_model = 'agent'`, `described_at`, cost 0; migration `20261114110000_enhance_backfill_repair.sql` turns the wrong Failed marks of batches that did deliver into done. The runner was paused from 13:56 IST until the fix is live. Also: photographs from before D170 have no thumbnail, the grid now signs the phone photograph instead.
+
 **Surprises:** the two batches of 14 Nov failed because `~/.claude/.credentials.json` on the server had been rewritten on 7 Nov with no refresh token. tmux sessions started over ssh do not survive on that host; use `setsid nohup`.
 
 **Next session should start with:** read `docs/PROGRESS.md`, confirm the three deploy steps ran, then upload a small batch and watch /enhance.

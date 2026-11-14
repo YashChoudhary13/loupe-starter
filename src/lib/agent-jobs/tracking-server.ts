@@ -60,10 +60,12 @@ export async function listJobPhotos(jobIds: readonly string[]): Promise<Readonly
 /** Signed thumbnail URLs for one job, fetched once when its grid opens (a poll must never re-sign them). */
 export async function jobThumbUrls(jobId: string): Promise<Readonly<Record<string, string>>> {
   const { data, error } = await supabaseServer()
-    .from('agent_job_photos').select('id, thumb_key').eq('job_id', jobId).eq('status', 'uploaded').not('thumb_key', 'is', null).limit(1000)
+    .from('agent_job_photos').select('id, thumb_key, storage_key').eq('job_id', jobId).eq('status', 'uploaded').limit(1000)
   if (error) throw new ConsoleError('The thumbnails could not be listed.', error.message, true)
   const store = consoleObjectStore()
-  const pairs = await Promise.all(((data ?? []) as { id: string; thumb_key: string }[]).map(async (r) => [r.id, await store.presignGet(r.thumb_key, THUMB_TTL_SECONDS)] as const))
+  // A photograph from before D170 (or whose thumbnail upload failed) has no thumbnail: show the phone photograph itself.
+  const pairs = await Promise.all(((data ?? []) as { id: string; thumb_key: string | null; storage_key: string }[])
+    .map(async (r) => [r.id, await store.presignGet(r.thumb_key ?? r.storage_key, THUMB_TTL_SECONDS)] as const))
   return Object.fromEntries(pairs)
 }
 

@@ -86,6 +86,15 @@ function parsed(data: unknown): AgentImageResult {
   return { intakeId: row.intake_id, status: typeof row.status === 'string' ? row.status : 'enhanced', duplicate: row.duplicate === true }
 }
 
+/** D150: the enhancer's alt line. The description columns travel together (a check constraint from the describer era). */
+async function saveAltLine(intakeId: string, description: string): Promise<void> {
+  const { error } = await supabaseServer().from('intake_files')
+    .update({ product_description: description, description_missing_at: null, description_model: 'agent', described_at: new Date().toISOString(), description_cost_usd: 0 })
+    .eq('id', intakeId)
+  // The image itself is in; a lost alt line must be visible in the server log but must not fail the delivery.
+  if (error) console.error(`agent alt line not saved for ${intakeId}: ${error.message}`)
+}
+
 export async function ingestAgentImage(input: AgentImageInput): Promise<AgentImageResult> {
   if (input.bytes.byteLength === 0) throw new ConsoleError('The file is empty.', null, false)
   if (input.bytes.byteLength > AGENT_IMAGE_MAX_BYTES) throw new ConsoleError('The file is larger than 25 MB.', null, false)
@@ -128,12 +137,15 @@ export async function ingestAgentImage(input: AgentImageInput): Promise<AgentIma
   if (error) throw new ConsoleError('The image is safely uploaded, but it could not be added to Pending.', error.message, true)
   const result = parsed(data)
   const sourcePhotoId = input.sourcePhotoId ?? await findSourcePhoto(input.batch, input.sourceFilename)
-  // ponytail: one extra update instead of a wider finalise signature; a miss here only loses the redo shortcut or the alt line.
-  const patch: Record<string, string | null> = {}
-  if (sourcePhotoId) patch.agent_source_photo_id = sourcePhotoId
-  if (input.description) { patch.product_description = input.description; patch.description_missing_at = null }
-  if (Object.keys(patch).length && !result.duplicate) {
-    await db.from('intake_files').update(patch).eq('id', result.intakeId)
+  // Two writes, each checked. Until 2026-11-14 they were one unchecked update, and the alt line broke the
+  // intake_files_description_is_complete check, so every delivery with an alt line silently lost both the
+  // alt and its link to the phone photograph. Since D170 that link is what says a photograph is done.
+  if (!result.duplicate) {
+    if (sourcePhotoId) {
+      const { error: linkError } = await db.from('intake_files').update({ agent_source_photo_id: sourcePhotoId }).eq('id', result.intakeId)
+      if (linkError) throw new ConsoleError('The image is in Pending, but it could not be tied to its photograph.', linkError.message, true)
+    }
+    if (input.description) await saveAltLine(result.intakeId, input.description)
   }
   if (sourcePhotoId) await markPhotoDelivered(sourcePhotoId, 'done')  // D170: the batch grid shows it at once
   return result
@@ -193,7 +205,7 @@ export async function replaceAgentImage(input: AgentReplaceInput): Promise<Agent
   if (error) throw new ConsoleError('The new image is stored, but the old one could not be replaced.', [error.code, error.message].filter(Boolean).join(' · '), error.code !== '55000' && error.code !== '22023' && error.code !== 'P0002')
   const row = data as { intake_id?: unknown; version_no?: unknown; draft_ids?: unknown } | null
   if (!row || typeof row.intake_id !== 'string') throw new ConsoleError('The database returned no intake id.', null, true)
-  if (input.description) await db.from('intake_files').update({ product_description: input.description, description_missing_at: null }).eq('id', row.intake_id)
+  if (input.description) await saveAltLine(row.intake_id, input.description)
   if (job?.id) await markJobPhotosDelivered(job.id)  // D170: a redo's one photograph is done
   // D158: a draft already saved to Shopify still shows the old picture there. The RPC forgot its media
   // id and named the unpublished drafts; the same push as Save draft sends each one again with fresh

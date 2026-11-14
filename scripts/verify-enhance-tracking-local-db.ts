@@ -18,7 +18,7 @@ create table public.agent_job_photos (id uuid primary key default gen_random_uui
   storage_key text not null, filename text not null, bytes integer, status text not null default 'pending' check (status in ('pending', 'uploaded')),
   created_at timestamptz not null default now(), restock jsonb, restock_state text);
 create table public.intake_files (id uuid primary key default gen_random_uuid(), agent_source_photo_id uuid references public.agent_job_photos (id) on delete set null,
-  reenhance_job_id uuid, reenhance_note text);
+  reenhance_job_id uuid, reenhance_note text, agent_batch text);
 create table public.events (id bigserial primary key, entity_type text, entity_id uuid, event text, detail jsonb, actor text);
 create function public.agent_job_claim(p_runner text, p_lease_seconds integer) returns jsonb language sql as 'select null::jsonb';
 create function public.agent_job_finish(p_job_id uuid, p_runner text, p_status text, p_note text, p_error text, p_result_count integer) returns void language sql as 'select';
@@ -55,6 +55,10 @@ async function main() {
     await pool.query(`update public.agent_job_photos set restock_state = 'pending' where job_id = $1 and filename = '2.jpg'`, [old])
     await pool.query(readFileSync('supabase/migrations/20261114090000_enhance_photo_tracking.sql', 'utf8'))
     assert.equal(await states(old), '1.jpg:done:0 2.jpg:restock:0 3.jpg:failed:0'); checks.push('the backfill tells an old batch honestly: delivered, restock, never delivered')
+    const dead = await job('old 2026-11-06 nothing delivered', 1, `'failed', now()`)
+    await pool.query(`update public.agent_job_photos set work_state = 'failed', last_error = 'No delivery on record (from before per-photo tracking).' where job_id = $1`, [dead])
+    await pool.query(readFileSync('supabase/migrations/20261114110000_enhance_backfill_repair.sql', 'utf8'))
+    assert.deepEqual([await states(old), await states(dead)], ['1.jpg:done:0 2.jpg:restock:0 3.jpg:done:0', '1.jpg:failed:0']); checks.push('the repair: an old batch that delivered something reads done, one that delivered nothing stays failed')
 
     // A batch of five, three at a time. Two deliveries and a restock; the pass ends and the other two go on at once.
     const a = await job('2026-11-14 11.52', 5)
