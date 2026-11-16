@@ -23,7 +23,11 @@ const nextConfig: NextConfig = {
      */
     staleTimes: {
       dynamic: 30,
-      static: 180,
+      // Also 30 since D174. `static` is what the router applies to a screen read in full ahead of the click, which
+      // the menu now does when a pointer or finger lands on a link (IntentLink in Sidebar.tsx). At 180 a screen
+      // hovered and opened two minutes later showed two-minute-old orders (seen in the local twin: hover, wait 40 s,
+      // click, no request). 30 keeps one rule: nothing on screen is older than half a minute when it appears.
+      static: 30,
     },
   },
 };

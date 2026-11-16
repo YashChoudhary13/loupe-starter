@@ -2,7 +2,7 @@ import { cookies, headers } from 'next/headers'
 
 import { AppShell } from '@/components/shell/AppShell'
 import { countRestockCandidates } from '@/lib/agent-intake/restock'
-import { requireOperator } from '@/lib/auth/authorize'
+import { requireOperator, requireOperatorWith } from '@/lib/auth/authorize'
 import { faceFromHeader } from '@/lib/faces/faces'
 import { loadAttentionCount } from '@/lib/tracking/attention-count'
 
@@ -24,11 +24,13 @@ import { loadAttentionCount } from '@/lib/tracking/attention-count'
  */
 export default async function ShellLayout({ children }: { children: React.ReactNode }) {
   const headerStore = await headers()
-  const operator = await requireOperator(headerStore.get('x-next') ?? undefined)
+  const next = headerStore.get('x-next') ?? undefined
   const face = faceFromHeader(headerStore.get('x-face'))
   // Read on every face: this layout renders once per page load, and the listing screens can now be reached from any
   // face without another one (D172), so their Tracking and Restock badges need their starting counts here.
-  const [attentionCount, restockCount, cookieStore] = await Promise.all([loadAttentionCount(), countRestockCandidates(), cookies()])
+  // The counts are read while the operator's row is checked (D174); the second call is answered from this request's memo.
+  const [attentionCount, restockCount, cookieStore] = await requireOperatorWith(() => Promise.all([loadAttentionCount(), countRestockCandidates(), cookies()]), next)
+  const operator = await requireOperator(next)
   const collapsed = cookieStore.get('loupe_nav_collapsed')?.value === '1'
 
   return (

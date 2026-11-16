@@ -219,3 +219,30 @@ export class ShopifyTokenManager {
     )
   }
 }
+
+const shared = new Map<string, ShopifyTokenManager>()
+
+/**
+ * The one token manager of this process for an app on a store (D174).
+ *
+ * Every screen and action builds its own `ShopifyClient`. While each client also built its own manager, each of
+ * them minted a token before its first query: about 0.4 s in front of every Shopify read, and a call to a
+ * rate-limited endpoint per page view. The token lasts a day, so one manager serves them all; a 401 on any
+ * client still invalidates it for every client, which is what a revoked token calls for.
+ *
+ * The network is looked up at call time, so a test that stubs `fetch` after the first use is still obeyed.
+ */
+export function sharedTokenManager(config: ShopifyConfig): ShopifyTokenManager {
+  const key = [config.storeDomain, config.clientId, config.clientSecret].join('\n')
+  let manager = shared.get(key)
+  if (!manager) {
+    manager = new ShopifyTokenManager({ config, fetchImpl: (input, init) => globalThis.fetch(input, init) })
+    shared.set(key, manager)
+  }
+  return manager
+}
+
+/** For tests: forget every shared token. */
+export function clearSharedTokens(): void {
+  shared.clear()
+}

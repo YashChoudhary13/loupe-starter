@@ -109,9 +109,9 @@ export function Sidebar({
             />
           ))}
           {others.map((key) => (
-            <Link key={key} href={faceHome(key)} aria-label={`Open ${FACES[key].label}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border border-chip px-3 py-2 text-[12px] font-medium text-ink-soft">
+            <IntentLink key={key} href={faceHome(key)} aria-label={`Open ${FACES[key].label}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border border-chip px-3 py-2 text-[12px] font-medium text-ink-soft">
               {FACES[key].label}
-            </Link>
+            </IntentLink>
           ))}
         </nav>
         <form action="/api/auth/signout" method="post" className="shrink-0">
@@ -182,7 +182,7 @@ export function Sidebar({
             <div className="mb-2 px-3.5 text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Apps</div>
           )}
           {others.map((key) => (
-            <Link
+            <IntentLink
               key={key}
               href={faceHome(key)}
               title={collapsed ? FACES[key].label : undefined}
@@ -191,7 +191,7 @@ export function Sidebar({
             >
               <span className="grid size-4 shrink-0 place-items-center rounded-[5px] bg-chip text-[10px] font-semibold" aria-hidden>{FACES[key].label[0]}</span>
               {collapsed ? null : FACES[key].label}
-            </Link>
+            </IntentLink>
           ))}
         </nav>
       ) : null}
@@ -260,7 +260,7 @@ function NavItem({
   badge?: number | null
 }) {
   return (
-    <Link
+    <IntentLink
       href={href}
       title={collapsed ? label : undefined}
       aria-label={label}
@@ -290,7 +290,7 @@ function NavItem({
           </span>
         )
       ) : null}
-    </Link>
+    </IntentLink>
   )
 }
 
@@ -345,4 +345,16 @@ function UploadIcon() {
       <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
     </svg>
   )
+}
+
+/**
+ * A menu link that reads its screen in full the moment the pointer or a finger lands on it (D174).
+ *
+ * A link normally prefetches only the loading frame of a screen whose data is live, so the data is asked for at the
+ * click. A hand rests on a button for a moment before it presses: asking then means the click often finds the screen
+ * ready. The full read is asked for only while the intent lasts, so screens nobody is reaching for cost nothing.
+ */
+function IntentLink(props: React.ComponentProps<typeof Link>) {
+  const [intent, setIntent] = useState(false)
+  return <Link {...props} prefetch={intent ? true : null} onMouseEnter={() => setIntent(true)} onMouseLeave={() => setIntent(false)} onTouchStart={() => setIntent(true)} onTouchEnd={() => setIntent(false)} onTouchCancel={() => setIntent(false)} />
 }

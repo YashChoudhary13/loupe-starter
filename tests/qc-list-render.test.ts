@@ -1,7 +1,7 @@
 import { renderToString } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/auth/authorize', () => ({ requireOperator: vi.fn() }))
+vi.mock('@/lib/auth/authorize', () => ({ requireOperatorWith: <T,>(load: () => Promise<T>) => load() }))
 vi.mock('@/lib/shopify/client', () => ({ ShopifyClient: class {} }))
 vi.mock('@/lib/shopify/qc-orders', () => ({ listQcOrders: vi.fn(), qcShopifyError: () => 'QC status unavailable' }))
 vi.mock('@/lib/qc/server', () => ({ qcOrderStatuses: vi.fn(), listRecentPasses: vi.fn() }))

@@ -18,7 +18,7 @@
  */
 import { type ShopifyConfig, graphqlEndpoint, shopifyConfig } from './config'
 import { ShopifyError, isRetryableStatus } from './errors'
-import { ShopifyTokenManager } from './token'
+import { sharedTokenManager, ShopifyTokenManager } from './token'
 
 /** 0 s, 1 s, 3 s, 8 s. Four attempts, then a human looks. */
 export const DEFAULT_RETRY_DELAYS_MS = [0, 1_000, 3_000, 8_000] as const
@@ -59,8 +59,10 @@ export class ShopifyClient {
   constructor(options: ShopifyClientOptions = {}) {
     this.config = options.config ?? shopifyConfig()
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch
+    // The default client shares the process's token (D174). One given its own network (a test) keeps its own.
     this.tokens =
-      options.tokens ?? new ShopifyTokenManager({ config: this.config, fetchImpl: this.fetchImpl })
+      options.tokens ??
+      (options.fetchImpl ? new ShopifyTokenManager({ config: this.config, fetchImpl: this.fetchImpl }) : sharedTokenManager(this.config))
     this.retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
     this.sleep =
       options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { requireOperator } from '@/lib/auth/authorize'
+import { requireOperatorWith } from '@/lib/auth/authorize'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { listQcOrders, qcShopifyError } from '@/lib/shopify/qc-orders'
 import { listRecentPasses, qcOrderStatuses } from '@/lib/qc/server'
@@ -12,7 +12,6 @@ const clock = (value: string) => new Date(value).toLocaleTimeString('en-IN', { h
 const orderPath = (gid: string) => `/qc/${gid.split('/').pop()}`
 
 export default async function QcOrdersPage({ searchParams }: { searchParams: Promise<{ q?: string; after?: string }> }) {
-  await requireOperator()
   const params = await searchParams
   const q = typeof params.q === 'string' ? params.q : ''
   const after = typeof params.after === 'string' ? params.after : null
@@ -23,12 +22,12 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
   let passesError: string | undefined
   let clubs = new Map<string, Club>()
   // The three reads do not depend on each other (the saved statuses follow the order list), so they go out together:
-  // measured 2.4 s one after another, 1.0 s together (D171).
-  const [listed, clubbed, passed] = await Promise.allSettled([
+  // measured 2.4 s one after another, 1.0 s together (D171). The sign-in check goes out with them (D174).
+  const [listed, clubbed, passed] = await requireOperatorWith(() => Promise.allSettled([
     listQcOrders(new ShopifyClient(), q, after).then(async found => ({ found, saved: await qcOrderStatuses(found.nodes.map(order => order.id)) })),
     loadClubs(),
     listRecentPasses(30),
-  ])
+  ]))
   if (listed.status === 'fulfilled') { result = listed.value.found; statuses = listed.value.saved } else error = qcShopifyError(listed.reason)
   // The club pill is a convenience: without it every order still opens, alone.
   if (clubbed.status === 'fulfilled') clubs = clubbed.value; else console.warn('QC list: clubs not loaded:', clubbed.reason instanceof Error ? clubbed.reason.message : clubbed.reason)

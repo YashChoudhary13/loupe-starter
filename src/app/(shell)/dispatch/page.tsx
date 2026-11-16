@@ -1,4 +1,4 @@
-import { requireOperator } from '@/lib/auth/authorize'
+import { requireOperatorWith } from '@/lib/auth/authorize'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { dispatchShopifyError, listDispatchOrders } from '@/lib/shopify/dispatch-orders'
 import { qcOrderStatuses } from '@/lib/qc/server'
@@ -9,11 +9,11 @@ import type { DispatchOrderSummary, ParcelRow } from '@/lib/dispatch/types'
 export const dynamic = 'force-dynamic'
 
 export default async function DispatchPage() {
-  await requireOperator()
   let orders: DispatchOrderSummary[] = [], truncated = false, open: ParcelRow[] = [], recent: ParcelRow[] = [], ordersLoaded = false
   const problems: string[] = []
-  // Shopify's orders and the staged numbers do not depend on each other, so they are read together (D171).
-  const [listed, staged] = await Promise.allSettled([listDispatchOrders(new ShopifyClient()), listParcels(30)])
+  // Shopify's orders and the staged numbers do not depend on each other, so they are read together (D171), and the
+  // sign-in check goes out with them (D174).
+  const [listed, staged] = await requireOperatorWith(() => Promise.allSettled([listDispatchOrders(new ShopifyClient()), listParcels(30)]))
   if (listed.status === 'fulfilled') { ({ orders, truncated } = listed.value); ordersLoaded = true } else problems.push(dispatchShopifyError(listed.reason))
   if (staged.status === 'fulfilled') ({ open, recent } = staged.value); else problems.push(staged.reason instanceof Error ? staged.reason.message : 'Staged numbers could not be loaded.')
   const ids = [...new Set([...orders.map(order => order.id), ...open.flatMap(parcel => parcel.orders.map(item => item.order_id))])]

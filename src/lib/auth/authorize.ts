@@ -138,6 +138,26 @@ export async function requireOperator(next?: string): Promise<Operator> {
   return operator
 }
 
+/**
+ * For pages: the sign-in check and the page's reads, side by side (D174).
+ *
+ * `await requireOperator()` followed by the reads put one database round trip in front of every screen. Here the
+ * signed cookie is checked first, which needs no network: without a good one this redirects and `load` never runs.
+ * With one, the `app_users` row check and `load` go out together.
+ *
+ * What does not change (D44): the row check runs on every request, and its answer comes first. Whatever `load`
+ * returned or threw, a deactivated operator is redirected on this very request and sees none of it. The one new
+ * thing such a person can cause is the reads themselves, which answer to nobody.
+ */
+export async function requireOperatorWith<T>(load: () => Promise<T>, next?: string): Promise<T> {
+  const jar = await cookies()
+  if (!sessionFromCookie(jar.get(SESSION_COOKIE)?.value)) await requireOperator(next)
+  const reads = load()
+  reads.catch(() => {}) // reported below, and only to an operator
+  await requireOperator(next)
+  return reads
+}
+
 export class NotAuthorisedError extends Error {
   constructor() {
     super('Your session has ended. Sign in again to continue.')

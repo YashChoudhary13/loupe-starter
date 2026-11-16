@@ -30,6 +30,38 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ---
 
 
+## 2026-11-16 — Every tab loads faster: one Shopify token, sign-in check beside the reads, read-ahead on the menu (D174)
+
+**Goal this session:** the owner, with D171 and D172 live: increase the loading speed of every tab.
+
+**Built:**
+- `src/lib/shopify/token.ts` → `sharedTokenManager` (one token manager per store, app and secret for the process) and `clearSharedTokens` for tests; `src/lib/shopify/client.ts` uses it unless a client is given its own network.
+- `src/lib/auth/authorize.ts` → `requireOperatorWith(load, next?)`: cookie first without the network, then the operator's row and the reads together, the row check deciding.
+- Pages on it: Console, draft editor, Enhance, Restock, Order QC, Shortages, Labels, Dispatch, Print slips; the shell layout for its two counts. The draft editor reads draft, queue, catalogue and blocks together; Print slips reads orders and batches together.
+- `src/components/console/Sidebar.tsx` → `IntentLink`: the menu and Apps links read their screen in full while a pointer or finger is on them. `next.config.ts` → `staleTimes.static` 180 → 30.
+
+**Verified:**
+- Tests written first and seen failing: `tests/shopify-client.test.ts` (two default clients share one mint; an invalidated token is minted again; another app, store or secret gets its own; a client with its own network keeps its own) and `tests/auth-operator-with-reads.test.ts` (reads start while the row check is pending; no cookie, a garbage cookie and a tampered cookie read nothing; a deactivated operator is redirected whatever the reads returned; a failing read never answers before the check).
+- Whole suite: 99 files and 761 tests pass. The 23 files that fail are the ones that need real credentials (`Missing … tests need real credentials in .env`, and the webhook HMAC test that reads `SHOPIFY_CLIENT_SECRET`); this worktree has no `.env` on purpose. Same set before the change. `tsc --noEmit` and eslint clean on every touched file.
+- Read-only probe against live data, before and after, in D174's table: Order QC list 1.1 → 0.6 s, Dispatch 1.1 → 0.5 s, Print slips 1.7 → 1.1 s, label search 1.0 → 0.45 s, draft editor 0.9 → 0.5 s, Console 0.65 → 0.5 s, Enhance 0.25 → 0.13 s, Restock and Shortages 0.2 → 0.1 s. The request log shows the mint gone: the Order QC list went from six requests (two mints) to four, a label search from two to one.
+- Local twin, production build, Playwright, server held back 0.6 s: click without hover 661 ms; click after a finished hover 14 to 28 ms with no new request; hover, wait 40 s, click → a new request (nothing older than 30 s); pointer crossing three links started one read; tap 90 ms after touch 563 ms.
+- Local twin in dev mode, `check.sh.before-cleanup-2026-11-02`: 20 passed, 0 failed (every screen on the four ports renders signed in).
+
+**Not finished / known broken:**
+- **Not deployed.** No migration, no variable: the owner's push of `claude/nav-speed` to `main` is the rollout.
+- The numbers are from the Mac. The server's own round trips to the database and to Shopify were not timed (no login from here).
+- Tracking and Identify are as slow as before; Home and Workflows keep the sign-in check first. Reasons in D174.
+- The first Shopify read after each deploy or restart still mints a token (0.44 s), once.
+
+**Surprises:**
+- "One Shopify order-list request is about 1 s whatever the list size" (D171) was two requests: the token mint and the query. The per-request log showed it at once; timing the loader as a whole had hidden it.
+- Shopify's budget is not a constraint here: the Order QC list costs 4 points, Dispatch 11, the open-order read 68, of 2,000 refilled at 100 a second.
+- A full read ahead of the click is kept for `staleTimes.static`, not `dynamic`.
+
+**Next session should start with:** the owner's push, then the signed-out checks of D172 again and the owner's own feel of each tab.
+
+---
+
 ## 2026-11-16 — Find: parcel photograph by order number, raw photograph by product code (D173)
 
 **Goal this session:** the owner's support look-up: type a product code and get its raw photograph, type an order number and get the photograph of its packed parcel with the tracking number on top, fast enough for many chats at once. The owner approved a local draft and chose a screen inside Loupe, uploads by the packing desk, and no fulfilling from the photographs yet.
@@ -73,6 +105,8 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - Two sessions cannot share the twin: another session's restart rebuilt the database under this one. One user at a time, `./down.sh` first.
 
 **Next session should start with:** the owner's `npm run db:push`, then the push to `main`, then the 45 photographs through `/find/parcels` and a look at how many filed themselves.
+
+---
 
 ## 2026-11-16 — Switching between Loupe, Order QC, Fulfilment and Home without a page load (D172)
 

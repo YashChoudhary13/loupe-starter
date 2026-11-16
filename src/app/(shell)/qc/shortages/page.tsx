@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { requireOperator } from '@/lib/auth/authorize'
+import { requireOperatorWith } from '@/lib/auth/authorize'
 import { listShortages } from '@/lib/qc/shortages'
 import { SendMissingForm, ShortageResolveForm } from '@/components/qc/ShortageResolveForm'
 import type { QcShortage } from '@/lib/qc/types'
@@ -22,10 +22,10 @@ function Row({ item }: { item: QcShortage }) {
 }
 
 export default async function ShortagesPage() {
-  await requireOperator()
   let lists: Awaited<ReturnType<typeof listShortages>> = { open: [], resolved: [] }
   let error: string | undefined
-  try { lists = await listShortages(30) } catch (cause) { error = cause instanceof Error ? cause.message : 'Shortages could not be loaded.' }
+  const [read] = await requireOperatorWith(() => Promise.allSettled([listShortages(30)]))
+  if (read.status === 'fulfilled') lists = read.value; else error = read.reason instanceof Error ? read.reason.message : 'Shortages could not be loaded.'
   return <section className="h-full overflow-auto px-3 py-4 md:px-8 md:py-6">
     <div className="flex flex-wrap items-start justify-between gap-4"><div>
       <h1 className="text-[26px] font-medium tracking-[-0.025em]">Shortages</h1>

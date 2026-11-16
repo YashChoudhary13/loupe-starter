@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 
 import { ConsoleScreen } from '@/components/console/ConsoleScreen'
-import { requireOperator } from '@/lib/auth/authorize'
+import { requireOperatorWith } from '@/lib/auth/authorize'
 import { describeBlocks } from '@/lib/console/publish'
 import { loadCatalog, loadColourSuggestions, loadDraft, loadQueue } from '@/lib/console/queue'
 
@@ -20,18 +20,20 @@ export default async function DraftPage({
 }: {
   params: Promise<{ draftId: string }>
 }) {
-  await requireOperator()
   const { draftId } = await params
 
-  const draft = await loadDraft(draftId)
-  if (!draft) notFound()
-
-  const [queue, catalog, colours, blocks] = await Promise.all([
-    loadQueue(),
-    loadCatalog(),
-    loadColourSuggestions(draft.categoryId),
-    describeBlocks(draftId, false),
-  ])
+  // The draft, the queue, the catalogue and the publish blocks do not depend on each other, so they are read
+  // together, alongside the sign-in check (D174). Only the colour suggestions wait, for the draft's category.
+  const loaded = await requireOperatorWith(async () => {
+    const others = Promise.all([loadQueue(), loadCatalog(), describeBlocks(draftId, false)])
+    others.catch(() => {}) // a draft that does not exist is a 404, whatever else failed
+    const draft = await loadDraft(draftId)
+    if (!draft) return null
+    const [colours, [queue, catalog, blocks]] = await Promise.all([loadColourSuggestions(draft.categoryId), others])
+    return { draft, colours, queue, catalog, blocks }
+  })
+  if (!loaded) notFound()
+  const { draft, colours, queue, catalog, blocks } = loaded
 
   return (
     <ConsoleScreen

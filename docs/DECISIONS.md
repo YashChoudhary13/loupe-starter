@@ -3938,3 +3938,38 @@ The owner: buyers keep asking support for the raw photograph of a product, and f
 6. A raw photograph stored as iPhone HEIC cannot be drawn by Chrome: the small picture stays, Copy picture says to use Download.
 
 **Local twin:** its pretend world answers a parcel-reading request with a canned reading when `fakeworld/parcel-reads.json` lists one (otherwise 503, as for every Claude call), and `/find` is on its Loupe face. Its network guard had a fault that this work found and fixed: it changed the caller's connection options in place, so Node's connection pool lost track of every closed socket and, after 50, every storage read made by the server waited for ever. Loupe was never affected; only server-side storage reads in the twin.
+
+---
+
+### D174 — One Shopify token for the process, the sign-in check alongside a screen's reads, and a menu link that reads ahead on intent (2026-11-16)
+
+The owner, with D171 and D172 live: make every tab load faster. Measured first, read-only against live data from the Mac (a throwaway script that calls each screen's own loader and logs every request it makes: host, table, start, duration; nothing written). What the browser downloads was checked too and is not the wait: script and style files are compressed, cached for a year and served from Cloudflare's edge (234 KB for the sign-in page), an empty page answers in 0.15 s.
+
+**What the measurement showed**
+
+| Screen | Before | After | Where the time was |
+|---|---|---|---|
+| Order QC list | 1.1 s | 0.6 s | token mint 0.44 s, then the two Shopify reads |
+| Dispatch | 1.1 s | 0.5 s | token mint 0.44 s, then one Shopify read |
+| Print slips | 1.7 s | 1.1 s | token mint 0.44 s, then one Shopify read of 0.85 to 1.3 s |
+| Label search | 1.0 s | 0.45 s | token mint 0.44 s, then one Shopify read |
+| Draft editor | 0.9 s | 0.5 s | sign-in check, then the draft, then the queue: three steps in a row |
+| Console | 0.65 s | 0.5 s | sign-in check, then four database waves |
+| Enhance | 0.25 s | 0.13 s | sign-in check, then two waves |
+| Restock, Shortages | 0.2 s | 0.1 s | sign-in check, then one wave |
+
+Before = sign-in check (0.09 to 0.14 s) plus the reads, one after the other, as the pages ran them. After = the same reads with the changes below. Add about 0.15 s of network for a click from Jaipur. These are the Mac's round trips; the server's own could not be timed (no login from here), and `/health`, which counts 29 tables at once, takes 0.35 to 0.47 s there.
+
+**1. Every Shopify read minted its own access token.** `ShopifyTokenManager` caches the token and refreshes it early, but it lived inside each `ShopifyClient`, and all 36 call sites build a client per request. So every page view and every action did `POST /admin/oauth/access_token` (0.44 s) before its query, against an endpoint the same file calls rate-limited. `sharedTokenManager(config)` in `src/lib/shopify/token.ts` is now the default: one manager per store, app and secret for the process. A 401 on any client invalidates it for all. A client given its own `fetchImpl` (the tests) keeps its own manager.
+
+**2. The sign-in check and the reads go out together.** Every page did `await requireOperator()` and only then started reading: one database round trip in front of every click. `requireOperatorWith(load, next?)` in `src/lib/auth/authorize.ts` checks the signed cookie first, with no network: without a good one it redirects and `load` never runs. With one, the `app_users` row check and `load` run side by side, and the row check's answer comes first whatever `load` returned or threw. D44 holds as written: the row is read on every request and a deactivated operator is redirected on that request and sees nothing. **What is new and accepted:** a person whose row was deactivated but whose cookie is still inside its 12 hours can make the server start a screen's reads (database selects, Shopify list queries of 3 to 68 cost points against a budget of 2,000 refilled at 100 a second). They answer to nobody. For that reason it is used only where the loader does nothing but read: Console, the draft editor, Enhance, Restock, Order QC, Shortages, Labels, Dispatch, Print slips, and the shell layout's two counts. **Home and Workflows keep the old order** (their loaders also write: probe results, stale runs). The QC order screen keeps it too (its reads take the operator). The draft editor now also reads its draft, queue, catalogue and publish blocks together instead of draft first; Print slips reads its orders and its printed batches together.
+
+**3. A menu link reads its screen when a pointer or finger lands on it.** A link to a live screen prefetches only its loading frame, so the data is asked for at the click. `IntentLink` in `Sidebar.tsx` sets `prefetch` to `true` while the pointer is on the link or a finger is down, and back to the default when it leaves. In the local twin with the server held back 0.6 s: a click with no hover took 661 ms, a click after the hover's read had finished 14 to 28 ms, a click 200 ms into the hover 459 ms, a tap 90 ms after touch 563 ms. A pointer crossing three links at 30 ms each started one read. `unstable_dynamicOnHover` does the same inside Next but is missing from the `next/link` types, so the documented `prefetch` prop is used.
+`staleTimes.static` goes from 180 to 30 with it: the router keeps a screen read in full ahead of the click for the `static` time, and at 180 a screen hovered and opened 40 s later was shown from the hover with no request (seen in the twin). At 30 the rule stays the one D59 set: nothing is older than half a minute when it appears.
+
+**Left alone, on purpose**
+- **Tracking (1.0 s) and Identify (0.3 s):** the clean-up branch removes both screens (D163). Their pages are untouched so that branch meets no edit to a file it deletes.
+- **The Console's four database waves:** `claude/loupe-cleanup` rewrites `src/lib/console/queue.ts` and `images.ts`. Two of the waves are independent and can be merged there.
+- **Print slips' Shopify read (0.85 to 1.3 s, one request for every open order with its lines):** the page needs all of it to mark HOLD, CLUB and PACK.
+
+**If it is still slow, in this order:** (1) a short server memory of the open-order read with a refresh behind the response (D171 item 1), which now mostly helps Print slips and the Order QC list's club read; (2) the Console's waves, with the clean-up; (3) the distance between the server and the database, which costs one round trip per wave on every screen and is the owner's call.

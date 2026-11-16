@@ -11,12 +11,12 @@
  * wrong turns a clear failure into a slow one, and hard rule 4 says retries are
  * bounded and then a human looks.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { ShopifyClient } from '@/lib/shopify/client'
 import type { ShopifyConfig } from '@/lib/shopify/config'
 import { ShopifyError } from '@/lib/shopify/errors'
-import { ShopifyTokenManager } from '@/lib/shopify/token'
+import { clearSharedTokens, ShopifyTokenManager } from '@/lib/shopify/token'
 
 const CONFIG: ShopifyConfig = {
   storeDomain: 'qimti.myshopify.com',
@@ -80,6 +80,47 @@ function harness(graphqlResponses: (() => Response)[]) {
 }
 
 describe('ShopifyClient', () => {
+  it('clients built the default way share one access token for the whole process (D174)', async () => {
+    // Every screen builds its own client. Each one minting its own token put a 0.4 s request in front of every Shopify read.
+    const seen: string[] = []
+    vi.stubGlobal('fetch', (async (url: string | URL | Request) => {
+      const href = String(url)
+      seen.push(href)
+      return href.endsWith('/admin/oauth/access_token') ? json({ access_token: `shpua_${seen.length}`, expires_in: 86_399 }) : json({ data: { ok: true } })
+    }) as unknown as typeof fetch)
+    const mints = () => seen.filter((href) => href.endsWith('/admin/oauth/access_token')).length
+    try {
+      await new ShopifyClient({ config: CONFIG }).graphql('{ ok }')
+      await new ShopifyClient({ config: CONFIG }).graphql('{ ok }')
+      expect(mints()).toBe(1)
+      expect(seen.filter((href) => href.includes('/graphql.json'))).toHaveLength(2)
+
+      // A 401 on one client throws the shared token away, so the next client mints again rather than reusing a dead one.
+      new ShopifyClient({ config: CONFIG }).tokens.invalidate()
+      await new ShopifyClient({ config: CONFIG }).graphql('{ ok }')
+      expect(mints()).toBe(2)
+
+      // Another app, store or secret never borrows this token.
+      await new ShopifyClient({ config: { ...CONFIG, clientId: 'another-app' } }).graphql('{ ok }')
+      await new ShopifyClient({ config: { ...CONFIG, clientSecret: 'shpss_rotated' } }).graphql('{ ok }')
+      expect(mints()).toBe(4)
+    } finally {
+      vi.unstubAllGlobals()
+      clearSharedTokens()
+    }
+  })
+
+  it('a client given its own network keeps its own token', async () => {
+    const calls: string[] = []
+    const fetchImpl = (async (url: string | URL | Request) => {
+      calls.push(String(url))
+      return String(url).endsWith('/admin/oauth/access_token') ? json({ access_token: 'shpua_own', expires_in: 86_399 }) : json({ data: { ok: true } })
+    }) as unknown as typeof fetch
+    await new ShopifyClient({ config: CONFIG, fetchImpl }).graphql('{ ok }')
+    await new ShopifyClient({ config: CONFIG, fetchImpl }).graphql('{ ok }')
+    expect(calls.filter((href) => href.endsWith('/admin/oauth/access_token'))).toHaveLength(2)
+  })
+
   it('attaches the token and returns data', async () => {
     const h = harness([() => json({ data: { shop: { name: 'Qimati' } } })])
 
