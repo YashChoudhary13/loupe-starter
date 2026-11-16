@@ -46,6 +46,17 @@ describe('routing one request', () => {
     expect(faceRoute({ host: 'qimati-eng.site', pathname: '/nope', production: true })).toEqual({ face: 'home', redirect: null })
     expect(faceRoute({ host: '203.0.113.9', pathname: '/home', production: true })).toEqual({ face: 'loupe', redirect: 'https://qimati-eng.site/home' })
   })
+  it("serves another face's screen in place when the request comes from inside the app, wearing that screen's face (D172)", () => {
+    expect(faceRoute({ host: 'qc.qimati-eng.site', pathname: '/dispatch/print', production: true, inApp: true })).toEqual({ face: 'ship', redirect: null })
+    expect(faceRoute({ host: 'ship.qimati-eng.site', pathname: '/console', production: true, inApp: true })).toEqual({ face: 'loupe', redirect: null })
+    expect(faceRoute({ host: 'localhost:3000', pathname: '/dispatch', production: false, dev: 'home', inApp: true })).toEqual({ face: 'ship', redirect: null })
+    // Nothing else changes for such a request: its own screens, the api, an unknown path and / behave as before.
+    expect(faceRoute({ host: 'qc.qimati-eng.site', pathname: '/qc/1', production: true, inApp: true })).toEqual({ face: 'qc', redirect: null })
+    expect(faceRoute({ host: 'qc.qimati-eng.site', pathname: '/api/qc/1', production: true, inApp: true })).toEqual({ face: 'qc', redirect: null })
+    expect(faceRoute({ host: 'qc.qimati-eng.site', pathname: '/nope', production: true, inApp: true })).toEqual({ face: 'qc', redirect: null })
+    expect(faceRoute({ host: 'qc.qimati-eng.site', pathname: '/', production: true, inApp: true })).toEqual({ face: 'qc', redirect: 'https://qc.qimati-eng.site/qc' })
+    expect(faceRoute({ host: 'localhost:3000', pathname: '/dispatch', production: false, inApp: true })).toEqual({ face: null, redirect: null })
+  })
   it('returns a finished sign-in to the recorded face host, else to the configured base', () => {
     expect(faceReturnUrl('qc', 'https://qimati-eng.site')).toBe('https://qc.qimati-eng.site/')
     expect(faceReturnUrl('evil.example', 'https://qimati-eng.site/')).toBe('https://qimati-eng.site/')

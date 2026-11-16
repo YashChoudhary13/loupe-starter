@@ -12,7 +12,9 @@ import { loadAttentionCount } from '@/lib/tracking/attention-count'
  * and the LiveActivity poller mounted across section switches.
  *
  * The face comes from the `x-face` header the proxy set from the hostname
- * (D136); nothing here trusts a value the browser could have sent.
+ * (D136); nothing here trusts a value the browser could have sent. It is the
+ * face of the page load; after a switch inside the app the Sidebar follows
+ * the path instead (D172).
  *
  * Authorisation note: because layouts persist across client-side navigation,
  * each page still calls `requireOperator()` itself — this call covers the
@@ -24,10 +26,9 @@ export default async function ShellLayout({ children }: { children: React.ReactN
   const headerStore = await headers()
   const operator = await requireOperator(headerStore.get('x-next') ?? undefined)
   const face = faceFromHeader(headerStore.get('x-face'))
-  // The two badges sit on Tracking and Restock, which only the listing face shows. Elsewhere they were five database
-  // reads (about 0.4 s) holding back the first paint of every full page load (D171).
-  const listing = face === null || face === 'loupe'
-  const [attentionCount, restockCount, cookieStore] = await Promise.all([listing ? loadAttentionCount() : 0, listing ? countRestockCandidates() : 0, cookies()])
+  // Read on every face: this layout renders once per page load, and the listing screens can now be reached from any
+  // face without another one (D172), so their Tracking and Restock badges need their starting counts here.
+  const [attentionCount, restockCount, cookieStore] = await Promise.all([loadAttentionCount(), countRestockCandidates(), cookies()])
   const collapsed = cookieStore.get('loupe_nav_collapsed')?.value === '1'
 
   return (

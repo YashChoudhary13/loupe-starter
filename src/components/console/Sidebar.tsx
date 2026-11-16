@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 import type { Operator } from '@/lib/auth/authorize'
-import { FACE_KEYS, FACES, faceHome, screenAllowed, type Face } from '@/lib/faces/faces'
+import { FACE_KEYS, FACES, faceHome, owningFace, screenAllowed, type Face } from '@/lib/faces/faces'
 import { LIVE_ACTIVITY_EVENT, restockCandidateDelta, type LiveActivityUpdate } from '@/lib/live/types'
 import { cn } from '@/lib/utils'
 
@@ -16,7 +16,9 @@ import { LiveActivity } from '@/components/live/LiveActivity'
  *
  * Rendered once by the (shell) layout with the face the proxy chose (D136):
  * only that face's screens are listed, and an Apps switcher links the other
- * three hosts. Rendering once here also keeps it mounted across section
+ * three. Those are links inside the app (D172): the screen on show decides the
+ * face, so after a switch the menu, the name and the palette follow the path
+ * while the address stays the one the page was opened on. Rendering once here also keeps it mounted across section
  * switches instead of remounting — which keeps the LiveActivity poller and
  * its cursor alive across navigation. The attention badge starts from the
  * server-rendered count and then follows the live heartbeat.
@@ -75,11 +77,16 @@ export function Sidebar({
     return () => window.removeEventListener(LIVE_ACTIVITY_EVENT, onLive)
   }, [])
 
+  // The screen decides the face (D172). On a full page load the two agree, because the proxy sends a screen to its own host.
+  const shown = face === null ? null : owningFace(pathname) ?? face
+  // The palette hangs on <html data-face>, which the root layout renders once per page load.
+  useEffect(() => { if (shown) document.documentElement.dataset.face = shown }, [shown])
+
   // The face's own screens only (every screen on a dev machine without FACE_DEV). The current one is the longest-prefix match.
-  const items = ITEMS.filter((item) => screenAllowed(face, item.href))
+  const items = ITEMS.filter((item) => screenAllowed(shown, item.href))
   const active = [...items].sort((a, b) => b.href.length - a.href.length).find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.key ?? items[0]?.key
-  const brand = face ? FACES[face].label : 'Loupe'
-  const others = face ? FACE_KEYS.filter((key) => key !== face) : []
+  const brand = shown ? FACES[shown].label : 'Loupe'
+  const others = shown ? FACE_KEYS.filter((key) => key !== shown) : []
 
   return (
     <>
@@ -101,9 +108,9 @@ export function Sidebar({
             />
           ))}
           {others.map((key) => (
-            <a key={key} href={`https://${FACES[key].host}${faceHome(key)}`} aria-label={`Open ${FACES[key].label}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border border-chip px-3 py-2 text-[12px] font-medium text-ink-soft">
+            <Link key={key} href={faceHome(key)} aria-label={`Open ${FACES[key].label}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border border-chip px-3 py-2 text-[12px] font-medium text-ink-soft">
               {FACES[key].label}
-            </a>
+            </Link>
           ))}
         </nav>
         <form action="/api/auth/signout" method="post" className="shrink-0">
@@ -174,16 +181,16 @@ export function Sidebar({
             <div className="mb-2 px-3.5 text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Apps</div>
           )}
           {others.map((key) => (
-            <a
+            <Link
               key={key}
-              href={`https://${FACES[key].host}${faceHome(key)}`}
+              href={faceHome(key)}
               title={collapsed ? FACES[key].label : undefined}
               aria-label={`Open ${FACES[key].label}`}
               className={cn('flex items-center gap-3 rounded-pill font-medium text-ink-soft transition-colors duration-150 hover:bg-chip', collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5')}
             >
               <span className="grid size-4 shrink-0 place-items-center rounded-[5px] bg-chip text-[10px] font-semibold" aria-hidden>{FACES[key].label[0]}</span>
               {collapsed ? null : FACES[key].label}
-            </a>
+            </Link>
           ))}
         </nav>
       ) : null}

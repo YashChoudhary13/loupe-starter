@@ -39,13 +39,15 @@ export function faceOrigins(): string[] { return FACE_KEYS.map(face => `https://
 export function faceReturnUrl(face: unknown, fallbackBase: string): string { return isFace(face) ? `https://${FACES[face].host}/` : `${fallbackBase.replace(/\/+$/, '')}/` }
 
 export interface FaceRoute { face: Face | null; redirect: string | null }
-/** The proxy's decision for one request. A redirect is absolute whenever the request arrived on a real face host or the app is in production, so it can never resolve against a bind address like 127.0.0.1 behind nginx. */
-export function faceRoute(input: { host: string | null | undefined; pathname: string; dev?: string; production: boolean }): FaceRoute {
+/** The proxy's decision for one request. A redirect is absolute whenever the request arrived on a real face host or the app is in production, so it can never resolve against a bind address like 127.0.0.1 behind nginx.
+ * `inApp` (D172): the request comes from a page already open (the router's fetch, a server action). Another face's screen is then served where it was asked for, wearing that screen's face, so a switch between faces is no page load. A full page load of the same screen still goes to its own host. */
+export function faceRoute(input: { host: string | null | undefined; pathname: string; dev?: string; production: boolean; inApp?: boolean }): FaceRoute {
   const face = faceForHost(input.host, input)
   const real = faceOfHost(input.host)
   const origin = face && (real || input.production) ? `https://${FACES[face].host}` : ''
   if (input.pathname === '/') return { face, redirect: `${origin}${faceHome(face)}` }
   if (screenAllowed(face, input.pathname)) return { face, redirect: null }
   const owner = owningFace(input.pathname)
+  if (owner && input.inApp) return { face: owner, redirect: null }
   return { face, redirect: owner ? `https://${FACES[owner].host}${input.pathname}` : null }
 }

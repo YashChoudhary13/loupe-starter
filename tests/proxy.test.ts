@@ -12,6 +12,19 @@ describe('proxy', () => {
     expect(response.status).toBe(307)
     expect(getRedirectUrl(response)).toBe('https://loupe.qimati-eng.site/console?x=1')
   })
+  it("serves another face's screen in place for a request from inside the app, with that screen's face; a full page load still goes to its own address (D172)", () => {
+    // Next strips its own `rsc` header before the proxy runs, so the browser's Sec-Fetch-Mode is what tells a router fetch from a page load.
+    const routerFetch = at('https://qc.qimati-eng.site/dispatch?_rsc=abc', { 'sec-fetch-mode': 'cors' })
+    const serverAction = new NextRequest('https://qc.qimati-eng.site/dispatch', { method: 'POST', headers: { host: 'qc.qimati-eng.site', 'next-action': 'abc' } })
+    for (const request of [routerFetch, serverAction]) {
+      const response = proxy(request)
+      expect(response.status).toBe(200)
+      expect(response.headers.get('x-middleware-request-x-face')).toBe('ship')
+    }
+    for (const pageLoad of [at('https://qc.qimati-eng.site/dispatch', { 'sec-fetch-mode': 'navigate' }), at('https://qc.qimati-eng.site/dispatch'), at('https://qc.qimati-eng.site/dispatch', { rsc: '1' })]) {
+      expect(getRedirectUrl(proxy(pageLoad))).toBe('https://ship.qimati-eng.site/dispatch')
+    }
+  })
   it("sends / to the face's first screen", () => { expect(getRedirectUrl(proxy(at('https://ship.qimati-eng.site/')))).toBe('https://ship.qimati-eng.site/dispatch') })
   it("lets the api, sign-in, health and the face's own screens through with x-face set", () => {
     for (const path of ['/api/qc/1', '/login', '/health', '/qc/123']) {

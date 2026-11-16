@@ -4,15 +4,16 @@
  *   npm run r2:cors
  *   npm run r2:cors -- --origin https://loupe.qimati-eng.site
  *
- * Uploads happen on the Loupe face, so its origin is the default. The `--`
+ * The default is the four face origins: since D172 an upload screen reached by a switch inside the app runs on
+ * whichever face address the page was opened on. `--origin` narrows it to one. The `--`
  * matters: without it npm keeps `--origin` for itself and the script never sees it.
  *
  * This does not make the bucket public. It only allows PUT/HEAD requests from
- * that one origin; every object write still needs a short-lived signed URL
+ * those origins; every object write still needs a short-lived signed URL
  * minted by the authenticated server action.
  */
 import { config } from 'dotenv'
-import { FACES } from '../src/lib/faces/faces'
+import { faceOrigins } from '../src/lib/faces/faces'
 
 config({ path: '.env', quiet: true })
 config({ path: '.env.local', override: true, quiet: true })
@@ -74,7 +75,8 @@ async function cloudflare<T>(url: string, init: RequestInit): Promise<T> {
 }
 
 async function main(): Promise<void> {
-  const origin = (argument('--origin') ?? `https://${FACES.loupe.host}`).replace(/\/+$/, '')
+  const one = argument('--origin')?.replace(/\/+$/, '')
+  const origins = one ? [one] : faceOrigins()
   const base =
     `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId())}` +
     `/r2/buckets/${encodeURIComponent(required('R2_BUCKET'))}/cors`
@@ -83,7 +85,7 @@ async function main(): Promise<void> {
   const rule: CorsRule = {
     id: RULE_ID,
     allowed: {
-      origins: [origin],
+      origins,
       methods: ['PUT', 'HEAD'],
       headers: ['Content-Type'],
     },
@@ -99,7 +101,7 @@ async function main(): Promise<void> {
     throw new Error('Cloudflare accepted the change, but the expected CORS rule was not read back.')
   }
 
-  console.log(`R2 browser upload enabled for ${origin}. The bucket remains private.`)
+  console.log(`R2 browser upload enabled for ${origins.join(', ')}. The bucket remains private.`)
 }
 
 main().catch((cause) => {

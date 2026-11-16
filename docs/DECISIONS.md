@@ -3885,3 +3885,23 @@ The owner: a click on Order QC, Fulfilment or another face took 1 to 2 seconds w
 1. Keeping Shopify's order list in the server's memory for a few seconds with a refresh in the background (as a scan does since D133). It would take the list from about a second to almost nothing on a repeat visit. Not built: on Dispatch and Print slips a remembered list must be dropped after every push or print, or an order just shipped shows again; that needs its own care and its own proof.
 2. Letting the browser load the other faces ahead of the click (Speculation Rules). Chrome only; the iPad would gain nothing.
 3. Serving every screen on every host so a face switch is no page load at all. That undoes D136 (one address per face) and is the owner's call.
+
+---
+
+### D172 — A switch between faces happens inside the app; a full page load still goes to the screen's own address (2026-11-16)
+
+The owner, after D171: make the switch between Loupe, Order QC, Fulfilment and Home "also very quick". Under D136 each face is its own host and the Apps links were plain links to the other hosts, so every switch was a full page load on another origin: new connection, the whole page built again, the app started again in the browser. The owner was shown two ways (switch inside the app; let Chrome preload the other three hosts) and chose the first, knowing its side effect.
+
+**Decided (amends D136, does not remove it):**
+- The Apps links are router links to each face's first screen (`/home`, `/console`, `/qc`, `/dispatch`). No page load, the loading screen of D171 on the click, the router's 30-second memory on the way back.
+- `src/proxy.ts` serves another face's screen in place when the request comes from a page already open, and sets `x-face` to the face that owns the screen. A full page load (typed address, bookmark, reload) of a screen on another face's host is still answered with the 307 to its own host, exactly as D136 says.
+- How the proxy tells the two apart: `Sec-Fetch-Mode` (`navigate` for a page load, anything else for a fetch), a `next-action` header, or a method other than GET. **Not Next's `rsc` header:** Next removes it before the proxy runs (found in the production build, where the first version redirected every router fetch). The page cannot set `Sec-Fetch-Mode`; a browser that does not send it gets the redirect and the router falls back to loading the page on its own host, which is the behaviour before this decision.
+- The screen on show decides the face. `Sidebar` takes the face from the path (`owningFace(pathname)`), so the menu, the name, the Apps list and `<html data-face>` (the palette) follow a switch; the tab title follows because the root layout's metadata is resolved again with the new `x-face`.
+- Consequence the owner accepted: after a switch the address bar keeps the host the page was opened on (`qc.qimati-eng.site/dispatch`) until the next full page load.
+- The shell layout reads the Tracking and Restock counts on every face again (D171 had limited them to the listing face): the layout renders once per page load and the listing screens are now one click from any face.
+
+**Which face a screen wears is presentation, not permission.** Every operator may open every face (D136), every API route already accepts all four origins (`isOwnOrigin`), and the session cookie is on the whole domain, so serving `/dispatch` on the QC host opens nothing that was closed.
+
+**The one thing that was bound to an origin: browser uploads to R2.** The bucket's CORS rule allowed `https://loupe.qimati-eng.site` only (checked 2026-11-16 with a preflight: Loupe 204, the other three 403). Console, Enhance and Identify upload straight from the browser, and after a switch they can run on any of the four origins. So the bucket must allow all four **before** this is live; `scripts/configure-r2-cors.ts` now defaults to the four face origins, and the owner can make the same change in the Cloudflare dashboard as on 1 September. Showing images needs no CORS (plain `<img>`).
+
+**Rejected:** preloading the other hosts with Speculation Rules (Chrome only, three extra page loads per page load, data minutes old on arrival); keeping Loupe out of the in-app switch to avoid the R2 change (the switch into Loupe would stay slow, and a rule with an exception is harder to keep right than a storage setting).

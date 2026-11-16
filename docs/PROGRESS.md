@@ -30,6 +30,36 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ---
 
 
+## 2026-11-16 — Switching between Loupe, Order QC, Fulfilment and Home without a page load (D172)
+
+**Goal this session:** the owner, once D171 was live: make the switch between the four faces very quick too.
+
+**Built:**
+- `src/lib/faces/faces.ts` → `faceRoute` takes `inApp`: another face's screen is served in place, wearing that screen's face.
+- `src/proxy.ts` → tells a request from an open page (`Sec-Fetch-Mode` other than `navigate`, `next-action`, or a method other than GET) from a full page load, which still gets the 307 to the screen's own host.
+- `src/components/console/Sidebar.tsx` → the Apps links are router links to each face's first screen; the face on show comes from the path, and `<html data-face>` follows it.
+- `src/app/(shell)/layout.tsx` → the Tracking and Restock counts are read on every face again (the D171 saving is undone: after a switch into Loupe the Restock badge would have started from 0).
+- `scripts/configure-r2-cors.ts` → the default is the four face origins.
+
+**Verified:**
+- Tests written first and seen failing: `tests/faces.test.ts` (in-app request served in place with the owner's face; own screens, the api, an unknown path and `/` unchanged), `tests/proxy.test.ts` (router fetch and server action served with `x-face` of the screen; a page load, a request with no `Sec-Fetch-Mode` and one carrying only `rsc` still redirected), `tests/face-shell-render.test.ts` (Apps are in-app links; on `/dispatch/print` a page opened on the QC face shows the Fulfilment menu). `npx vitest run tests/qc tests/dispatch tests/face tests/app-shell tests/slips tests/proxy tests/auth tests/home`: 43 files, 352 tests passed. eslint clean; `tsc --noEmit` clean for every touched file.
+- Local twin, production build, driven by Playwright as host `qc.qimati-eng.site`: opened Order QC, then clicked Fulfilment, Loupe, Qimati, Order QC in the Apps list. Each time the path, `data-face`, the tab title, the brand, the menu and the background colour were those of the new face (`ship` / Fulfilment / Dispatch + Print slips; `loupe` / Console … Workflows; `home`; `qc`), a marker set on `window` at the start was still there at the end and the browser recorded **one** page load for the whole tour. Time from click to the new screen: 357, 366, 364 ms, and 67 ms back to Order QC (the router's memory). Server actions posted from the foreign paths answered 200.
+- The same build with `curl`: `Host: qc.qimati-eng.site`, `/dispatch`, `Sec-Fetch-Mode: navigate` → 307 to `https://ship.qimati-eng.site/dispatch`; with `Sec-Fetch-Mode: cors` → not sent to the other host.
+- R2 as it is today, by preflight: `https://loupe.qimati-eng.site` 204, the other three origins 403.
+
+**Not finished / known broken:**
+- **Not deployed. Order matters:** first the bucket's CORS rule gets the three other origins (owner, Cloudflare dashboard, as on 1 September; `R2_API_TOKEN` is not on this Mac), then the push. Pushed first, an upload from Console, Enhance or Identify fails whenever that screen was reached by a switch from another face's address; everything else works.
+- The harness had to add `Sec-Fetch-Mode` itself: Playwright's interception does not show that header, and a browser sends it only to https or localhost. That a real browser's header reaches the app through Cloudflare and nginx is to be checked on the live site after the push (`curl -H 'Sec-Fetch-Mode: cors' https://qc.qimati-eng.site/dispatch` signed out must answer `/login?next=%2Fdispatch`, not the ship host).
+- The twin cannot show this to the owner on a `main`-based worktree (no local face ports, see the D171 entry), so there was no draft to click before the live site.
+
+**Surprises:**
+- Next removes its own `rsc` header from the request before the proxy runs. The unit test that called `proxy()` directly passed with `rsc`; only the production build showed the router's fetches still being redirected.
+- A router fetch that is redirected to another origin makes Next fall back to a full page load there ("Failed to fetch RSC payload … Falling back to browser navigation"). That is the safety net for a browser without `Sec-Fetch-Mode`.
+
+**Next session should start with:** the preflight for the three origins; when all four answer 204, the owner's push; then the `curl` check above and the owner's own click through the four faces.
+
+---
+
 ## 2026-11-16 — A click answers at once; the Order QC list reads in one wave (D171)
 
 **Goal this session:** the owner: Order QC is a bit slow, and a click on Order QC, Fulfilment or another face takes 1 to 2 seconds with nothing happening on screen.
@@ -53,7 +83,7 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - Local twin, dev mode (`./up.sh loupe-nav-speed --dev`, `check.sh.before-cleanup-2026-11-02`): 20 passed, 0 failed. In a browser: the Order QC list shows To check 5, Checked 2, four Club pills, past checks 6; a clubbed order opens as "7316 + 7320" with the scan field focused; Dispatch and Home open; no console error.
 
 **Not finished / known broken:**
-- **Not deployed.** Nothing here needs a migration or a variable: a push of `claude/nav-speed` to `main` is the whole rollout (owner's step).
+- ~~Not deployed.~~ **Live since 2026-11-16 21:13 IST:** the owner pushed `08b3221..fe5fb90` to `main`; the build id changed two minutes later. Checked signed out: `/health` 200 on the qc, ship and loupe hosts, `/login` 200 on all four (0.19 to 0.42 s), a signed-out visit to `/qc`, `/labels`, `/dispatch`, `/dispatch/print`, `/home` and `/enhance` still a real 307 to `/login?next=<path>`, `POST /api/qc/1` without a session 401. The signed-in screens were not checked from here.
 - Not measured on the live server itself: ssh was refused in this session, so the timings above are from the owner's Mac. The shape (four reads in a row, about a second per Shopify list) is the same on the server; the exact figures are not.
 - Still true after this: the order list waits about a second for Shopify behind the skeleton, and a switch between faces is a full page load on another address (D136). Both have a next step in D171; neither was built.
 - One `/health` request took 3.3 s once and 0.6 s on every later try, also after four idle minutes. Not explained.
