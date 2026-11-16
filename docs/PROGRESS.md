@@ -30,6 +30,50 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ---
 
 
+## 2026-11-16 — Find: parcel photograph by order number, raw photograph by product code (D173)
+
+**Goal this session:** the owner's support look-up: type a product code and get its raw photograph, type an order number and get the photograph of its packed parcel with the tracking number on top, fast enough for many chats at once. The owner approved a local draft and chose a screen inside Loupe, uploads by the packing desk, and no fulfilling from the photographs yet.
+
+**Built** (branch `claude/find`, on main `69a7f79`, not deployed):
+- `supabase/migrations/20261116150000_find_portal.sql` → table `parcel_photos`, `find_parcels(prefix)`, `find_raw_photos(prefix)`; RLS on with no policies, functions for `service_role` only.
+- `src/lib/find/query.ts` → the rules that need no server: what was typed (`parseQuery`), which answer is a card and which a list (`viewOf`), when a reading is trusted (`judgeRead`), the sticker check, tracking links.
+- `src/lib/find/reader.ts` → one Claude call per parcel photograph (Haiku 5.5, low effort, JSON answer: orders, PIN code, sticker).
+- `src/lib/find/server.ts` → search, Shopify tracking for one order, upload begin / finish / confirm / set aside with an `events` row each, the full photograph by row id.
+- `src/app/api/find/route.ts`, `src/app/api/find/photo/route.ts` → the two doors; signed-in operators only, writes from Loupe's own origins only.
+- `src/app/(shell)/find/` + `src/components/find/FindScreen.tsx`, `ParcelsScreen.tsx` → the two screens, each with a loading screen (D171).
+- `src/components/console/Sidebar.tsx`, `src/lib/faces/faces.ts` → Find in the Loupe menu and on the Loupe face. `src/components/enhance/shrink-photo.ts` → the size to shrink to is an argument (Enhance unchanged).
+- `scripts/backfill-raw-photo-links.ts` → owner-run repair of the raw-photograph link from the enhancer's receipts, dry by default.
+- `tests/find.test.ts` → 19 tests of the rules and the reader.
+
+**Verified:**
+- `npx vitest run tests/find.test.ts tests/face-shell-render.test.ts tests/proxy.test.ts tests/faces.test.ts` → 4 files, 45 tests passed. `npx tsc --noEmit -p .` clean. ESLint clean on every touched path.
+- The reader measured on the 45 real parcel photographs of 16 November (numbers only): 39 to 40 order numbers right, 1 to 2 wrong, 3 none, about 2.5 s each; both wrong readings fail the PIN code check. Bigger model, more effort and more pixels did not help.
+- One live call through `readParcelPhoto` exactly as built, on a fictional photograph: `{"orders":[7302],"pincode":"400002","sticker":"X1000073020"}` in 2,421 ms, so the Claude API accepts the request shape.
+- Local twin from this worktree (fresh database, "migrations: 131 applied"), driven in Chrome at 1280 px and 390 px, fictional data only. Screenshots: `~/Downloads/find-portal-2026-11-16/`.
+  - Parcel photos: 5 photographs of 4032×3024 shrunk and uploaded ("5 of 5 done: 0 matched to an order, 5 to check below." with the twin's Claude answering 503); the same 5 again → "5 already here"; typed 7301, "7302, 7303" and 7305 → shown under those orders; `9999` → "Qimati9999 is not an order in Shopify. Check the number on the slip."; Not a parcel; Change.
+  - Automatic path with canned readings: right PIN and right sticker → matched; right PIN but another sticker → "Read Qimati7306, but the courier sticker in the photo is not that order's tracking number."; wrong PIN → "Read Qimati7308, but the PIN code on the slip does not confirm it." with 7308 filled in; unknown order, a second order with another PIN code, nothing read → To check; two orders with the same PIN → matched under both.
+  - Find: 11 look-ups at both widths (list for `73`, order card, order inside another parcel, parcel holding two orders, order without photograph, unknown order, code list, product with two phone photographs, product from a stored original, code without photograph), 22 cases with no sideways scroll and no broken picture. Copy picture for an order and for a product put a PNG on the clipboard with the strip burnt in (`copied-7301.png`, `copied-RS514.png`). Enter copies; Esc clears and puts the cursor back; text typed before the page's script was ready is kept and searched; `?q=7305` opens on the answer.
+  - After the review: copy pressed while the card still said "Checking tracking…" → the picture carries the tracking number (`copied-7302-early.png`); with 7302 on screen, typing 7311 and pressing Enter at once → no card on screen while loading, clipboard untouched; a failed search shows "Try again" and the notice goes with the answer; Space on the focused Copy picture copies and types nothing into the field; Download → `filename="RS514-raw.jpg"`; a second try of an unfinished upload returns the same row; a 16 MB file → "400 That photo is larger than 15 MB." and its photograph is not served (404); a 4 MB file → To check, "too large to be read automatically".
+  - Photo route: 401 without sign-in, 404 for an unknown id, `private, max-age=86400, immutable | image/jpeg`.
+  - `events` after the run: `parcel.read` 13, `parcel.confirmed` 4, `parcel.dismissed` 2, all by the signed-in operator.
+- Review: one independent reviewer (Opus, extra-high effort) found 12 points. Fixed: the last order's card could be copied while the next number was loading (now a card is only ever drawn for the whole number in the field); a same-PIN misread filed itself (the sticker is now a second check); a failed search stayed failed; a slow reading could outlast the proxy and a retry made a second row; no audit rows; no size limit after upload; Space on a button; copy before Shopify answered; the product search limit counted products before photographs; the download's file ending. Checked and left: the reader's schema shape (accepted live), the 60-day order window and HEIC (both written down in D173).
+
+**Not finished / known broken:**
+- **Not deployed. Order matters:** `npm run db:push` first (the table and functions must exist before the code), then the push of `claude/find` to `main`. Both are the owner's.
+- The first real test of the reader inside Loupe is the owner's upload of the 16 November photographs on `/find/parcels`. Expect about 41 of 45 to file themselves.
+- How many products have a raw photograph in production is not known (production reads are refused for Claude). `npx tsx scripts/backfill-raw-photo-links.ts ~/Downloads` from the main checkout prints the count without changing anything; `--apply` writes the links; the same on the Canada server for `~/agent-batches`.
+- Not checked: whether Loupe's Shopify app has `read_all_orders` (without it an order older than 60 days shows "Not in Shopify"); a raw photograph stored as HEIC (Chrome cannot draw it; Download works).
+- Parcel photographs have no retention yet.
+
+**Surprises:**
+- Vitest only picks up `tests/**/*.test.ts`; a test beside the source is silently "No test files found".
+- `react-hooks/set-state-in-effect` forbids setting state in an effect body, so every answer on the Find screen is kept with the look-up it belongs to and what is shown is derived.
+- A controlled search field loses what a person types before the page's script is ready. The field is uncontrolled and adopted by a ref callback.
+- **The local twin's network guard leaked sockets.** It rewrote the Mac's LAN address to loopback by changing the caller's options object, so Node's HTTP agent looked for each closed socket under the wrong name and kept counting it; after 50 closed storage sockets every server-side storage read hung without an error. Found because Find is the first screen that reads photographs through the server on every look-up. Fixed in `~/Desktop/Qimati/loupe-twin/guard.cjs` (old copy beside it, `.before-find-2026-11-16`); not a Loupe fault, production has no guard.
+- Two sessions cannot share the twin: another session's restart rebuilt the database under this one. One user at a time, `./down.sh` first.
+
+**Next session should start with:** the owner's `npm run db:push`, then the push to `main`, then the 45 photographs through `/find/parcels` and a look at how many filed themselves.
+
 ## 2026-11-16 — Switching between Loupe, Order QC, Fulfilment and Home without a page load (D172)
 
 **Goal this session:** the owner, once D171 was live: make the switch between the four faces very quick too.

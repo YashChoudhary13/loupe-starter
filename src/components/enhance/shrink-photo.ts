@@ -11,18 +11,19 @@ const LEAVE_ALONE_BELOW = 3_000_000
 // One decode at a time: a 50 MP photograph is ~200 MB as a bitmap, and three at once can kill a phone tab.
 let turn: Promise<unknown> = Promise.resolve()
 
-export function shrinkPhoto(file: File): Promise<File> {
-  const run = turn.then(() => shrink(file))
+/** `maxEdge` and `leaveAloneBelow` are the enhancer's by default; Find's parcel photographs (D173) ask for 2576 px and no lower limit. */
+export function shrinkPhoto(file: File, maxEdge = MAX_EDGE, leaveAloneBelow = LEAVE_ALONE_BELOW): Promise<File> {
+  const run = turn.then(() => shrink(file, maxEdge, leaveAloneBelow))
   turn = run.catch(() => undefined)
   return run
 }
 
-async function shrink(file: File): Promise<File> {
-  if (file.type !== 'image/jpeg' || file.size <= LEAVE_ALONE_BELOW) return file
+async function shrink(file: File, maxEdge: number, leaveAloneBelow: number): Promise<File> {
+  if (file.type !== 'image/jpeg' || file.size <= leaveAloneBelow) return file
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
     try {
-      const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+      const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
       const canvas = document.createElement('canvas')
       canvas.width = Math.round(bitmap.width * scale)
       canvas.height = Math.round(bitmap.height * scale)

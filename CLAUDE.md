@@ -95,8 +95,9 @@ land in the console's Pending grid as ready images; an operator groups them into
 category / material / colours, types a price (or clicks **Use suggestion**), and publishes to
 Shopify. The console's own **Upload images** is the third door, for a finished image made
 elsewhere. A tracking page surfaces what needs a human; Shopify webhooks (D102) push admin-side
-changes back into Loupe in seconds. **Loupe itself never calls an image or text model and has no
-Drive inbox** (D144).
+changes back into Loupe in seconds. **Loupe itself never calls an image model and has no Drive
+inbox** (D144). It calls a text model in two places only: the Home assistant (D149) and Find's
+reading of a parcel photograph (D173).
 
 **Every photograph of a batch is tracked (D170):** a batch is worked in passes, a photograph that did not land goes back
 to the queue (three tries; none counted for a used-up limit or a lost sign-in), and /enhance shows which are done, the
@@ -118,6 +119,17 @@ HOLD / CLUB / PACK by the packing-list rules (`src/lib/slips/plan.ts`, the same 
 `packlist`), printed from the browser in one click; the click records the batch and marks the PACK and CLUB
 orders In progress in Shopify (`fulfillmentOrderReportProgress`). The second place Loupe writes to orders. Needs
 `read_customers` (added 2026-10-10) for the customer-account identity key.
+
+**Find** (`/find` on the Loupe face, D173) is the support desk's look-up, built for many chats at once. One field:
+an order number shows the photograph of the packed parcel with the order and its tracking number in a strip on top
+(Enter copies the picture with the strip burnt in); a product code shows the phone photograph the listing was made
+from. The packing desk adds the day's parcel photographs on `/find/parcels`; each is read by Claude Haiku on the Home
+key and shown under an order only when the order number read from the slip is a Shopify order **and** the slip's PIN
+code is that order's (and, once the order has a tracking number, the courier sticker is not clearly another one).
+Everything else waits under "To check" for a person to type the number. The tracking number always comes from Shopify
+at the moment of the look-up, never from the photograph. **Find writes nothing to Shopify.** A parcel photograph shows
+a buyer's name and address: an order's card is drawn only for the whole number typed, and full photographs are served
+by `/api/find/photo` by row id to a signed-in operator, never by a storage key.
 
 **Home** (`/home` on `qimati-eng.site`, D137) shows a health light per service (Loupe, Packaging,
 LinkedIn, the bot's n8n workflows, DTDC reachability, Supabase, Shopify), five numbers (orders today,
@@ -361,8 +373,9 @@ every minute.
   *Confirmed 2026-07-28 against the Cloudflare dashboard: the live bucket is named `loupe-image`, location **APAC**, created 28 Jul.* `.env` was right; earlier drafts of this file and D4 said `loupe-images` and were wrong. The Phase 0 note about an `ENAM` bucket needing recreation is also resolved — the surviving bucket is APAC.
 - **Supabase is the database only.** Do not use Supabase Storage; a `loupe-images` bucket there was created and abandoned early on.
 - Paths: `manual/{upload_id}/original.{ext}` + `thumb.webp` (ready uploads and agent deliveries),
-  `intake/{job_id}/{photo_id}.{ext}` (phone photographs for an Enhance job, D143), and the retired
-  worker's `originals/{intake_file_id}.{ext}` / `versions/{intake_file_id}/v{n}.png` for history.
+  `intake/{job_id}/{photo_id}.{ext}` (phone photographs for an Enhance job, D143),
+  `parcels/{yyyy-mm-dd}/{id}.{ext}` + `.thumb.jpg` (photographs of packed parcels, D173; kept, no retention yet),
+  and the retired worker's `originals/{intake_file_id}.{ext}` / `versions/{intake_file_id}/v{n}.png` for history.
 - Generate a ~50 KB thumbnail beside every image. The queue grid uses thumbnails, never full images.
 - **Retention:** delete *generated* versions ~7 days after publish. Shopify serves the published image from its own CDN thereafter. **Originals are never deleted** — not by retention, not by discard (D109, 2026-08-21); they are the SKU matcher's references.
 
@@ -409,7 +422,8 @@ connection, which is what `db:push` and the direct-connection tests need.
 Home needs `HOME_CLAUDE_API_KEY` (plus `HOME_CLAUDE_WORKSPACE_ID` when the key is not tied to
 one workspace), `N8N_URL`, `N8N_API_KEY`, `HOME_N8N_WORKFLOWS` (JSON label → id) and optionally
 `HOME_CHAT_MODEL` (a Claude API model id, default `claude-haiku-5-5`, run at maximum effort); the bot actions need `BOT_REPORT_WEBHOOK_URL`, `BOT_STAFF_TEXT_WEBHOOK_URL`,
-`BOT_WEBHOOK_SECRET` and stay hidden without them. `FACE_DEV` is dev-only.
+`BOT_WEBHOOK_SECRET` and stay hidden without them. `FACE_DEV` is dev-only. Find's parcel reader (D173) uses the same
+`HOME_CLAUDE_API_KEY` / `HOME_CLAUDE_WORKSPACE_ID`; without the key every parcel photograph waits for a person.
 
 **Club QC (D168):** the same customer's open paid orders (the Print slips rules, `clubsOf` in `src/lib/qc/club.ts`) open on
 one Order QC screen with one scan field; each order keeps its own checklist, a scan counts in the oldest unfinished order

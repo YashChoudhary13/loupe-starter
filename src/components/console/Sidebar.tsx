@@ -23,13 +23,14 @@ import { LiveActivity } from '@/components/live/LiveActivity'
  * its cursor alive across navigation. The attention badge starts from the
  * server-rendered count and then follows the live heartbeat.
  */
-type SectionKey = 'home' | 'console' | 'enhance' | 'tracking' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch' | 'print'
-type SectionHref = '/home' | '/console' | '/enhance' | '/tracking' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch' | '/dispatch/print'
+type SectionKey = 'home' | 'console' | 'enhance' | 'find' | 'tracking' | 'identify' | 'restock' | 'workflows' | 'labels' | 'qc' | 'dispatch' | 'print'
+type SectionHref = '/home' | '/console' | '/enhance' | '/find' | '/tracking' | '/identify' | '/restock' | '/workflows' | '/labels' | '/qc' | '/dispatch' | '/dispatch/print'
 
 const ITEMS: readonly { key: SectionKey; href: SectionHref; label: string; icon: React.ReactNode }[] = [
   { key: 'home', href: '/home', label: 'Home', icon: <HomeIcon /> },
   { key: 'console', href: '/console', label: 'Console', icon: <SearchIcon /> },
   { key: 'enhance', href: '/enhance', label: 'Enhance', icon: <UploadIcon /> },
+  { key: 'find', href: '/find', label: 'Find', icon: <SearchIcon /> },
   { key: 'identify', href: '/identify', label: 'Identify', icon: <SearchIcon /> },
   { key: 'restock', href: '/restock', label: 'Restock', icon: <ListIcon /> },
   { key: 'tracking', href: '/tracking', label: 'Tracking', icon: <AlertIcon /> },
