@@ -22,13 +22,17 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
   let passes: QcPass[] = []
   let passesError: string | undefined
   let clubs = new Map<string, Club>()
-  try {
-    result = await listQcOrders(new ShopifyClient(), q, after)
-    statuses = await qcOrderStatuses(result.nodes.map(order => order.id))
-  } catch (cause) { error = qcShopifyError(cause) }
+  // The three reads do not depend on each other (the saved statuses follow the order list), so they go out together:
+  // measured 2.4 s one after another, 1.0 s together (D171).
+  const [listed, clubbed, passed] = await Promise.allSettled([
+    listQcOrders(new ShopifyClient(), q, after).then(async found => ({ found, saved: await qcOrderStatuses(found.nodes.map(order => order.id)) })),
+    loadClubs(),
+    listRecentPasses(30),
+  ])
+  if (listed.status === 'fulfilled') { result = listed.value.found; statuses = listed.value.saved } else error = qcShopifyError(listed.reason)
   // The club pill is a convenience: without it every order still opens, alone.
-  try { clubs = await loadClubs() } catch (cause) { console.warn('QC list: clubs not loaded:', cause instanceof Error ? cause.message : cause) }
-  try { passes = await listRecentPasses(30) } catch (cause) { passesError = cause instanceof Error ? cause.message : 'Past QC checks could not be loaded.' }
+  if (clubbed.status === 'fulfilled') clubs = clubbed.value; else console.warn('QC list: clubs not loaded:', clubbed.reason instanceof Error ? clubbed.reason.message : clubbed.reason)
+  if (passed.status === 'fulfilled') passes = passed.value; else passesError = passed.reason instanceof Error ? passed.reason.message : 'Past QC checks could not be loaded.'
   const orders = result?.nodes ?? []
   const toCheck = orders.filter(order => statuses[order.id]?.status !== 'passed')
   const checked = orders.filter(order => statuses[order.id]?.status === 'passed')

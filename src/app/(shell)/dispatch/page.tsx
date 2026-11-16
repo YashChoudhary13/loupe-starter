@@ -12,8 +12,10 @@ export default async function DispatchPage() {
   await requireOperator()
   let orders: DispatchOrderSummary[] = [], truncated = false, open: ParcelRow[] = [], recent: ParcelRow[] = [], ordersLoaded = false
   const problems: string[] = []
-  try { ({ orders, truncated } = await listDispatchOrders(new ShopifyClient())); ordersLoaded = true } catch (cause) { problems.push(dispatchShopifyError(cause)) }
-  try { ({ open, recent } = await listParcels(30)) } catch (cause) { problems.push(cause instanceof Error ? cause.message : 'Staged numbers could not be loaded.') }
+  // Shopify's orders and the staged numbers do not depend on each other, so they are read together (D171).
+  const [listed, staged] = await Promise.allSettled([listDispatchOrders(new ShopifyClient()), listParcels(30)])
+  if (listed.status === 'fulfilled') { ({ orders, truncated } = listed.value); ordersLoaded = true } else problems.push(dispatchShopifyError(listed.reason))
+  if (staged.status === 'fulfilled') ({ open, recent } = staged.value); else problems.push(staged.reason instanceof Error ? staged.reason.message : 'Staged numbers could not be loaded.')
   const ids = [...new Set([...orders.map(order => order.id), ...open.flatMap(parcel => parcel.orders.map(item => item.order_id))])]
   let qcPassed: Record<string, boolean> = {}
   try { const statuses = await qcOrderStatuses(ids); qcPassed = Object.fromEntries(ids.map(id => [id, statuses[id]?.status === 'passed'])) }

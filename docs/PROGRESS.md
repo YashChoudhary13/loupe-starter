@@ -30,6 +30,42 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ---
 
 
+## 2026-11-16 — A click answers at once; the Order QC list reads in one wave (D171)
+
+**Goal this session:** the owner: Order QC is a bit slow, and a click on Order QC, Fulfilment or another face takes 1 to 2 seconds with nothing happening on screen.
+
+**What was measured first (nothing changed, read-only):**
+- From the owner's Mac to the live site: a page with no data (`/login`) answers in 0.19 s; the bare face address answers with a redirect first (0.17 to 0.39 s) before the real page is even asked for.
+- The same reads the pages run, timed from this Mac against the live store with a throwaway script (milliseconds and counts only): one Shopify order-list request is 0.9 to 1.0 s whatever the number of orders (39 open). The Order QC list ran four reads one after another: orders 0.88 s, saved statuses 0.11 s, clubs 0.99 s, past checks 0.43 s = **2.42 s** (4.4 s on the first call of a quiet process). The same reads together: **0.98 s**. Dispatch: 1.07 s, of which Shopify 0.88 s. Print slips: 1.5 s. The two sidebar counts: 0.43 s.
+- `loading.tsx` existed only for Console, Identify, Restock and Tracking (D58/D59, July). Order QC, Labels, Dispatch, Print slips, Home, Enhance and Workflows had none, so the old screen stayed up for the whole round trip.
+
+**Built:**
+- `src/app/(shell)/{qc,labels,dispatch,dispatch/print,home,enhance,workflows}/loading.tsx` → the existing `ScreenSkeleton`, so the frame of the next screen shows on the click (`qc/loading.tsx` also covers an opened order and Shortages).
+- `src/app/(shell)/qc/page.tsx` → orders (+ their saved statuses), clubs and past checks are read together.
+- `src/app/(shell)/dispatch/page.tsx` → Shopify's orders and the staged numbers are read together.
+- `src/lib/qc/club.ts` → `loadClubs(maxAgeMs)`: the list reads fresh as before, an order opened within 30 s of a read reuses it (one Shopify request less, about a second), a scan reuses up to five minutes as before.
+- `src/components/console/Sidebar.tsx` → the Apps links go to the face's first screen (`https://qc.qimati-eng.site/qc`), not to the bare host that redirects there.
+- `src/app/(shell)/layout.tsx` → the Tracking and Restock badge counts are read on the listing face only; on the other faces they held back the first paint of every full page load.
+
+**Verified:**
+- Tests written first and seen failing, then passing: `tests/qc-list-render.test.ts` (clubs and past checks are already out while the order list is still unanswered), `tests/qc-club.test.ts` (fresh for the list, reuse inside 30 s, fresh again after 31 s), `tests/face-shell-render.test.ts` (Apps links carry the first screen). `npx vitest run tests/qc tests/dispatch tests/face tests/app-shell tests/slips`: 29 files, 228 tests passed. eslint clean on the touched files. `tsc --noEmit`: no error in a touched file (the remaining ones are the missing `@zxing`, `bwip-js` and `@anthropic-ai/sdk` modules of the shared dependency folder, as before).
+- Local twin, production build (`./up.sh loupe-nav-speed`, `next build` passed): with the server's answer for `/enhance` held back 1.5 s in the browser, the Enhance skeleton was on screen **95 ms** after the click and the real screen at 1.95 s. Screenshot: scratchpad `skeleton-enhance.png` (not kept).
+- Local twin, dev mode (`./up.sh loupe-nav-speed --dev`, `check.sh.before-cleanup-2026-11-02`): 20 passed, 0 failed. In a browser: the Order QC list shows To check 5, Checked 2, four Club pills, past checks 6; a clubbed order opens as "7316 + 7320" with the scan field focused; Dispatch and Home open; no console error.
+
+**Not finished / known broken:**
+- **Not deployed.** Nothing here needs a migration or a variable: a push of `claude/nav-speed` to `main` is the whole rollout (owner's step).
+- Not measured on the live server itself: ssh was refused in this session, so the timings above are from the owner's Mac. The shape (four reads in a row, about a second per Shopify list) is the same on the server; the exact figures are not.
+- Still true after this: the order list waits about a second for Shopify behind the skeleton, and a switch between faces is a full page load on another address (D136). Both have a next step in D171; neither was built.
+- One `/health` request took 3.3 s once and 0.6 s on every later try, also after four idle minutes. Not explained.
+
+**Surprises:**
+- The twin cannot open the face ports of a `main`-based worktree in production mode (508, the app has no `LOUPE_LOCAL_FACES`); `--dev` works, and the main-era check is `check.sh.before-cleanup-2026-11-02`.
+- A worktree whose `node_modules` is a symlink to another worktree does not build (Turbopack: "points out of the filesystem root"). `cp -cR ../loupe-club-qc/node_modules node_modules` (a copy-on-write clone) does.
+
+**Next session should start with:** after the owner's push, open Order QC live and time the list and one order with the browser's network panel; if the list's one second still shows, build the next step of D171.
+
+---
+
 ## 2026-11-14 — Enhance: every photograph tracked, passes, the server on the page (D170)
 
 **Goal this session:** the owner can see which photographs of a batch are done, undelivered ones go back to the queue by themselves, and a lost sign-in or a used-up limit is visible and fixable on /enhance.

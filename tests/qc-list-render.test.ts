@@ -9,6 +9,7 @@ vi.mock('@/lib/qc/club', () => ({ loadClubs: vi.fn(async () => new Map([['new', 
 import Page from '@/app/(shell)/qc/page'
 import { listQcOrders } from '@/lib/shopify/qc-orders'
 import { listRecentPasses, qcOrderStatuses } from '@/lib/qc/server'
+import { loadClubs } from '@/lib/qc/club'
 
 describe('QC order columns', () => {
   it('splits saved passes, shows HOLD box / Ready to ship and shorts, and labels incomplete page counts', async () => {
@@ -29,5 +30,18 @@ describe('QC order columns', () => {
     expect(html).toContain('on this page')
     expect(html).toContain('More orders')
     expect(html).not.toMatch(/<details[^>]* open/)
+  })
+  it('reads the order list, the clubs and the past checks together, not one after another (D171)', async () => {
+    let release!: (value: Awaited<ReturnType<typeof listQcOrders>>) => void
+    vi.mocked(listQcOrders).mockReturnValue(new Promise(resolve => { release = resolve }))
+    vi.mocked(qcOrderStatuses).mockResolvedValue({})
+    vi.mocked(listRecentPasses).mockClear().mockResolvedValue([])
+    vi.mocked(loadClubs).mockClear()
+    const page = Page({ searchParams: Promise.resolve({}) })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    // Shopify has not answered the order list yet, and the two other reads are already out.
+    expect(loadClubs).toHaveBeenCalledTimes(1); expect(listRecentPasses).toHaveBeenCalledTimes(1)
+    release({ nodes: [], pageInfo: { hasNextPage: false, endCursor: null } })
+    expect(renderToString(await page).replace(/<!-- -->/g, '')).toContain('To check · 0')
   })
 })

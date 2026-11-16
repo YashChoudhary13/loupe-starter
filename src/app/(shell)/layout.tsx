@@ -23,13 +23,17 @@ import { loadAttentionCount } from '@/lib/tracking/attention-count'
 export default async function ShellLayout({ children }: { children: React.ReactNode }) {
   const headerStore = await headers()
   const operator = await requireOperator(headerStore.get('x-next') ?? undefined)
-  const [attentionCount, restockCount, cookieStore] = await Promise.all([loadAttentionCount(), countRestockCandidates(), cookies()])
+  const face = faceFromHeader(headerStore.get('x-face'))
+  // The two badges sit on Tracking and Restock, which only the listing face shows. Elsewhere they were five database
+  // reads (about 0.4 s) holding back the first paint of every full page load (D171).
+  const listing = face === null || face === 'loupe'
+  const [attentionCount, restockCount, cookieStore] = await Promise.all([listing ? loadAttentionCount() : 0, listing ? countRestockCandidates() : 0, cookies()])
   const collapsed = cookieStore.get('loupe_nav_collapsed')?.value === '1'
 
   return (
     <AppShell
       operator={operator}
-      face={faceFromHeader(headerStore.get('x-face'))}
+      face={face}
       initialAttentionCount={attentionCount}
       initialRestockCount={restockCount}
       initialCollapsed={collapsed}

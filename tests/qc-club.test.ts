@@ -45,11 +45,14 @@ describe('club grouping', () => {
   it('never clubs an unpaid order, exactly as Print slips', () => {
     expect(clubsOf([order(1001, '9000000001'), order(1002, '9000000001', { financialStatus: 'PENDING' })]).size).toBe(0)
   })
-  it('reads fresh for a page and reuses the read for scans', async () => {
-    await loadClubs(); await loadClubs(false); await loadClubs(false)
+  it('reads fresh for the list, and reuses that read for scans and for an order opened straight after (D171)', async () => {
+    const at = Date.now()
+    await loadClubs(0, at); await loadClubs(5 * 60_000, at + 60_000); await loadClubs(30_000, at + 29_000)
     expect(mocks.list).toHaveBeenCalledTimes(1)
-    await loadClubs()
+    await loadClubs(30_000, at + 31_000) // an order opened later than 30 s after the list asks Shopify again
     expect(mocks.list).toHaveBeenCalledTimes(2)
+    await loadClubs(0, at + 31_000)
+    expect(mocks.list).toHaveBeenCalledTimes(3)
   })
   it('opens every member, and answers null for an order that is not clubbed', async () => {
     const club = await loadClubView('7949', operator)

@@ -17,8 +17,9 @@ describe('the shell on one face', () => {
     expect(html).toContain('href="/qc"'); expect(html).toContain('href="/labels"')
     for (const href of ['href="/console"', 'href="/dispatch"', 'href="/home"', 'href="/tracking"']) expect(html).not.toContain(href)
     expect(html).toContain('<span class="font-medium tracking-[-0.01em]">Order QC</span>')
-    for (const host of ['qimati-eng.site', 'ship.qimati-eng.site', 'loupe.qimati-eng.site']) expect(html).toContain(`href="https://${host}/"`)
-    expect(html).not.toContain('href="https://qc.qimati-eng.site/"')
+    // Straight to the face's first screen: the bare host answers with a redirect, one more round trip on every switch (D171).
+    for (const href of ['https://qimati-eng.site/home', 'https://ship.qimati-eng.site/dispatch', 'https://loupe.qimati-eng.site/console']) expect(html).toContain(`href="${href}"`)
+    expect(html).not.toContain('href="https://qc.qimati-eng.site/')
     expect((html.match(/aria-current="page"/g) ?? []).length).toBe(2)
   })
   it('without a face (a dev machine) lists every screen and no Apps switcher', () => {

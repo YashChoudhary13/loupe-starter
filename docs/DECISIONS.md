@@ -3867,3 +3867,21 @@ Known limits: a photograph used only as a second angle of another piece gets no 
 **D170 amendment 2 (2026-11-14): Cancel batch.** The owner asked for it on a batch held until a limit reset. `agent_job_cancel` turns photographs not yet done into a sixth state, `cancelled` (grey, not amber: nobody is needed), and takes a queued job out of the queue; a running job ends at its pass. A photograph that lands after the cancel is still done. The button asks once inline ("Cancel the 8 photos not done yet?"), no browser dialog. There is no undo: a cancelled photograph is uploaded again in a new batch.
 
 **D170 amendment (2026-11-14, limit hold ends early).** A limit hold was a clock: set to the reset time known when the seats ran out. When the owner reset a Codex seat by hand, the queue still waited for that time. Now the control service drops a limit hold as soon as Claude is signed in and one Codex seat is under 90% (the runner holds at 98%, so it does not flap), and Loupe clears `not_before` on jobs held for a limit once the server reports `idle` or `working`. The one-minute wait after a failed try has no `hold_reason` and is untouched.
+
+---
+
+### D171 — A click shows the next screen at once, and independent reads go out together (2026-11-16)
+
+The owner: a click on Order QC, Fulfilment or another face took 1 to 2 seconds with nothing on screen, "a website of the 2000s". Measured before anything changed (PROGRESS, 2026-11-16): one Shopify order-list request costs about a second however short the list; the Order QC list made two of them and two database reads one after another (2.4 s); seven screens had no `loading.tsx`, so the old screen stayed up for the whole wait; the Apps links pointed at a bare host that answers with a redirect.
+
+**Decided:**
+- Every screen under the shell has a loading boundary. A new screen gets its `loading.tsx` with it (D59 said this for the first three and it was not kept up).
+- Reads that do not depend on each other are started together (`Promise.allSettled`, so one failing read still shows its own message as before). The Order QC list: 2.4 s to 1.0 s.
+- An order opened within 30 seconds of a club read reuses that read. The list still reads fresh on every load, so the usual path (back to the list, click the next order) sees clubs at most 30 seconds old, and a scan already accepted five minutes (D168). Cost of the rare miss: an order that joined a club in those seconds opens alone until the list is loaded again; its own checklist is still right.
+- The Apps links carry the face's first screen, so a switch is one request, not a redirect and then a request.
+- The Tracking and Restock counts are read only where their badges are shown (the listing face).
+
+**Rejected for now, in the order they should be tried if it is still not fast enough:**
+1. Keeping Shopify's order list in the server's memory for a few seconds with a refresh in the background (as a scan does since D133). It would take the list from about a second to almost nothing on a repeat visit. Not built: on Dispatch and Print slips a remembered list must be dropped after every push or print, or an order just shipped shows again; that needs its own care and its own proof.
+2. Letting the browser load the other faces ahead of the click (Speculation Rules). Chrome only; the iPad would gain nothing.
+3. Serving every screen on every host so a face switch is no page load at all. That undoes D136 (one address per face) and is the owner's call.

@@ -31,13 +31,15 @@ export function clubsOf(open: readonly SlipOrder[]): Map<string, Club> {
   return clubs
 }
 
-const CLUBS_TTL_MS = 5 * 60_000
+/** How old a club read may be and still be used: a scan, five minutes; an order opened straight after the list, 30 seconds (D171). */
+const SCAN_REUSE_MS = 5 * 60_000
+const OPEN_REUSE_MS = 30_000
 let cache: { clubs: Map<string, Club>; at: number } | null = null
 export function clearClubCache(): void { cache = null }
 
-/** Every club among the open orders. A scan reuses a read up to five minutes old; a page load reads fresh. */
-export async function loadClubs(fresh = true, now = Date.now()): Promise<Map<string, Club>> {
-  if (!fresh && cache && now - cache.at < CLUBS_TTL_MS) return cache.clubs
+/** Every club among the open orders. The list reads fresh (`maxAgeMs` 0); the other callers reuse a read no older than `maxAgeMs`, which saves one Shopify request of about a second. */
+export async function loadClubs(maxAgeMs = 0, now = Date.now()): Promise<Map<string, Club>> {
+  if (cache && now - cache.at < maxAgeMs) return cache.clubs
   cache = { clubs: clubsOf(await listClubOrders(new ShopifyClient())), at: now }
   return cache.clubs
 }
@@ -60,7 +62,7 @@ export function pickScanTarget(sessions: readonly ClubSession[], variantId: stri
 
 /** The club of `orderId` with every member's checklist freshly synced, or null when the order is not clubbed. */
 export async function loadClubView(orderId: string, operator: { readonly id: string }): Promise<ClubView | null> {
-  const club = (await loadClubs()).get(orderGid(orderId))
+  const club = (await loadClubs(OPEN_REUSE_MS)).get(orderGid(orderId))
   if (!club) return null
   const members = await Promise.all(club.ids.map(id => loadQcView(id, operator)))
   return { anchorId: orderGid(orderId), customer: club.customer, members, operatorId: operator.id }
@@ -68,7 +70,7 @@ export async function loadClubView(orderId: string, operator: { readonly id: str
 
 /** One scan into the club: the server picks the order, so two members carrying the same variant fill oldest first. */
 export async function clubScan(orderId: string, operator: { readonly id: string }, command: QcCommand) {
-  const club = (await loadClubs(false)).get(orderGid(orderId))
+  const club = (await loadClubs(SCAN_REUSE_MS)).get(orderGid(orderId))
   if (!club) throw new Error('This order is no longer clubbed. Go back to the order list and open it again.')
   const client = new ShopifyClient()
   const db = supabaseServer()

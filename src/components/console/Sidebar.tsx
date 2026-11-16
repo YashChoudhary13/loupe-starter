@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 import type { Operator } from '@/lib/auth/authorize'
-import { FACE_KEYS, FACES, screenAllowed, type Face } from '@/lib/faces/faces'
+import { FACE_KEYS, FACES, faceHome, screenAllowed, type Face } from '@/lib/faces/faces'
 import { LIVE_ACTIVITY_EVENT, restockCandidateDelta, type LiveActivityUpdate } from '@/lib/live/types'
 import { cn } from '@/lib/utils'
 
@@ -101,7 +101,7 @@ export function Sidebar({
             />
           ))}
           {others.map((key) => (
-            <a key={key} href={`https://${FACES[key].host}/`} aria-label={`Open ${FACES[key].label}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border border-chip px-3 py-2 text-[12px] font-medium text-ink-soft">
+            <a key={key} href={`https://${FACES[key].host}${faceHome(key)}`} aria-label={`Open ${FACES[key].label}`} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border border-chip px-3 py-2 text-[12px] font-medium text-ink-soft">
               {FACES[key].label}
             </a>
           ))}
@@ -176,7 +176,7 @@ export function Sidebar({
           {others.map((key) => (
             <a
               key={key}
-              href={`https://${FACES[key].host}/`}
+              href={`https://${FACES[key].host}${faceHome(key)}`}
               title={collapsed ? FACES[key].label : undefined}
               aria-label={`Open ${FACES[key].label}`}
               className={cn('flex items-center gap-3 rounded-pill font-medium text-ink-soft transition-colors duration-150 hover:bg-chip', collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5')}
