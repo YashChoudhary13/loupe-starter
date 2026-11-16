@@ -48,6 +48,7 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - R2 as it is today, by preflight: `https://loupe.qimati-eng.site` 204, the other three origins 403.
 
 **Not finished / known broken:**
+- **Storage setting done 2026-11-16:** the owner added the three origins in the dashboard. Preflight from the Mac afterwards: all four face origins 204 for PUT and HEAD (`content-type`, max-age 3600), `https://example.com` 403. What is left is the push.
 - **Not deployed. Order matters:** first the bucket's CORS rule gets the three other origins (owner, Cloudflare dashboard, as on 1 September). The bucket is `loupe-images` in the Cloudflare account whose id starts `3236`. The Cloudflare key on this Mac (`SERVERS/cloudflare.env`, made for tunnels and DNS) belongs to the other account (id starts `e725`) and is refused there with 403, checked 2026-11-16; that other account holds a bucket `loupe-image`, singular, with no CORS rule at all, which is not the one the app uses. `R2_API_TOKEN` is not on this Mac, then the push. Pushed first, an upload from Console, Enhance or Identify fails whenever that screen was reached by a switch from another face's address; everything else works.
 - The harness had to add `Sec-Fetch-Mode` itself: Playwright's interception does not show that header, and a browser sends it only to https or localhost. That a real browser's header reaches the app through Cloudflare and nginx is to be checked on the live site after the push (`curl -H 'Sec-Fetch-Mode: cors' https://qc.qimati-eng.site/dispatch` signed out must answer `/login?next=%2Fdispatch`, not the ship host).
 - The twin cannot show this to the owner on a `main`-based worktree (no local face ports, see the D171 entry), so there was no draft to click before the live site.
@@ -56,7 +57,7 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - Next removes its own `rsc` header from the request before the proxy runs. The unit test that called `proxy()` directly passed with `rsc`; only the production build showed the router's fetches still being redirected.
 - A router fetch that is redirected to another origin makes Next fall back to a full page load there ("Failed to fetch RSC payload … Falling back to browser navigation"). That is the safety net for a browser without `Sec-Fetch-Mode`.
 
-**Next session should start with:** the preflight for the three origins; when all four answer 204, the owner's push; then the `curl` check above and the owner's own click through the four faces.
+**Next session should start with:** the owner's push; then the `curl` check above and the owner's own click through the four faces.
 
 ---
 
