@@ -30,6 +30,36 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ---
 
 
+## 2026-11-18 — The big picture opens at once: Console pictures and the phone photograph from Loupe's own route (D175)
+
+**Goal this session:** the owner: "When I click on images like the orig and the enhanced, it takes a long time to load full image."
+
+**Built:**
+- D165's six commits cherry-picked from `claude/loupe-cleanup` onto main, unchanged: `src/app/api/images/[versionId]/route.ts`, `src/lib/images/{cache,preview,url}.ts`, stable URLs in `src/lib/console/queue.ts`, the viewer (`ImageLightbox.tsx`) opening on the 1280 px preview with **Full size**, the retired `original-preview.ts` backfill, the ten-minute queue refresh. One conflict, in `tests/live-activity.test.ts` (both sides' assertions kept).
+- New: `?kind=phone` on the route for a phone photograph (`agent_job_photos` row, uploaded only); `imageUrl(id, size, 'phone')`.
+- `orig` in the draft editor builds its addresses from `phonePhotoId` and opens the viewer without a server action; Enhance's photo box shows the thumbnail and links the stored file the same way.
+- Deleted: `phonePhotoUrlAction`, `phonePhotoUrl()`, `photoUrlAction`, `jobPhotoUrl()`, the `onPhonePhoto` prop.
+
+**Verified:**
+- Tests written first and seen failing: `tests/image-route.test.ts` (a phone photograph by its own row: preview 1280 px WebP, the stored JPEG for `full`, a 512 px thumb, no storage key in any header; 404 for one not uploaded, for a version's id asked as a phone photograph, for a phone photograph asked as a version, for an unknown kind) and `tests/image-cache.test.ts` (the address). Whole suite: 103 files and 797 tests pass; the same 23 credential-only files fail as before. `tsc --noEmit` and eslint clean.
+- Read-only against live data: six newest renders 1.5 to 2.4 MB each become 43 to 191 KB as previews at the same 1254 px, made in about 0.15 s; phone photographs are all JPEG (1723), most 0.15 to 0.3 MB, 41 over 3 MB.
+- Local twin, production build, Playwright: the queue grid, the editor panel and the viewer all ask `/api/images/...`; the enhanced picture opened in 73 ms with no request (the panel had already loaded the preview); `orig` opened in 226 ms with no server action (preview and thumb, `kind=phone`); **Full size** fetched the stored JPEG; both opened again in 21 and 38 ms with no picture request. Enhance's box drew the 512 px thumb; "Full photo" answered the JPEG. Signed out, both kinds answer 401. Dev build: `check.sh.before-cleanup-2026-11-02` 20 passed, 0 failed.
+
+**Not finished / known broken:**
+- **Not deployed.** The owner's push is the rollout; no migration. The server step in D175 (cache folder + three lines in the shared `.env`) is optional and owner-run: without it the cache sits in the service's temporary folder.
+- The twin's pictures are a few KB, so it proved behaviour, not speed. Speed on the live site is the owner's to feel; sizes above are from real files.
+- Restock, Identify and Tracking still use presigned links.
+- The first open of a picture after the deploy renders its preview on the server (about 0.15 s plus the read from R2) and fills the cache; the grid's thumbnails are fetched once more for the same reason.
+
+**Surprises:**
+- The owner's complaint of 1 November had been answered on a branch that was never deployed. A fix that is not live is not a fix: check what is on `main` before telling the owner something is done.
+- `orig` exists on main and is used; the clean-up branch deletes it (D163).
+- From the Mac the 2 MB files download in 0.3 s, so the delay could not be reproduced by timing here; the measurable facts were the bytes, the missing browser cache and the extra round trip.
+
+**Next session should start with:** the owner's push, a signed-out check of `/api/images` (401) and the screens, then the owner's own click on a picture and on `orig`.
+
+---
+
 ## 2026-11-16 — Every tab loads faster: one Shopify token, sign-in check beside the reads, read-ahead on the menu (D174)
 
 **Goal this session:** the owner, with D171 and D172 live: increase the loading speed of every tab.
@@ -48,7 +78,7 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 - Local twin in dev mode, `check.sh.before-cleanup-2026-11-02`: 20 passed, 0 failed (every screen on the four ports renders signed in).
 
 **Not finished / known broken:**
-- **Not deployed.** No migration, no variable: the owner's push of `claude/nav-speed` to `main` is the rollout.
+- **Deployed 2026-11-16 23:15 IST** (owner's push `9703b20..964d236`). Checked signed out only: health and sign-in page 200 on the four hosts, every screen to its own sign-in, a garbage session cookie to sign-in, face switching as in D172, bot endpoint 401. No migration, no variable.
 - The numbers are from the Mac. The server's own round trips to the database and to Shopify were not timed (no login from here).
 - Tracking and Identify are as slow as before; Home and Workflows keep the sign-in check first. Reasons in D174.
 - The first Shopify read after each deploy or restart still mints a token (0.44 s), once.

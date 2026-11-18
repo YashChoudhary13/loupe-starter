@@ -40,7 +40,6 @@ import {
 import { ShopifyClient } from '@/lib/shopify/client'
 import { deleteProduct, readProductByHandle } from '@/lib/shopify/product-set'
 import { supabaseServer } from '@/lib/supabase/server'
-import { phonePhotoUrl } from '@/lib/agent-intake/restock'
 import { setAgentSupersession } from '@/lib/agent-intake/server'
 import { requestReenhance } from '@/lib/agent-jobs/server'
 
@@ -419,11 +418,6 @@ export async function requestReenhanceAction(
     await requestReenhance(operator, intakeFileId, note, photo.filename)
     return bundle(draftId, false)
   })
-}
-
-/** D148: `orig` on an image Claude delivered — the phone photograph it was rendered from, signed on the click. */
-export async function phonePhotoUrlAction(intakeFileId: string): Promise<ActionResult<{ url: string }>> {
-  return withOperator(async () => ({ url: (await phonePhotoUrl(intakeFileId)).url }))
 }
 
 export interface SaveDraftRequest extends Omit<DraftSaveInput, 'draftId'> {

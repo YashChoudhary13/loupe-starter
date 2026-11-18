@@ -59,7 +59,6 @@ vi.mock('@/lib/manual-upload/server', () => ({ beginManualUpload: vi.fn(), final
 vi.mock('@/lib/shopify/client', () => ({ ShopifyClient: class {} }))
 vi.mock('@/lib/shopify/product-set', () => ({ deleteProduct: vi.fn(), readProductByHandle: vi.fn() }))
 vi.mock('@/lib/supabase/server', () => ({ supabaseServer: vi.fn() }))
-vi.mock('@/lib/agent-intake/restock', () => ({ phonePhotoUrl: vi.fn() }))
 vi.mock('@/lib/agent-intake/server', () => ({ setAgentSupersession: vi.fn() }))
 vi.mock('@/lib/agent-jobs/server', () => ({ requestReenhance: vi.fn() }))
 

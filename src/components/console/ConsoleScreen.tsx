@@ -20,7 +20,6 @@ import {
   confirmDraftLabelsPrintedAction,
   finalizeManualUploadAction,
   setDraftSupersessionAction,
-  phonePhotoUrlAction,
   requestReenhanceAction,
   type ActionError,
   type ActionResult,
@@ -898,12 +897,6 @@ export function ConsoleScreen({
     [bundle, handleResult],
   )
 
-  /** D148: `orig` on an image Claude delivered. Read-only, so it works on a published product too. */
-  const handlePhonePhoto = useCallback(
-    async (intakeFileId: string) => handleResult(await phonePhotoUrlAction(intakeFileId))?.url ?? null,
-    [handleResult],
-  )
-
   const handleDetach = useCallback(
     async (intakeFileId: string) => {
       if (!bundle) return
@@ -1294,7 +1287,6 @@ export function ConsoleScreen({
               supersedesSku={bundle?.draft.supersedesSku ?? null}
               onSupersede={bundle && !listedReadOnly ? (sku, enable) => void handleSupersede(sku, enable) : null}
               onReenhance={bundle && !listedReadOnly ? (intakeFileId, note) => void handleReenhance(intakeFileId, note) : null}
-              onPhonePhoto={handlePhonePhoto}
               onMoveImage={moveImage}
               onChooseVersion={chooseVersion}
               onAddCategory={() => setAddingCategory(true)}

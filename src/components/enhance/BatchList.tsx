@@ -1,12 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
-import { photoUrlAction } from '@/app/(shell)/enhance/actions'
 import { queueIsStale } from '@/lib/agent-jobs/label'
 import type { JobSummary } from '@/lib/agent-jobs/server'
 import { clockTime, finishedPhotos, leftPhotos, photoReason, totalPhotos, type JobPhoto, type PhotoState } from '@/lib/agent-jobs/tracking'
+import { imageUrl } from '@/lib/images/url'
 import { cn } from '@/lib/utils'
 
 /**
@@ -170,17 +170,13 @@ function PhotoGrid({ job, photos, thumbs, busy, onRetry }: {
 }
 
 function PhotoDetail({ job, photo, busy, onRetry }: { job: JobSummary; photo: JobPhoto; busy: boolean; onRetry: (jobId: string, photoIds: readonly string[] | null) => void }) {
-  const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => {
-    let live = true
-    void photoUrlAction(photo.id).then((r) => { if (live && r.ok) setUrl(r.data) }).catch(() => undefined)
-    return () => { live = false }
-  }, [photo.id])
+  // D175: stable addresses on Loupe's own route. The box draws the small picture at once and the browser keeps it;
+  // it used to wait for a server round trip and then download the whole phone photograph (about 2 MB) for a 96 px box.
   return (
     <div className="flex gap-3 rounded-tile bg-chip p-3">
       <div className="size-24 shrink-0 overflow-hidden rounded-field bg-surface">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {url && <img src={url} alt={photo.filename} className="size-full object-cover" />}
+        <img src={imageUrl(photo.id, 'thumb', 'phone')} alt={photo.filename} className="size-full object-cover" />
       </div>
       <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
         <p className="break-all text-[12px] font-medium">{photo.filename} · {TAG[photo.state]}</p>
@@ -189,7 +185,7 @@ function PhotoDetail({ job, photo, busy, onRetry }: { job: JobSummary; photo: Jo
           {photo.state === 'failed' && <button type="button" disabled={busy} className={cn(small, 'bg-ink text-white hover:bg-ink')} onClick={() => onRetry(job.id, [photo.id])}>Retry this photo</button>}
           {photo.state === 'done' && <Link href="/console" className={cn(small, 'bg-surface')}>Open Console</Link>}
           {photo.state === 'restock' && <Link href="/restock" className={cn(small, 'bg-surface')}>Open Restock</Link>}
-          {url && <a href={url} target="_blank" rel="noreferrer" className={cn(small, 'bg-surface')}>Full photo</a>}
+          <a href={imageUrl(photo.id, 'full', 'phone')} target="_blank" rel="noreferrer" className={cn(small, 'bg-surface')}>Full photo</a>
         </div>
       </div>
     </div>

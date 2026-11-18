@@ -3973,3 +3973,45 @@ Before = sign-in check (0.09 to 0.14 s) plus the reads, one after the other, as 
 - **Print slips' Shopify read (0.85 to 1.3 s, one request for every open order with its lines):** the page needs all of it to mark HOLD, CLUB and PACK.
 
 **If it is still slow, in this order:** (1) a short server memory of the open-order read with a refresh behind the response (D171 item 1), which now mostly helps Print slips and the Order QC list's club read; (2) the Console's waves, with the clean-up; (3) the distance between the server and the database, which costs one round trip per wave on every screen and is the owner's call.
+
+---
+
+### D175 — The Console's pictures come from Loupe's own route on main now (D165 lands ahead of the clean-up), and the phone photograph joins it (2026-11-18)
+
+*Owner, 2026-11-18:* "When I click on images like the orig and the enhanced, it takes a long time to load full image."
+
+The owner said the same on 1 November. The answer then was D165, built and reviewed on `claude/loupe-cleanup`, which has not been deployed. So the live site still did what D165 describes as the cause, and the `orig` chip (which the clean-up removes, D163, but main still has and the owner uses) did one thing more.
+
+**Measured 2026-11-18, read-only, against the live bucket:**
+
+| Picture | Stored file | What the big view downloaded | With the preview |
+|---|---|---|---|
+| A render (1254 x 1254 PNG), six newest | 1.5 to 2.4 MB | all of it, every time | 43 to 191 KB at the same 1254 px (12 to 36 times smaller) |
+| A phone photograph, 1723 in all, every one a JPEG | mostly 0.15 to 0.3 MB (1200 x 1600); 41 are over 3 MB | all of it, after a server round trip | 60 to 190 KB; a 2 MB one becomes 121 KB |
+
+Three things made every open slow, in this order:
+1. **Nothing was ever kept by the browser.** Every picture was a presigned R2 link that is a different address on every read of the queue, so the second look at the same picture downloaded it again.
+2. **The big view asked for the stored file**, about 2 MB of PNG for a render.
+3. **`orig` waited for the server first**: a server action (sign-in check, two database reads one after the other, a signature) and only then the download, with a black viewer in between because it had no small picture to show.
+
+From the owner's Mac the 2 MB download itself took about 0.3 s; on a slower line or a phone it is seconds. The fix does not depend on the line: 12 to 36 times fewer bytes on the first open, none on the next.
+
+**Decided:**
+- **D165 goes to main now, on its own**, as the six commits it was built from (`175871d`, `ba7ae98`, `b729acc`, `6207169`, `c14b02b`, `f521e17`), cherry-picked unchanged: the route `GET /api/images/<image_version id>?size=thumb|preview|full` behind the operator's session, the disk cache on the VPS (`IMAGE_CACHE_DIR`, 2 GB, 30 days), the 1280 px WebP preview rendered on first request, `Cache-Control: private, max-age=31536000, immutable` with an ETag, stable URLs in the Console's read model, the big view opening on the preview with **Full size** for the exact bytes, and the ten-minute queue refresh. D165's full text, its rejected alternatives and its amendments are on the clean-up branch and arrive with it; nothing here changes them. The rest of the clean-up (D163, D164, D166) stays where it is.
+- **New: a phone photograph is served by the same route**, `?kind=phone`, by its own `agent_job_photos` row (only one whose upload finished). Same cache, same sizes; `thumb` is the stored thumbnail when the row has one. The cache file is still `<row id>.<size>`, so the sweep needs no change.
+- **`orig` opens at once.** The Console's read model carries `phonePhotoId` (it replaces `hasPhonePhoto`), and the chip builds the three addresses itself: no server action, the stored thumbnail blurred while the preview arrives, the stored file behind Full size. `phonePhotoUrlAction` and `phonePhotoUrl()` are deleted.
+- **Enhance's photo box uses it too.** The box is 96 px wide and used to wait for a server action and then download the whole phone photograph. It now shows the thumbnail directly; "Full photo" is the stable address of the stored file. `photoUrlAction` and `jobPhotoUrl()` are deleted.
+
+**What a person sees:** the picture in the big view is the preview: the same 1254 px for a render, WebP instead of PNG. A phone photograph taller or wider than 1280 px is shown at 1280 until **Full size**.
+
+**Not changed:** Restock and Identify still open presigned stored files in the same viewer (the viewer shows `url` directly when it is given no preview); Tracking still signs its thumbnails; the Enhance grid still signs its thumbnails once per opened batch. The owner named the Console's pictures; these are the next places if they feel slow.
+
+**Server step (owner-run, after the push; the site works without it):** without the setting the cache lives in the service's temporary folder and is rebuilt after a restart of the machine.
+
+```bash
+mkdir -p /home/ubuntu/loupe/shared/image-cache
+printf '%s\n' 'IMAGE_CACHE_DIR=/home/ubuntu/loupe/shared/image-cache' 'IMAGE_CACHE_MAX_MB=2048' 'IMAGE_CACHE_DAYS=30' >> ~/loupe/shared/.env
+sudo systemctl restart loupe
+```
+
+**For the clean-up branch, when it is merged with main:** the six commits are already here, so they drop out; D163 there removes the `orig` chip, which the owner was using on 18 November. Ask before it goes.

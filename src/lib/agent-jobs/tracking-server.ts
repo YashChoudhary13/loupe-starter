@@ -16,7 +16,6 @@ import {
  */
 
 const THUMB_TTL_SECONDS = 6 * 60 * 60
-const PHOTO_TTL_SECONDS = 10 * 60
 
 function fail(message: string, error: { code?: string; message: string }): ConsoleError {
   return new ConsoleError(message, [error.code, error.message].filter(Boolean).join(' · '), error.code !== '55000' && error.code !== '22023' && error.code !== 'P0002')
@@ -67,13 +66,6 @@ export async function jobThumbUrls(jobId: string): Promise<Readonly<Record<strin
   const pairs = await Promise.all(((data ?? []) as { id: string; thumb_key: string | null; storage_key: string }[])
     .map(async (r) => [r.id, await store.presignGet(r.thumb_key ?? r.storage_key, THUMB_TTL_SECONDS)] as const))
   return Object.fromEntries(pairs)
-}
-
-/** The phone photograph itself, signed on the tap. */
-export async function jobPhotoUrl(photoId: string): Promise<string> {
-  const { data, error } = await supabaseServer().from('agent_job_photos').select('storage_key').eq('id', photoId).maybeSingle<{ storage_key: string }>()
-  if (error || !data) throw new ConsoleError('That photograph was not found.', error?.message ?? null, false)
-  return consoleObjectStore().presignGet(data.storage_key, PHOTO_TTL_SECONDS)
 }
 
 export async function retryJobPhotos(operator: Operator, jobId: string, photoIds: readonly string[] | null): Promise<number> {

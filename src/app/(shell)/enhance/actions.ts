@@ -4,7 +4,7 @@ import { NotAuthorisedError, requireOperatorForAction } from '@/lib/auth/authori
 import { JobInputError } from '@/lib/agent-jobs/label'
 import { beginJobPhotoUpload, createJob, finishJobPhotoUpload, listJobs, queueJob, type JobSummary } from '@/lib/agent-jobs/server'
 import type { JobPhoto, RunnerView } from '@/lib/agent-jobs/tracking'
-import { jobPhotoUrl, jobThumbUrls, listJobPhotos, retryJobPhotos, runnerView, sendRunnerCommand, cancelJob } from '@/lib/agent-jobs/tracking-server'
+import { jobThumbUrls, listJobPhotos, retryJobPhotos, runnerView, sendRunnerCommand, cancelJob } from '@/lib/agent-jobs/tracking-server'
 import { ConsoleError } from '@/lib/console/mutations'
 
 /** D143 — the Enhance jobs page. Same result contract as the Upload section. */
@@ -72,13 +72,6 @@ export async function enhanceStateAction(openJobIds: readonly string[]): Promise
 
 export async function jobThumbsAction(jobId: string): Promise<EnhanceActionResult<Readonly<Record<string, string>>>> {
   return withOperator(async () => (UUID.test(jobId) ? jobThumbUrls(jobId) : {}))
-}
-
-export async function photoUrlAction(photoId: string): Promise<EnhanceActionResult<string>> {
-  return withOperator(async () => {
-    if (!UUID.test(photoId)) throw new JobInputError('That photograph was not found.')
-    return jobPhotoUrl(photoId)
-  })
 }
 
 /** Sends failed photographs back to the queue: the ones named, or every failed one of the batch. */

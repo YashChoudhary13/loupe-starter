@@ -83,7 +83,7 @@ function agentMarks(row: Partial<IntakeRow>): AgentMarks {
     agentSuggest: agentSuggestFromRow(row.agent_suggest),
     reenhanceJobId: row.reenhance_job_id ?? null,
     reenhanceNote: row.reenhance_note ?? null,
-    hasPhonePhoto: Boolean(row.agent_source_photo_id),
+    phonePhotoId: row.agent_source_photo_id ?? null,
   }
 }
 

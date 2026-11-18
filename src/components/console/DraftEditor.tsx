@@ -112,8 +112,6 @@ export interface DraftEditorProps {
   readonly onSupersede?: ((sku: string, enable: boolean) => void) | null
   /** D145: send this photograph back to Claude with a note; null when read-only or not yet created. */
   readonly onReenhance?: ((intakeFileId: string, note: string) => void) | null
-  /** D148: the signed phone photograph an agent image was rendered from, fetched on the click. */
-  readonly onPhonePhoto?: ((intakeFileId: string) => Promise<string | null>) | null
   readonly onMoveImage: (imageVersionId: string, delta: number) => void
   readonly onChooseVersion: (intakeFileId: string, imageVersionId: string) => void
   /** Opens the complete category + SKU-sequence creation flow. */
@@ -152,7 +150,6 @@ export function DraftEditor(props: DraftEditorProps) {
     supersedesSku = null,
     onSupersede = null,
     onReenhance = null,
-    onPhonePhoto = null,
     onPublish,
     onSaveDraft,
     onDetach,
@@ -509,23 +506,23 @@ export function DraftEditor(props: DraftEditorProps) {
                         title={
                           version.kind !== 'original'
                             ? `Generated${version.model ? ` · ${version.model}` : ''}`
-                            : row.photo.hasPhonePhoto
+                            : row.photo.phonePhotoId
                               ? 'The image Claude delivered'
                               : 'The photographer’s untouched file'
                         }
                         onClick={() => onChooseVersion(row.image.intakeFileId, version.id)}
                       >
-                        {version.kind !== 'original' ? `v${version.versionNo}` : row.photo.hasPhonePhoto ? 'render' : 'orig'}
+                        {version.kind !== 'original' ? `v${version.versionNo}` : row.photo.phonePhotoId ? 'render' : 'orig'}
                       </Chip>
                     ))}
-                    {row.photo.hasPhonePhoto && onPhonePhoto ? (
+                    {row.photo.phonePhotoId ? (
                       <Chip
                         ghost
                         title="The phone photograph this image was made from"
+                        // D175: stable addresses built here, so the click opens the viewer at once: no server round trip, and the browser keeps the picture.
                         onClick={() => {
-                          void onPhonePhoto(row.image.intakeFileId).then((url) => {
-                            if (url) setPhonePhoto({ url, thumbUrl: null, alt: `Phone photograph behind ${row.photo.filename}`, caption: `${row.photo.filename} · phone photograph` })
-                          })
+                          const id = row.photo.phonePhotoId
+                          if (id) setPhonePhoto({ url: imageUrl(id, 'full', 'phone'), previewUrl: imageUrl(id, 'preview', 'phone'), thumbUrl: imageUrl(id, 'thumb', 'phone'), alt: `Phone photograph behind ${row.photo.filename}`, caption: `${row.photo.filename} · phone photograph` })
                         }}
                       >
                         orig

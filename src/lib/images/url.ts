@@ -11,6 +11,9 @@ export function isImageSize(value: unknown): value is ImageSize {
   return typeof value === 'string' && (IMAGE_SIZES as readonly string[]).includes(value)
 }
 
-export function imageUrl(versionId: string, size: ImageSize = 'preview'): string {
-  return `/api/images/${encodeURIComponent(versionId)}?size=${size}`
+/** `phone` (D175): the phone photograph a render was made from, an `agent_job_photos` row. */
+export type ImageKind = 'version' | 'phone'
+
+export function imageUrl(id: string, size: ImageSize = 'preview', kind: ImageKind = 'version'): string {
+  return `/api/images/${encodeURIComponent(id)}?size=${size}${kind === 'phone' ? '&kind=phone' : ''}`
 }

@@ -60,8 +60,8 @@ export interface AgentMarks {
   /** D145: set while a redo job for this image is queued or running; the note is what the operator asked for. */
   readonly reenhanceJobId: string | null
   readonly reenhanceNote: string | null
-  /** D148: Loupe holds the phone photograph this image was rendered from; `orig` shows it. */
-  readonly hasPhonePhoto: boolean
+  /** D148: the phone photograph this image was rendered from, when Loupe holds it; `orig` shows it (D175: by this id, no round trip). */
+  readonly phonePhotoId: string | null
 }
 
 export interface PhotoSummary extends AgentMarks {

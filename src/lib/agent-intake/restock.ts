@@ -210,15 +210,3 @@ export async function deleteRestockCandidates(operator: Operator, photoIds: read
   if (error) throw rpcError('The restock could not be deleted.', error)
   return typeof data === 'number' ? data : 0
 }
-
-/** `orig` in the console: the phone photograph an agent image was rendered from, signed only when asked for. */
-export async function phonePhotoUrl(intakeFileId: string): Promise<SignedImage> {
-  const db = supabaseServer()
-  const { data: file } = await db.from('intake_files').select('agent_source_photo_id').eq('id', intakeFileId).maybeSingle<{ agent_source_photo_id: string | null }>()
-  const { data: photo } = file?.agent_source_photo_id
-    ? await db.from('agent_job_photos').select('storage_key').eq('id', file.agent_source_photo_id).maybeSingle<{ storage_key: string }>()
-    : { data: null }
-  const signed = photo ? (await signKeys([photo.storage_key])).get(photo.storage_key) : null
-  if (!signed) throw new ConsoleError('Loupe does not hold the phone photograph for this image.', null, false)
-  return signed
-}

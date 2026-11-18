@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 const mocks = vi.hoisted(() => ({
   operator: vi.fn(),
   rows: {} as Record<string, { storage_key: string; thumb_key: string | null; purged_at: string | null }>,
+  phone: {} as Record<string, { storage_key: string; status: string }>,
   objects: {} as Record<string, Buffer>,
   get: vi.fn(),
 }))
@@ -15,7 +16,19 @@ vi.mock('server-only', () => ({}))
 vi.mock('@/lib/auth/authorize', () => ({ requireOperatorForAction: mocks.operator, NotAuthorisedError: class extends Error {} }))
 vi.mock('@/lib/supabase/server', () => ({
   supabaseServer: () => ({
-    from: () => ({ select: () => ({ eq: (_column: string, id: string) => ({ maybeSingle: async () => ({ data: mocks.rows[id] ?? null, error: null }) }) }) }),
+    from: (table: string) => {
+      const wanted: Record<string, string> = {}
+      const query = {
+        select: () => query,
+        eq: (column: string, value: string) => { wanted[column] = value; return query },
+        maybeSingle: async () => {
+          if (table === 'image_versions') return { data: mocks.rows[wanted.id] ?? null, error: null }
+          const photo = table === 'agent_job_photos' ? mocks.phone[wanted.id] : undefined
+          return { data: photo && photo.status === wanted.status ? photo : null, error: null }
+        },
+      }
+      return query
+    },
   }),
 }))
 vi.mock('@/lib/console/images', () => ({ consoleObjectStore: () => ({ get: mocks.get }) }))
@@ -26,15 +39,24 @@ import { GET } from '@/app/api/images/[versionId]/route'
 const FULL = '5f1e2d3c-0000-4000-8000-000000000001'
 const NO_THUMB = '5f1e2d3c-0000-4000-8000-000000000002'
 const PURGED = '5f1e2d3c-0000-4000-8000-000000000003'
-const request = (id: string, size?: string, headers: Record<string, string> = {}) =>
-  GET(new Request(`https://loupe.qimati-eng.site/api/images/${id}${size ? `?size=${size}` : ''}`, { headers }), { params: Promise.resolve({ versionId: id }) })
+const PHONE = '5f1e2d3c-0000-4000-8000-0000000000a1'
+const PHONE_PENDING = '5f1e2d3c-0000-4000-8000-0000000000a2'
+const request = (id: string, size?: string, headers: Record<string, string> = {}, kind?: string) => {
+  const query = new URLSearchParams({ ...(size ? { size } : {}), ...(kind ? { kind } : {}) }).toString()
+  return GET(new Request(`https://loupe.qimati-eng.site/api/images/${id}${query ? `?${query}` : ''}`, { headers }), { params: Promise.resolve({ versionId: id }) })
+}
 
 let dir: string
 beforeAll(async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'loupe-image-route-test-'))
   process.env.IMAGE_CACHE_DIR = dir
   const png = await sharp({ create: { width: 1600, height: 1200, channels: 3, background: '#eee6d6' } }).png().toBuffer()
-  mocks.objects = { 'manual/u1/original.png': png, 'manual/u1/thumb.webp': Buffer.from('stored thumb') }
+  const jpeg = await sharp({ create: { width: 3200, height: 2400, channels: 3, background: '#d8c9a8' } }).jpeg().toBuffer()
+  mocks.objects = { 'manual/u1/original.png': png, 'manual/u1/thumb.webp': Buffer.from('stored thumb'), 'intake/j1/p1.jpg': jpeg }
+  mocks.phone = {
+    [PHONE]: { storage_key: 'intake/j1/p1.jpg', status: 'uploaded' },
+    [PHONE_PENDING]: { storage_key: 'intake/j1/p2.jpg', status: 'pending' },
+  }
   mocks.rows = {
     [FULL]: { storage_key: 'manual/u1/original.png', thumb_key: 'manual/u1/thumb.webp', purged_at: null },
     [NO_THUMB]: { storage_key: 'manual/u1/original.png', thumb_key: null, purged_at: null },
@@ -104,6 +126,29 @@ describe('GET /api/images/[versionId]', () => {
     const cut = await request(NO_THUMB, 'thumb')
     const meta = await sharp(Buffer.from(await cut.arrayBuffer())).metadata()
     expect([meta.format, meta.width]).toEqual(['webp', 512])
+  })
+
+  it('serves a phone photograph by its own row when kind=phone, and only one that was uploaded (D175)', async () => {
+    const preview = await request(PHONE, undefined, {}, 'phone')
+    expect(preview.status).toBe(200)
+    expect(preview.headers.get('content-type')).toBe('image/webp')
+    expect(preview.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+    const meta = await sharp(Buffer.from(await preview.arrayBuffer())).metadata()
+    expect([meta.format, meta.width, meta.height]).toEqual(['webp', 1280, 960])
+
+    const full = await request(PHONE, 'full', {}, 'phone')
+    expect(full.headers.get('content-type')).toBe('image/jpeg')
+    expect(Buffer.from(await full.arrayBuffer()).equals(mocks.objects['intake/j1/p1.jpg'])).toBe(true)
+    expect(JSON.stringify([...preview.headers, ...full.headers])).not.toContain('intake/j1')
+
+    const small = await request(PHONE, 'thumb', {}, 'phone')
+    expect((await sharp(Buffer.from(await small.arrayBuffer())).metadata()).width).toBe(512)
+
+    // Not uploaded yet; a version's id asked for as a phone photograph; a phone photograph asked for as a version; an unknown kind.
+    expect((await request(PHONE_PENDING, 'full', {}, 'phone')).status).toBe(404)
+    expect((await request(FULL, 'full', {}, 'phone')).status).toBe(404)
+    expect((await request(PHONE, 'full')).status).toBe(404)
+    expect((await request(PHONE, 'full', {}, 'parcel')).status).toBe(404)
   })
 
   it('turns an R2 failure into a 502 that is not cached', async () => {

@@ -37,6 +37,7 @@ describe('image URLs', () => {
   it('builds one stable URL per version and size, defaulting to the preview', () => {
     expect(imageUrl('5f1e2d3c-0000-4000-8000-000000000001', 'thumb')).toBe('/api/images/5f1e2d3c-0000-4000-8000-000000000001?size=thumb')
     expect(imageUrl('v1')).toBe('/api/images/v1?size=preview')
+    expect(imageUrl('p1', 'preview', 'phone')).toBe('/api/images/p1?size=preview&kind=phone')
     expect(isImageSize('full')).toBe(true)
     expect(isImageSize('huge')).toBe(false)
   })
