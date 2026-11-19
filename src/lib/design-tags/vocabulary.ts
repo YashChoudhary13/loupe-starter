@@ -4,7 +4,7 @@
  *   node scripts/design-tags-sync.mjs ~/Desktop/Qimati/search/config/taxonomy.json ~/Desktop/Qimati/search/scripts/label.py
  * Only what the labeller sends is copied; the customers' search words stay in the search project (this repo is public).
  */
-export const TAXONOMY_VERSION = '2fbb31f5567c'
+export const TAXONOMY_VERSION = '80ac8d9f5a01'
 
 export const GUIDE = `You label product photos for the search engine of a wholesale fashion-jewellery store. Shoppers type things like "heart necklace", "red stone ring" or "snake chain", and your labels decide which products they see. A wrong label shows a shopper the wrong product; a missing label hides the right one. Label what is really there.
 
@@ -73,7 +73,7 @@ export const KINDS: Readonly<Record<string, string>> = {
   "bag": "^tote bag|^coin pouch|^vanity pouch|^pouch",
   "keychain": "^key chain",
   "facelet": "^facelet",
-  "mixed": "^indian jewellery"
+  "mixed": "^indian jewellery|^indian pendant sets|^men.?s jewellery"
 }
 
 /** Facet → label → the definition the labeller reads. */

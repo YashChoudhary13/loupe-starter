@@ -2,7 +2,8 @@ import 'server-only'
 
 import { consoleObjectStore } from '@/lib/console/images'
 import { serverEnv } from '@/lib/env'
-import { makePreview } from '@/lib/images/preview'
+import { cached } from '@/lib/images/cache'
+import { renderSize } from '@/lib/images/preview'
 import { loadPublishInput } from '@/lib/publish/publish-product'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { shopifyConfig } from '@/lib/shopify/config'
@@ -20,11 +21,12 @@ import { perKeyQueue } from './queue'
  *
  *   1. read the product from Shopify: title, options and the current `qimati.design_labels`
  *   2. stop when that value was made for the same photos, category and vocabulary (the fingerprint)
- *   3. the first four photos in publish order from R2, one at a time, each cut to the 1280 px WebP preview
+ *   3. the first four photos in publish order, one at a time, as the 1280 px WebP preview the picture route serves
+ *      (D175's disk cache, filled from R2 on a miss)
  *   4. Claude Opus labels them (the search project's prompt, ./labeller.ts)
  *   5. one `metafieldsSet` on the product. Never productSet (a re-push resends stock), never tags (they drive collections).
  *
- * `DESIGN_LABELS=off` turns it off.
+ * `DESIGN_LABELS=off` turns it off; so does a missing `HOME_CLAUDE_API_KEY` (one warning per process).
  */
 const ACTOR = 'design-tags'
 
@@ -52,8 +54,15 @@ interface SetResult { metafieldsSet: { metafields: { id: string }[] | null; user
 // Two at a time: each holds up to four previews and one Opus call; the server has 3.7 GB.
 const queue = perKeyQueue(labelOnce, 2)
 
+let warnedNoKey = false
+
 export function labelDraftDesign(draftId: string): Promise<void> {
   if (process.env.DESIGN_LABELS?.trim().toLowerCase() === 'off') return Promise.resolve()
+  if (!process.env.HOME_CLAUDE_API_KEY?.trim()) {
+    if (!warnedNoKey) console.warn('design-tags: HOME_CLAUDE_API_KEY is not set, so new products are not labelled.')
+    warnedNoKey = true
+    return Promise.resolve()
+  }
   return queue(draftId).catch((cause) => console.error('design-tags:', cause instanceof Error ? cause.message : String(cause)))
 }
 
@@ -75,13 +84,16 @@ async function labelOnce(draftId: string): Promise<void> {
     const print = fingerprint(images.map((image) => image.imageVersionId), prefix)
     if (storedFingerprint(product.metafield?.value) === print) return  // labelled already for these photos
 
+    const apiKey = serverEnv.homeClaudeApiKey
     const store = consoleObjectStore()
     const photos: Buffer[] = []
-    for (const image of images) photos.push(await makePreview(await store.get(image.storageKey)))
+    for (const image of images) {
+      photos.push(await cached(`${image.imageVersionId}.preview`, () => renderSize({ storage_key: image.storageKey, thumb_key: null }, 'preview', store)))
+    }
     const kind = kindFor(prefix, product.title)
     const options = product.options.filter((option) => option.name !== 'Title')  // Shopify's default option, as the search snapshot drops it
     const { labels, usage } = await labelPhotos({
-      apiKey: serverEnv.homeClaudeApiKey, workspaceId: process.env.HOME_CLAUDE_WORKSPACE_ID?.trim() || undefined,
+      apiKey, workspaceId: process.env.HOME_CLAUDE_WORKSPACE_ID?.trim() || undefined,
       photos, product: { title: product.title, options }, kind,
     })
 

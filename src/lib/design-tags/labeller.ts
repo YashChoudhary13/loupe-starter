@@ -30,9 +30,10 @@ export function kindOf(title: string): string {
 }
 
 /**
- * Loupe knows the category, so the kind comes from its SKU prefix; a category made later in the console falls back to
- * the title. INJ is the taxonomy's "mixed" kind (any piece, decided from the photos): its Loupe title "Indian Pendant
- * Sets" matches no pattern, and label.py reaches "mixed" only through the older "Indian Jewellery" titles.
+ * Loupe knows the category, so the kind comes from its SKU prefix; a category without one here falls back to the
+ * title, as label.py does. INJ is the taxonomy's "mixed" kind (any piece, decided from the photos), which its titles
+ * ("Indian Pendant Sets", the older "Indian Jewellery") also reach; a men's jewellery title reaches "mixed" through
+ * the title alone.
  */
 const KIND_BY_PREFIX: Readonly<Record<string, string>> = {
   NK: 'necklace', ER: 'earrings', BK: 'kada', CB: 'chain-bracelet', RS: 'ring', AK: 'anklet', NP: 'nose-pin',
@@ -69,7 +70,7 @@ export function schema() {
 export function productText(product: ProductFacts, kind: string): string {
   const types = typesFor(kind === 'mixed' ? PIECES : [kind])
   const lines = [
-    'Kind: ' + (kind === 'mixed' ? 'from the Indian jewellery range, any kind of piece: decide from the photos' : kind),
+    'Kind: ' + (kind === 'mixed' ? "from a range that holds any kind of piece (Indian jewellery, men's jewellery): decide from the photos" : kind),
     'Title: ' + product.title,
     ...product.options.map((o) => `Option ${o.name}: ${o.values.join(', ')}`),
   ]
@@ -115,8 +116,8 @@ export function metafieldValue(labels: Labels, kind: string, print: string, at: 
   return { v: 1, model, at: at.toISOString(), images: print, labels: { kind, ...labels } }
 }
 
-const SYSTEM = systemPrompt()
-const SCHEMA = schema()
+/** Built on the first call, not on import: a bad vocabulary breaks labelling only, never the console actions importing this. */
+let request: { system: string; schema: ReturnType<typeof schema> } | null = null
 
 export interface Usage { readonly input: number; readonly cacheRead: number; readonly cacheWrite: number; readonly output: number; readonly usd: number }
 
@@ -133,16 +134,17 @@ export interface LabelInput {
 /** One request, as label.py `label_one` makes it. Throws on a refusal, a cut-off answer or an answer of the wrong shape. */
 export async function labelPhotos(input: LabelInput): Promise<{ labels: Labels; usage: Usage }> {
   // A key not tied to one workspace names its workspace on every call (D149). label.py allows 180 s per try.
+  const asked = (request ??= { system: systemPrompt(), schema: schema() })
   const client = new Anthropic({ apiKey: input.apiKey, fetch: input.fetchImpl, timeout: 180_000, maxRetries: 1, defaultHeaders: input.workspaceId ? { 'anthropic-workspace-id': input.workspaceId } : undefined })
   const reply = await client.messages.create({
     model: LABEL_MODEL,
     max_tokens: 64_000,
-    system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
+    system: [{ type: 'text', text: asked.system, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: [
       ...input.photos.slice(0, MAX_PHOTOS).map((photo) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/webp' as const, data: photo.toString('base64') } })),
       { type: 'text', text: productText(input.product, input.kind) },
     ] }],
-    output_config: { effort: LABEL_EFFORT, format: { type: 'json_schema', schema: SCHEMA } },
+    output_config: { effort: LABEL_EFFORT, format: { type: 'json_schema', schema: asked.schema } },
   })
   if (reply.stop_reason !== 'end_turn') throw new Error(`The labeller stopped with ${reply.stop_reason}.`)
   const text = reply.content.find((block): block is Anthropic.TextBlock => block.type === 'text')?.text ?? ''

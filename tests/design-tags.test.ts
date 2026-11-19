@@ -25,7 +25,8 @@ describe('the port of label.py', () => {
     expect((labelPy as { taxonomyVersion: string }).taxonomyVersion).toBe(TAXONOMY_VERSION)
   })
   it('sends the same system prompt', () => expect(systemPrompt()).toBe(expected.system))
-  it('asks for the same JSON schema', () => expect(schema()).toEqual(expected.schema))
+  // As text: the order of the properties is the order Claude writes the answer in.
+  it('asks for the same JSON schema', () => expect(JSON.stringify(schema())).toBe(JSON.stringify(expected.schema)))
   it('reads the same kind from a title', () => {
     for (const title of cases.titles) expect(kindOf(title), title).toBe(expected.kinds[title])
   })
@@ -52,9 +53,10 @@ describe('kindFor', () => {
     expect(kindFor('rs', 'Rings 600')).toBe('ring')
     expect(kindFor('HJ', 'Hair Jewellery 021')).toBe('hair')
   })
-  it('treats Indian Jewellery as the mixed kind, which its Loupe title alone would miss', () => {
-    expect(kindOf('Indian Pendant Sets 065')).toBe('other')
+  it('treats Indian Jewellery and a men\'s jewellery title as the mixed kind', () => {
     expect(kindFor('INJ', 'Indian Pendant Sets 065')).toBe('mixed')
+    expect(kindFor('INJ', 'Something New 001')).toBe('mixed')
+    expect(kindFor(null, "Men's Jewellery 012")).toBe('mixed')
   })
   it('falls back to the title for a category made later in the console', () => {
     expect(kindFor('BX', 'Jewellery Box 003')).toBe('box')

@@ -744,7 +744,9 @@ export async function publishDraftAction(
     const published = await publishDraftForOperator(draftId, operator, {
       allowZeroStock: request.allowZeroStock,
     })
-    after(() => labelDraftDesign(draftId))  // D177: design labels after the response; never part of the publish
+    // D177: design labels after the response, never part of the publish. Not returned to after(): Next waits for what
+    // after() is handed before a restart lets the process go, and a deploy must not wait on Claude.
+    after(() => { void labelDraftDesign(draftId) })
 
     return {
       summary: {
