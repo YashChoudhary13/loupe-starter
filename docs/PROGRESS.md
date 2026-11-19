@@ -77,6 +77,37 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-11-19 — Design labels: each new product is labelled by Claude Opus for the store search (D177)
+
+**Goal this session:** the owner: "Labelling system needs to be deployed in our loupe too so all the products go on website labelled, secondly labelling needs to be accurate." and "Implement opus from new designs, leave the old ones which already happened."
+
+**Built:**
+- `src/lib/design-tags/labeller.ts` → port of the search project's `label.py` (system prompt, schema, user text, `kind_of`, `types_for`, `clean`), the kind from the SKU prefix, the fingerprint, the metafield value, the one Opus call (effort `high`, cached system prompt, json_schema output, 180 s, one retry).
+- `src/lib/design-tags/server.ts` → `labelDraftDesign(draftId)`: Shopify read (title, options, current `qimati.design_labels`), stop when the fingerprint is equal, four photos from R2 one at a time as 1280 px WebP previews, Claude, one `metafieldsSet`, an `events` row (`draft.design_labelled` / `draft.design_label_failed`). Never throws, never touches the draft row. `DESIGN_LABELS=off` turns it off.
+- `src/lib/design-tags/queue.ts` → at most two labellings at once; a draft already being labelled runs once more after, not beside.
+- `src/lib/design-tags/vocabulary.ts` (generated) and `scripts/design-tags-sync.mjs` → the copy of the search project's vocabulary (definitions only, no customer search words) and the parity fixture made by label.py's own functions.
+- `scripts/design-tags-try.ts` → labels local photographs and prints the labels (no database, no Shopify).
+- Call sites: one line in `src/lib/console/shopify-push.ts` (success branch, not awaited) and one in `publishDraftAction` (`after()`).
+
+**Verified:**
+- `npx vitest run tests/design-tags.test.ts`: 17 passed (prompt, schema, user text, kinds, types and clean equal to label.py's output; kind by prefix; fingerprint; the request body and workspace header; refusal, cut-off and non-JSON refused; the queue's two-at-once and rerun). Four deliberate mutations of the port (prompt heading, keyword cap, INJ kind, fingerprint order) made 5 tests fail. `npm run typecheck` and `npm run lint` clean. `npm run verify:isolation` (with the twin's made-up keys): all three steps passed.
+- Twin (`./up.sh loupe-design-tags --dev`, canned Claude answer `fakeworld/design-labels.json`): Save draft on Earrings (2 photos) → productSet, then `DesignLabelsProduct`, two R2 reads, one Claude call, one `metafieldsSet` `qimati.design_labels` with the cleaned labels (a `pendant` type, a repeat, a detail motif and an accent colour also in main, and a padded keyword dropped as label.py drops them), and `draft.design_labelled` by `design-tags`. Same draft saved again → productSet, then one `DesignLabelsProduct` read and nothing more: no Claude call (47 in the log before and after), no write. Claude answering 503 on Rings → push succeeded (`draft.shopify_synced`), `product_drafts.error` null, one `draft.design_label_failed`. Publish → one read, no call. The labelling step sent no productSet and no inventory change in any run. Twin smoke check (`check.sh.before-cleanup-2026-11-02`): 20 passed, 0 failed.
+- One real call through `scripts/design-tags-try.ts` with Loupe's Home key on a live product's two public photos (Necklace 1415): 3.1 s, US$ 0.052 with the cache write; labels equal to label.py's earlier Opus row for it except `styles: minimal`.
+
+**Not finished / known broken:**
+- **Not deployed.** The owner's push to `main` is the rollout; no migration, no new variable (the Home key is already on the server).
+- The search project does not read `qimati.design_labels` yet: until its snapshot does, its own labeller would label these products again.
+- A colour added after the first labelling does not relabel (the fingerprint is photos + category + vocabulary).
+
+**Surprises:**
+- `.env` in the main checkout has no `HOME_CLAUDE_API_KEY`; the key is in `.env.railway`, the mirror of the server's file. The try script reads only the two Claude names from whichever file it is given.
+- On the twin, a second Save draft in the same open editor after the background push answered "Someone got there first" (the push itself moves `updated_at`; labelling writes nothing to the draft). Reloading the console cleared it. Not caused by this change; not investigated.
+
+**Next session should start with:** after the owner's push, Save draft one new product and read its `draft.design_labelled` event and the product's `qimati.design_labels` in Shopify admin.
+
+---
+
+
 ## 2026-11-18 — The big picture opens at once: Console pictures and the phone photograph from Loupe's own route (D175)
 
 **Goal this session:** the owner: "When I click on images like the orig and the enhanced, it takes a long time to load full image."

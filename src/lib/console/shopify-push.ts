@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { Operator } from '@/lib/auth/authorize'
+import { labelDraftDesign } from '@/lib/design-tags/server'
 import { supabaseServer } from '@/lib/supabase/server'
 
 import { publishDraftForOperator, PublishInProgressError } from './publish'
@@ -50,6 +51,9 @@ export async function pushDraftToShopifyInBackground(
       detail: {},
       actor: operator.email,
     })
+    // D177: design labels for the store's search. Not awaited: a push (and the agent's redo request that runs it)
+    // never waits for Claude, and labelDraftDesign never rejects.
+    void labelDraftDesign(draftId)
   } catch (cause) {
     // Another push already owns the publish lease; it will report its own
     // outcome. Recording this as a failure would be a false alarm.

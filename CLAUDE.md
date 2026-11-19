@@ -96,8 +96,9 @@ category / material / colours, types a price (or clicks **Use suggestion**), and
 Shopify. The console's own **Upload images** is the third door, for a finished image made
 elsewhere. A tracking page surfaces what needs a human; Shopify webhooks (D102) push admin-side
 changes back into Loupe in seconds. **Loupe itself never calls an image model and has no Drive
-inbox** (D144). It calls a text model in two places only: the Home assistant (D149) and Find's
-reading of a parcel photograph (D173).
+inbox** (D144). It calls a text model in three places only: the Home assistant (D149), Find's
+reading of a parcel photograph (D173), and the design labels written to `qimati.design_labels` after
+Save draft and Publish for the store search (D177, `src/lib/design-tags/`).
 
 **Every photograph of a batch is tracked (D170):** a batch is worked in passes, a photograph that did not land goes back
 to the queue (three tries; none counted for a used-up limit or a lost sign-in), and /enhance shows which are done, the
@@ -424,6 +425,8 @@ one workspace), `N8N_URL`, `N8N_API_KEY`, `HOME_N8N_WORKFLOWS` (JSON label → i
 `HOME_CHAT_MODEL` (a Claude API model id, default `claude-haiku-5-5`, run at maximum effort); the bot actions need `BOT_REPORT_WEBHOOK_URL`, `BOT_STAFF_TEXT_WEBHOOK_URL`,
 `BOT_WEBHOOK_SECRET` and stay hidden without them. `FACE_DEV` is dev-only. Find's parcel reader (D173) uses the same
 `HOME_CLAUDE_API_KEY` / `HOME_CLAUDE_WORKSPACE_ID`; without the key every parcel photograph waits for a person.
+Design labels (D177) use the same key too; `DESIGN_LABELS=off` turns them off. Their vocabulary is a generated copy of the
+search project's: refresh it with `node scripts/design-tags-sync.mjs <search>/config/taxonomy.json <search>/scripts/label.py`.
 
 **Club QC (D168):** the same customer's open paid orders (the Print slips rules, `clubsOf` in `src/lib/qc/club.ts`) open on
 one Order QC screen with one scan field; each order keeps its own checklist, a scan counts in the oldest unfinished order

@@ -16,6 +16,7 @@ import {
 } from '@/lib/console/publish'
 import { pushDraftToShopifyInBackground } from '@/lib/console/shopify-push'
 import { loadDraftLabelOffer, markDraftLabelsPrinted } from '@/lib/console/draft-labels'
+import { labelDraftDesign } from '@/lib/design-tags/server'
 import {
   loadColourSuggestions,
   loadCatalog,
@@ -743,6 +744,7 @@ export async function publishDraftAction(
     const published = await publishDraftForOperator(draftId, operator, {
       allowZeroStock: request.allowZeroStock,
     })
+    after(() => labelDraftDesign(draftId))  // D177: design labels after the response; never part of the publish
 
     return {
       summary: {
