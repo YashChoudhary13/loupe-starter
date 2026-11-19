@@ -30,6 +30,31 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ---
 
 
+## 2026-11-19 — Deleting several photographs in the Console is one request (D176)
+
+**Goal this session:** the owner: "In loupe I just deleted 20 images from console and it just came back again as soon as I refreshed the page."
+
+**Built:**
+- `src/app/(shell)/console/actions.ts` → `deleteUngroupedPhotosAction(ids)` replaces the per-photograph action: the whole click travels in one request, four deletes at a time on the server, one refusal does not stop the others, each failure comes back with its sentence. At most 500 ids.
+- `src/components/console/ConsoleScreen.tsx` → one call per click; a queue re-read that lands while the request runs keeps those tiles hidden (`withoutDeleting`); the browser asks before the page is left while a delete is running.
+- `src/lib/console/queue-view.ts` → `withoutDeleting(queue, ids)`.
+
+**Verified:**
+- `npx vitest run tests/console-delete-one-request.test.ts tests/console-queue-view.test.ts` → 2 files, 11 tests passed (three photographs with one refused: the other two deleted and the refusal reported; no operator = nothing called; 501 ids refused).
+- `npx tsc --noEmit` clean; `npx eslint src` clean.
+- Full `npx vitest run`: 104 files passed; the 23 that fail are the database and credential tests, which have no `.env` in this worktree on purpose (they would run against production).
+
+**Not finished / known broken:**
+- NOT deployed: branch `claude/bulk-delete`, not pushed.
+- The cause is read from the code, not from the live records: this session's read of the live `events` table was refused, so today's `intake.console_delete_requested` rows for the 20 photographs were not counted. The reading: tiles leave the screen at the click, the browser sent one server action per photograph and sends them one after another, and the reload cancelled those not yet started. If the live records instead show 20 refusals (photographs that had been in a draft already sent to Shopify are refused by `prepare_console_photo_delete`), this change is still right but is not the whole answer.
+- The Console change was not clicked through in a browser (no local twin run this session).
+
+**Surprises:** two concurrent `await import()` of a mocked module inside one test handed the second caller the real module; the action now loads the discard routine once per request, which is also less work.
+
+**Next session should start with:** after the push, delete several photographs in the Console, reload at once, and confirm they stay gone; then count the day's `intake.console_delete_requested` against `intake.discarded` events.
+
+---
+
 ## 2026-11-18 — The big picture opens at once: Console pictures and the phone photograph from Loupe's own route (D175)
 
 **Goal this session:** the owner: "When I click on images like the orig and the enhanced, it takes a long time to load full image."

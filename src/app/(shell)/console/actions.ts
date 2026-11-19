@@ -309,41 +309,87 @@ export async function previewPhotosAction(
   return withOperator(() => loadPhotos(intakeFileIds))
 }
 
+/** More than the Pending grid ever shows; a longer list is not a click in the console. */
+const DELETE_REQUEST_LIMIT = 500
+
+export interface DeletePhotosResult {
+  readonly deleted: readonly string[]
+  readonly failed: readonly { readonly intakeFileId: string; readonly error: ActionError }[]
+}
+
 /**
- * Permanently removes only an ungrouped queue photograph. The database claim
+ * Permanently removes one ungrouped queue photograph. The database claim
  * runs first and wins the grouping race; grouped, published, or historically
  * Shopify-sent photographs are refused before Drive or R2 is touched.
  */
-export async function deleteUngroupedPhotoAction(
+async function deleteUngroupedPhoto(
   intakeFileId: string,
-): Promise<ActionResult<{ intakeFileId: string }>> {
-  return withOperator(async (operator) => {
-    const db = (await import('@/lib/supabase/server')).supabaseServer()
-    const { error } = await db.rpc('prepare_console_photo_delete', {
-      p_intake_file_id: intakeFileId,
-      p_actor: operator.email,
-    })
-    if (error) {
-      throw new ConsoleError(
-        error.hint || 'That photograph cannot be deleted from the console.',
-        [error.code, error.message].filter(Boolean).join(' · '),
-        error.code === '55000',
-      )
-    }
+  actor: string,
+  discardHeldIntake: (intakeFileId: string, actor: string) => Promise<unknown>,
+): Promise<void> {
+  const { error } = await supabaseServer().rpc('prepare_console_photo_delete', {
+    p_intake_file_id: intakeFileId,
+    p_actor: actor,
+  })
+  if (error) {
+    throw new ConsoleError(
+      error.hint || 'That photograph cannot be deleted from the console.',
+      [error.code, error.message].filter(Boolean).join(' · '),
+      error.code === '55000',
+    )
+  }
 
-    const { discardHeldIntake } = await import('@/lib/tracking/discard')
-    try {
-      await discardHeldIntake(intakeFileId, operator.email)
-    } catch (cause) {
-      throw new ConsoleError(
-        'The photograph could not be fully deleted. Open Tracking and press Discard to finish it.',
-        cause instanceof Error ? cause.message : String(cause),
-        true,
-      )
+  try {
+    await discardHeldIntake(intakeFileId, actor)
+  } catch (cause) {
+    throw new ConsoleError(
+      'The photograph could not be fully deleted. Open Tracking and press Discard to finish it.',
+      cause instanceof Error ? cause.message : String(cause),
+      true,
+    )
+  }
+}
+
+/**
+ * Deletes every photograph of one click in ONE request (2026-11-19). The browser
+ * sends server actions one after another, so a request per photograph left a
+ * reload free to cancel every delete that had not started: twenty tiles left
+ * the screen and came back. Once this request reaches the server it finishes,
+ * whatever the page does. One refusal does not stop the others; each is reported.
+ */
+export async function deleteUngroupedPhotosAction(
+  intakeFileIds: readonly string[],
+): Promise<ActionResult<DeletePhotosResult>> {
+  return withOperator(async (operator) => {
+    const ids = [...new Set(intakeFileIds)]
+    if (ids.length > DELETE_REQUEST_LIMIT) {
+      throw new ConsoleError(`Delete at most ${DELETE_REQUEST_LIMIT} photographs at a time.`, null, false)
     }
-    // No queue snapshot: the client removes the tile optimistically and deletes
-    // run in parallel; a snapshot per delete re-signed the whole grid each time.
-    return { intakeFileId }
+    const deleted: string[] = []
+    const failed: { intakeFileId: string; error: ActionError }[] = []
+    const pending = [...ids]
+    const { discardHeldIntake } = await import('@/lib/tracking/discard')
+    // Bounded: enough to be quick, never a stampede of R2 cleanups.
+    await Promise.all(
+      Array.from({ length: Math.min(4, pending.length) }, async () => {
+        for (let id = pending.shift(); id !== undefined; id = pending.shift()) {
+          try {
+            await deleteUngroupedPhoto(id, operator.email, discardHeldIntake)
+            deleted.push(id)
+          } catch (cause) {
+            const result = toActionError(cause)
+            if (!result.ok) failed.push({ intakeFileId: id, error: result.error })
+          }
+        }
+      }),
+    )
+    // No queue snapshot: the client removed the tiles at the click.
+    const order = new Map(ids.map((id, index) => [id, index]))
+    const byRequestOrder = (x: string, y: string) => (order.get(x) ?? 0) - (order.get(y) ?? 0)
+    return {
+      deleted: deleted.sort(byRequestOrder),
+      failed: failed.sort((x, y) => byRequestOrder(x.intakeFileId, y.intakeFileId)),
+    }
   })
 }
 

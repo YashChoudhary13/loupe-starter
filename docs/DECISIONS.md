@@ -4015,3 +4015,7 @@ sudo systemctl restart loupe
 ```
 
 **For the clean-up branch, when it is merged with main:** the six commits are already here, so they drop out; D163 there removes the `orig` chip, which the owner was using on 18 November. Ask before it goes.
+
+### D176 — A Console delete of several photographs is one request (2026-11-19)
+
+The owner deleted 20 photographs, reloaded, and they were back. Tiles leave the screen at the click (optimistic), but the browser sent one server action per photograph, and a browser sends server actions one after another, so the "four at a time" in the client never happened and a reload cancelled every delete not yet started. Same shape as D151 (Save draft): what one click means must reach the server in one request. `deleteUngroupedPhotosAction(ids)` carries the whole click; the four-at-a-time bound moved to the server; a refusal is reported per photograph and does not stop the rest. While the request runs, a queue re-read keeps those tiles hidden (the delete events themselves trigger a re-read), and the page asks before it is left. Not chosen: a background job table for deletes (a second queue to watch for what is a few seconds of work).

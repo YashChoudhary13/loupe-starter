@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   startOfKolkataDayIso,
   tilesForQueueView,
+  withoutDeleting,
   type QueueView,
 } from '@/lib/console/queue-view'
 import type { QueueSnapshot, QueueTile } from '@/lib/console/types'
@@ -69,5 +70,18 @@ describe('console queue views', () => {
     expect(startOfKolkataDayIso(new Date('2026-07-30T18:30:00.000Z'))).toBe(
       '2026-07-30T18:30:00.000Z',
     )
+  })
+})
+
+describe('a queue re-read while a delete is running', () => {
+  it('keeps the photographs being deleted off the grid and out of the count', () => {
+    const shown = withoutDeleting(queue, new Set(['stale']))
+    expect(shown.tiles.map((t) => t.id)).toEqual(['draft', 'ungrouped'])
+    expect(shown.ungroupedCount).toBe(1)
+  })
+
+  it('never hides a draft that shares an id, and returns the snapshot itself when nothing is being deleted', () => {
+    expect(withoutDeleting(queue, new Set(['draft'])).tiles).toHaveLength(3)
+    expect(withoutDeleting(queue, new Set())).toBe(queue)
   })
 })

@@ -68,3 +68,14 @@ export function startOfKolkataDayIso(now: Date): string {
   inKolkata.setUTCHours(0, 0, 0, 0)
   return new Date(inKolkata.getTime() - kolkataOffsetMs).toISOString()
 }
+
+/**
+ * A queue re-read that lands while a delete is still running must not bring its
+ * tiles back: the server has not reached them yet, so a fresh snapshot still
+ * lists them. Tiles are compared by identity when nothing is being deleted.
+ */
+export function withoutDeleting(queue: QueueSnapshot, deletingIds: ReadonlySet<string>): QueueSnapshot {
+  if (deletingIds.size === 0) return queue
+  const tiles = queue.tiles.filter((tile) => !(tile.kind === 'photo' && deletingIds.has(tile.id)))
+  return { ...queue, tiles, ungroupedCount: Math.max(0, queue.ungroupedCount - (queue.tiles.length - tiles.length)) }
+}

@@ -9,7 +9,7 @@ import {
   beginManualUploadAction,
   changeDraftCategoryAction,
   colourSuggestionsAction,
-  deleteUngroupedPhotoAction,
+  deleteUngroupedPhotosAction,
   detachPhotoAction,
   openDraftAction,
   previewPhotosAction,
@@ -31,6 +31,7 @@ import { predictIdentity, type PredictedIdentity } from '@/lib/console/preview'
 import {
   QUEUE_VIEW_LABELS,
   tilesForQueueView,
+  withoutDeleting,
   type QueueView,
 } from '@/lib/console/queue-view'
 import type {
@@ -259,6 +260,10 @@ export function ConsoleScreen({
    */
   const [savingDraftIds, setSavingDraftIds] = useState<ReadonlySet<string>>(new Set())
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set())
+  const deletingIdsRef = useRef(deletingIds)
+  useEffect(() => {
+    deletingIdsRef.current = deletingIds
+  }, [deletingIds])
   const [uploads, setUploads] = useState<readonly UploadItem[]>([])
   const [labelOffer, setLabelOffer] = useState<DraftLabelOffer | null>(null)
   const [labelPrintBusy, setLabelPrintBusy] = useState(false)
@@ -297,7 +302,7 @@ export function ConsoleScreen({
   const refreshQueue = useCallback(async () => {
     const result = await settled(refreshQueueAction())
     if (!result.ok) return
-    setQueue(result.data.queue)
+    setQueue(withoutDeleting(result.data.queue, deletingIdsRef.current))
     // Counters move under this page — every Save draft reserves the next
     // number inside the save request (D107), and a webhook raises it when
     // somebody creates a product in Shopify admin. A stale `lastNumber` shows
@@ -641,11 +646,11 @@ export function ConsoleScreen({
    * the label offer — would be lost with the page.
    */
   useEffect(() => {
-    if (savingDraftIds.size === 0 && busy !== 'publish') return
+    if (savingDraftIds.size === 0 && busy !== 'publish' && deletingIds.size === 0) return
     const warn = (event: BeforeUnloadEvent) => event.preventDefault()
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
-  }, [busy, savingDraftIds])
+  }, [busy, deletingIds, savingDraftIds])
 
   const rememberSticky = useCallback(() => {
     const previous = readSticky()
@@ -937,29 +942,16 @@ export function ConsoleScreen({
       }))
       setFocusIndex((current) => Math.max(0, current - 1))
 
-      // Bounded concurrency: enough to feel instant, never a stampede of
-      // Drive/R2 cleanups.
-      const queueOfIds = [...ids]
-      let anyFailed = false
-      await Promise.all(
-        Array.from({ length: Math.min(4, queueOfIds.length) }, async () => {
-          for (;;) {
-            const id = queueOfIds.shift()
-            if (!id) return
-            const result = await deleteUngroupedPhotoAction(id)
-            if (!result.ok) {
-              anyFailed = true
-              handleResult(result)
-            }
-            setDeletingIds((current) => {
-              const next = new Set(current)
-              next.delete(id)
-              return next
-            })
-          }
-        }),
-      )
-      if (anyFailed) {
+      // One request for the whole click: a reload cannot cancel part of it.
+      const result = await settled(deleteUngroupedPhotosAction(ids))
+      setDeletingIds((current) => {
+        const next = new Set(current)
+        for (const id of ids) next.delete(id)
+        return next
+      })
+      if (!result.ok) handleResult(result)
+      else if (result.data.failed.length > 0) handleResult({ ok: false, error: result.data.failed[0].error })
+      if (!result.ok || result.data.failed.length > 0) {
         // The claim runs before external cleanup; a fresh snapshot honestly
         // restores anything that refused to delete, and Tracking exposes the
         // retryable Discard action for a partial cleanup.
