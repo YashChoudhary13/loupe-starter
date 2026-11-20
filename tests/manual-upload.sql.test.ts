@@ -245,7 +245,7 @@ describe('manual ready-image intake', () => {
     expect(upload.rowCount).toBe(0)
   })
 
-  it('refuses console deletion after the photograph has reached a Shopify draft', async () => {
+  it('refuses console deletion while the photograph is in a product, and allows it once it is taken out (D178)', async () => {
     const { intakeId } = await finalizedUpload()
     const category = await db.query<{ id: string }>(
       `select id from public.categories where sku_prefix = 'NK'`,
@@ -275,16 +275,14 @@ describe('manual ready-image intake', () => {
       actor,
     ])
 
-    await db.query('savepoint shopify_delete_guard')
-    await expect(
-      db.query(`select public.prepare_console_photo_delete($1, $2)`, [intakeId, actor]),
-    ).rejects.toMatchObject({ code: '55000' })
-    await db.query('rollback to savepoint shopify_delete_guard')
+    // Out of the product again: the photograph is the operator's to delete, although its
+    // product was sent to Shopify.
+    await db.query(`select public.prepare_console_photo_delete($1, $2)`, [intakeId, actor])
 
     const row = await db.query<{ status: string }>(
       `select status from public.intake_files where id = $1`,
       [intakeId],
     )
-    expect(row.rows[0]?.status).toBe('enhanced')
+    expect(row.rows[0]?.status).toBe('skipped')
   })
 })

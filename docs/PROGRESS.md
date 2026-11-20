@@ -30,6 +30,28 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 ---
 
 
+## 2026-11-20 — Thirteen photographs that no delete could remove (D178)
+
+**Goal this session:** the owner: "No matter what I do first 13 images in pending is not going away."
+
+**Built:**
+- `supabase/migrations/20261120090000_console_delete_after_shopify.sql` → `prepare_console_photo_delete` no longer refuses a photograph because a product it once belonged to was sent to Shopify. A photograph still in a draft or published is refused as before.
+- `tests/manual-upload.sql.test.ts` → the refusal test now expects the delete to be accepted once the photograph is out of its product.
+
+**Verified:**
+- The cause, from the live records (owner-run read-only script, 32 photographs in Pending): the oldest 13 each show `grouped` then `ungrouped` events and a draft with `shopify_first_sent_at` (ER1001 x2, ER1058 x2, ER1059 x2, ER1060 x2, ER1061, ER1077, ER1079, ER1080, WH093); the other 19, all from 19 Nov, would be deleted normally.
+- `npx tsc --noEmit` clean. The SQL test was NOT run: database tests have no `.env` in this worktree (they run against production).
+
+**Not finished / known broken:**
+- NOT live: the migration needs `npm run db:push` (owner), and the branch is not pushed.
+- The Console shows the refusal sentence only as a passing message; the owner did not report seeing it. Not looked into.
+
+**Surprises:** D176's reading (reload cancelled the requests) was only part of the story; these 13 were refusals.
+
+**Next session should start with:** after `db:push`, delete the 13 in the Console and confirm they stay gone.
+
+---
+
 ## 2026-11-19 — Deleting several photographs in the Console is one request (D176)
 
 **Goal this session:** the owner: "In loupe I just deleted 20 images from console and it just came back again as soon as I refreshed the page."
