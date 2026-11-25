@@ -48,14 +48,15 @@ describe('select: what one click would print', () => {
 describe('printSlips', () => {
   it('asks the courier once per pincode before the rows are stored, keeps it on the strip, skips a slip that asks for its address, and counts it in the event (D162)', async () => {
     const orders = [order(1), order(2), order(3, { shippingAddress: { name: 'B', phone: null, address1: 'x', address2: null, city: 'Aizawl', provinceCode: null, zip: '796 012', country: null } }), order(4, { shippingAddress: null }), order(5, { shippingAddress: { name: 'C', phone: null, address1: null, address2: null, city: 'Imphal', provinceCode: null, zip: '795010', country: null } }), order(6, { shippingAddress: { name: 'D', phone: null, address1: 'y', address2: null, city: 'Surat', provinceCode: 'GJ', zip: '395003', country: null } })]
+    orders.push(order(7, { shippingAddress: { name: 'D', phone: null, address1: 'y', address2: null, city: 'Auckland', provinceCode: null, zip: '1010', country: 'New Zealand' } })) // an address without an Indian pincode
     const { deps, calls } = fakeDeps(orders, { carriers: { '302001': 'DTDC', '796012': null, '795010': 'Speed Post' } })
     const outcome = await printSlips('owner', null, deps)
     expect(calls.pins).toEqual(['302001', '796012'])
-    expect(outcome.rows.map(row => row.strip.carrier)).toEqual(['DTDC', 'DTDC', null, undefined, undefined, 'Tirupati'])
+    expect(outcome.rows.map(row => row.strip.carrier)).toEqual(['DTDC', 'DTDC', null, undefined, undefined, 'Tirupati', null])
     expect(outcome.rows[4].strip.flags).toContain('Need Address')
-    expect((calls.rows as { orderId: string; strip: { carrier?: string | null } }[]).map(row => row.strip.carrier)).toEqual(['DTDC', 'DTDC', null, undefined, undefined, 'Tirupati'])
+    expect((calls.rows as { orderId: string; strip: { carrier?: string | null } }[]).map(row => row.strip.carrier)).toEqual(['DTDC', 'DTDC', null, undefined, undefined, 'Tirupati', null])
     const printed = calls.events.find(event => (event as { event: string }).event === 'slips.printed') as { detail: { couriers: Record<string, number>; checks: unknown[] } }
-    expect(printed.detail.couriers).toEqual({ DTDC: 2, unchecked: 1, 'no pin': 2, Tirupati: 1 })
+    expect(printed.detail.couriers).toEqual({ DTDC: 2, unchecked: 2, 'no pin': 2, Tirupati: 1 })
     expect(printed.detail.checks).toEqual([{ pin: '796012', carrier: null, dtdc: 'not served', delhivery: 'no answer' }])
   })
   it('records the batch and rows, then marks only PACK and CLUB orders In progress through their OPEN fulfilment orders', async () => {

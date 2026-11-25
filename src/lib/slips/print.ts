@@ -67,8 +67,9 @@ export async function printSlips(by: string, fromNumber: number | null, deps: Pr
   for (const row of selection.rows) {
     if (row.strip.flags.includes(NEED_ADDRESS)) continue
     if (gujarat(row.order)) { row.strip.carrier = 'Tirupati'; continue }
+    // No slip goes out unchecked (owner, 2026-11-25): an address without a six-digit Indian pincode says CHECK COURIER, never a silent DTDC.
     const pin = pinOf(row.order)
-    if (pin) row.strip.carrier = carriers.get(pin)?.carrier ?? null
+    row.strip.carrier = pin ? carriers.get(pin)?.carrier ?? null : null
   }
   // Every pin not going by DTDC is written into the print record with both checkers' words, so a courier line can be audited.
   const checks = [...carriers].filter(([, check]) => check.carrier !== 'DTDC').map(([pin, check]) => ({ pin, ...check }))
