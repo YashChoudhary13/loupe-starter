@@ -10,7 +10,7 @@ const SHOP_FOOT = ['Qimati', 'Acharya Kriplani Marg, Adarsh Nagar, Jaipur., 302,
 const CLS: Record<string, string> = { PACK: 'PACK', HOLD: 'HOLD', CLUB: 'CLUB', 'CLUB + HOLD': 'CLUBHOLD' }
 /** The courier line in the middle of the strip (D162), as the packer reads it. DTDC is the default and says nothing;
  * only a parcel leaving DTDC is named (owner, 2026-10-29: Delhivery orders are kept on a list). */
-export const CARRIER_LABEL: Record<SlipCarrier, string> = { DTDC: '', Delhivery: 'DELHIVERY', 'Speed Post': 'SPEED POST', Tirupati: 'TIRUPATI' }
+export const CARRIER_LABEL: Record<SlipCarrier, string> = { DTDC: '', Delhivery: 'DELHIVERY', 'Speed Post': 'INDIA POST', Tirupati: 'TIRUPATI' }
 export const CHECK_COURIER = 'CHECK COURIER'
 export const esc = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
 const ist = (iso: string) => new Date(iso)
@@ -18,7 +18,7 @@ const fmtDate = (iso: string) => ist(iso).toLocaleDateString('en-US', { month: '
 export const fmtWhen = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
 
 /** Strip on the slip, three cells: left PACK, HOLD, CLUB or CLUB + HOLD (CLUB kinds add → and the orders to club with,
- * status under each); middle the courier (D162): DELHIVERY, SPEED POST or TIRUPATI, CHECK COURIER when the check failed,
+ * status under each); middle the courier (D162): DELHIVERY, INDIA POST or TIRUPATI, CHECK COURIER when the check failed,
  * nothing for DTDC or when there was nothing to check; right Need Address. Every other flag stays off the strip (owner, 2026-10-05 and 2026-10-07). */
 export function strip(mark: string, strip: SlipStrip): string {
   const orders = strip.with.map(other => `<div class=w><b>${other.number}</b><small>${esc(other.status)}</small></div>`).join('')

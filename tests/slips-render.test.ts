@@ -18,10 +18,10 @@ describe('the mark strip (packing_list.py mark(), plus the courier cell in the m
     expect(strip('PACK', empty)).toBe('<div class=l><b>PACK</b></div><div class=c></div><div class=r></div>')
     expect(strip('CLUB + HOLD', { ...empty, flags: ['addresses differ, check before clubbing'] })).toBe('<div class=l><b>CLUB + HOLD</b></div><div class=c></div><div class=r></div>')
   })
-  it('names only a parcel leaving DTDC in the middle: DELHIVERY, SPEED POST; CHECK COURIER when the check failed; nothing for DTDC or without a pincode', () => {
+  it('names only a parcel leaving DTDC in the middle: DELHIVERY, INDIA POST; CHECK COURIER when the check failed; nothing for DTDC or without a pincode', () => {
     expect(strip('PACK', { ...empty, carrier: 'DTDC' })).toContain('<div class=c></div>')
     expect(strip('HOLD', { ...empty, carrier: 'Delhivery' })).toContain('<div class=c>DELHIVERY</div>')
-    expect(strip('CLUB', { ...empty, carrier: 'Speed Post' })).toContain('<div class=c>SPEED POST</div>')
+    expect(strip('CLUB', { ...empty, carrier: 'Speed Post' })).toContain('<div class=c>INDIA POST</div>')
     expect(strip('PACK', { ...empty, carrier: 'Tirupati' })).toContain('<div class=c>TIRUPATI</div>')
     expect(strip('PACK', { ...empty, carrier: null })).toContain('<div class=c>CHECK COURIER</div>')
     expect(strip('PACK', empty)).toContain('<div class=c></div>')
