@@ -86,7 +86,7 @@ project and a `.vercel/` link also exist and are *not* production.
 
 ## What it does
 
-New stock is photographed on a phone and sent from the **/enhance** page (D143) as a batch. An
+New stock is photographed on a phone and sent from the **/enhance** page (D143) as a batch; the batch sends itself once every photograph is uploaded (D179). An
 external enhancer — Claude Code on the Canada VPS, running the `enhance` skill — claims the batch
 through `/api/agent/jobs`, matches each piece against the catalogue, renders it through the Codex
 image tool, and delivers the finished images to `POST /api/agent/images` (D142) with a tag

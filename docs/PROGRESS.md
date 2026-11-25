@@ -29,6 +29,34 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-11-25 — Enhance upload: leaves the screen, sends itself, sixty at once (D179)
+
+**Goal this session:** the owner's five complaints about uploading a batch on /enhance (wait for a tap to send, no way to tell which photograph failed, uploads stop on leaving the page, slow, 60 at once fail, the page lags and tears).
+
+**Built:**
+- `src/components/enhance/uploader.ts` → the uploader as a module store: queue, four side by side, automatic retries, automatic send, pick-up-again by filename.
+- `src/app/api/enhance/upload/route.ts` → create / begin / finish / send / names for a signed-in operator; no Server Action in the upload loop.
+- `src/components/enhance/shrink-photo.ts` → `preparePhoto`: upload file and thumbnail from one decode, in a worker, page fallback.
+- `src/components/enhance/EnhanceScreen.tsx` → draws the uploader; memoised thumbnail tiles; "Retry N failed photos", "Send without them".
+- `src/lib/agent-jobs/photos.ts` → `uploadVerdict`, filename skip in `pickPhotos`; `tests/agent-job-photos.test.ts` 6 tests.
+
+**Verified:** `tsc --noEmit` clean, `eslint src tests` clean, `next build` compiled with `/api/enhance/upload` and `/enhance` in the route list, vitest 15 of 15 in the two agent-job files. The real screen, bundled with esbuild against a mock server (the route's five requests and a PUT store), in Chrome 158 headless at 390 x 844 with 60 photographs of 4,000 x 3,000 px, 4.1 MB:
+- 60 picked, the screen left after 7 were up: 49 up six seconds later, all 60 up and the batch `queued 60` in 9.4 s, one `send`, 60 thumbnails, "Sent 60 photos to Claude", a fresh label in the field on return. `scrollWidth` 390. Before the worker the same run took 122 s (see D179).
+- One photograph whose PUT always answers 500: three tries, batch stays `collecting 11`, zero `send`, the notice "1 photo of 12 did not upload, so nothing was sent to Claude yet", buttons "Retry 1 failed photo" and "Send without them · 11 photos". Storage healed, Retry: `queued 12`, one `send`.
+- Two failing, the page reloaded, Continue on the batch ("10 photos already in this batch"), the same 12 picked again: 2 new uploads, `queued 12`.
+
+**Not finished / known broken:**
+- Not on main; the owner pushes. No migration.
+- Not tried on the owner's Android phone: the memory and the scroll tearing are judged from the cause (full-size previews gone, one decode), not seen fixed there. The first real 60-photograph batch is the proof.
+- Locking the phone or closing Chrome still stops an upload; on return the failed ones go again by themselves.
+- Batches `2026-11-25 11.53` (26 up) and `2026-11-24 18.17` (22 up) are still Collecting.
+
+**Surprises:** a first run of the pick-up-again case sent 22 photographs for 12: the pick ran before the batch's filenames had arrived. A pick now waits for them. An `OffscreenCanvas` on the page is as slow as a canvas when the page is idle; only the worker fixed it.
+
+**Next session should start with:** after the owner's push, read the first big batch's rows in `agent_job_photos` (none left `pending`) and ask him how the scroll felt.
+
+---
+
 
 ## 2026-11-20 — Thirteen photographs that no delete could remove (D178)
 
