@@ -10,7 +10,7 @@ const order = (n: number, changes: Partial<SlipOrder> = {}, phone = `90000000${S
 })
 const held = (n: number) => order(n, { fulfillmentStatus: 'ON_HOLD', fulfillmentOrders: [{ id: `gid://shopify/FulfillmentOrder/${n}`, status: 'ON_HOLD', holdReasons: ['other'] }] })
 
-function fakeDeps(orders: SlipOrder[], options: { printed?: string[]; taken?: string[]; failOn?: string[]; truncated?: boolean; carriers?: Record<string, SlipCarrier | null> } = {}) {
+function fakeDeps(orders: SlipOrder[], options: { printed?: string[]; taken?: string[]; failOn?: string[]; truncated?: boolean; carriers?: Record<string, SlipCarrier | null>; delhiveryPhones?: string[] } = {}) {
   const calls = { batches: [] as unknown[], rows: [] as unknown[], progress: [] as unknown[], reported: [] as string[], events: [] as unknown[], pins: [] as string[] }
   const deps: PrintDeps = {
     listOpenOrders: async () => ({ orders, truncated: !!options.truncated }),
@@ -22,6 +22,7 @@ function fakeDeps(orders: SlipOrder[], options: { printed?: string[]; taken?: st
     setProgress: async (batchId, orderId, progress, error) => { calls.progress.push({ orderId, progress, error }) },
     reportProgress: async id => { if ((options.failOn ?? []).includes(id)) throw new Error('Shopify refused.'); calls.reported.push(id) },
     record: async (batchId, event, detail) => { calls.events.push({ event, detail }) },
+    delhiveryPhones: new Set(options.delhiveryPhones ?? []),
     carrierFor: async pin => { calls.pins.push(pin); const carrier = options.carriers && pin in options.carriers ? options.carriers[pin] : 'DTDC'; return { carrier, dtdc: carrier === 'DTDC' ? 'served' : 'not served', delhivery: carrier === 'DTDC' ? 'not asked' : 'no answer' } },
   }
   return { deps, calls }
@@ -46,6 +47,13 @@ describe('select: what one click would print', () => {
 })
 
 describe('printSlips', () => {
+  it('sends a customer on the Delhivery list by Delhivery whatever the pincode, Gujarat included, without a pincode check', async () => {
+    const surat = { name: 'D', phone: '+91 90000 00077', address1: 'y', address2: null, city: 'Surat', provinceCode: 'GJ', zip: '395003', country: null }
+    const { deps, calls } = fakeDeps([order(1, {}, '090000 00077'), order(2, { shippingAddress: surat }, '9111111111'), order(3, { note: 'call 9000000077' }, '9222222222'), order(4, {}, '9333333333')], { delhiveryPhones: ['919000000077'] })
+    const outcome = await printSlips('staff', null, deps)
+    expect(outcome.rows.map(row => row.strip.carrier)).toEqual(['Delhivery', 'Delhivery', 'Delhivery', 'DTDC'])
+    expect(calls.pins).toEqual(['302001'])
+  })
   it('asks the courier once per pincode before the rows are stored, keeps it on the strip, skips a slip that asks for its address, and counts it in the event (D162)', async () => {
     const orders = [order(1), order(2), order(3, { shippingAddress: { name: 'B', phone: null, address1: 'x', address2: null, city: 'Aizawl', provinceCode: null, zip: '796 012', country: null } }), order(4, { shippingAddress: null }), order(5, { shippingAddress: { name: 'C', phone: null, address1: null, address2: null, city: 'Imphal', provinceCode: null, zip: '795010', country: null } }), order(6, { shippingAddress: { name: 'D', phone: null, address1: 'y', address2: null, city: 'Surat', provinceCode: 'GJ', zip: '395003', country: null } })]
     orders.push(order(7, { shippingAddress: { name: 'D', phone: null, address1: 'y', address2: null, city: 'Auckland', provinceCode: null, zip: '1010', country: 'New Zealand' } })) // an address without an Indian pincode

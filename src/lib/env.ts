@@ -63,6 +63,10 @@ export const serverEnv = {
   get delhiveryApiKey(): string {
     return (process.env.DELHIVERY_API_KEY ?? '').trim()
   },
+  /** Phone numbers, comma-separated, of customers whose every parcel goes by Delhivery (owner, 2026-11-25). Raw text; the slips route normalises it. */
+  get delhiveryPhones(): string {
+    return (process.env.DELHIVERY_PHONES ?? '').trim()
+  },
 
   /** Shared secret the vision worker presents to /api/worker/* (D111). */
   get workerSecret(): string {

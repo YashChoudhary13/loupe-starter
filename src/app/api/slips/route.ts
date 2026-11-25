@@ -4,6 +4,7 @@ import { isOwnOrigin } from '@/lib/faces/server'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { listOpenOrders, readOrders, reportProgress, slipShopifyError } from '@/lib/shopify/slip-orders'
 import { carrierLookup } from '@/lib/slips/carrier'
+import { phoneDigits } from '@/lib/slips/plan'
 import { NothingToPrint, printSlips } from '@/lib/slips/print'
 import { renderSlipDocument, SLIP_DOCUMENT_HEADERS } from '@/lib/slips/render'
 import { createBatch, finishBatch, insertRows, printedOrderIds, record, setProgress } from '@/lib/slips/store'
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
       listOpenOrders: () => listOpenOrders(client), readOrders: ids => readOrders(client, ids), printedOrderIds, createBatch, insertRows, finishBatch, setProgress, record,
       reportProgress: (id, note) => reportProgress(client, id, note).then(() => undefined),
       carrierFor: carrierLookup(serverEnv.delhiveryApiKey),
+      delhiveryPhones: new Set(serverEnv.delhiveryPhones.split(',').map(phone => phoneDigits(phone)).filter((phone): phone is string => !!phone)),
     })
     if (!outcome.printed) return text(`${outcome.baseline} order${outcome.baseline === 1 ? '' : 's'} recorded as printed before Loupe. Nothing to print.`, 409)
     const html = renderSlipDocument({ rows: outcome.rows, orders: outcome.orders, title: `Qimati packing slips ${outcome.printedAt.slice(0, 10)}`, printedBy: by, printedAt: outcome.printedAt, backHref: '/dispatch/print' })
