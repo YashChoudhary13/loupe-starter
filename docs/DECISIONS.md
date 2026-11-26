@@ -4074,3 +4074,15 @@ What the records showed (batch `2026-11-25 11.53`): 26 photographs of about 2 MB
 
 Not done, on purpose: no change to the 4,096 px / 0.9 upload size (the enhancer's detail; halving the bytes is the next lever on speed and is the owner's call); no upload while the browser itself is closed or the phone is locked (a web page cannot promise that); Find's parcel upload still prepares on the page.
 
+### D180 — The packing slip carries the order as a barcode; scanning it on any Order QC screen opens that order (2026-11-26)
+
+*Owner, 2026-11-26: the QC desk should scan a barcode on the print slip with the gun to open the order, finish QC, then scan the next slip, "instead of having to go back, type the order then go to order".*
+
+1. **The barcode is the order's own name** (`Qimati8796`) in Code 128, 0.33 mm a bar, 10 mm tall, above "Order Qimati8796" on every slip, reprints included (`orderBarcode` in `src/lib/slips/render.ts`, the `bwip-js` already used for labels). No new identifier, nothing stored: the slip of a typed order and of a scanned one are the same order. Code 128 and not a QR so that nobody takes it for a pouch code.
+2. **A scan of that shape is an order, anything else a pouch** (`orderScan` in `src/lib/qc/order-scan.ts`: `qimati` + 3 to 8 digits, any case, optional `#`). No product barcode or SKU has that shape.
+3. **Every QC screen answers it.** The order screen and the club screen send it to `/qc?q=<name>` from the scan field (after pouches still being sent, so none is lost); a slip of the order or club already open only says so. The list pulls stray keystrokes into its search field, as the order screens do.
+4. **The list opens the order by itself** when the search has that shape and Shopify returns exactly that one open order: one Shopify read, then the redirect (the clubs and past checks are not read for it). Anything else (fulfilled, cancelled, unknown) shows the list as before, which says nothing was found. The same holds for the name typed by hand.
+5. `fmtWhen` moved to `plan.ts` so that the Print slips screen (a browser component) no longer imports the slip renderer and its barcode library.
+
+Not done, on purpose: the unfinished order is not blocked when the next slip is scanned (counts are saved per scan; the list shows it as In progress); a screen whose scan field is locked (recount needed, an order that cannot be checked, an unconfirmed request) does not take a slip scan, the operator goes back once; slips printed before this have no barcode.
+

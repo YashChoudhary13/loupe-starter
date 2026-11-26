@@ -1,4 +1,5 @@
-import { MISSING, lines, num } from './plan'
+import bwipjs from 'bwip-js/node'
+import { MISSING, fmtWhen, lines, num } from './plan'
 import { NEED_ADDRESS, type SlipAddress, type SlipCarrier, type SlipDocumentRow, type SlipOrder, type SlipStrip } from './types'
 
 /** The slip document: one packing slip per order in the layout of Shopify's own slip, a slim mark strip on top, designed
@@ -15,7 +16,14 @@ export const CHECK_COURIER = 'CHECK COURIER'
 export const esc = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
 const ist = (iso: string) => new Date(iso)
 const fmtDate = (iso: string) => ist(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kolkata' })
-export const fmtWhen = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+/** The order's name as a Code 128 barcode, 0.33 mm a bar, for the QC gun: scanned on any Order QC screen it opens the
+ * order (D180). An order name the barcode cannot carry prints no barcode; the typed search still opens it. */
+export function orderBarcode(name: string): string {
+  if (!/^[A-Za-z0-9#-]{1,24}$/.test(name)) return ''
+  const svg = bwipjs.toSVG({ bcid: 'code128', text: name, scale: 1, height: 10, includetext: false })
+  const modules = Number(/viewBox="0 0 (\d+) /.exec(svg)?.[1])
+  return modules ? svg.replace('<svg ', `<svg class=bar preserveAspectRatio="none" style="width:${(modules * 0.33).toFixed(1)}mm" `) : ''
+}
 
 /** Strip on the slip, three cells: left PACK, HOLD, CLUB or CLUB + HOLD (CLUB kinds add → and the orders to club with,
  * status under each); middle the courier (D162): DELHIVERY, INDIA POST or TIRUPATI, CHECK COURIER when the check failed,
@@ -32,14 +40,14 @@ function address(a: SlipAddress | null, phone = true): string {
   return rows.map(row => `<div>${esc(row)}</div>`).join('') || `<div>${MISSING}</div>`
 }
 export function slip(row: SlipDocumentRow, order: SlipOrder | undefined): string {
-  if (!order) return `<section class="slip PACK"><div class=mark>${strip(row.mark, row.strip)}</div><header><div class=shop>QIMATI</div><div class=right><div>Order ${esc(row.order_name)}</div></div></header><p>Shopify could not return this order, so its slip could not be rendered. Open it in Shopify.</p></section>`
+  if (!order) return `<section class="slip PACK"><div class=mark>${strip(row.mark, row.strip)}</div><header><div class=shop>QIMATI</div><div class=right>${orderBarcode(row.order_name)}<div>Order ${esc(row.order_name)}</div></div></header><p>Shopify could not return this order, so its slip could not be rendered. Open it in Shopify.</p></section>`
   const items = lines(order).map(line => {
     const variant = line.variantTitle && line.variantTitle !== 'Default Title' ? `<div>${esc(line.variantTitle)}</div>` : ''
     return `<tr><td class=pic>${line.imageUrl ? `<img src="${esc(line.imageUrl)}" alt="" loading="eager">` : '<i></i>'}</td><td><div>${esc(line.title)}</div>${variant}<div>${esc(line.sku || MISSING)}</div></td><td class=q>${line.unfulfilledQuantity} of ${line.quantity}</td></tr>`
   }).join('')
   const note = (order.note ?? '').split(/\s+/).filter(Boolean).join(' ')
   return `<section class="slip ${CLS[row.mark] ?? 'PACK'}" data-order="${esc(order.name)}"><div class=mark>${strip(row.mark, row.strip)}</div>
-<header><div class=shop>QIMATI</div><div class=right><div>Order ${esc(order.name)}</div><div>${esc(fmtDate(order.createdAt))}</div></div></header>
+<header><div class=shop>QIMATI</div><div class=right>${orderBarcode(order.name)}<div>Order ${esc(order.name)}</div><div>${esc(fmtDate(order.createdAt))}</div></div></header>
 <div class=cols><div><h6>Ship to</h6>${address(order.shippingAddress)}</div><div><h6>Bill to</h6>${address(order.billingAddress, false)}</div></div>
 <table><thead><tr><th colspan=2>Items</th><th class=q>Quantity</th></tr></thead><tbody>${items}</tbody></table>${note ? `<div class=notes><h6>Notes</h6><div>${esc(note)}</div></div>` : ''}
 <footer><p>Thank you for shopping with us!</p>${SHOP_FOOT.map(text => `<div>${esc(text)}</div>`).join('')}</footer></section>`
@@ -72,7 +80,7 @@ body{font:10px/1.45 "Helvetica Neue",Helvetica,Arial,sans-serif;color:#000;margi
 .w{display:flex;flex-direction:column;line-height:1.15}.w b{font-size:12px}.w small{font-size:8px;text-transform:uppercase;letter-spacing:.03em}
 .mark em{font-style:normal;font-weight:700;font-size:12px;white-space:nowrap;padding:1px 7px;border:1.5px solid currentColor;border-radius:3px}
 .PACK .mark{border-color:#b5b5b5;color:#555}.PACK .l>b{font-size:11px}.PACK .c,.PACK .mark em{color:#000}.HOLD .mark,.CLUBHOLD .mark{background:#000;color:#fff}
-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9mm}.shop{font-size:19px;letter-spacing:.02em}.right{text-align:right}
+header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9mm}.shop{font-size:19px;letter-spacing:.02em}.right{text-align:right}.bar{display:block;height:10mm;margin:0 0 2mm auto}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:7mm}h6{margin:0 0 7px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
 table{width:100%;border-collapse:collapse;border-top:2px solid #000;border-bottom:2px solid #000}
 th{font-size:8.5px;text-transform:uppercase;letter-spacing:.03em;text-align:left;padding:14px 0 10px}th.q,td.q{text-align:right;white-space:nowrap}

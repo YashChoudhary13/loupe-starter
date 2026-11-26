@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { renderToString } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('next/link', () => ({ default: (props: { href: string; children: unknown }) => createElement('a', { href: props.href }, props.children as string) }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 import { QcScreen } from '@/components/qc/QcScreen'
 import { ClubQcScreen } from '@/components/qc/ClubQcScreen'
 import { QcHistoryScreen } from '@/components/qc/QcHistoryScreen'

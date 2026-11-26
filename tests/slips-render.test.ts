@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderSlipDocument, strip } from '@/lib/slips/render'
+import { orderBarcode, renderSlipDocument, strip } from '@/lib/slips/render'
 import { NEED_ADDRESS, type SlipOrder, type SlipPrintRow } from '@/lib/slips/types'
 
 const empty = { detail: '', flags: [], how: [], heldWith: [], with: [] }
@@ -36,6 +36,12 @@ describe('the slip document', () => {
     expect(html).toContain('<div>Ring</div><div>Red</div><div>RS1</div></td><td class=q>2 of 3</td>'); expect(html).not.toContain('TIP')
     expect(html).toContain('<div>A &amp; B</div>'); expect(html).toContain('Pack with &lt;care&gt;'); expect(html).toContain('October 10, 2026')
     expect(html).toContain('2 slips · Qimati1 to Qimati2'); expect(html).not.toContain('<script>')
+  })
+  it('prints the order name as a barcode on every slip, and none for a name the barcode cannot carry (D180)', () => {
+    const html = doc([row(1), row(2)], [order(1), order(2)])
+    expect(html.match(/<svg class=bar /g)).toHaveLength(2)
+    expect(html.indexOf('<svg class=bar')).toBeLessThan(html.indexOf('Order Qimati1'))
+    expect(orderBarcode('Qimati8796')).toContain('style="width:44.2mm"'); expect(orderBarcode('Qimati 8796')).toBe(''); expect(orderBarcode('')).toBe('')
   })
   it('keeps Chrome\'s print headers and footers off the paper: zero page margin, the margins on the slip', () => {
     const html = doc([row(1)], [order(1)])

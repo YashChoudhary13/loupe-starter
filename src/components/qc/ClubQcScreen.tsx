@@ -1,11 +1,13 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ClubView, QcCommand, QcLine, QcView } from '@/lib/qc/types'
 import { summarizeQc } from '@/lib/qc/summary'
 import { playQcTone, vibrateQc, type QcTone } from '@/lib/qc/sound'
 import { CameraScan } from './CameraScan'
+import { orderScan, orderScanHref } from '@/lib/qc/order-scan'
 import { button, feedbackFor, ReasonAction, type Feedback } from './QcScreen'
 
 /**
@@ -29,6 +31,7 @@ function state(view: QcView) {
 }
 
 export function ClubQcScreen({ initialClub }: { initialClub: ClubView }) {
+  const router = useRouter()
   const [club, setClub] = useState(initialClub)
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
@@ -135,6 +138,13 @@ export function ClubQcScreen({ initialClub }: { initialClub: ClubView }) {
       // The gun fires faster than a round trip: each code is sent in order after the current one confirms.
       if (queue.current.length >= 20) return false
       queue.current.push(trimmed); setQueued(queue.current.length)
+      return true
+    }
+    // A packing slip's barcode opens that order; a slip of this club is already on the screen (D180).
+    const slip = orderScan(trimmed)
+    if (slip) {
+      if (club.members.some(member => member.order.name.replace(/^#/, '').toLowerCase() === slip.toLowerCase())) setNotice(`${slip} is on this screen.`)
+      else { setNotice(`Opening ${slip}…`); router.push(orderScanHref(slip)) }
       return true
     }
     if (blocked) return false

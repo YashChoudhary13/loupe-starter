@@ -1,10 +1,13 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { requireOperatorWith } from '@/lib/auth/authorize'
 import { ShopifyClient } from '@/lib/shopify/client'
 import { listQcOrders, qcShopifyError } from '@/lib/shopify/qc-orders'
 import { listRecentPasses, qcOrderStatuses } from '@/lib/qc/server'
 import { loadClubs, type Club } from '@/lib/qc/club'
 import type { QcPass } from '@/lib/qc/types'
+import { orderScan } from '@/lib/qc/order-scan'
+import { OrderSearchInput } from '@/components/qc/OrderSearchInput'
 
 export const dynamic = 'force-dynamic'
 const day = (value: string) => new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
@@ -15,6 +18,13 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
   const params = await searchParams
   const q = typeof params.q === 'string' ? params.q : ''
   const after = typeof params.after === 'string' ? params.after : null
+  // A slip's barcode (or the same order name typed) opens the order itself when Shopify has exactly that one open order;
+  // anything else falls through to the list, which says what was found (D180).
+  const scanned = after ? null : orderScan(q)
+  if (scanned) {
+    const hit = await requireOperatorWith(() => listQcOrders(new ShopifyClient(), scanned).then(found => found.nodes, () => []))
+    if (hit.length === 1 && hit[0].name.replace(/^#/, '').toLowerCase() === scanned.toLowerCase()) redirect(orderPath(hit[0].id))
+  }
   let result: Awaited<ReturnType<typeof listQcOrders>> | null = null
   let statuses: Awaited<ReturnType<typeof qcOrderStatuses>> = {}
   let error: string | undefined
@@ -57,7 +67,7 @@ export default async function QcOrdersPage({ searchParams }: { searchParams: Pro
       <p className="mt-1 text-[15px] text-ink-soft">Choose a paid order. Check each pouch before it goes in the box. Orders marked Club open together.</p>
     </div><div className="flex flex-wrap gap-2"><Link href="/qc/shortages" className="inline-flex min-h-11 items-center rounded-pill bg-white px-4 py-2 text-[15px] focus-visible:outline-2">Shortages</Link><Link href="/labels" className="inline-flex min-h-11 items-center rounded-pill bg-white px-4 py-2 text-[15px] focus-visible:outline-2">Prepare labels</Link></div></div>
     <form action="/qc" className="my-5 flex flex-wrap items-end gap-3">
-      <label className="grid min-w-0 gap-2 text-[15px]">Shopify order number<input name="q" defaultValue={q} placeholder="Qimati5019" maxLength={60} className="min-h-11 min-w-0 rounded-pill bg-white px-4 py-3 text-[16px] focus:outline-2 focus:outline-ink" /></label>
+      <label className="grid min-w-0 gap-2 text-[15px]">Shopify order number<OrderSearchInput defaultValue={q} /></label>
       <button className="min-h-11 rounded-pill bg-ink px-5 py-3 text-[15px] text-white focus-visible:outline-2 focus-visible:outline-offset-2">Find order</button>
       {q && <Link href="/qc" className="inline-flex min-h-11 items-center rounded-pill px-3 py-2 text-[15px] underline">All open orders</Link>}
     </form>

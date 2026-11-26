@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { retryProgressAction } from '@/app/(shell)/dispatch/print/actions'
 import { AUTO_EVERY_MS } from '@/lib/slips/auto'
-import { fmtWhen } from '@/lib/slips/render'
+import { fmtWhen } from '@/lib/slips/plan'
 import type { Mark } from '@/lib/slips/types'
 
 export interface PreviewRow { id: string; number: number; name: string; mark: Mark; detail: string; flags: string[]; how: string[]; customer: string; phone: string; city: string; units: number; status: string }

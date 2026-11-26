@@ -1,12 +1,14 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import type { QcCommand, QcView } from '@/lib/qc/types'
 import { parseQcCommand } from '@/lib/qc/validation'
 import { summarizeQc } from '@/lib/qc/summary'
 import { playQcTone, toneForOutcome, vibrateQc, type QcTone } from '@/lib/qc/sound'
 import { CameraScan } from './CameraScan'
+import { orderScan, orderScanHref } from '@/lib/qc/order-scan'
 
 export const button = 'min-h-11 min-w-11 rounded-pill px-4 py-2.5 text-[15px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-40'
 // One identity for the whole module: an inline ref callback runs again on every render and would pull focus back from the scan field.
@@ -46,6 +48,7 @@ export function ReasonAction({ label, confirm, disabled, onConfirm }: { label: s
 }
 
 export function QcScreen({ initialView }: { initialView: QcView }) {
+  const router = useRouter()
   const [view, setView] = useState(initialView)
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
@@ -177,6 +180,13 @@ export function QcScreen({ initialView }: { initialView: QcView }) {
       // The gun fires faster than a round trip: keep scanning, each code is sent in order after the current one confirms.
       if (queue.current.length >= 20) return false
       queue.current.push(trimmed); setQueued(queue.current.length)
+      return true
+    }
+    // A packing slip's barcode opens that order (D180). It waits its turn behind pouches still being sent (above).
+    const slip = orderScan(trimmed)
+    if (slip) {
+      if (slip.toLowerCase() === view.order.name.replace(/^#/, '').toLowerCase()) setNotice({ text: `${view.order.name} is already open.`, attention: false })
+      else { setNotice({ text: `Opening ${slip}…`, attention: false }); router.push(orderScanHref(slip)) }
       return true
     }
     if (blocked) return false

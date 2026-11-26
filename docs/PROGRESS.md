@@ -29,6 +29,25 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-11-26 — A barcode on the packing slip opens the order in Order QC (D180)
+
+**Goal this session:** the owner wants the QC desk to scan the slip with the gun to open the order, and scan the next slip after QC, with no typing and no going back.
+
+**Built:**
+- `src/lib/slips/render.ts` → `orderBarcode`: the order name as Code 128 above the order number on every slip.
+- `src/lib/qc/order-scan.ts` → `orderScan`: which scans are order names.
+- `src/components/qc/QcScreen.tsx`, `ClubQcScreen.tsx` → a slip scan in the scan field opens that order; the open order's own slip only says so.
+- `src/app/(shell)/qc/page.tsx`, `src/components/qc/OrderSearchInput.tsx` → the list catches a scan and opens the order when it is the one hit.
+
+**Verified:** `tsc --noEmit` clean, eslint clean on the touched files, vitest 127 of 127 in the 17 QC and slips files (the files that need the database do not run in this worktree: no `.env`). In the local twin (dev mode, pretend orders renamed `Qimati73xx` for the run, fixtures restored after): a gun-style scan on the list opened the order; a scan on an order screen opened the next order, in capitals too; the open order's own slip left the field empty with "already open"; a club member's slip said "is on this screen"; an unknown order landed on the list with nothing found; Back returned to the previous order. A sample slip rendered in Chrome at 288 dpi read back as `Qimati8796`, Code 128 (zxing).
+
+**Not finished / known broken:**
+- Not deployed: branch `claude/slip-scan`, the owner pushes to main.
+- No production build was run here; the twin's dev build served the QC, club and Print slips screens.
+- Not tried on paper: the office printer and the real gun. The gun must end a scan with Enter, as it does for pouches.
+
+---
+
 ## 2026-11-25 — Enhance upload: leaves the screen, sends itself, sixty at once (D179)
 
 **Goal this session:** the owner's five complaints about uploading a batch on /enhance (wait for a tap to send, no way to tell which photograph failed, uploads stop on leaving the page, slow, 60 at once fail, the page lags and tears).

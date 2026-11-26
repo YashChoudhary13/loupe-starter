@@ -8,6 +8,7 @@ import { MARKS, NEED_ADDRESS, type Mark, type SlipLine, type SlipOrder, type Sli
 export const PAID = new Set(['PAID', 'PARTIALLY_REFUNDED'])
 const HOLD_WORDS = /hold|wait|confirm|pending/i
 export const MISSING = 'not in Shopify'
+export const fmtWhen = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
 export const ADDRESSES_DIFFER = 'addresses differ, check before clubbing'
 
 export const num = (name: string): number => Number(name.replace(/\D/g, '') || 0)
