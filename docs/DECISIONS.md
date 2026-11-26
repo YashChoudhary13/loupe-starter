@@ -4086,3 +4086,12 @@ Not done, on purpose: no change to the 4,096 px / 0.9 upload size (the enhancer'
 
 Not done, on purpose: the unfinished order is not blocked when the next slip is scanned (counts are saved per scan; the list shows it as In progress); a screen whose scan field is locked (recount needed, an order that cannot be checked, an unconfirmed request) does not take a slip scan, the operator goes back once; slips printed before this have no barcode.
 
+
+### D181 — One order's slip can be printed again; a Need Address slip picks up the address and its courier (2026-11-26)
+
+*Owner, 2026-11-26: order Qimati9058 was made by hand without an address, marked paid at 13:55 and printed by Loupe at 13:57 as Need Address; the address came at 14:04. "Print it and solve the issue."*
+
+1. **Print slips has "Reprint one order"** (order number, beside Printed batches): `GET /api/slips/order/<number>` renders that one slip fresh from Shopify. Until now only a whole batch could be reprinted.
+2. **A slip printed as Need Address is brought up to date on that reprint** (`reprintOne` in `src/lib/slips/print.ts`): when the order has an address by now, the Need Address word goes, the courier is settled by the same rules as a first print (`setCouriers`, taken out of `printSlips`: Delhivery list, Gujarat, pincode check), and the stored strip is updated, so every later reprint, the batch reprint included, says the same. Any other slip prints exactly as stored (D162: a reprint says what was printed).
+3. **Nothing else moves**: no new batch, no second In progress mark in Shopify, the mark (PACK, CLUB, HOLD) stays as first printed. The reprint is written to the batch's audit record as `slips.reprinted_one`.
+4. **Not built:** printing the corrected slip by itself when an address arrives. The packer asks for it by order number.

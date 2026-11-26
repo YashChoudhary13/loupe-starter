@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { NothingToPrint, printSlips, retryProgress, select, type PrintDeps } from '@/lib/slips/print'
-import type { SlipCarrier, SlipOrder } from '@/lib/slips/types'
+import { NoSuchSlip, NothingToPrint, printSlips, reprintOne, retryProgress, select, type PrintDeps } from '@/lib/slips/print'
+import type { SlipCarrier, SlipOrder, SlipPrintRow, SlipStrip } from '@/lib/slips/types'
 
 const order = (n: number, changes: Partial<SlipOrder> = {}, phone = `90000000${String(n).padStart(2, '0')}`): SlipOrder => ({
   id: `gid://shopify/Order/${n}`, name: `Qimati${n}`, createdAt: '2026-10-10T05:00:00Z', note: null, tags: [], email: null, phone, financialStatus: 'PAID', fulfillmentStatus: 'UNFULFILLED', total: 100, customer: null, billingAddress: null,
@@ -147,5 +147,32 @@ describe('printSlips marks several orders at once', () => {
     const outcome = await printSlips('owner', null, deps)
     expect(outcome.printed).toBe(20); expect(calls.reported).toHaveLength(20)
     expect(peak).toBeGreaterThan(1); expect(peak).toBeLessThanOrEqual(8)
+  })
+})
+
+describe('reprintOne: one order again (D181)', () => {
+  const stored = (n: number, flags: string[], mark: SlipPrintRow['mark'] = 'PACK'): SlipPrintRow => ({ id: `row${n}`, batch_id: 'b1', order_id: `gid://shopify/Order/${n}`, order_name: `Qimati${n}`, order_number: n, mark, strip: { detail: '', flags, how: [], heldWith: [], with: [] }, progress: 'marked', progress_error: null, printed_at: '2026-11-26T08:27:00Z' })
+  const run = (row: SlipPrintRow | null, orders: SlipOrder[], carriers: Record<string, SlipCarrier | null> = {}) => {
+    const saved: { id: string; strip: SlipStrip }[] = []
+    const { deps, calls } = fakeDeps(orders, { carriers })
+    return { saved, calls, result: reprintOne(row?.order_number ?? 1, { ...deps, loadRow: async () => row, saveStrip: async (id, strip) => { saved.push({ id, strip }) } }) }
+  }
+  it('a Need Address slip whose order has its address now prints without that word, with its courier, and is stored so', async () => {
+    const { saved, calls, result } = run(stored(9, ['Need Address', 'risk tag high']), [order(9)], { '302001': 'Delhivery' })
+    const { row, refreshed } = await result
+    expect(refreshed).toBe(true); expect(row.strip.flags).toEqual(['risk tag high']); expect(row.strip.carrier).toBe('Delhivery')
+    expect(calls.pins).toEqual(['302001']); expect(saved).toEqual([{ id: 'row9', strip: row.strip }])
+  })
+  it('leaves the slip as stored while the address is still missing, and when it never asked for one', async () => {
+    const missing = run(stored(9, ['Need Address']), [order(9, { shippingAddress: null })])
+    expect((await missing.result).refreshed).toBe(false); expect(missing.saved).toEqual([]); expect(missing.calls.pins).toEqual([])
+    const plain = run({ ...stored(8, []), strip: { ...stored(8, []).strip, carrier: 'Tirupati' } }, [order(8)])
+    const answer = await plain.result
+    expect(answer.refreshed).toBe(false); expect(answer.row.strip.carrier).toBe('Tirupati'); expect(plain.saved).toEqual([])
+  })
+  it('refuses an order with no slip, a baseline row, and an order Shopify does not return', async () => {
+    await expect(run(null, []).result).rejects.toBeInstanceOf(NoSuchSlip)
+    await expect(run(stored(7, [], 'BASELINE'), [order(7)]).result).rejects.toThrow('Qimati7 has no slip printed from Loupe.')
+    await expect(run(stored(6, []), []).result).rejects.toThrow('could not be read')
   })
 })

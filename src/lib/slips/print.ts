@@ -1,6 +1,6 @@
 import { carriersFor, gujarat, pinOf, type CarrierCheck } from './carrier'
 import { contactPhones, isHeld, notePhones, num, paid, plan } from './plan'
-import { NEED_ADDRESS, type Mark, type Progress, type SlipDocumentRow, type SlipOrder, type SlipRow, type SlipStrip } from './types'
+import { NEED_ADDRESS, type Mark, type Progress, type SlipDocumentRow, type SlipOrder, type SlipPrintRow, type SlipRow, type SlipStrip } from './types'
 
 /** One click of Print slips, with every side effect behind `deps` so the sequence is testable without Shopify or a database. */
 export interface NewPrintRow { orderId: string; orderName: string; orderNumber: number; mark: Mark | 'BASELINE'; strip: SlipStrip }
@@ -55,6 +55,43 @@ export async function markInProgress(order: SlipOrder, mark: Mark | 'BASELINE', 
   return { progress: 'marked', error: null }
 }
 
+/** Writes the courier on each row's strip and answers with what the checkers said, by pincode (D162). A slip still
+ * waiting for its address carries no courier; a customer on the owner's Delhivery list goes by Delhivery whatever the
+ * destination, Gujarat included, with no pincode check; a Gujarat parcel goes by Tirupati without a check. */
+export async function setCouriers(rows: readonly SlipRow[], deps: Pick<PrintDeps, 'carrierFor' | 'delhiveryPhones'>): Promise<Map<string, CarrierCheck>> {
+  const byDelhivery = (row: SlipRow) => !!deps.delhiveryPhones?.size && [...contactPhones(row.order), ...notePhones(row.order)].some(phone => deps.delhiveryPhones!.has(phone))
+  const pinToCheck = (row: SlipRow) => (row.strip.flags.includes(NEED_ADDRESS) || byDelhivery(row) || gujarat(row.order) ? null : pinOf(row.order))
+  const carriers = await carriersFor(rows.map(pinToCheck).filter((pin): pin is string => pin !== null), deps.carrierFor)
+  for (const row of rows) {
+    if (row.strip.flags.includes(NEED_ADDRESS)) continue
+    if (byDelhivery(row)) { row.strip.carrier = 'Delhivery'; continue }
+    if (gujarat(row.order)) { row.strip.carrier = 'Tirupati'; continue }
+    // No slip goes out unchecked (owner, 2026-11-25): an address without a six-digit Indian pincode says CHECK COURIER, never a silent DTDC.
+    const pin = pinOf(row.order)
+    row.strip.carrier = pin ? carriers.get(pin)?.carrier ?? null : null
+  }
+  return carriers
+}
+
+export interface ReprintDeps extends Pick<PrintDeps, 'readOrders' | 'carrierFor' | 'delhiveryPhones'> {
+  loadRow(orderNumber: number): Promise<SlipPrintRow | null>
+  saveStrip(rowId: string, strip: SlipStrip): Promise<void>
+}
+export class NoSuchSlip extends Error { constructor(message: string) { super(message); this.name = 'NoSuchSlip' } }
+/** One order's slip again (D181). A slip printed as Need Address whose order has its address by now loses that word and
+ * gets its courier, and the stored strip is updated so every later reprint says the same; any other slip prints as stored. */
+export async function reprintOne(orderNumber: number, deps: ReprintDeps): Promise<{ row: SlipPrintRow; order: SlipOrder; refreshed: boolean }> {
+  const stored = await deps.loadRow(orderNumber)
+  if (!stored || stored.mark === 'BASELINE') throw new NoSuchSlip(`Qimati${orderNumber} has no slip printed from Loupe.`)
+  const [order] = await deps.readOrders([stored.order_id])
+  if (!order) throw new NoSuchSlip(`Qimati${orderNumber} could not be read from Shopify.`)
+  if (!stored.strip.flags.includes(NEED_ADDRESS) || !order.shippingAddress?.address1) return { row: stored, order, refreshed: false }
+  const row: SlipRow = { order, mark: stored.mark, strip: { ...stored.strip, flags: stored.strip.flags.filter(flag => flag !== NEED_ADDRESS) } }
+  await setCouriers([row], deps)
+  await deps.saveStrip(stored.id, row.strip)
+  return { row: { ...stored, strip: row.strip }, order, refreshed: true }
+}
+
 export async function printSlips(by: string, fromNumber: number | null, deps: PrintDeps): Promise<PrintOutcome> {
   const started = Date.now()
   const selection = await select(deps, fromNumber)
@@ -64,18 +101,7 @@ export async function printSlips(by: string, fromNumber: number | null, deps: Pr
   // A slip still waiting for its address carries no courier (owner, 2026-10-29), whatever pincode it has; a Gujarat parcel
   // goes by Tirupati without a check.
   const checking = Date.now()
-  // A customer on the owner's Delhivery list goes by Delhivery whatever the destination, Gujarat included, with no pincode check.
-  const byDelhivery = (row: SlipRow) => !!deps.delhiveryPhones?.size && [...contactPhones(row.order), ...notePhones(row.order)].some(phone => deps.delhiveryPhones!.has(phone))
-  const pinToCheck = (row: SlipRow) => (row.strip.flags.includes(NEED_ADDRESS) || byDelhivery(row) || gujarat(row.order) ? null : pinOf(row.order))
-  const carriers = await carriersFor(selection.rows.map(pinToCheck).filter((pin): pin is string => pin !== null), deps.carrierFor)
-  for (const row of selection.rows) {
-    if (row.strip.flags.includes(NEED_ADDRESS)) continue
-    if (byDelhivery(row)) { row.strip.carrier = 'Delhivery'; continue }
-    if (gujarat(row.order)) { row.strip.carrier = 'Tirupati'; continue }
-    // No slip goes out unchecked (owner, 2026-11-25): an address without a six-digit Indian pincode says CHECK COURIER, never a silent DTDC.
-    const pin = pinOf(row.order)
-    row.strip.carrier = pin ? carriers.get(pin)?.carrier ?? null : null
-  }
+  const carriers = await setCouriers(selection.rows, deps)
   // Every pin not going by DTDC is written into the print record with both checkers' words, so a courier line can be audited.
   const checks = [...carriers].filter(([, check]) => check.carrier !== 'DTDC').map(([pin, check]) => ({ pin, ...check }))
   const batching = Date.now()

@@ -41,6 +41,7 @@ function printDocument(html: string): Promise<void> {
 export function PrintScreen({ rows, leftOut, unprinted, truncated, oldest, batches, error, auto = null }: PrintScreenProps) {
   const router = useRouter()
   const [from, setFrom] = useState('')
+  const [one, setOne] = useState('')
   const [messages, setMessages] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [stage, setStage] = useState<'idle' | 'preparing' | 'printing'>('idle')
@@ -124,7 +125,14 @@ export function PrintScreen({ rows, leftOut, unprinted, truncated, oldest, batch
     </form>
 
     <div className="mt-6 rounded-card bg-surface p-4 md:p-6">
-      <h2 className="text-[15px] font-medium">Printed batches</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-[15px] font-medium">Printed batches</h2>
+        <form className="flex items-center gap-2 text-[13px] text-ink-soft" onSubmit={event => { event.preventDefault(); const number = one.replace(/\D/g, ''); if (number) void printFrom(`/api/slips/order/${number}`) }}>
+          <label className="flex items-center gap-2">Reprint one order: Qimati
+            <input inputMode="numeric" value={one} onChange={event => setOne(event.target.value)} aria-label="Order number to reprint" className="w-24 rounded-pill bg-chip px-3 py-2 text-[13px] text-ink focus:outline-2 focus:outline-ink" /></label>
+          <button type="submit" className={`${pill} bg-chip`} disabled={stage !== 'idle' || !one.replace(/\D/g, '')}>Reprint</button>
+        </form>
+      </div>
       {batches.length === 0 && <p className="mt-2 text-[13px] text-ink-soft">Nothing printed from Loupe yet.</p>}
       <div className="mt-3 grid gap-3">{batches.map(batch => <div key={batch.id} className="rounded-panel border border-chip bg-white p-3 md:p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

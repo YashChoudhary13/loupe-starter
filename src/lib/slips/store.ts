@@ -2,7 +2,7 @@ import 'server-only'
 import { supabaseServer } from '@/lib/supabase/server'
 import { ShopifyClient } from '@/lib/shopify/client'
 import type { NewPrintRow } from './print'
-import type { Progress, SlipBatchRow, SlipPrintRow } from './types'
+import type { Progress, SlipBatchRow, SlipPrintRow, SlipStrip } from './types'
 
 const ROW_FIELDS = 'id,batch_id,order_id,order_name,order_number,mark,strip,progress,progress_error,printed_at'
 const BATCH_FIELDS = `id,printed_by,printed_at,order_count,from_number,rows:slip_prints(${ROW_FIELDS})`
@@ -54,5 +54,15 @@ export async function loadBatch(batchId: string): Promise<SlipBatchRow | null> {
   const { data, error } = await supabaseServer().from('slip_batches').select(BATCH_FIELDS).eq('shop_domain', shop()).eq('id', batchId).maybeSingle()
   if (error) throw new Error(READ_FAILED)
   return data ? sorted(data as unknown as SlipBatchRow) : null
+}
+/** The stored slip row of one order number, for a one-order reprint (D181). */
+export async function loadRowByNumber(orderNumber: number): Promise<SlipPrintRow | null> {
+  const { data, error } = await supabaseServer().from('slip_prints').select(ROW_FIELDS).eq('shop_domain', shop()).eq('order_number', orderNumber).order('printed_at', { ascending: false }).limit(1).maybeSingle()
+  if (error) throw new Error(READ_FAILED)
+  return (data as unknown as SlipPrintRow | null) ?? null
+}
+export async function saveStrip(rowId: string, strip: SlipStrip): Promise<void> {
+  const { error } = await supabaseServer().from('slip_prints').update({ strip }).eq('shop_domain', shop()).eq('id', rowId)
+  if (error) throw new Error('The slip could not be updated. Try again.')
 }
 export type { SlipPrintRow }

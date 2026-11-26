@@ -29,6 +29,10 @@ If a domain fact turned out wrong, fix CLAUDE.md in the same session and note it
 
 ---
 
+## 2026-11-26 — One order's slip can be reprinted; a Need Address slip picks up its address and courier (D181)
+
+Branch `claude/slip-reprint-one`, one commit on main `9911de9`. Print slips gets "Reprint one order"; `reprintOne` + `setCouriers` in `src/lib/slips/print.ts`, `loadRowByNumber` + `saveStrip` in the store, route `src/app/api/slips/order/[number]`. Tests: three cases in `tests/slips-print.test.ts`. Not deployed until the owner's push; first real reprint (Qimati9058) not yet seen.
+
 ## 2026-11-26 — A barcode on the packing slip opens the order in Order QC (D180)
 
 **Goal this session:** the owner wants the QC desk to scan the slip with the gun to open the order, and scan the next slip after QC, with no typing and no going back.
